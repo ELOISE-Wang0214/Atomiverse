@@ -157,6 +157,9 @@ if(ATV_BUILD_PW)
     atv_add_regression(pw periodic-wannier-si)
     target_compile_definitions(reg_periodic-wannier-si PRIVATE
         ATV_PW_UPF_PATH="${_atv_si_upf}")
+    atv_add_regression(pw periodic-wannier-uks)
+    target_compile_definitions(reg_periodic-wannier-uks PRIVATE
+        ATV_PW_UPF_PATH="${_atv_si_upf}")
     atv_add_regression(pw pw-uks-kmesh-fe)
     atv_add_regression(pw pw-uks-fe-smearing)
     if(TARGET reg_pw-uks-fe-smearing)

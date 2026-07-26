@@ -7,10 +7,15 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/core/vec3.h"
+#include "atomiverse/cpu/planewave/internal/convergence.h"
 #include "atomiverse/cpu/planewave/internal/davidson.h"
+#include "atomiverse/cpu/planewave/internal/density_builder.h"
 #include "atomiverse/cpu/planewave/internal/kpoint.h"
+#include "atomiverse/cpu/planewave/internal/poisson.h"
 #include "atomiverse/cpu/planewave/internal/pw_setup.h"
 #include "atomiverse/cpu/planewave/internal/restricted_scf.h"
+#include "atomiverse/cpu/planewave/internal/veff_builder.h"
+#include "atomiverse/cpu/planewave/internal/xc_builder.h"
 
 #include <algorithm>
 #include <cmath>
@@ -591,6 +596,205 @@ double cubic_a_from_cell(const Mat3& cell) {
     return len * std::sqrt(2.0);
 }
 
+/// Per-channel MV localization result (restricted or one spin).
+struct ChannelLoc {
+    std::vector<std::array<double, 3>> centers;
+    std::vector<double> spreads;
+    double total_spread = 0.0;
+    double total_spread_initial = 0.0;
+    int iterations = 0;
+    bool converged = false;
+};
+
+/// Marzari–Vanderbilt localization on precomputed NSCF coefficients.
+ChannelLoc localize_channel(
+    const std::vector<std::vector<std::complex<AccReal>>>& coef,
+    const std::vector<internal::GVectorList>& gv_k, int n_wann, int N,
+    const Mat3& recip, double vol_bohr,
+    const std::vector<std::array<double, 3>>& trials, bool use_projection,
+    double proj_alpha_ang, int max_iter, double tol, double step) {
+    ChannelLoc out;
+    if (n_wann < 1)
+        return out;
+    const int nk = N * N * N;
+    const auto nb = build_neighbors(N, recip);
+
+    std::vector<std::vector<std::vector<Cdouble>>> M0(
+        static_cast<std::size_t>(nk));
+    for (int ik = 0; ik < nk; ++ik) {
+        const auto& neigh = nb[static_cast<std::size_t>(ik)];
+        M0[static_cast<std::size_t>(ik)].resize(neigh.size());
+        for (std::size_t ib = 0; ib < neigh.size(); ++ib) {
+            const auto& e = neigh[ib];
+            const int sh = (e.wrap != 0 && e.dir == 0) ? e.wrap : 0;
+            const int sk = (e.wrap != 0 && e.dir == 1) ? e.wrap : 0;
+            const int sl = (e.wrap != 0 && e.dir == 2) ? e.wrap : 0;
+            overlap_matrix(gv_k[static_cast<std::size_t>(ik)],
+                           coef[static_cast<std::size_t>(ik)],
+                           gv_k[static_cast<std::size_t>(e.ik_nb)],
+                           coef[static_cast<std::size_t>(e.ik_nb)], n_wann, sh,
+                           sk, sl, M0[static_cast<std::size_t>(ik)][ib]);
+        }
+    }
+
+    std::vector<std::vector<Cdouble>> U(static_cast<std::size_t>(nk));
+    for (int ik = 0; ik < nk; ++ik) {
+        U[static_cast<std::size_t>(ik)].assign(
+            static_cast<std::size_t>(n_wann * n_wann), Cdouble{0, 0});
+        for (int i = 0; i < n_wann; ++i)
+            U[static_cast<std::size_t>(ik)]
+             [static_cast<std::size_t>(i * n_wann + i)] = Cdouble{1, 0};
+    }
+
+    if (use_projection) {
+        for (int ik = 0; ik < nk; ++ik) {
+            auto& gvk = gv_k[static_cast<std::size_t>(ik)];
+            const int ng = gvk.count();
+            std::vector<Cdouble> A(static_cast<std::size_t>(n_wann * n_wann),
+                                   Cdouble{0, 0});
+            for (int n = 0; n < n_wann; ++n) {
+                std::vector<Cdouble> gcoef;
+                gaussian_proj_coeffs(gvk, vol_bohr,
+                                     trials[static_cast<std::size_t>(n)],
+                                     proj_alpha_ang, gcoef);
+                const auto& c = coef[static_cast<std::size_t>(ik)];
+                for (int j = 0; j < n_wann; ++j) {
+                    Cdouble s{0, 0};
+                    for (int ig = 0; ig < ng; ++ig)
+                        s += std::conj(static_cast<Cdouble>(
+                                 c[static_cast<std::size_t>(j * ng + ig)]))
+                             * gcoef[static_cast<std::size_t>(ig)];
+                    A[static_cast<std::size_t>(j * n_wann + n)] = s;
+                }
+            }
+            projection_U(A, n_wann, U[static_cast<std::size_t>(ik)]);
+        }
+    }
+
+    auto rebuild_M =
+        [&](std::vector<std::vector<std::vector<Cdouble>>>& M_kb) {
+            M_kb.assign(static_cast<std::size_t>(nk), {});
+            for (int ik = 0; ik < nk; ++ik) {
+                const auto& neigh = nb[static_cast<std::size_t>(ik)];
+                M_kb[static_cast<std::size_t>(ik)].resize(neigh.size());
+                for (std::size_t ib = 0; ib < neigh.size(); ++ib) {
+                    const int ikb = neigh[ib].ik_nb;
+                    rotate_M(M0[static_cast<std::size_t>(ik)][ib],
+                             U[static_cast<std::size_t>(ik)],
+                             U[static_cast<std::size_t>(ikb)], n_wann,
+                             M_kb[static_cast<std::size_t>(ik)][ib]);
+                }
+            }
+        };
+
+    std::vector<std::vector<std::vector<Cdouble>>> M_kb;
+    {
+        std::vector<std::vector<Cdouble>> Uid(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            Uid[static_cast<std::size_t>(ik)].assign(
+                static_cast<std::size_t>(n_wann * n_wann), Cdouble{0, 0});
+            for (int i = 0; i < n_wann; ++i)
+                Uid[static_cast<std::size_t>(ik)]
+                   [static_cast<std::size_t>(i * n_wann + i)] = Cdouble{1, 0};
+        }
+        auto U_save = U;
+        U = Uid;
+        rebuild_M(M_kb);
+        out.total_spread_initial = total_spread_from_M(M_kb, nb, n_wann);
+        U = std::move(U_save);
+    }
+    rebuild_M(M_kb);
+
+    bool conv = (max_iter == 0);
+    int iters = 0;
+    double omega_prev = total_spread_from_M(M_kb, nb, n_wann);
+    auto U_best = U;
+    auto M_best = M_kb;
+    double omega_best = omega_prev;
+
+    for (int it = 0; it < max_iter; ++it) {
+        ++iters;
+        std::vector<std::vector<Cdouble>> G_k;
+        mv_gradient(M_kb, nb, n_wann, G_k);
+        const double gmax = max_abs_G(G_k);
+        ATV_DEBUG_CAT("pw", "mlwf iter={} |G|_max={:.3e} Omega={:.6f}", it, gmax,
+                      omega_prev);
+        if (it > 0 && (!(gmax > 0.0) || gmax < tol || !std::isfinite(gmax))) {
+            conv = std::isfinite(gmax) && gmax < tol;
+            break;
+        }
+
+        double alpha = step;
+        bool accepted = false;
+        auto U_try = U;
+        for (int attempt = 0; attempt < 6; ++attempt) {
+            U_try = U;
+            for (int ik = 0; ik < nk; ++ik) {
+                std::vector<Cdouble> expG;
+                expm_antihermitian(G_k[static_cast<std::size_t>(ik)], n_wann,
+                                   alpha, expG);
+                right_mul(U_try[static_cast<std::size_t>(ik)], expG, n_wann);
+            }
+            auto U_save = U;
+            U = U_try;
+            rebuild_M(M_kb);
+            const double omega_new = total_spread_from_M(M_kb, nb, n_wann);
+            if (std::isfinite(omega_new) && omega_new <= omega_prev + 1e-6) {
+                accepted = true;
+                omega_prev = omega_new;
+                if (omega_new < omega_best) {
+                    omega_best = omega_new;
+                    U_best = U;
+                    M_best = M_kb;
+                }
+                break;
+            }
+            U = std::move(U_save);
+            rebuild_M(M_kb);
+            alpha *= 0.5;
+        }
+        if (!accepted) {
+            conv = true;
+            break;
+        }
+    }
+    if (max_iter == 0)
+        conv = true;
+
+    U = std::move(U_best);
+    M_kb = std::move(M_best);
+    PeriodicWannierResult tmp;
+    fill_centers_spreads(M_kb, nb, n_wann, tmp);
+    out.centers = std::move(tmp.centers);
+    out.spreads = std::move(tmp.spreads);
+    out.total_spread = tmp.total_spread;
+    out.iterations = iters;
+    out.converged = conv && std::isfinite(out.total_spread);
+    return out;
+}
+
+/// Resolve projection trial centers for a manifold of size n_wann.
+std::vector<std::array<double, 3>>
+resolve_trials(const std::vector<std::array<double, 3>>& trial_centers,
+               int n_wann, const cpu::Frame& frame) {
+    std::vector<std::array<double, 3>> trials = trial_centers;
+    if (trials.empty()) {
+        if (n_wann == 4 && frame.nlocal() == 2) {
+            const double a = cubic_a_from_cell(frame.simbox.cell());
+            const auto mids = diamond_bond_midpoints(a);
+            trials.assign(mids.begin(), mids.end());
+        } else {
+            trials.assign(static_cast<std::size_t>(n_wann),
+                          std::array<double, 3>{0, 0, 0});
+        }
+    }
+    if (static_cast<int>(trials.size()) != n_wann)
+        throw std::invalid_argument(
+            "PeriodicWannier::compute: trial_centers size must equal n_wann "
+            "per spin channel");
+    return trials;
+}
+
 } // namespace
 
 // ── Public pure helpers ───────────────────────────────────────────────────
@@ -634,10 +838,6 @@ PeriodicWannierResult PeriodicWannier::compute(const PW& method,
                                                const cpu::Frame& frame) const {
     using internal::DavidsonSolver;
 
-    if (method.spin_polarized)
-        throw std::invalid_argument(
-            "PeriodicWannier::compute: spin-polarized MLWF not supported "
-            "in this foothold");
     if (method.smearing != Smearing::none)
         throw std::invalid_argument(
             "PeriodicWannier::compute: requires an insulator (no metallic "
@@ -658,6 +858,233 @@ PeriodicWannierResult PeriodicWannier::compute(const PW& method,
         throw std::invalid_argument(
             "PeriodicWannier::compute: proj_alpha_ang must be > 0");
 
+    const int N = k_mesh;
+    const int nk = N * N * N;
+    const Mat3 recip = frame.simbox.recip_cell();
+
+    // ── Collinear spin-polarized path ───────────────────────────────────
+    if (method.spin_polarized) {
+        if (method.multiplicity < 1)
+            throw std::invalid_argument(
+                "PeriodicWannier::compute: multiplicity must be >= 1 when "
+                "spin_polarized");
+
+        internal::PWProblem prob;
+        internal::setup_pw_problem(frame, method.upf_path, method.ecut_ry,
+                                   method.k_mesh, prob);
+        internal::PWWorkspace& ws = prob.ws;
+        auto& gv0 = prob.gv0;
+        const int n_kpts_scf = static_cast<int>(prob.kg.kpoints.size());
+        const int ng0 = gv0.count();
+        const int n_elec = prob.n_elec;
+        const int mag = method.multiplicity - 1;
+        if ((n_elec + mag) % 2 != 0 || mag > n_elec)
+            throw std::invalid_argument(
+                "PeriodicWannier::compute: n_elec and multiplicity have "
+                "incompatible parity");
+        const int n_alpha = (n_elec + mag) / 2;
+        const int n_beta = (n_elec - mag) / 2;
+        const int n_occ[2] = {n_alpha, n_beta};
+        const int n_bands = std::max(std::max(n_alpha, n_beta), 1);
+        if (n_alpha + n_beta < 1)
+            throw std::invalid_argument(
+                "PeriodicWannier::compute: empty occupied manifold");
+
+        ws.mix_beta = AccReal(method.mix_beta);
+        ws.pulay_depth = method.pulay_depth;
+        ws.nspin = 2;
+        const std::size_t ngs = static_cast<std::size_t>(ng0);
+        ws.rho_spin_G.resize(2);
+        ws.rho_spin_G_old.resize(2);
+        ws.V_xc_spin_G.resize(2);
+        for (int s = 0; s < 2; ++s) {
+            ws.rho_spin_G[s].resize({ngs});
+            ws.rho_spin_G_old[s].resize({ngs});
+            ws.V_xc_spin_G[s].resize({ngs});
+        }
+        const AccReal fa =
+            (n_elec > 0) ? AccReal(n_alpha) / AccReal(n_elec) : AccReal(0.5);
+        const AccReal fb =
+            (n_elec > 0) ? AccReal(n_beta) / AccReal(n_elec) : AccReal(0.5);
+        for (int ig = 0; ig < ng0; ++ig) {
+            ws.rho_spin_G[0][ig] = fa * ws.rho_G[ig];
+            ws.rho_spin_G[1][ig] = fb * ws.rho_G[ig];
+            ws.rho_spin_G_old[0][ig] = ws.rho_spin_G[0][ig];
+            ws.rho_spin_G_old[1][ig] = ws.rho_spin_G[1][ig];
+        }
+
+        internal::PoissonSolver poisson;
+        internal::XCBuilder xc;
+        internal::VeffBuilder veff;
+        internal::DensityBuilder density(AccReal(method.mix_beta),
+                                         method.pulay_depth);
+        DavidsonSolver davidson(n_bands, AccReal(method.tol) * AccReal(0.1),
+                                40);
+        xc.prepare(ws);
+        veff.prepare(ws);
+        density.prepare(ws);
+        density.reset(ws);
+        davidson.prepare(ws);
+
+        bool scf_ok = false;
+        AccReal e_band_last = AccReal(0);
+        for (int iter = 0; iter < method.max_iter; ++iter) {
+            for (int ig = 0; ig < ng0; ++ig)
+                ws.rho_G[ig] = ws.rho_spin_G[0][ig] + ws.rho_spin_G[1][ig];
+            poisson.step(ws);
+            xc.step_spin(ws, method.xc);
+
+            xt::xarray<std::complex<AccReal>> rho_out[2];
+            e_band_last = AccReal(0);
+            auto* saved_gvec = ws.gvec;
+            for (int s = 0; s < 2; ++s) {
+                for (int ig = 0; ig < ng0; ++ig)
+                    ws.V_xc_G[ig] = ws.V_xc_spin_G[s][ig];
+                veff.step(ws);
+                density.begin(ws);
+                for (int ik = 0; ik < n_kpts_scf; ++ik) {
+                    auto& gvk = prob.gv_k[static_cast<std::size_t>(ik)];
+                    ws.gvec = &gvk;
+                    ws.n_g = gvk.count();
+                    ws.T_G.resize({static_cast<std::size_t>(ws.n_g)});
+                    for (int ig = 0; ig < ws.n_g; ++ig)
+                        ws.T_G[ig] = gvk.ekin[ig];
+                    if (!prob.kb_proj_k.empty())
+                        ws.kb_proj =
+                            prob.kb_proj_k[static_cast<std::size_t>(ik)];
+                    if (!prob.atom_wfc_k.empty())
+                        ws.atom_wfc =
+                            prob.atom_wfc_k[static_cast<std::size_t>(ik)];
+                    davidson.step(ws);
+                    const AccReal weight =
+                        prob.kg.weights[static_cast<std::size_t>(ik)];
+                    for (int b = 0; b < n_occ[s]; ++b)
+                        e_band_last += weight * ws.eigenvalues[b];
+                    density.accumulate_kpoint(ws, weight, n_occ[s], AccReal(1));
+                    ws.gvec = saved_gvec;
+                    ws.n_g = ng0;
+                }
+                density.extract(ws, rho_out[s]);
+            }
+            for (int s = 0; s < 2; ++s) {
+                for (int ig = 0; ig < ng0; ++ig) {
+                    ws.rho_spin_G_old[s][ig] = ws.rho_spin_G[s][ig];
+                    ws.rho_spin_G[s][ig] =
+                        ws.rho_spin_G_old[s][ig]
+                        + AccReal(method.mix_beta)
+                              * (rho_out[s][ig] - ws.rho_spin_G_old[s][ig]);
+                }
+            }
+            AccReal dr = 0;
+            for (int ig = 0; ig < ng0; ++ig) {
+                const auto old = ws.rho_G[ig];
+                ws.rho_G[ig] = ws.rho_spin_G[0][ig] + ws.rho_spin_G[1][ig];
+                const auto d = ws.rho_G[ig] - old;
+                dr += d.real() * d.real() + d.imag() * d.imag();
+            }
+            if (std::sqrt(static_cast<double>(dr)) < method.tol) {
+                scf_ok = true;
+                break;
+            }
+        }
+
+        // Freeze V_eff,σ from the mixed density.
+        for (int ig = 0; ig < ng0; ++ig)
+            ws.rho_G[ig] = ws.rho_spin_G[0][ig] + ws.rho_spin_G[1][ig];
+        poisson.step(ws);
+        xc.step_spin(ws, method.xc);
+        std::vector<std::vector<AccReal>> veff_r(2);
+        for (int s = 0; s < 2; ++s) {
+            for (int ig = 0; ig < ng0; ++ig)
+                ws.V_xc_G[ig] = ws.V_xc_spin_G[s][ig];
+            veff.step(ws);
+            veff_r[static_cast<std::size_t>(s)].assign(
+                ws.V_eff_r.begin(), ws.V_eff_r.begin() + ws.nr);
+        }
+
+        PeriodicWannierResult out;
+        out.scf_converged = scf_ok;
+        // Density residual is the SCF gate; full E_tot assembly is not required
+        // for MLWF centers (kept 0 rather than a partial band sum).
+        (void)e_band_last;
+        out.energy_ry = 0.0;
+        out.n_wann_up = n_alpha;
+        out.n_wann_dn = n_beta;
+        out.n_wann = n_alpha + n_beta;
+        out.converged = true;
+
+        // MLWF k-mesh tables (shared geometry; V_eff swapped per spin).
+        auto kg = internal::generate_mp_mesh(N, N, N);
+        std::vector<Vec3> kvec;
+        kvec.reserve(static_cast<std::size_t>(nk));
+        for (const auto& kf : kg.kpoints)
+            kvec.push_back(kf);
+        internal::rebuild_k_tables(prob, frame, method.upf_path, method.ecut_ry,
+                                   kvec);
+
+        for (int s = 0; s < 2; ++s) {
+            if (n_occ[s] < 1)
+                continue;
+            // Bind frozen V_eff for this spin on the density grid.
+            for (int i = 0; i < ws.nr; ++i)
+                ws.V_eff_r[i] =
+                    veff_r[static_cast<std::size_t>(s)][static_cast<std::size_t>(
+                        i)];
+
+            DavidsonSolver dav_s(n_occ[s], AccReal(method.tol) * AccReal(0.1),
+                                 50);
+            dav_s.prepare(ws);
+            std::vector<std::vector<std::complex<AccReal>>> coef(
+                static_cast<std::size_t>(nk));
+            auto* saved_gvec = ws.gvec;
+            for (int ik = 0; ik < nk; ++ik) {
+                auto& gvk = prob.gv_k[static_cast<std::size_t>(ik)];
+                ws.gvec = &gvk;
+                ws.n_g = gvk.count();
+                ws.T_G.resize({static_cast<std::size_t>(ws.n_g)});
+                for (int ig = 0; ig < ws.n_g; ++ig)
+                    ws.T_G[ig] = gvk.ekin[ig];
+                if (!prob.kb_proj_k.empty())
+                    ws.kb_proj = prob.kb_proj_k[static_cast<std::size_t>(ik)];
+                if (!prob.atom_wfc_k.empty())
+                    ws.atom_wfc = prob.atom_wfc_k[static_cast<std::size_t>(ik)];
+                dav_s.step(ws);
+                auto& c = coef[static_cast<std::size_t>(ik)];
+                c.resize(static_cast<std::size_t>(n_occ[s] * ws.n_g));
+                for (int b = 0; b < n_occ[s]; ++b)
+                    for (int ig = 0; ig < ws.n_g; ++ig)
+                        c[static_cast<std::size_t>(b * ws.n_g + ig)] =
+                            ws.wfc(b, ig);
+            }
+            ws.gvec = saved_gvec;
+            ws.n_g = ng0;
+
+            const auto trials =
+                resolve_trials(trial_centers, n_occ[s], frame);
+            const ChannelLoc ch = localize_channel(
+                coef, prob.gv_k, n_occ[s], N, recip,
+                static_cast<double>(prob.vol_bohr), trials, use_projection,
+                proj_alpha_ang, max_iter, tol, step);
+
+            for (std::size_t i = 0; i < ch.centers.size(); ++i) {
+                out.centers.push_back(ch.centers[i]);
+                out.spreads.push_back(ch.spreads[i]);
+                out.spin.push_back(s);
+            }
+            out.total_spread += ch.total_spread;
+            out.total_spread_initial += ch.total_spread_initial;
+            out.iterations = std::max(out.iterations, ch.iterations);
+            out.converged = out.converged && ch.converged;
+            ATV_DEBUG_CAT("pw",
+                          "mlwf spin={} n_occ={} Omega={:.6f} (init {:.6f}) "
+                          "conv={} iters={}",
+                          s, n_occ[s], ch.total_spread, ch.total_spread_initial,
+                          ch.converged, ch.iterations);
+        }
+        return out;
+    }
+
+    // ── Restricted closed-shell path ────────────────────────────────────
     internal::PWProblem prob;
     const PWResult scf = internal::run_restricted_scf(frame, method, prob);
     const int n_wann = prob.n_bands;
@@ -669,26 +1096,11 @@ PeriodicWannierResult PeriodicWannier::compute(const PW& method,
     out.scf_converged = scf.converged;
     out.energy_ry = scf.energy;
     out.n_wann = n_wann;
+    out.n_wann_up = 0;
+    out.n_wann_dn = 0;
 
-    // Trial centers for projection.
-    std::vector<std::array<double, 3>> trials = trial_centers;
-    if (trials.empty()) {
-        if (n_wann == 4 && frame.nlocal() == 2) {
-            const double a = cubic_a_from_cell(frame.simbox.cell());
-            const auto mids = diamond_bond_midpoints(a);
-            trials.assign(mids.begin(), mids.end());
-        } else {
-            trials.assign(static_cast<std::size_t>(n_wann),
-                          std::array<double, 3>{0, 0, 0});
-        }
-    }
-    if (static_cast<int>(trials.size()) != n_wann)
-        throw std::invalid_argument(
-            "PeriodicWannier::compute: trial_centers size must equal n_wann");
+    const auto trials = resolve_trials(trial_centers, n_wann, frame);
 
-    // MLWF k-mesh (may differ from SCF mesh).
-    const int N = k_mesh;
-    const int nk = N * N * N;
     auto kg = internal::generate_mp_mesh(N, N, N);
     std::vector<Vec3> kvec;
     kvec.reserve(static_cast<std::size_t>(nk));
@@ -698,7 +1110,6 @@ PeriodicWannierResult PeriodicWannier::compute(const PW& method,
     internal::rebuild_k_tables(prob, frame, method.upf_path, method.ecut_ry,
                                kvec);
 
-    // NSCF coefficients at every k.
     internal::PWWorkspace& ws = prob.ws;
     std::vector<std::vector<std::complex<AccReal>>> coef(
         static_cast<std::size_t>(nk));
@@ -729,190 +1140,20 @@ PeriodicWannierResult PeriodicWannier::compute(const PW& method,
     ws.gvec = saved_gvec;
     ws.n_g = n_g0;
 
-    // Neighbors + raw M0(k,b).
-    const Mat3 recip = frame.simbox.recip_cell();
-    const auto nb = build_neighbors(N, recip);
-    // M0[ik][ib] : n_wann x n_wann
-    std::vector<std::vector<std::vector<Cdouble>>> M0(
-        static_cast<std::size_t>(nk));
-    for (int ik = 0; ik < nk; ++ik) {
-        const auto& neigh = nb[static_cast<std::size_t>(ik)];
-        M0[static_cast<std::size_t>(ik)].resize(neigh.size());
-        for (std::size_t ib = 0; ib < neigh.size(); ++ib) {
-            const auto& e = neigh[ib];
-            const int sh = (e.wrap != 0 && e.dir == 0) ? e.wrap : 0;
-            const int sk = (e.wrap != 0 && e.dir == 1) ? e.wrap : 0;
-            const int sl = (e.wrap != 0 && e.dir == 2) ? e.wrap : 0;
-            // When wrap ≠ 0, k+b left the BZ by ±B_dir; the ket sphere is at
-            // the wrapped fractional k, so coefficients need the G-shift
-            // matching the reciprocal lattice vector of the wrap.
-            overlap_matrix(prob.gv_k[static_cast<std::size_t>(ik)],
-                           coef[static_cast<std::size_t>(ik)],
-                           prob.gv_k[static_cast<std::size_t>(e.ik_nb)],
-                           coef[static_cast<std::size_t>(e.ik_nb)], n_wann, sh,
-                           sk, sl, M0[static_cast<std::size_t>(ik)][ib]);
-        }
-    }
+    const ChannelLoc ch = localize_channel(
+        coef, prob.gv_k, n_wann, N, recip, static_cast<double>(prob.vol_bohr),
+        trials, use_projection, proj_alpha_ang, max_iter, tol, step);
+    out.centers = std::move(ch.centers);
+    out.spreads = std::move(ch.spreads);
+    out.total_spread = ch.total_spread;
+    out.total_spread_initial = ch.total_spread_initial;
+    out.iterations = ch.iterations;
+    out.converged = ch.converged;
 
-    // Unitary U(k): identity or projection.
-    std::vector<std::vector<Cdouble>> U(static_cast<std::size_t>(nk));
-    for (int ik = 0; ik < nk; ++ik) {
-        U[static_cast<std::size_t>(ik)].assign(
-            static_cast<std::size_t>(n_wann * n_wann), Cdouble{0, 0});
-        for (int i = 0; i < n_wann; ++i)
-            U[static_cast<std::size_t>(ik)]
-             [static_cast<std::size_t>(i * n_wann + i)] = Cdouble{1, 0};
-    }
-
-    if (use_projection) {
-        for (int ik = 0; ik < nk; ++ik) {
-            auto& gvk = prob.gv_k[static_cast<std::size_t>(ik)];
-            const int ng = gvk.count();
-            // A_jn = ⟨ψ_j | g_n⟩ = Σ_G c*_j(G) g_n(G)
-            std::vector<Cdouble> A(static_cast<std::size_t>(n_wann * n_wann),
-                                   Cdouble{0, 0});
-            for (int n = 0; n < n_wann; ++n) {
-                std::vector<Cdouble> gcoef;
-                gaussian_proj_coeffs(gvk, static_cast<double>(prob.vol_bohr),
-                                     trials[static_cast<std::size_t>(n)],
-                                     proj_alpha_ang, gcoef);
-                const auto& c = coef[static_cast<std::size_t>(ik)];
-                for (int j = 0; j < n_wann; ++j) {
-                    Cdouble s{0, 0};
-                    for (int ig = 0; ig < ng; ++ig)
-                        s += std::conj(static_cast<Cdouble>(
-                                 c[static_cast<std::size_t>(j * ng + ig)]))
-                             * gcoef[static_cast<std::size_t>(ig)];
-                    A[static_cast<std::size_t>(j * n_wann + n)] = s;
-                }
-            }
-            projection_U(A, n_wann, U[static_cast<std::size_t>(ik)]);
-        }
-    }
-
-    auto rebuild_M =
-        [&](std::vector<std::vector<std::vector<Cdouble>>>& M_kb) {
-            M_kb.assign(static_cast<std::size_t>(nk), {});
-            for (int ik = 0; ik < nk; ++ik) {
-                const auto& neigh = nb[static_cast<std::size_t>(ik)];
-                M_kb[static_cast<std::size_t>(ik)].resize(neigh.size());
-                for (std::size_t ib = 0; ib < neigh.size(); ++ib) {
-                    const int ikb = neigh[ib].ik_nb;
-                    rotate_M(M0[static_cast<std::size_t>(ik)][ib],
-                             U[static_cast<std::size_t>(ik)],
-                             U[static_cast<std::size_t>(ikb)], n_wann,
-                             M_kb[static_cast<std::size_t>(ik)][ib]);
-                }
-            }
-        };
-
-    std::vector<std::vector<std::vector<Cdouble>>> M_kb;
-    // Initial spread of identity gauge (before projection) for reporting.
-    {
-        std::vector<std::vector<Cdouble>> Uid(static_cast<std::size_t>(nk));
-        for (int ik = 0; ik < nk; ++ik) {
-            Uid[static_cast<std::size_t>(ik)].assign(
-                static_cast<std::size_t>(n_wann * n_wann), Cdouble{0, 0});
-            for (int i = 0; i < n_wann; ++i)
-                Uid[static_cast<std::size_t>(ik)]
-                   [static_cast<std::size_t>(i * n_wann + i)] = Cdouble{1, 0};
-        }
-        auto U_save = U;
-        U = Uid;
-        rebuild_M(M_kb);
-        out.total_spread_initial = total_spread_from_M(M_kb, nb, n_wann);
-        U = std::move(U_save);
-    }
-    rebuild_M(M_kb);
-
-    // MV steepest descent with line-search fallback (reject NaN / spread rise).
-    bool conv = (max_iter == 0);
-    int iters = 0;
-    double omega_prev = total_spread_from_M(M_kb, nb, n_wann);
-    auto U_best = U;
-    auto M_best = M_kb;
-    double omega_best = omega_prev;
-
-    for (int it = 0; it < max_iter; ++it) {
-        ++iters;
-        std::vector<std::vector<Cdouble>> G_k;
-        mv_gradient(M_kb, nb, n_wann, G_k);
-        const double gmax = max_abs_G(G_k);
-        ATV_DEBUG_CAT("pw", "mlwf iter={} |G|_max={:.3e} Omega={:.6f}", it, gmax,
-                      omega_prev);
-        // Require a few iterations after projection before trusting a tiny
-        // gradient (projection can sit in a flat region of the SMV landscape).
-        if (it > 0 && (!(gmax > 0.0) || gmax < tol || !std::isfinite(gmax))) {
-            conv = std::isfinite(gmax) && gmax < tol;
-            break;
-        }
-
-        // Adaptive step: try α, α/2, α/4 …
-        double alpha = step;
-        bool accepted = false;
-        auto U_try = U;
-        for (int attempt = 0; attempt < 6; ++attempt) {
-            U_try = U;
-            for (int ik = 0; ik < nk; ++ik) {
-                std::vector<Cdouble> expG;
-                expm_antihermitian(G_k[static_cast<std::size_t>(ik)], n_wann,
-                                   alpha, expG);
-                right_mul(U_try[static_cast<std::size_t>(ik)], expG, n_wann);
-            }
-            auto U_save = U;
-            U = U_try;
-            rebuild_M(M_kb);
-            const double omega_new = total_spread_from_M(M_kb, nb, n_wann);
-            if (std::isfinite(omega_new) && omega_new <= omega_prev + 1e-6) {
-                accepted = true;
-                omega_prev = omega_new;
-                if (omega_new < omega_best) {
-                    omega_best = omega_new;
-                    U_best = U;
-                    M_best = M_kb;
-                }
-                break;
-            }
-            U = std::move(U_save);
-            rebuild_M(M_kb);
-            alpha *= 0.5;
-        }
-        if (!accepted) {
-            // No descent direction found — stop with best gauge so far.
-            conv = true;
-            break;
-        }
-    }
-    if (max_iter == 0)
-        conv = true;
-
-    U = std::move(U_best);
-    M_kb = std::move(M_best);
-    fill_centers_spreads(M_kb, nb, n_wann, out);
-    out.iterations = iters;
-    out.converged = conv && std::isfinite(out.total_spread);
-
-    // Diagnostic: mean |M_nn| over the shell (should be ≳ 0.7 for localized).
-    {
-        double mag_acc = 0.0;
-        int mag_n = 0;
-        for (int ik = 0; ik < nk; ++ik) {
-            for (std::size_t ib = 0; ib < M_kb[static_cast<std::size_t>(ik)].size();
-                 ++ib) {
-                const auto& M = M_kb[static_cast<std::size_t>(ik)][ib];
-                for (int n = 0; n < n_wann; ++n) {
-                    mag_acc += std::abs(
-                        M[static_cast<std::size_t>(n * n_wann + n)]);
-                    ++mag_n;
-                }
-            }
-        }
-        ATV_DEBUG_CAT("pw",
-                      "mlwf done: Omega={:.6f} (init {:.6f}) conv={} iters={} "
-                      "mean|Mnn|={:.4f}",
-                      out.total_spread, out.total_spread_initial, conv, iters,
-                      mag_n ? mag_acc / mag_n : 0.0);
-    }
+    ATV_DEBUG_CAT("pw",
+                  "mlwf done: Omega={:.6f} (init {:.6f}) conv={} iters={}",
+                  out.total_spread, out.total_spread_initial, out.converged,
+                  out.iterations);
     return out;
 }
 
