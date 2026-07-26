@@ -245,6 +245,7 @@ if(ATV_BUILD_GPW)
         atv_add_cpp_test(test_cpu_gpw_method       cpu/gpw/test_gpw_method.cpp)
         atv_add_cpp_test(test_cpu_gpw_solver       cpu/gpw/test_cpu_gpw_solver.cpp)
         atv_add_cpp_test(test_cpu_gpw_kpoints      cpu/gpw/test_cpu_gpw_kpoints.cpp)
+    atv_add_cpp_test(test_cpu_gpw_periodic_wannier cpu/gpw/test_cpu_gpw_periodic_wannier.cpp)
         atv_add_cpp_test(test_cpu_gpw_smearing     cpu/gpw/test_cpu_gpw_smearing.cpp)
         atv_add_cpp_test(test_cpu_gpw_ot           cpu/gpw/test_cpu_gpw_ot.cpp)
         # Γ-point GPW MP2 kernels (spin-orbital cross-check, MO-on-grid,
