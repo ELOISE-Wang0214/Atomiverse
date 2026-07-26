@@ -120,12 +120,9 @@ XcOnGridSpin eval_xc_grid_spin(XcKind xc, const UniformGrid& grid,
     case XcKind::OptB88VdW:
         return xc_grid_optb88_vdw_spin(grid, rho_a, rho_b);
     case XcKind::RPBE:
-        // RPBE spin path is a follow-on (gpw-uks-rpbe); fall back to PBE
-        // spin shape only after an explicit product lands — refuse silently
-        // wrong XC. Throw so the caller does not pin a wrong functional.
-        throw std::invalid_argument(
-            "GpwDft::g0w0: UKS RPBE spin XC for UGW is not yet product "
-            "(use PBE/PBEsol/RevPBE/BLYP/PADE)");
+        // Product path: same xc_grid_rpbe_spin as UKS SCF / forces / stress
+        // (Hammer–Hansen–Nørskov exponential Fx + PBE correlation).
+        return xc_grid_rpbe_spin(grid, rho_a, rho_b);
     case XcKind::PADE:
     default:
         return xc_grid_pade_lsd(grid, rho_a, rho_b);

@@ -300,6 +300,8 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw periodic-gw-si)
     atv_add_regression(gpw periodic-ugw-si)
     atv_add_regression(gpw periodic-ugw-kpoints)
+    # UGW@UKS RPBE spin XC residual (spectral G0W0; xc_grid_rpbe_spin).
+    atv_add_regression(gpw ugw-uks-rpbe)
     atv_add_regression(gpw periodic-gw-kpoints)
     atv_add_regression(gpw periodic-gw-finite-q)
     # MPI k-point RR industrial gate (self-launches mpiexec when ATV_USE_MPI).
