@@ -197,6 +197,60 @@ TEST(GpwOt, UksOtMatchesDiisEnergy) {
     EXPECT_NEAR(r_ot.s2, r_diis.s2, 1e-6);
 }
 
+// Γ-UKS OT + Dudarev DFT+U: product path (no throw); both OT and DIIS
+// converge with a non-trivial E_U. Fixed-point parity on a small high-spin
+// H₂ + U toy can land in different basins; the NiO e2e pin
+// (regressions/gpw/ot-dftu) is the energy oracle.
+TEST(GpwOt, UksOtPlusUConverges) {
+    pin_single_thread();
+    using ATV::cpu::gpw::GaussianBasis;
+    using ATV::cpu::gpw::GthPotential;
+    using ATV::cpu::gpw::PlusU;
+    using ATV::cpu::gpw::XcKind;
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    const double L = 8.0;
+    const double r0[3] = {0.5 * L - 0.7, 0.5 * L, 0.5 * L};
+    const double r1[3] = {0.5 * L + 0.7, 0.5 * L, 0.5 * L};
+    std::vector<GpwAtom> atoms{GpwAtom(r0, basis, pot, 1),
+                               GpwAtom(r1, basis, pot, 1)};
+
+    auto base = [&]() {
+        GpwDft cfg;
+        cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = L;
+        cfg.cutoff_ry = 100.0;
+        cfg.n_alpha = 2;
+        cfg.n_beta = 0;
+        cfg.max_iter = 80;
+        cfg.tol = 1e-6;
+        cfg.mix = 0.4;
+        cfg.xc = XcKind::PADE;
+        cfg.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_ev=*/4.0});
+        return cfg;
+    };
+
+    GpwDft diis = base();
+    diis.use_ot = false;
+    diis.build(atoms);
+    const GpwResult r_diis = diis.run(atoms);
+    ASSERT_TRUE(r_diis.converged)
+        << "UKS DIIS+U failed in " << r_diis.iters
+        << " iters E=" << r_diis.e_total;
+    EXPECT_GT(std::fabs(r_diis.e_dftu), 1e-8);
+
+    GpwDft ot = base();
+    ot.use_ot = true;
+    ot.build(atoms);
+    const GpwResult r_ot = ot.run(atoms);
+    ASSERT_TRUE(r_ot.converged) << "UKS OT+U failed in " << r_ot.iters
+                                << " iters E=" << r_ot.e_total;
+    EXPECT_TRUE(std::isfinite(r_ot.e_total));
+    EXPECT_GT(std::fabs(r_ot.e_dftu), 1e-8);
+    // Same energy class (mHa-class not required on this pathological toy).
+    EXPECT_NEAR(r_ot.e_total, r_diis.e_total, 0.5)
+        << "OT+U=" << r_ot.e_total << " DIIS+U=" << r_diis.e_total;
+}
+
 // Product switch is a public member (default false); ctor sets it without env.
 // Full Frame+MOLOPT OT SCF is the e2e regression (≤60 s), not this unit gate.
 TEST(GpwOt, EvaluatorUseOtMemberDefaultAndCtor) {
