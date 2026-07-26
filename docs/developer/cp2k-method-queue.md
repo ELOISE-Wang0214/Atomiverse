@@ -589,10 +589,57 @@ CPMD electronic thermostat, multi-k UKS XL-BOMD, metallic bands, spin DOS,
 finite-q DFPT spin+smear. **Blocked = 6** unchanged. **Queue not
 exhausted** — GapCensus owns next discovery.
 
+**GapCensus wave 12 2026-07-26 (parent `dev` @ `087df536`):** recover
+clean — incomplete_count=**0**; `## in_progress` empty (no `[~]`); open
+CP2K/GPW/PW specs on `dev`=**0** (PySCF deferred only:
+`periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`); isolation worktrees=**0**;
+leftover builds=**none**; `wf/gpw-vv10-ice` tip remains for blocked stock
+VV10 docs only (not incomplete). Tree re-diff vs `docs/roadmap/dft.md`
+§3/§8/§10–12 + MD AIMD + `tools/cp2k_oracle` +
+`include/atomiverse/cpu/{gpw,planewave}`: prior pending residual **0**
+(harness wave 11 emptied list — not capability-closed). **True residuals
+re-opened (9)** with offline CP2K / literature twins:
+`bands-spin-metallic-si` (`Bands::compute` throws collinear spin +
+metallic smear — follow-on after fixed-occ spin bands ✓ + restricted
+metallic bands ✓),
+`dos-spin-metallic-si` (`Dos::compute` throws spin + metallic smear —
+follow-on after spin DOS ✓ + metallic DOS ✓),
+`gpw-d3-atm` (D3 zero / BJ two-body product; three-body C9 / ATM off —
+CP2K `DISPERSION_FUNCTIONAL` ATM),
+`gpw-d4-atm` (D4 two-body BJ product + forces/stress ✓; three-body ATM
+off — dftd4 / CP2K s9 path),
+`xl-bomd-linearized-forces` (SCF-converged XL product at Γ/multi-k RKS/UKS;
+zero-SCF linearized-functional force stays ○ — Niklasson XL residual),
+`cpmd-kpoints` (CPMD Γ RKS/UKS product; seed requires real `C` —
+multi-k Bloch CPMD unpinned),
+`second-gen-cpmd-kpoints` (SGCP ASPC on real Γ \(P\) / dual UKS \(P^\sigma\);
+multi-k complex \(P_k\) SGCP unpinned),
+`periodic-wannier-gpw` (PW Marzari–Vanderbilt MLWF ✓; GPW-grid MLWF
+residual still unqueued per §11),
+`gpw-fd-phonon-si` (FD supercell phonons product on SW twin only;
+GPW analytic-force supercell vs CP2K `VIBRATIONAL_ANALYSIS` residual).
+**Not added:** BP86/B97/OLYP/HCTH (molecular PySCF path); stock VV10
+(**blocked** — no CP2K twin); shear/off-diagonal stress (orthorhombic
+design); periodic hybrid / meta-GGA / GAPW / PAW (**blocked**); multi-k
+UMP2 header “follow-on” is **stale** (product `reg_periodic-ump2-kpoints`);
+UKS OT+U+smear header residual is **stale** (`reg_ot-uks-dftu-smearing`);
+density-scaled TS already product via `hirshfeld`+`ts`; molecular post-HF /
+classical MW / CUDA ports (other loops). Roadmap: **no ○/✓ table flips**
+(nothing new merged since harness wave 11); §8/§10–12 + MD AIMD open-
+residual prose + index GPW residual line refreshed for wave-12 queue.
+**Pending = 9**; **in_progress = 0**; **blocked = 6**.
+
 ## pending
 
-_(empty — harness wave 11 emptied census list; **not** queue exhausted —
-GapCensus owns next discovery)_
+- [ ] `bands-spin-metallic-si` | PW band structure with collinear spin **and** metallic occupation smearing | pw | twin: extend `bands-spin-si` / `bands-metallic-si` (CP2K/QE-class spin metal bands) | `Bands::compute` currently rejects spin+smear
+- [ ] `dos-spin-metallic-si` | PW DOS with collinear spin **and** metallic occupation smearing | pw | twin: extend `dos-spin-si` / `dos-metallic-si` | `Dos::compute` currently rejects spin+smear
+- [ ] `gpw-d3-atm` | DFT-D3 three-body ATM (C9) on GPW | gpw | twin: CP2K Quickstep D3 + ATM on water dimer / ice | two-body zero/BJ product; ATM off in `dftd3.h`
+- [ ] `gpw-d4-atm` | DFT-D4 three-body ATM on GPW | gpw | twin: dftd4 ATM / CP2K D4 with \(s_9\neq 0\) | two-body BJ + forces/stress product; ATM off
+- [ ] `xl-bomd-linearized-forces` | Zero-SCF linearized-functional XL-BOMD forces | dynamics | twin: Niklasson XL literature / CP2K XL-BOMD low-SCF path | SCF-converged XL ✓ at Γ/multi-k RKS/UKS; linearized force ○
+- [ ] `cpmd-kpoints` | Multi-k Car–Parrinello MD (Bloch \(C_k\)) | dynamics | twin: CP2K CP with k-points | Γ RKS/UKS CPMD ✓; seed needs real `C` (multi-k unpinned)
+- [ ] `second-gen-cpmd-kpoints` | Multi-k second-generation CP (ASPC on \(P_k\)) | dynamics | twin: CP2K SGCP / Kühne ASPC + k-mesh | Γ RKS/UKS + OT corrector ✓; multi-k complex density ASPC unpinned
+- [ ] `periodic-wannier-gpw` | Maximally localized Wannier functions on GPW | response | twin: CP2K `LOCALIZE` / Wannier on Quickstep | PW MV MLWF ✓ (`reg_periodic-wannier-si` / uks); GPW-grid residual
+- [ ] `gpw-fd-phonon-si` | Finite-displacement Γ phonons with GPW analytic forces | response | twin: CP2K `VIBRATIONAL_ANALYSIS` on small cell / GTH | `cpu::vib::Phonon` product on SW twin only (`reg_fd-phonon-supercell`); GPW force consumer residual
 
 ## in_progress
 

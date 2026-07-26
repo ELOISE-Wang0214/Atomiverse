@@ -16,9 +16,12 @@ tests; libxc is never a runtime dependency.
 **Periodic DFT is DFT**, so it lives here too: sections 10–11 cover the
 plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
 remaining periodic-only gaps (hybrids, meta-GGA, stock VV10 **blocked** —
-no CP2K twin, GAPW/PAW; product after harness wave 11 also ships
-UGW@UKS-RPBE, dedicated TS/XDM force pins, multi-k UKS stress GGA expand,
-CPMD electronic thermostat, multi-k UKS XL-BOMD, metallic bands, spin DOS,
+no CP2K twin, GAPW/PAW; **GapCensus wave 12** residuals: collinear
+spin+metallic **bands/DOS**, D3/D4 **ATM** three-body, zero-SCF
+**linearized XL** forces, multi-k **CPMD/SGCP**, **GPW MLWF**, GPW FD
+phonon twin; product after harness wave 11 also ships UGW@UKS-RPBE,
+dedicated TS/XDM force pins, multi-k UKS stress GGA expand, CPMD
+electronic thermostat, multi-k UKS XL-BOMD, metallic bands, spin DOS,
 finite-q DFPT spin+smear, collinear DFPT spin+smear, multi-k UKS
 OT+U+smear, SGCP UKS OT, multi-k XL-BOMD RKS, spin bands, metallic DOS,
 spin MLWF / Berry, multi-k MBD forces, UKS OT+smear, multi-k UKS OT+DFT+U,
@@ -247,6 +250,8 @@ productize at **Γ** (`reg_gpw-mbd-forces`; free-atom / periodic path)
 **and multi-k** (`reg_gpw-mbd-kpoint-forces`; k-path force assembly).
 Force assembly folds free-atom **TS** / **XDM** on Γ + multi-k with
 dedicated offline force pins (`reg_gpw-ts-forces` / `reg_gpw-xdm-forces`).
+**Three-body ATM** (D3 C9 / D4 \(s_9\)) remains ○ on GPW (two-body only;
+queued `gpw-d3-atm` / `gpw-d4-atm`).
 
 ## 9. Composite DFT Methods
 
@@ -318,7 +323,9 @@ Two periodic DFT engines exist, with disjoint strengths:
   stress for **RevPBE/RPBE/BLYP** (`reg_gpw-kpoint-uks-stress-gga`),
   dedicated **TS/XDM** force pins (`reg_gpw-ts-forces` /
   `reg_gpw-xdm-forces`), **UGW@UKS-RPBE** (`reg_ugw-uks-rpbe`). Stock VV10
-  is **blocked** (no CP2K twin). Hybrids / meta-GGA / GAPW / PAW remain
+  is **blocked** (no CP2K twin). Open residuals (GapCensus wave 12): D3/D4
+  ATM, multi-k CPMD/SGCP, linearized XL forces, GPW MLWF, GPW FD phonon
+  twin, PW spin+metallic bands/DOS. Hybrids / meta-GGA / GAPW / PAW remain
   blocked (queue not exhausted — see `cp2k-method-queue.md`). CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
@@ -461,7 +468,8 @@ Which engine backs which ✓:
   `regressions/scf/wannier-centers`) **and** periodic multi-k
   **Marzari–Vanderbilt** on PW (`cpu::pw::PeriodicWannier`; bond-midpoint Si
   pin; `reg_periodic-wannier-si`) **and collinear-spin**
-  (`reg_periodic-wannier-uks`). GPW-grid MLWF residual stays unqueued.
+  (`reg_periodic-wannier-uks`). **GPW-grid MLWF** residual is queued
+  (`periodic-wannier-gpw`).
 
 ## 12. Periodic infrastructure
 
@@ -497,7 +505,8 @@ product collocation ships (`reg_gpw-uks-multigrid`).
 `reg_bands-dos-si`) **plus collinear-spin bands** (`reg_bands-spin-si`)
 **and metallic occupation DOS** (`reg_dos-metallic-si`) **and metallic
 occupation bands** (`reg_bands-metallic-si`) **and collinear-spin DOS**
-(`reg_dos-spin-si`).
+(`reg_dos-spin-si`). **Collinear spin + metallic smear** on bands/DOS is
+still rejected (queued `bands-spin-metallic-si` / `dos-spin-metallic-si`).
 
 On CUDA the plane-wave hot path (Davidson H·ψ, cuFFT, Poisson, V_eff, LDA,
 density accumulation) is device-resident; Rayleigh–Ritz subspace bookkeeping and

@@ -68,6 +68,17 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 GapCensus wave 12 (parent `dev` @ `087df536`):** recover
+  incomplete=**0**; CP2K specs on `dev`=0; isolation worktrees=0;
+  builds=none. Prior pending residual **0**; **+9** residuals → pending
+  **9** (`bands-spin-metallic-si`, `dos-spin-metallic-si`, `gpw-d3-atm`,
+  `gpw-d4-atm`, `xl-bomd-linearized-forces`, `cpmd-kpoints`,
+  `second-gen-cpmd-kpoints`, `periodic-wannier-gpw`, `gpw-fd-phonon-si`);
+  in_progress **0**; blocked **6**. No ○/✓ table flips; §8/§10–12 + MD
+  AIMD residual prose + index GPW residual line refreshed. Next: Assign
+  surface-disjoint staff (spin-metal bands ∥ DOS careful PW bands_dos
+  share; D3 ATM ∥ D4 ATM careful dispersion surface; linearized XL free
+  of multi-k CPMD/SGCP; GPW MLWF free of FD-phonon GPW).
 - **2026-07-26 harness wave 11 (parent `dev` @ `09298298`):** 9 merged →
   done: `ugw-uks-rpbe`, `gpw-ts-forces`, `gpw-xdm-forces`,
   `gpw-kpoint-uks-stress-gga`, `cpmd-electronic-thermostat`,
