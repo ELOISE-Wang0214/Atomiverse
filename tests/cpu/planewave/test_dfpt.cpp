@@ -170,10 +170,21 @@ TEST(DfptPhonon, ThrowsOnEmptyUpf) {
     EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
 }
 
-TEST(DfptPhonon, ThrowsOnNonLsdaXc) {
+TEST(DfptPhonon, ThrowsOnHybridXc) {
+    // Pure GGA is supported; hybrids (exact-exchange response) still throw.
+    // Validation of XC precedes UPF I/O for hybrid_exchange_fraction ≠ 0.
     auto frame = si_frame();
     PW method;
-    method.upf_path = "unused.upf"; // validation precedes any file access
+    method.upf_path = "unused.upf";
+    method.xc = cpu::scf::XCType::PBE0;
+    DfptPhonon dfpt;
+    EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
+}
+
+TEST(DfptPhonon, ThrowsOnEmptyUpfWithPbe) {
+    // Pure PBE is accepted at the XC gate; empty UPF still fails first.
+    auto frame = si_frame();
+    PW method; // upf_path empty
     method.xc = cpu::scf::XCType::PBE;
     DfptPhonon dfpt;
     EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
@@ -264,11 +275,13 @@ TEST(DfptPhonon, IncommensurateQReachesUpfGuard) {
     EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
 }
 
-TEST(DfptPhonon, IncommensurateQThrowsOnNonLsda) {
+TEST(DfptPhonon, IncommensurateQThrowsOnHybridXc) {
+    // Pure GGA is supported at finite q; hybrids still fail the XC gate
+    // before UPF I/O.
     auto frame = si_frame();
     PW method;
     method.upf_path = "unused.upf";
-    method.xc = cpu::scf::XCType::PBE;
+    method.xc = cpu::scf::XCType::PBE0;
     DfptPhonon dfpt;
     dfpt.q_frac = {0.3, 0.1, 0.05};
     EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
