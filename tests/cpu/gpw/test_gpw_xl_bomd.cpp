@@ -496,7 +496,7 @@ TEST(GpwSolverGuessPk, MultiKWithRealGuessPThrows) {
     EXPECT_THROW(solver.run(atoms, nullptr, &p), std::invalid_argument);
 }
 
-// A5: multi-k RKS + XL accepted; multi-k UKS + XL refused.
+// A5: multi-k RKS + XL accepted; multi-k UKS + XL productized.
 TEST(GpwEvaluatorXlBomd, BuildAcceptsMultiKRksXl) {
     auto frame = water_frame();
     auto eval = water_eval();
@@ -511,7 +511,7 @@ TEST(GpwEvaluatorXlBomd, BuildAcceptsMultiKRksXl) {
     EXPECT_NO_THROW(eval.build(bc));
 }
 
-TEST(GpwEvaluatorXlBomd, BuildRejectsMultiKUksXl) {
+TEST(GpwEvaluatorXlBomd, BuildAcceptsMultiKUksXl) {
     auto frame = water_frame();
     auto eval = water_eval();
     eval.xl_bomd = true;
@@ -521,5 +521,74 @@ TEST(GpwEvaluatorXlBomd, BuildRejectsMultiKUksXl) {
     eval.nonperiodic = false;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+    EXPECT_NO_THROW(eval.build(bc));
+}
+
+// A3/A4: multi-k UKS dual-spin density guess plumbing.
+TEST(GpwSolverGuessPk, MultiKUksConvergedDualGuessReachesColdFixedPoint) {
+    pin_single_thread();
+    const auto atoms = small_h2(/*box=*/8.0);
+
+    GpwDft cold = small_cfg(/*box=*/8.0);
+    cold.n_occ = 0;
+    cold.n_alpha = 1;
+    cold.n_beta = 1;
+    cold.k_mesh[0] = 1;
+    cold.k_mesh[1] = 1;
+    cold.k_mesh[2] = 2;
+    cold.k_time_reversal = false;
+    cold.nonperiodic = false;
+    cold.build(atoms);
+    const GpwResult ref = cold.run(atoms);
+    ASSERT_TRUE(ref.converged);
+    ASSERT_GE(ref.n_kpts, 2);
+    ASSERT_EQ(static_cast<int>(ref.P_k.size()), ref.n_kpts);
+    ASSERT_EQ(static_cast<int>(ref.P_k_beta.size()), ref.n_kpts);
+
+    GpwDft warm = small_cfg(/*box=*/8.0);
+    warm.n_occ = 0;
+    warm.n_alpha = 1;
+    warm.n_beta = 1;
+    warm.k_mesh[0] = 1;
+    warm.k_mesh[1] = 1;
+    warm.k_mesh[2] = 2;
+    warm.k_time_reversal = false;
+    warm.nonperiodic = false;
+    warm.build(atoms);
+    const GpwResult& r =
+        warm.run(atoms, nullptr, nullptr, nullptr, &ref.P_k, &ref.P_k_beta);
+    EXPECT_TRUE(r.converged);
+    EXPECT_NEAR(r.e_total, ref.e_total, 1e-9);
+    EXPECT_LE(r.iters, ref.iters);
+}
+
+// A3: multi-k UKS α-only density guess throws.
+TEST(GpwSolverGuessPk, MultiKUksPartialSpinGuessThrows) {
+    pin_single_thread();
+    const auto atoms = small_h2();
+    GpwDft solver = small_cfg();
+    solver.n_occ = 0;
+    solver.n_alpha = 1;
+    solver.n_beta = 1;
+    solver.k_mesh[2] = 2;
+    solver.k_time_reversal = false;
+    solver.nonperiodic = false;
+    solver.build(atoms);
+    std::vector<CplxMatrix> only_a(2, constant_cplx(2, Cplx(0.1, 0.0)));
+    EXPECT_THROW(solver.run(atoms, nullptr, nullptr, nullptr, &only_a, nullptr),
+                 std::invalid_argument);
+}
+
+// A3: multi-k RKS + guess_P_k_beta throws.
+TEST(GpwSolverGuessPk, MultiKRksWithBetaGuessThrows) {
+    pin_single_thread();
+    const auto atoms = small_h2();
+    GpwDft solver = small_cfg();
+    solver.k_mesh[2] = 2;
+    solver.k_time_reversal = false;
+    solver.nonperiodic = false;
+    solver.build(atoms);
+    std::vector<CplxMatrix> pk(2, constant_cplx(2, Cplx(0.1, 0.0)));
+    EXPECT_THROW(solver.run(atoms, nullptr, nullptr, nullptr, &pk, &pk),
+                 std::invalid_argument);
 }

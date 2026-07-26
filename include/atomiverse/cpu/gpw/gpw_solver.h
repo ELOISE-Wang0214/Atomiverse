@@ -168,10 +168,14 @@ struct GpwResult {
     /// @brief Multi-k UKS β occupied MOs per k: row-major `nb × n_beta`
     ///        (empty for RKS / Γ). Paired with `eps_k_beta`.
     std::vector<std::vector<std::complex<double>>> C_occ_k_beta;
-    /// @brief Multi-k RKS complex densities \(P_k\) (nb × nb Hermitian) after
-    ///        a converged k-path SCF — the XL-BOMD advance payload. Empty for
-    ///        Γ runs and multi-k UKS (UKS multi-k XL is a residual).
+    /// @brief Multi-k complex densities \(P_k\) (nb × nb Hermitian) after a
+    ///        converged k-path SCF — the XL-BOMD advance payload. RKS: total
+    ///        closed-shell \(P_k\) (occ = 2). UKS: α-spin \(P_k^\alpha\)
+    ///        (occ = 1). Empty for pure Γ runs.
     std::vector<linalg::CplxMatrix> P_k;
+    /// @brief Multi-k UKS β-spin densities \(P_k^\beta\) (nb × nb Hermitian;
+    ///        empty for RKS / Γ). Paired with `P_k` for dual-spin XL-BOMD.
+    std::vector<linalg::CplxMatrix> P_k_beta;
     /// @}
     double s2 = 0.0; ///< ⟨S²⟩ (Löwdin; RKS → 0; UKS after convergence).
     /// @brief Mulliken spin populations m_A = Nα−Nβ [e] per atom (empty if RKS).
@@ -379,21 +383,26 @@ class GpwDft {
     ///        (n_ao × n_ao). Must be null for RKS. For UKS both spin
     ///        guesses are required together (no silent cold start of one
     ///        channel).
-    /// @param guess_P_k Optional multi-k RKS initial densities (one complex
-    ///        Hermitian \(P_k\) per sampled k, size == `n_kpts` after mesh /
-    ///        TR fold). Used by multi-k XL-BOMD. Must be null on the Γ path
-    ///        and for multi-k UKS (UKS multi-k XL residual). Real `guess_P`
-    ///        with a multi-k mesh throws (no silent Γ guess on the k path).
+    /// @param guess_P_k Optional multi-k initial densities (one complex
+    ///        Hermitian matrix per sampled k, size == `n_kpts` after mesh /
+    ///        TR fold). RKS: total \(P_k\). UKS: α-spin \(P_k^\alpha\)
+    ///        (requires matching `guess_P_k_beta`). Real `guess_P` with a
+    ///        multi-k mesh throws (no silent Γ guess on the k path).
+    /// @param guess_P_k_beta Optional multi-k UKS β densities \(P_k^\beta\)
+    ///        (size == `n_kpts`; UKS-only — RKS + non-null throws).
     /// @return The owned result of this run (valid until the next `run()`).
     /// @throws std::logic_error when called before `build()`.
     /// @throws std::invalid_argument for UKS with only one spin guess,
-    ///         RKS + non-null `guess_P_beta`, multi-k + real-only density
-    ///         guess, multi-k UKS + `guess_P_k`, or shape / count mismatch.
+    ///         RKS + non-null `guess_P_beta` / `guess_P_k_beta`, multi-k +
+    ///         real-only density guess, multi-k UKS partial k-spin guess,
+    ///         or shape / count mismatch.
     GpwResult& run(const std::vector<GpwAtom>& atoms,
                    const linalg::RealMatrix* guess_C = nullptr,
                    const linalg::RealMatrix* guess_P = nullptr,
                    const linalg::RealMatrix* guess_P_beta = nullptr,
-                   const std::vector<linalg::CplxMatrix>* guess_P_k = nullptr);
+                   const std::vector<linalg::CplxMatrix>* guess_P_k = nullptr,
+                   const std::vector<linalg::CplxMatrix>* guess_P_k_beta =
+                       nullptr);
 
     /// @brief Result of the most recent `run()` (default-constructed —
     ///        `converged == false` — before the first run).
