@@ -35,6 +35,10 @@
 ///
 ///   // Collinear spin DOS: method.spin_polarized = true → dr.nspin == 2;
 ///   // total D = Dα + Dβ (spin-orbital weight 1); integral to joint VBM.
+///
+///   // Collinear spin + metallic smear: spin_polarized + smearing → shared
+///   // μ over α+β; integral to E_F (dr.e_fermi_ry). Bands still rejects
+///   // spin+smear (see bands-spin-metallic-si).
 /// @endcode
 #pragma once
 
@@ -153,8 +157,15 @@ class Bands {
 ///
 /// **Collinear spin** (`method.spin_polarized`): fixed-occupation SCF with
 /// \(N_\uparrow,N_\downarrow\) from `multiplicity`, then per-spin NSCF on
-/// frozen \(V_{\mathrm{eff},\sigma}\). Metallic smearing is rejected on the
-/// spin path (see residual metallic-spin DOS if needed).
+/// frozen \(V_{\mathrm{eff},\sigma}\). Occupied integral is to joint VBM.
+///
+/// **Collinear spin + metallic smear** (`spin_polarized` and
+/// `smearing != none`): fixed \(N_\uparrow,N_\downarrow\) collinear SCF for
+/// the density (multiplicity seed; same GS policy as DFPT spin+smear), freeze
+/// \(V_{\mathrm{eff},\sigma}\), denser-mesh NSCF, recompute shared \(\mu\) on
+/// the DOS mesh over \(\alpha+\beta\) (`spin_degen=1`), and integrate total
+/// \(D\) to \(E_F\). Self-consistent Mermin spin-density for open metals is
+/// `PW::run` (spin+smear); this post-processor enables the product DOS path.
 class Dos {
   public:
     /// @brief DOS k-mesh per dimension (MP \(k_\mathrm{mesh}^3\)).
@@ -172,7 +183,8 @@ class Dos {
     /// @brief SCF (method.k_mesh) + denser-mesh NSCF + Gaussian DOS.
     /// @param method Plane-wave method (members; SCF uses method.k_mesh;
     ///               metallic path honors `smearing` / `degauss` / `extra_bands`;
-    ///               collinear spin honors `spin_polarized` / `multiplicity`).
+    ///               collinear spin honors `spin_polarized` / `multiplicity`;
+    ///               spin + metallic smear is supported on this path).
     /// @param frame  Geometry [Å].
     /// @return Owned `DosResult`.
     DosResult compute(const PW& method, const cpu::Frame& frame) const;
