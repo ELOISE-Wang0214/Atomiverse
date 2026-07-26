@@ -25,7 +25,7 @@
       EPS_DEFAULT 1.0E-10
     &END QS
     &SCF
-      MAX_SCF 60
+      MAX_SCF 300
       EPS_SCF 1.0E-6
       SCF_GUESS ATOMIC
       &MIXING
@@ -34,7 +34,10 @@
       &END MIXING
     &END SCF
     &XC
-      &XC_FUNCTIONAL PBEsol
+      &XC_FUNCTIONAL
+        &PBE
+          PARAMETRIZATION PBESOL
+        &END PBE
       &END XC_FUNCTIONAL
     &END XC
   &END DFT
@@ -44,8 +47,8 @@
       PERIODIC NONE
     &END CELL
     &COORD
-      Si 0.000000 0.000000 0.000000
-      Si 1.357500 1.357500 1.357500
+      Si 2.036250 2.036250 2.036250
+      Si 3.393750 3.393750 3.393750
     &END COORD
     &KIND Si
       BASIS_SET DZVP-MOLOPT-GTH

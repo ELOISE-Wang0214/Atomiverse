@@ -37,11 +37,19 @@ int main() {
     const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
     const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
 
+    // Translate to the cell centre. E_disp (the gated quantity) is translation
+    // invariant, but the Martyna-Tuckerman cluster boundary condition is not:
+    // GpwDft::build rejects off-centre nonperiodic systems because a Gaussian
+    // clipped at a cell face corrupts the forces while leaving the energy
+    // plausible (measured on this very dimer: 31.9 Ha/Bohr force error — see
+    // regressions/gpw/gpw-d3-forces/REFERENCE.md "Placement").
+    const double shift_ang[3] = {6.0 - 1.5, 6.0, 6.0};
     std::vector<GpwAtom> atoms;
     atoms.reserve(6);
     for (int i = 0; i < 6; ++i) {
-        const double pos[3] = {ang[i][0] * kA2B, ang[i][1] * kA2B,
-                               ang[i][2] * kA2B};
+        const double pos[3] = {(ang[i][0] + shift_ang[0]) * kA2B,
+                               (ang[i][1] + shift_ang[1]) * kA2B,
+                               (ang[i][2] + shift_ang[2]) * kA2B};
         if (Z[i] == 8)
             atoms.emplace_back(pos, bO, pO, 8);
         else

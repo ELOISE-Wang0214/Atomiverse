@@ -99,3 +99,31 @@ section with measured \(r\). Target \(r \le 10\).
   **127**, 114105 (2007); transcribed from CP2K `GTH_POTENTIALS` /
   `BASIS_MOLOPT` (v2024.1 data files)
 - Twin input: `tools/cp2k_oracle/inputs/gpw-revpbe-si.inp`
+
+## Re-pin 2026-07-26 — the previous value was unphysical
+
+The earlier pin **-13.0900394799 Ha** was taken with an atom at the **cell origin** under
+Martyna–Tuckerman cluster boundaries. That path does not wrap the collocation, so
+the Gaussian density is clipped at the cell faces: the energy still looks
+plausible but is badly wrong, and the forces are catastrophically so (31.9 Ha/Bohr
+measured on a water dimer — see `../gpw-d3-forces/REFERENCE.md` "Placement").
+
+With the fragment **centred** in the same cell the energy is **-7.2202596767 Ha** — the
+old pin was ≈ 5.9 Ha (77 %) too low. The centred magnitude is consistent with the
+independent offline **CP2K 2026.1** Si₂ reference taken this wave
+(UKS triplet, isolated, −7.613 Ha; see `../gpw-fd-phonon-si/REFERENCE.md`), which
+is the sanity anchor the old value lacked. SCF now converges in 9 iterations
+(0.4 s) instead of grinding against the clipped potential.
+
+`GpwDft::build` now **throws** on off-centre nonperiodic systems, so this class of
+pin cannot be taken again.
+
+**Still a self-golden pin.** CP2K cannot converge this closed-shell Si₂ in a
+5.43 Å MT box — verified 2026-07-26 with CP2K 2026.1 (`SCF run NOT converged`),
+after fixing the stored oracle input, which used the invalid keyword
+`&XC_FUNCTIONAL PBEsol` / `revPBE` and had therefore never run. The correct CP2K
+spelling is `&PBE / PARAMETRIZATION PBESOL` (resp. `REVPBE`); the fixed decks are
+in `tools/cp2k_oracle/inputs/`. Consequently this case gates **functional
+activation and GPW grid-path wiring** (PBEsol/revPBE vs PBE separation), not
+absolute Si energetics. A true twin needs an open-shell treatment of Si₂ or a
+different, better-conditioned system.

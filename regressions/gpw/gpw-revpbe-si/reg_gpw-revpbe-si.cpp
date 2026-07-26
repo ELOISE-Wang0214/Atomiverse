@@ -23,8 +23,14 @@ std::vector<ATV::cpu::gpw::GpwAtom> make_si2_atoms() {
     constexpr double kA2B = 1.8897259885789;
     constexpr double a_ang = 5.43;
     const double a = a_ang * kA2B;
-    const double pos0[3] = {0.0, 0.0, 0.0};
-    const double pos1[3] = {a / 4.0, a / 4.0, a / 4.0};
+    // Centred in the cell: the Martyna-Tuckerman cluster boundary condition is
+    // not translation invariant, and GpwDft::build rejects off-centre
+    // nonperiodic systems (a Gaussian clipped at a cell face corrupts the
+    // forces while leaving the energy plausible). The fragment's own midpoint
+    // is at a/8, so shift by a/2 - a/8 = 3a/8.
+    const double s = 3.0 * a / 8.0;
+    const double pos0[3] = {s, s, s};
+    const double pos1[3] = {s + a / 4.0, s + a / 4.0, s + a / 4.0};
     const ATV::cpu::gpw::GaussianBasis bas(molrs::Element::Si,
                                            "DZVP-MOLOPT-GTH");
     const ATV::cpu::gpw::GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
@@ -67,7 +73,16 @@ int main() {
     constexpr double kDeFloor = 1.0e-4;
     // Soft absolute band from first-green ATV (REFERENCE.md). Replace with
     // offline CP2K twin when available; dual-gate remains the hard criterion.
-    constexpr double kEnergyRef = -13.0900394799; // Ha
+    // Re-pinned 2026-07-26 on the CENTRED geometry. The previous value
+    // (-13.0900394799 Ha) was taken with an atom at the cell origin under
+    // Martyna-Tuckerman cluster boundaries, which clips the collocated density:
+    // it was ~5.9 Ha (77%) too low. The centred magnitude is consistent with the
+    // independent offline CP2K UKS-triplet Si2 reference (-7.613 Ha; see
+    // regressions/gpw/gpw-fd-phonon-si/REFERENCE.md). Still a self-golden pin —
+    // CP2K cannot converge this closed-shell Si2 in a 5.43 A MT box (verified
+    // 2026-07-26, CP2K 2026.1) — so the gate proves functional activation and
+    // grid-path wiring, not absolute Si energetics.
+    constexpr double kEnergyRef = -7.2202596767; // Ha
     constexpr double kTol = 1.0e-3;               // Ha
 
     const auto atoms = make_si2_atoms();

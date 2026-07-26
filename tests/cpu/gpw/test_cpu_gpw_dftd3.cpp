@@ -318,7 +318,16 @@ TEST(GpwDftD3Atm, IntegratedIntoGpwScf) {
     const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
     const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
     const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
-    const auto pos = water_dimer_bohr();
+    const double L = 12.0 * kAngToBohr;
+    const double cell[3] = {L, L, L};
+    // Translate to the cell centre: E_disp is translation invariant, but the
+    // Martyna-Tuckerman cluster path is not, and GpwDft::build rejects
+    // off-centre nonperiodic systems (clipped collocation corrupts the forces).
+    auto pos = water_dimer_bohr();
+    const double shift[3] = {0.5 * L - 1.5 * kAngToBohr, 0.5 * L, 0.5 * L};
+    for (auto& r : pos)
+        for (int k = 0; k < 3; ++k)
+            r[static_cast<std::size_t>(k)] += shift[k];
     std::vector<GpwAtom> atoms;
     atoms.reserve(6);
     for (int i = 0; i < 6; ++i) {
@@ -328,10 +337,8 @@ TEST(GpwDftD3Atm, IntegratedIntoGpwScf) {
         else
             atoms.emplace_back(p, bH, pH, 1);
     }
-    const double L = 12.0 * kAngToBohr;
-    const double cell[3] = {L, L, L};
     const double ed3 = dftd3_pbe(kZ, pos, cell, /*periodic=*/false, D3Params{},
-                                 40.0, /*calculate_c9=*/true)
+                                 kD3Cp2kPairCutoffBohr, /*calculate_c9=*/true)
                            .energy;
 
     GpwDft m;
