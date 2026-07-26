@@ -10,6 +10,7 @@
 
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "atomiverse/cpu/gpw/internal/periodic.h"
@@ -151,12 +152,253 @@ void getc6(const std::vector<D3C6Ref>& refs, double nci, double ncj, double& c6,
     }
 }
 
+/// @brief Axilrod–Teller–Muto three-body C9 (CP2K qs_dispersion_d3 doabc).
+///
+/// Adds −e9 to `energy` (e9 defined as in CP2K), explicit-R forces, and
+/// CN-chain contributions into `dEdCN`. s9 = s6 for D3. Pair distances for
+/// each leg must be < rcut; geometric mean rabc damps with α=16, sr=4/3.
+void accumulate_atm_c9(const std::vector<int>& Z,
+                       const std::vector<std::array<double, 3>>& pos_bohr,
+                       const double cell_bohr[3], bool periodic,
+                       const D3Params& params, const std::vector<double>& cn,
+                       double rcut, double s9, double& energy,
+                       std::vector<std::array<double, 3>>& forces,
+                       std::vector<double>& dEdCN) {
+    const int n = static_cast<int>(Z.size());
+    if (n < 3 && !periodic)
+        return;
+    const double rcut2 = rcut * rcut;
+    int m[3] = {0, 0, 0};
+    image_counts(cell_bohr, periodic, rcut, m);
+
+    // CP2K-style enumeration over AB (i with j in cell_b) then C in cell_c.
+    // fac0 handles triple-counting across image classes (qs_dispersion_d3.F).
+    for (int iatom = 0; iatom < n; ++iatom) {
+        const int za = Z[iatom];
+        for (int jatom = 0; jatom < n; ++jatom) {
+            const int zb = Z[jatom];
+            const auto& refs_ab = params.c6ab[za][zb];
+            if (refs_ab.empty())
+                continue;
+            for (int tbx = -m[0]; tbx <= m[0]; ++tbx)
+                for (int tby = -m[1]; tby <= m[1]; ++tby)
+                    for (int tbz = -m[2]; tbz <= m[2]; ++tbz) {
+                        if (jatom == iatom && tbx == 0 && tby == 0
+                            && tbz == 0)
+                            continue;
+                        const double rax = pos_bohr[iatom][0];
+                        const double ray = pos_bohr[iatom][1];
+                        const double raz = pos_bohr[iatom][2];
+                        const double rbx =
+                            pos_bohr[jatom][0] + tbx * cell_bohr[0];
+                        const double rby =
+                            pos_bohr[jatom][1] + tby * cell_bohr[1];
+                        const double rbz =
+                            pos_bohr[jatom][2] + tbz * cell_bohr[2];
+                        const double dxab = rax - rbx;
+                        const double dyab = ray - rby;
+                        const double dzab = raz - rbz;
+                        const double r2ab =
+                            dxab * dxab + dyab * dyab + dzab * dzab;
+                        if (r2ab >= rcut2 || r2ab <= 1.0e-12)
+                            continue;
+                        const bool is000 =
+                            (tbx == 0 && tby == 0 && tbz == 0);
+                        // Avoid double-counting AB: only iatom <= jatom in
+                        // the home cell; for B in another cell keep all AB
+                        // with iatom as the home-cell anchor (CP2K NL).
+                        if (is000 && jatom < iatom)
+                            continue;
+
+                        for (int tcx = -m[0]; tcx <= m[0]; ++tcx)
+                            for (int tcy = -m[1]; tcy <= m[1]; ++tcy)
+                                for (int tcz = -m[2]; tcz <= m[2]; ++tcz) {
+                                    const bool c000 =
+                                        (tcx == 0 && tcy == 0 && tcz == 0);
+                                    int kstart = 0;
+                                    double fac0 = 1.0;
+                                    if (is000 && c000) {
+                                        // CASE 1: ordered triples in (000)
+                                        kstart = std::max(jatom, iatom) + 1;
+                                        fac0 = 1.0;
+                                    } else if (is000) {
+                                        // CASE 2: AB in (000), C elsewhere
+                                        kstart = 0;
+                                        fac0 = 1.0;
+                                    } else {
+                                        // CASE 3: A in (000), B and C off-home
+                                        if (tcx == tbx && tcy == tby
+                                            && tcz == tbz)
+                                            continue; // BC same cell → case 2
+                                        if (c000)
+                                            continue;
+                                        kstart = 0;
+                                        fac0 = 1.0 / 3.0;
+                                    }
+                                    for (int katom = kstart; katom < n;
+                                         ++katom) {
+                                        const int zc = Z[katom];
+                                        const auto& refs_bc =
+                                            params.c6ab[zb][zc];
+                                        const auto& refs_ca =
+                                            params.c6ab[zc][za];
+                                        if (refs_bc.empty() || refs_ca.empty())
+                                            continue;
+                                        const double rcx =
+                                            pos_bohr[katom][0]
+                                            + tcx * cell_bohr[0];
+                                        const double rcy =
+                                            pos_bohr[katom][1]
+                                            + tcy * cell_bohr[1];
+                                        const double rcz =
+                                            pos_bohr[katom][2]
+                                            + tcz * cell_bohr[2];
+                                        const double dxbc = rbx - rcx;
+                                        const double dybc = rby - rcy;
+                                        const double dzbc = rbz - rcz;
+                                        const double r2bc = dxbc * dxbc
+                                                            + dybc * dybc
+                                                            + dzbc * dzbc;
+                                        if (r2bc >= rcut2)
+                                            continue;
+                                        const double dxca = rcx - rax;
+                                        const double dyca = rcy - ray;
+                                        const double dzca = rcz - raz;
+                                        const double r2ca = dxca * dxca
+                                                            + dyca * dyca
+                                                            + dzca * dzca;
+                                        if (r2ca >= rcut2)
+                                            continue;
+                                        const double r2abc =
+                                            r2ab * r2bc * r2ca;
+                                        if (r2abc <= 0.001)
+                                            continue;
+                                        // Empirical scaling gate (CP2K)
+                                        if (r2abc
+                                            > 0.01 * rcut2 * rcut2 * rcut2)
+                                            continue;
+
+                                        double fac = 1.0;
+                                        if (iatom == jatom || iatom == katom
+                                            || jatom == katom)
+                                            fac = 0.5;
+                                        if (iatom == jatom
+                                            && iatom == katom)
+                                            fac = 1.0 / 3.0;
+                                        fac *= fac0;
+
+                                        double cc6ab, dcc6aba, dcc6abb;
+                                        double cc6bc, dcc6bcb, dcc6bcc;
+                                        double cc6ca, dcc6cac, dcc6caa;
+                                        getc6(refs_ab, cn[iatom], cn[jatom],
+                                              cc6ab, dcc6aba, dcc6abb);
+                                        getc6(refs_bc, cn[jatom], cn[katom],
+                                              cc6bc, dcc6bcb, dcc6bcc);
+                                        getc6(refs_ca, cn[katom], cn[iatom],
+                                              cc6ca, dcc6cac, dcc6caa);
+                                        if (cc6ab <= 0.0 || cc6bc <= 0.0
+                                            || cc6ca <= 0.0)
+                                            continue;
+                                        const double c9 =
+                                            -std::sqrt(cc6ab * cc6bc * cc6ca);
+                                        const double rabc =
+                                            std::pow(r2abc, 1.0 / 6.0);
+                                        const double r0 = std::cbrt(
+                                            params.r0ab[za][zb]
+                                            * params.r0ab[zb][zc]
+                                            * params.r0ab[zc][za]);
+                                        double fdabc, dfdabc;
+                                        // α=16 (paper; CP2K post-2017 fix)
+                                        damping_d3(rabc, r0, 4.0 / 3.0, 16.0,
+                                                   rcut, fdabc, dfdabc);
+                                        const double s1 = r2ab + r2bc - r2ca;
+                                        const double s2 = r2ab + r2ca - r2bc;
+                                        const double s3 = r2ca + r2bc - r2ab;
+                                        const double ang =
+                                            0.375 * s1 * s2 * s3 / r2abc
+                                            + 1.0;
+                                        const double r2abc15 =
+                                            std::pow(r2abc, 1.5);
+                                        const double e9 =
+                                            s9 * fac * fdabc * c9 * ang
+                                            / r2abc15;
+                                        energy -= e9;
+
+                                        // Explicit geometry forces (CP2K).
+                                        // rab = rb−ra, rbc = rc−rb, rca = ra−rc
+                                        const double rab[3] = {
+                                            rbx - rax, rby - ray, rbz - raz};
+                                        const double rbc[3] = {
+                                            rcx - rbx, rcy - rby, rcz - rbz};
+                                        const double rca[3] = {
+                                            rax - rcx, ray - rcy, raz - rcz};
+                                        double de91 =
+                                            s9 * fac * dfdabc * c9 * ang
+                                            / r2abc15;
+                                        de91 = -de91 / 3.0 * rabc + 3.0 * e9;
+                                        const double dea =
+                                            s9 * fac * fdabc * c9
+                                            / std::pow(r2abc, 2.5) * 0.75;
+                                        const double s123 = s1 * s2 * s3;
+                                        // CP2K uses rab=rb−ra with force_a−=fdij
+                                        // on energy E=−e9. Our two-body path uses
+                                        // r=ra−rb; for ATM we keep CP2K's rleg
+                                        // orientation but apply the opposite
+                                        // force_a/force_b assignment so F=−∇E
+                                        // matches finite differences of E.
+                                        auto add_leg =
+                                            [&](const double rleg[3],
+                                                double r2leg, double sm,
+                                                int ia, int ib) {
+                                                for (int d = 0; d < 3; ++d) {
+                                                    const double fdij =
+                                                        de91 * rleg[d]
+                                                            / r2leg
+                                                        + dea * s123 * rleg[d]
+                                                              / r2leg
+                                                        - dea * sm * rleg[d];
+                                                    forces[ia][d] += fdij;
+                                                    forces[ib][d] -= fdij;
+                                                }
+                                            };
+                                        // AB: sm = s2*s3 + s1*s3 − s1*s2
+                                        add_leg(rab, r2ab,
+                                                s2 * s3 + s1 * s3 - s1 * s2,
+                                                iatom, jatom);
+                                        // BC: sm = s2*s3 − s1*s3 + s1*s2
+                                        add_leg(rbc, r2bc,
+                                                s2 * s3 - s1 * s3 + s1 * s2,
+                                                jatom, katom);
+                                        // CA: sm = −s2*s3 + s1*s3 + s1*s2
+                                        add_leg(rca, r2ca,
+                                                -s2 * s3 + s1 * s3 + s1 * s2,
+                                                katom, iatom);
+
+                                        // CN-chain: dEdCN += ∂E/∂CN with E=−e9
+                                        // ∂E/∂cc6ab = −0.5 e9 / cc6ab
+                                        dEdCN[iatom] +=
+                                            (-0.5 * e9 / cc6ab) * dcc6aba
+                                            + (-0.5 * e9 / cc6ca) * dcc6caa;
+                                        dEdCN[jatom] +=
+                                            (-0.5 * e9 / cc6ab) * dcc6abb
+                                            + (-0.5 * e9 / cc6bc) * dcc6bcb;
+                                        dEdCN[katom] +=
+                                            (-0.5 * e9 / cc6bc) * dcc6bcc
+                                            + (-0.5 * e9 / cc6ca) * dcc6cac;
+                                    }
+                                }
+                    }
+        }
+    }
+}
+
 } // namespace
 
 D3Result dftd3_pbe(const std::vector<int>& Z,
                    const std::vector<std::array<double, 3>>& pos_bohr,
                    const double cell_bohr[3], bool periodic,
-                   const D3Params& params, double rcut_bohr) {
+                   const D3Params& params, double rcut_bohr,
+                   bool calculate_c9) {
     const int n = static_cast<int>(Z.size());
     D3Result res;
     res.forces.assign(n, {0.0, 0.0, 0.0});
@@ -278,6 +520,12 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
         }
     }
 
+    // ---- Three-body ATM / C9 (optional; s9 = s6 for D3) ----
+    if (calculate_c9) {
+        accumulate_atm_c9(Z, pos_bohr, cell_bohr, periodic, params, cn, rcut,
+                          /*s9=*/kS6, energy, res.forces, dEdCN);
+    }
+
     // ---- Forces from the r-dependence of the coordination numbers ----
     // For each atom i, dE/dR via CN flows through every dCN_i/dR neighbour k:
     //   F_i -= dEdCN[i] · dCN_i/dr · r_ik/|r_ik|,  F_k += same.
@@ -330,7 +578,8 @@ D3Result dftd3_pbe_bj(const std::vector<int>& Z,
                       const std::vector<std::array<double, 3>>& pos_bohr,
                       const double cell_bohr[3], bool periodic,
                       const D3Params& params, double rcut_bohr, double s6,
-                      double s8, double a1, double a2, bool cp2k_cn) {
+                      double s8, double a1, double a2, bool cp2k_cn,
+                      bool calculate_c9) {
     const int n = static_cast<int>(Z.size());
     D3Result res;
     res.forces.assign(n, {0.0, 0.0, 0.0});
@@ -465,6 +714,12 @@ D3Result dftd3_pbe_bj(const std::vector<int>& Z,
                             -s6 * fac * dc6b / den6 - s8 * fac * dc8b / den8;
                     }
         }
+    }
+
+    if (calculate_c9) {
+        // D3 ATM uses s9 = s6 (CP2K qs_dispersion_d3), independent of BJ s8.
+        accumulate_atm_c9(Z, pos_bohr, cell_bohr, periodic, params, cn, rcut,
+                          /*s9=*/s6, energy, res.forces, dEdCN);
     }
 
     for (int i = 0; i < n; ++i) {

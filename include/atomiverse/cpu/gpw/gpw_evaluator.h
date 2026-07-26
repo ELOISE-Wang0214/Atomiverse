@@ -85,6 +85,8 @@ class GPWEvaluator : public cpu::GPW {
     bool d3 = false;
     /// @brief Grimme DFT-D3(BJ) (PBE params, CP2K CN). Exclusive vs other disp.
     bool d3bj = false;
+    /// @brief Three-body ATM / C9 when `d3` or `d3bj` (CP2K CALCULATE_C9_TERM).
+    bool d3_atm = false;
     /// @brief Grimme DFT-D4 (PBE BJ, two-body). Exclusive vs other disp.
     bool d4 = false;
     /// @brief Tkatchenko–Scheffler (PBE free-atom TS). Exclusive vs other disp.

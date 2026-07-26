@@ -3453,14 +3453,16 @@ static GpwResult run_gpw_scf_impl(
                         "GPW D3: element Z=" + std::to_string(z)
                         + " is not in the in-tree D3 table (no fallback)");
             if (cfg.d3)
-                e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}).energy;
+                e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}, 40.0,
+                                 cfg.d3_atm)
+                           .energy;
             else {
                 // CP2K TYPE DFTD3(BJ): CP2K CN form; pair rcut = 2 × R_CUTOFF.
                 constexpr double kAng2Bohr = 1.0 / 0.52917720859;
                 constexpr double kRcutBohr = 2.0 * 20.0 * kAng2Bohr;
                 e_d3 = dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
                                     kRcutBohr, 1.0, 0.7875, 0.4289, 4.4407,
-                                    /*cp2k_cn=*/true)
+                                    /*cp2k_cn=*/true, cfg.d3_atm)
                            .energy;
             }
         }
@@ -5043,6 +5045,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.local_pp_on_grid = m.local_pp_on_grid;
     p.d3 = m.d3;
     p.d3bj = m.d3bj;
+    p.d3_atm = m.d3_atm;
     p.d4 = m.d4;
     p.ts = m.ts;
     p.xdm = m.xdm;
