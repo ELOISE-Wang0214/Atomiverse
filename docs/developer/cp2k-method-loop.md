@@ -68,6 +68,20 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 GapCensus wave 14 (parent `dev` @ `cee90c43`):** recover
+  incomplete=**3** (wave-12 residual `[~]` preserved; do not demote);
+  CP2K specs on `dev`=0; isolation worktrees=0; builds=none. Prior pending
+  **9** re-verified true; **+6** residuals → pending **15**
+  (`gpw-multigrid-kpoints`, `xl-bomd-linearized-uks`,
+  `xl-bomd-linearized-kpoints`, `gpw-d3-stress`, `gpw-d3-atm-forces`,
+  `gpw-d4-atm-forces` + wave-13 nine); in_progress **3**; blocked **6**.
+  No ○/✓ table flips; §8/§10–12 + MD AIMD residual prose + index GPW
+  residual line refreshed. Next: Assign prefers incomplete resumes
+  (merge-ready `cpmd-kpoints` / `periodic-wannier-gpw`; force-gate
+  `gpw-fd-phonon-si`) then surface-disjoint pending (D3 force ∥ D3BJ
+  force/stress careful dispersion; MBD stress ∥ MBD×k stress careful
+  stress tree; multigrid×k free of BOMD×k; linearized XL UKS ∥ multi-k
+  careful XL evaluator; ATM forces free of two-body D3 force dual).
 - **2026-07-26 harness wave 12 (parent `dev` @ `4ab58f97`):** 6 merged →
   done: `xl-bomd-linearized-forces`, `second-gen-cpmd-kpoints`, `gpw-d3-atm`,
   `gpw-d4-atm`, `bands-spin-metallic-si`, `dos-spin-metallic-si`. Incomplete

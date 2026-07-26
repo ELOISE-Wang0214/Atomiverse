@@ -242,8 +242,10 @@ GPW (`reg_xl-bomd-water`) **and Γ-UKS** dual-spin auxiliary densities
 multi-k UKS** dual-spin \(P_k^\sigma\) (`reg_xl-bomd-uks-kpoints`). ASPC
 remains a separate density *predictor* (warm start); OT+XL stays
 architecturally excluded (OT parameterizes orbitals, not density);
-**zero-SCF linearized-functional forces** productize
-(`xl_bomd_linearized`; `reg_xl-bomd-linearized-forces`).
+**zero-SCF linearized-functional forces** productize on **Γ RKS**
+(`xl_bomd_linearized`; `reg_xl-bomd-linearized-forces`); **Γ-UKS** and
+**multi-k** linearized XL remain open (queued `xl-bomd-linearized-uks` /
+`xl-bomd-linearized-kpoints`).
 
 **Car–Parrinello MD** (fictitious electronic DOF) ships as `cpu::gpw::Cpmd` +
 `GPWEvaluator::{cpmd, cpmd_mu, cpmd_dt}` on closed-shell Γ GPW: cold SCF seed,

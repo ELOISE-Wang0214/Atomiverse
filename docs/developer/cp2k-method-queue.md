@@ -706,6 +706,45 @@ bands/DOS; multi-k CPMD + GPW MLWF + GPW FD phonon stay open incomplete.
 builds). **Queue not exhausted** — next wave Recover incomplete then
 continue.
 
+**GapCensus wave 14 2026-07-26 (parent `dev` @ `cee90c43`):** recover —
+incomplete_count=**3** (`[~] cpmd-kpoints` @ `3425c7c6` multi-k Bloch
+\(C_k\) feat; `[~] periodic-wannier-gpw` @ `5c59a97f` GPW MV MLWF feat;
+`[~] gpw-fd-phonon-si` @ `7c3e1712` Phonon+GPW wiring — Si force gate
+blocks acceptance; **do not demote**). Open CP2K/GPW/PW specs on
+`dev`=**0** (PySCF deferred only: `periodic-rhf-gamma` /
+`rsh-eri-cam-b3lyp`); isolation worktrees=**0**; leftover builds=**none**;
+unmerged feature `wf/*`=**3** (+ blocked `wf/gpw-vv10-ice`). Tree re-diff
+vs `docs/roadmap/dft.md` §3/§8/§10–12 + MD AIMD + `tools/cp2k_oracle` +
+`include/atomiverse/cpu/{gpw,planewave}`: prior pending **9** still true
+gaps (no half-regs on `dev`; multi-k `gpw_stress` still omits MBD in
+dispersion fold; D3/D3BJ force assembly product but no dedicated offline
+pins; DFT+U multi-k forces unpinned; DFPT GGA×spin / GGA×finite-q unpinned
+though kernels claim support; multi-k BOMD ○). **Added 6** tree-declared
+follow-ons with offline CP2K / literature twins (exclude done / blocked /
+in_progress):
+`gpw-multigrid-kpoints` (`build` rejects `ngrids>1` under k-mesh — multi-k
+× REL_CUTOFF multigrid residual after Γ/UKS multigrid ✓),
+`xl-bomd-linearized-uks` / `xl-bomd-linearized-kpoints` (zero-SCF
+linearized XL is Γ RKS only — evaluator throws UKS and multi-k follow-ons
+after `reg_xl-bomd-linearized-forces` ✓),
+`gpw-d3-stress` (D3-zero energy folds into fixed-\(P\) stress; dedicated
+stress pin missing — same pattern as queued D3(BJ) stress / shipped D4
+stress),
+`gpw-d3-atm-forces` / `gpw-d4-atm-forces` (ATM energy product; force
+assembly passes `d3_atm` / `d4_atm` into D3/D4 grads — dedicated offline
+force pins after energy footholds, same dedicated-pin pattern as
+TS/XDM/D4 two-body).
+**Not added:** BP86/B97/OLYP/HCTH (molecular PySCF path); stock VV10
+(**blocked**); shear/off-diagonal stress (orthorhombic design); periodic
+hybrid / meta-GGA / GAPW / PAW (**blocked**); TS/XDM dedicated stress
+(thin after MBD stress queue + force pins); ATM stress deeper (hold
+behind ATM force pins); metallic Berry/Wannier (insulator requirement);
+SCS-MP2 periodic (hold); molecular post-HF / classical MW / CUDA ports
+(other loops). Roadmap: **no ○/✓ table flips** (nothing new merged since
+harness wave 12); §8/§10–12 + MD AIMD residual prose + index GPW residual
+line refreshed for wave-14 queue. **Pending = 15**; **in_progress = 3**;
+**blocked = 6**.
+
 ## pending
 
 - [ ] `gpw-d3-forces` | Analytic ionic forces with DFT-D3 zero damping | gpw | twin: CP2K Quickstep D3 zero force / FD on water dimer | GapCensus wave 13
@@ -717,18 +756,24 @@ continue.
 - [ ] `dfpt-gga-spin-si` | DFPT phonons with collinear spin **and** pure GGA kernel (PW) | response | twin: extend `dfpt-gga-si` × `dfpt-spin-si` | GapCensus wave 13
 - [ ] `dfpt-gga-finite-q-si` | Finite-q DFPT with pure GGA kernel (PW) | response | twin: extend `dfpt-finite-q-si` (LSDA) to PBE | GapCensus wave 13
 - [ ] `gpw-bomd-kpoints` | Multi-k Born–Oppenheimer MD on GPW | dynamics | twin: CP2K Quickstep AIMD with k-mesh | GapCensus wave 13
+- [ ] `gpw-multigrid-kpoints` | Multi-k GPW with REL_CUTOFF multigrid (`ngrids>1`) | gpw | twin: CP2K NGRIDS + k-mesh water/Si | GapCensus wave 14
+- [ ] `xl-bomd-linearized-uks` | Zero-SCF linearized-functional XL-BOMD forces on Γ-UKS | dynamics | twin: extend `xl-bomd-linearized-forces` × UKS | GapCensus wave 14
+- [ ] `xl-bomd-linearized-kpoints` | Zero-SCF linearized XL-BOMD forces on multi-k RKS | dynamics | twin: extend linearized XL × k-mesh | GapCensus wave 14
+- [ ] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14
+- [ ] `gpw-d3-atm-forces` | Analytic ionic forces with DFT-D3 three-body ATM (C9) | gpw | twin: CP2K D3 ATM force / FD on water dimer | GapCensus wave 14
+- [ ] `gpw-d4-atm-forces` | Analytic ionic forces with DFT-D4 three-body ATM (\(s_9\)) | gpw | twin: dftd4 ATM gradient / extend `gpw-d4-atm` | GapCensus wave 14
 
 ## in_progress
 
-<!-- Harness wave 12 2026-07-26 (parent `dev` @ `4ab58f97`): incomplete_count=3 —
+<!-- GapCensus wave 14 2026-07-26 (parent `dev` @ `cee90c43`): incomplete_count=3 —
      wave-12 residual staff (do not demote). Open CP2K specs on `dev`=0 (PySCF
      deferred only). Unmerged feature `wf/*`=3 (+ blocked `wf/gpw-vv10-ice`).
-     Isolation worktrees=0 (clearup already ran). Half-regs only on feature tips
-     (none on `dev` for these three). Prefer resume/merge gate. -->
+     Isolation worktrees=0. Half-regs only on feature tips (none on `dev`).
+     Prefer resume/merge gate before promoting pending. -->
 
-- [~] `cpmd-kpoints` | Multi-k Car–Parrinello MD (Bloch \(C_k\)) | dynamics | twin: CP2K CP with k-points | resume `wf/cpmd-kpoints` @ `3425c7c6` (ahead=1 behind=15; unmerged) | assign wave 12
-- [~] `periodic-wannier-gpw` | Maximally localized Wannier functions on GPW | response | twin: CP2K `LOCALIZE` / Wannier on Quickstep | resume `wf/periodic-wannier-gpw` @ `5c59a97f` (ahead=1 behind=15; unmerged) | assign wave 12
-- [~] `gpw-fd-phonon-si` | Finite-displacement Γ phonons with GPW analytic forces | response | twin: CP2K `VIBRATIONAL_ANALYSIS` on small cell / GTH | resume `wf/gpw-fd-phonon-si` @ `7c3e1712` (ahead=1 behind=15; unmerged; blocked on Si forces per tip) | assign wave 12
+- [~] `cpmd-kpoints` | Multi-k Car–Parrinello MD (Bloch \(C_k\)) | dynamics | twin: CP2K CP with k-points | resume `wf/cpmd-kpoints` @ `3425c7c6` (ahead=1; unmerged) | assign wave 12
+- [~] `periodic-wannier-gpw` | Maximally localized Wannier functions on GPW | response | twin: CP2K `LOCALIZE` / Wannier on Quickstep | resume `wf/periodic-wannier-gpw` @ `5c59a97f` (ahead=1; unmerged) | assign wave 12
+- [~] `gpw-fd-phonon-si` | Finite-displacement Γ phonons with GPW analytic forces | response | twin: CP2K `VIBRATIONAL_ANALYSIS` on small cell / GTH | resume `wf/gpw-fd-phonon-si` @ `7c3e1712` (ahead=1; unmerged; blocked on Si forces per tip) | assign wave 12
 
 ## done (harness wave 12 2026-07-26)
 

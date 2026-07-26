@@ -262,13 +262,14 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   `reg_gpw-uks-stress` / `reg_gpw-kpoint-stress` / `reg_gpw-stress-water`)
   and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice` + MOLOPT
   `reg_gpw-variable-cell-molopt`). After harness wave 12 residual prose
-  closes zero-SCF linearized XL, multi-k SGCP, D3/D4 ATM, and collinear
-  spin+metallic bands/DOS; wave-12 incomplete still open (multi-k CPMD,
-  GPW MLWF, GPW FD phonon); **GapCensus wave 13** reopens D3/D3BJ forces +
-  D3BJ stress, MBD Γ/multi-k stress, multi-k DFT+U forces, DFPT GGA×spin /
-  GGA×finite-q, multi-k BOMD; stock VV10 remains **blocked**
-  (no CP2K twin); hybrids / meta-GGA / GAPW blocked — see
-  `cp2k-method-queue.md` (queue not exhausted — GapCensus owns next
+  closes zero-SCF linearized XL (Γ RKS), multi-k SGCP, D3/D4 ATM energy,
+  and collinear spin+metallic bands/DOS; wave-12 incomplete still open
+  (multi-k CPMD, GPW MLWF, GPW FD phonon); **GapCensus wave 14** keeps
+  D3/D3BJ forces + D3/D3BJ stress, MBD Γ/multi-k stress, multi-k DFT+U
+  forces, DFPT GGA×spin / GGA×finite-q, multi-k BOMD and adds multi-k
+  multigrid, linearized XL UKS/multi-k, D3/D4 ATM forces; stock VV10
+  remains **blocked** (no CP2K twin); hybrids / meta-GGA / GAPW blocked —
+  see `cp2k-method-queue.md` (queue not exhausted — GapCensus owns next
   discovery).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member
