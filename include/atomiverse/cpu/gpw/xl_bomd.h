@@ -1,6 +1,6 @@
 /// @file cpu/gpw/xl_bomd.h
-/// @brief XlBomd — dissipative extended-Lagrangian BOMD auxiliary-density
-///        propagator (Niklasson XL-BOMD).
+/// @brief XlBomd / XlBomdCplx — dissipative extended-Lagrangian BOMD
+///        auxiliary-density propagators (Niklasson XL-BOMD).
 ///
 /// Propagates an auxiliary AO density matrix P alongside the nuclei and
 /// serves it as the SCF initial guess each MD step:
@@ -17,10 +17,13 @@
 /// causes in long BOMD trajectories.
 ///
 /// Unit-agnostic dense linear algebra on AO density matrices; consumed by
-/// `cpu::gpw::GPWEvaluator` (`xl_bomd = true`) on the RKS (total \(P\)) or
-/// Γ-UKS (one `XlBomd` per spin channel) diagonalization SCF path.
+/// `cpu::gpw::GPWEvaluator` (`xl_bomd = true`):
+/// - **Γ RKS:** total real \(P\) via `XlBomd`
+/// - **Γ UKS:** one `XlBomd` per spin channel
+/// - **multi-k RKS:** one `XlBomdCplx` per sampled \(k\) (complex \(P_k\))
 #pragma once
 
+#include <complex>
 #include <deque>
 #include <vector>
 
@@ -30,7 +33,7 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
-/// @brief Dissipative XL-BOMD auxiliary-density propagator.
+/// @brief Dissipative XL-BOMD auxiliary-density propagator (real AO density).
 ///
 /// Lifecycle: construct with the dissipation order K, then once per MD step
 /// (after the SCF solve) call `advance(D_scf)`. The first `advance` seeds
@@ -88,6 +91,47 @@ class XlBomd {
     std::deque<linalg::RealMatrix> hist_;
     linalg::RealMatrix aux_; ///< P_{n+1} (next-step SCF guess).
     bool ready_ = false;     ///< history seeded.
+};
+
+/// @brief Dissipative XL-BOMD propagator on complex Bloch densities \(P_k\).
+///
+/// Same Table-I recursion as `XlBomd`; real \((\kappa,\alpha,c_k)\) act
+/// element-wise on `linalg::CplxMatrix`. A Hermitian history remains
+/// Hermitian (up to floating-point roundoff). Used for multi-k RKS XL-BOMD
+/// (one instance per sampled k).
+class XlBomdCplx {
+  public:
+    /// @brief Construct with the Niklasson dissipation order.
+    /// @param k Dissipation order K ∈ [3, 9] (Table I).
+    /// @throws std::invalid_argument when k is outside [3, 9].
+    explicit XlBomdCplx(int k = 5);
+
+    int order() const { return k_; }
+    double kappa() const { return kappa_; }
+    double alpha() const { return alpha_; }
+    const std::vector<double>& c() const { return c_; }
+    bool ready() const { return ready_; }
+
+    /// @brief Current auxiliary complex density \(P_{n+1}\).
+    /// @throws std::logic_error before the first `advance`.
+    const linalg::CplxMatrix& aux() const;
+
+    /// @brief Record SCF \(D_k\) and propagate one step.
+    /// @param d_scf Complex Hermitian density (n_ao × n_ao).
+    /// @throws std::invalid_argument on empty or shape-mismatched input.
+    void advance(const linalg::CplxMatrix& d_scf);
+
+    /// @brief Drop all history.
+    void reset();
+
+  private:
+    int k_;
+    double kappa_ = 0.0;
+    double alpha_ = 0.0;
+    std::vector<double> c_;
+    std::deque<linalg::CplxMatrix> hist_;
+    linalg::CplxMatrix aux_;
+    bool ready_ = false;
 };
 
 } // namespace gpw

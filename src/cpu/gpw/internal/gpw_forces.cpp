@@ -1249,8 +1249,9 @@ gpw_forces_from_scf(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         throw std::runtime_error("gpw_forces_from_scf: SCF did not converge");
 
     // Multi-k payload is C_occ_k / eps_k (not Γ P/C/eps). Branch first so
-    // product evaluators can reuse one SCF on the k-path (gpw-mbd-kpoint-forces).
-    if (uses_kpath(cfg))
+    // product evaluators can reuse one SCF on the k-path (gpw-mbd-kpoint-forces)
+    // and so a k-path result is never rejected for missing Γ orbitals.
+    if (uses_kpath(cfg) || scf.n_kpts > 0)
         return assemble_gpw_forces_kpoints(atoms, cfg, scf);
 
     if (scf.P.size() == 0 || scf.C.size() == 0 || scf.eps.empty())

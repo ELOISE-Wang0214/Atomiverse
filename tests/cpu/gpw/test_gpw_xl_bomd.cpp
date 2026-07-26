@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <complex>
 #include <stdexcept>
 #include <vector>
 
@@ -382,6 +383,142 @@ TEST(GpwEvaluatorXlBomd, BuildRejectsXlOrderOutsideTable) {
     auto eval = water_eval();
     eval.xl_bomd = true;
     eval.xl_bomd_k = 11;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// ── multi-k XL (complex P_k) ────────────────────────────────────────────
+
+using ATV::cpu::gpw::XlBomdCplx;
+using ATV::cpu::linalg::CplxMatrix;
+using Cplx = std::complex<double>;
+
+namespace {
+
+CplxMatrix constant_cplx(int n, Cplx v) {
+    CplxMatrix m = xt::zeros<Cplx>({n, n});
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            m(i, j) = v + Cplx(0.1 * static_cast<double>(i == j), 0.0);
+    // Hermitianize: (M + M†)/2 so fixed-point tests stay physical.
+    CplxMatrix h = xt::zeros<Cplx>({n, n});
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            h(i, j) = 0.5 * (m(i, j) + std::conj(m(j, i)));
+    return h;
+}
+
+double max_abs_diff_cplx(const CplxMatrix& a, const CplxMatrix& b) {
+    double worst = 0.0;
+    for (std::size_t i = 0; i < a.shape(0); ++i)
+        for (std::size_t j = 0; j < a.shape(1); ++j)
+            worst = std::max(worst, std::abs(a(i, j) - b(i, j)));
+    return worst;
+}
+
+} // namespace
+
+// A2: XlBomdCplx shares Table I and has a constant-density fixed point.
+TEST(XlBomdCplx, ConstantHermitianIsFixedPoint) {
+    XlBomdCplx xl(5);
+    EXPECT_EQ(xl.order(), 5);
+    EXPECT_DOUBLE_EQ(xl.kappa(), 1.82);
+    EXPECT_DOUBLE_EQ(xl.alpha(), 0.018);
+    const CplxMatrix d = constant_cplx(4, Cplx(0.3, 0.0));
+    for (int n = 0; n < 15; ++n)
+        xl.advance(d);
+    EXPECT_LE(max_abs_diff_cplx(xl.aux(), d), 1e-12);
+}
+
+// A2: shape mismatch after seeding throws.
+TEST(XlBomdCplx, AdvanceWithMismatchedShapeThrows) {
+    XlBomdCplx xl(5);
+    xl.advance(constant_cplx(3, Cplx(0.2, 0.0)));
+    EXPECT_THROW(xl.advance(constant_cplx(4, Cplx(0.2, 0.0))),
+                 std::invalid_argument);
+}
+
+// A3/A4: multi-k RKS density guess plumbing on tiny H2.
+TEST(GpwSolverGuessPk, MultiKConvergedGuessReachesColdFixedPoint) {
+    pin_single_thread();
+    const auto atoms = small_h2(/*box=*/8.0);
+
+    GpwDft cold = small_cfg(/*box=*/8.0);
+    cold.k_mesh[0] = 1;
+    cold.k_mesh[1] = 1;
+    cold.k_mesh[2] = 2;
+    cold.k_time_reversal = false; // two k
+    cold.nonperiodic = false;
+    cold.build(atoms);
+    const GpwResult ref = cold.run(atoms);
+    ASSERT_TRUE(ref.converged);
+    ASSERT_GE(ref.n_kpts, 2);
+    ASSERT_EQ(static_cast<int>(ref.P_k.size()), ref.n_kpts);
+
+    GpwDft warm = small_cfg(/*box=*/8.0);
+    warm.k_mesh[0] = 1;
+    warm.k_mesh[1] = 1;
+    warm.k_mesh[2] = 2;
+    warm.k_time_reversal = false;
+    warm.nonperiodic = false;
+    warm.build(atoms);
+    const GpwResult& r = warm.run(atoms, nullptr, nullptr, nullptr, &ref.P_k);
+    EXPECT_TRUE(r.converged);
+    EXPECT_NEAR(r.e_total, ref.e_total, 1e-9);
+    EXPECT_LE(r.iters, ref.iters);
+}
+
+// A3: wrong guess_P_k count throws.
+TEST(GpwSolverGuessPk, WrongCountThrows) {
+    pin_single_thread();
+    const auto atoms = small_h2();
+    GpwDft solver = small_cfg();
+    solver.k_mesh[2] = 2;
+    solver.k_time_reversal = false;
+    solver.nonperiodic = false;
+    solver.build(atoms);
+    std::vector<CplxMatrix> bad(1, constant_cplx(2, Cplx(0.1, 0.0)));
+    EXPECT_THROW(solver.run(atoms, nullptr, nullptr, nullptr, &bad),
+                 std::invalid_argument);
+}
+
+// A4: multi-k + real guess_P throws.
+TEST(GpwSolverGuessPk, MultiKWithRealGuessPThrows) {
+    pin_single_thread();
+    const auto atoms = small_h2();
+    GpwDft solver = small_cfg();
+    solver.k_mesh[2] = 2;
+    solver.k_time_reversal = false;
+    solver.nonperiodic = false;
+    solver.build(atoms);
+    const RealMatrix p = constant_matrix(2, 0.5);
+    EXPECT_THROW(solver.run(atoms, nullptr, &p), std::invalid_argument);
+}
+
+// A5: multi-k RKS + XL accepted; multi-k UKS + XL refused.
+TEST(GpwEvaluatorXlBomd, BuildAcceptsMultiKRksXl) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.k_mesh[0] = 1;
+    eval.k_mesh[1] = 1;
+    eval.k_mesh[2] = 2;
+    eval.k_time_reversal = false;
+    eval.nonperiodic = false;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_NO_THROW(eval.build(bc));
+}
+
+TEST(GpwEvaluatorXlBomd, BuildRejectsMultiKUksXl) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.n_alpha = 5;
+    eval.n_beta = 3;
+    eval.k_mesh[2] = 2;
+    eval.nonperiodic = false;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
