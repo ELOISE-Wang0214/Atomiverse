@@ -1,8 +1,9 @@
 /// @file src/cpu/gpw/g0w0.cpp
 /// @brief GpwDft::g0w0 — Γ-point and multi-k (finite-q inter-k W)
-///        spectral G0W0@KS on the converged RKS orbitals. dRPA
-///        screening + MT exchange + local v_xc.
+///        spectral G0W0@KS on converged RKS orbitals, plus Γ UKS UGW.
+///        dRPA screening + MT exchange + local v_xc.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -102,6 +103,54 @@ XcOnGrid eval_xc_grid(XcKind xc, const UniformGrid& grid,
     }
 }
 
+XcOnGridSpin eval_xc_grid_spin(XcKind xc, const UniformGrid& grid,
+                               const std::vector<double>& rho_a,
+                               const std::vector<double>& rho_b) {
+    switch (xc) {
+    case XcKind::PBE:
+        return xc_grid_pbe_spin(grid, rho_a, rho_b);
+    case XcKind::PBEsol:
+        return xc_grid_pbesol_spin(grid, rho_a, rho_b);
+    case XcKind::RevPBE:
+        return xc_grid_revpbe_spin(grid, rho_a, rho_b);
+    case XcKind::BLYP:
+        return xc_grid_blyp_spin(grid, rho_a, rho_b);
+    case XcKind::RPBE:
+        // RPBE spin path is a follow-on (gpw-uks-rpbe); fall back to PBE
+        // spin shape only after an explicit product lands — refuse silently
+        // wrong XC. Throw so the caller does not pin a wrong functional.
+        throw std::invalid_argument(
+            "GpwDft::g0w0: UKS RPBE spin XC for UGW is not yet product "
+            "(use PBE/PBEsol/RevPBE/BLYP/PADE)");
+    case XcKind::PADE:
+    default:
+        return xc_grid_pade_lsd(grid, rho_a, rho_b);
+    }
+}
+
+int cap_virt_gw_(int n_mo, int n_occ, int mp2_n_virt,
+                 const std::vector<double>& eps, const char* channel) {
+    if (n_mo <= n_occ)
+        throw std::invalid_argument(
+            std::string("GpwDft::g0w0: no virtual orbitals in the ") + channel
+            + " channel (n_mo = " + std::to_string(n_mo) + ", n_occ = "
+            + std::to_string(n_occ) + ")");
+    int n_virt = n_mo - n_occ;
+    if (mp2_n_virt > 0)
+        n_virt = std::min(n_virt, mp2_n_virt);
+    if (n_occ < 1 || n_virt < 1)
+        return n_virt;
+    constexpr double kMinGapHa = 1e-6;
+    const double gap = eps[static_cast<std::size_t>(n_occ)]
+                       - eps[static_cast<std::size_t>(n_occ - 1)];
+    if (gap < kMinGapHa)
+        throw std::invalid_argument(
+            std::string("GpwDft::g0w0: vanishing ") + channel
+            + " HOMO-LUMO gap (" + std::to_string(gap)
+            + " Ha < 1e-6) — dRPA (A−B) is singular");
+    return n_virt;
+}
+
 } // namespace
 
 const G0W0Result& GpwDft::g0w0(const std::vector<GpwAtom>& atoms) {
@@ -109,9 +158,6 @@ const G0W0Result& GpwDft::g0w0(const std::vector<GpwAtom>& atoms) {
         throw std::logic_error(
             "GpwDft::g0w0 called before build() — validate the "
             "configuration first (no silent auto-build)");
-    if (is_uks())
-        throw std::invalid_argument(
-            "GpwDft::g0w0: closed-shell RKS only (UGW is a follow-on)");
     if (use_ot)
         throw std::invalid_argument(
             "GpwDft::g0w0: OT stores occupied orbitals only — canonical "
@@ -130,6 +176,302 @@ const G0W0Result& GpwDft::g0w0(const std::vector<GpwAtom>& atoms) {
         throw std::invalid_argument(
             "GpwDft::g0w0: multi-k SCF result is missing Bloch C_k "
             "(re-run with a current multi-k path that stores orbitals)");
+
+    // ── Unrestricted Γ UGW (spin-conserving spectral G0W0@UKS) ────────
+    if (is_uks()) {
+        if (multi_k || result_.n_kpts > 0)
+            throw std::invalid_argument(
+                "GpwDft::g0w0: multi-k UGW is a follow-on (Γ UKS only)");
+        if (result_.C_beta.size() == 0 || result_.eps_beta.empty())
+            throw std::logic_error(
+                "GpwDft::g0w0: UKS result is missing β orbitals/eigenvalues");
+
+        const int nb_atoms = [&] {
+            int nb = 0;
+            for (const auto& a : atoms)
+                nb += static_cast<int>(a.basis.size());
+            return nb;
+        }();
+        const int nb = static_cast<int>(result_.C.shape(0));
+        const int n_mo_a = static_cast<int>(result_.C.shape(1));
+        const int n_mo_b = static_cast<int>(result_.C_beta.shape(1));
+        if (nb_atoms != nb)
+            throw std::invalid_argument(
+                "GpwDft::g0w0: atom basis count (" + std::to_string(nb_atoms)
+                + ") does not match the converged orbitals ("
+                + std::to_string(nb)
+                + ") — same geometry/basis as the last run() required");
+        if (static_cast<int>(result_.eps.size()) != n_mo_a
+            || static_cast<int>(result_.eps_beta.size()) != n_mo_b)
+            throw std::logic_error(
+                "GpwDft::g0w0: UKS eps/C shape mismatch in the converged "
+                "result");
+        if (static_cast<int>(result_.C_beta.shape(0)) != nb)
+            throw std::logic_error(
+                "GpwDft::g0w0: UKS α/β basis dimension mismatch");
+
+        const int n_oa = n_alpha;
+        const int n_ob = n_beta;
+        const int n_va =
+            cap_virt_gw_(n_mo_a, n_oa, mp2_n_virt, result_.eps, "α");
+        const int n_vb =
+            cap_virt_gw_(n_mo_b, n_ob, mp2_n_virt, result_.eps_beta, "β");
+        if (n_oa < 1 || n_va < 1)
+            throw std::invalid_argument(
+                "GpwDft::g0w0: UGW needs n_α >= 1 and n_virt_α >= 1 "
+                "(primary report is the α channel)");
+
+        const bool periodic = !nonperiodic;
+        const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+        std::vector<GridBasisFunction> basis;
+        basis.reserve(static_cast<std::size_t>(nb));
+        for (const auto& a : atoms)
+            for (const auto& bf : a.basis)
+                basis.push_back(bf);
+        const CompactBasisGrid cbg =
+            build_compact_basis_grid(grid, basis, periodic, eps_default);
+
+        const std::vector<double> psi_all_a =
+            internal::mo_on_grid(cbg, result_.C, 0, n_mo_a);
+        const std::vector<double> psi_all_b =
+            internal::mo_on_grid(cbg, result_.C_beta, 0, n_mo_b);
+        const long npts = grid.npts();
+        const double gw = grid.weight();
+
+        std::vector<double> psi_oa(
+            static_cast<std::size_t>(n_oa) * static_cast<std::size_t>(npts));
+        std::vector<double> psi_va(
+            static_cast<std::size_t>(n_va) * static_cast<std::size_t>(npts));
+        std::vector<double> psi_ob(
+            static_cast<std::size_t>(n_ob) * static_cast<std::size_t>(npts));
+        std::vector<double> psi_vb(
+            static_cast<std::size_t>(n_vb) * static_cast<std::size_t>(npts));
+        for (int i = 0; i < n_oa; ++i)
+            for (long g = 0; g < npts; ++g)
+                psi_oa[static_cast<std::size_t>(i)
+                           * static_cast<std::size_t>(npts)
+                       + static_cast<std::size_t>(g)] =
+                    psi_all_a[static_cast<std::size_t>(i)
+                                  * static_cast<std::size_t>(npts)
+                              + static_cast<std::size_t>(g)];
+        for (int a = 0; a < n_va; ++a)
+            for (long g = 0; g < npts; ++g)
+                psi_va[static_cast<std::size_t>(a)
+                           * static_cast<std::size_t>(npts)
+                       + static_cast<std::size_t>(g)] =
+                    psi_all_a[static_cast<std::size_t>(n_oa + a)
+                                  * static_cast<std::size_t>(npts)
+                              + static_cast<std::size_t>(g)];
+        for (int i = 0; i < n_ob; ++i)
+            for (long g = 0; g < npts; ++g)
+                psi_ob[static_cast<std::size_t>(i)
+                           * static_cast<std::size_t>(npts)
+                       + static_cast<std::size_t>(g)] =
+                    psi_all_b[static_cast<std::size_t>(i)
+                                  * static_cast<std::size_t>(npts)
+                              + static_cast<std::size_t>(g)];
+        for (int a = 0; a < n_vb; ++a)
+            for (long g = 0; g < npts; ++g)
+                psi_vb[static_cast<std::size_t>(a)
+                           * static_cast<std::size_t>(npts)
+                       + static_cast<std::size_t>(g)] =
+                    psi_all_b[static_cast<std::size_t>(n_ob + a)
+                                  * static_cast<std::size_t>(npts)
+                              + static_cast<std::size_t>(g)];
+
+        const bool use_ri = mp2_ri && periodic;
+        std::vector<double> v_aa, v_bb, v_ab;
+        if (n_oa > 0 && n_va > 0)
+            v_aa = use_ri ? internal::mo_eri_ovov_ri(grid, psi_oa, n_oa,
+                                                      psi_va, n_va)
+                          : internal::mo_eri_ovov(grid, psi_oa, n_oa, psi_va,
+                                                   n_va, nonperiodic);
+        if (n_ob > 0 && n_vb > 0)
+            v_bb = use_ri ? internal::mo_eri_ovov_ri(grid, psi_ob, n_ob,
+                                                      psi_vb, n_vb)
+                          : internal::mo_eri_ovov(grid, psi_ob, n_ob, psi_vb,
+                                                   n_vb, nonperiodic);
+        if (n_oa > 0 && n_va > 0 && n_ob > 0 && n_vb > 0)
+            v_ab =
+                use_ri
+                    ? internal::mo_eri_ovov_ab_ri(grid, psi_oa, n_oa, psi_va,
+                                                   n_va, psi_ob, n_ob, psi_vb,
+                                                   n_vb)
+                    : internal::mo_eri_ovov_ab(grid, psi_oa, n_oa, psi_va,
+                                                n_va, psi_ob, n_ob, psi_vb,
+                                                n_vb, nonperiodic);
+
+        const std::vector<double> eps_oa(result_.eps.begin(),
+                                         result_.eps.begin() + n_oa);
+        const std::vector<double> eps_va(result_.eps.begin() + n_oa,
+                                         result_.eps.begin() + n_oa + n_va);
+        const std::vector<double> eps_ob(result_.eps_beta.begin(),
+                                         result_.eps_beta.begin() + n_ob);
+        const std::vector<double> eps_vb(
+            result_.eps_beta.begin() + n_ob,
+            result_.eps_beta.begin() + n_ob + n_vb);
+
+        internal::DirectRpaAmplitudes rpa;
+        internal::direct_rpa_uhf(v_aa, v_bb, v_ab, eps_oa, eps_va, eps_ob,
+                                 eps_vb, rpa);
+        const int n_exc = static_cast<int>(rpa.omega.size());
+        const int nov_a = n_oa * n_va;
+        const int nov_b = n_ob * n_vb;
+        const int nov = nov_a + nov_b;
+
+        // V_iaσ(r) for each spin channel (periodic Coulomb; ρ_ia neutral).
+        const std::vector<double> V_ov_a =
+            (n_oa > 0 && n_va > 0)
+                ? internal::mo_pair_potentials_ov(grid, psi_oa, n_oa, psi_va,
+                                                   n_va)
+                : std::vector<double>{};
+        const std::vector<double> V_ov_b =
+            (n_ob > 0 && n_vb > 0)
+                ? internal::mo_pair_potentials_ov(grid, psi_ob, n_ob, psi_vb,
+                                                   n_vb)
+                : std::vector<double>{};
+
+        // W_s(g) = Σ_iaτ (X+Y)_iaτ^s V_iaτ(g)  (no √2 — spins explicit).
+        // tdm_α[s,m,p] = w Σ_g W_s ψ_m^α ψ_p^α  (same-spin G_α W).
+        std::vector<double> tdm_a(static_cast<std::size_t>(n_exc)
+                                      * static_cast<std::size_t>(n_mo_a)
+                                      * static_cast<std::size_t>(n_mo_a),
+                                  0.0);
+        std::vector<double> Ws(static_cast<std::size_t>(npts));
+        for (int s = 0; s < n_exc; ++s) {
+            std::fill(Ws.begin(), Ws.end(), 0.0);
+            for (int ia = 0; ia < nov_a; ++ia) {
+                const double z =
+                    rpa.X[static_cast<std::size_t>(s)
+                               * static_cast<std::size_t>(nov)
+                           + static_cast<std::size_t>(ia)]
+                    + rpa.Y[static_cast<std::size_t>(s)
+                                 * static_cast<std::size_t>(nov)
+                             + static_cast<std::size_t>(ia)];
+                if (z == 0.0)
+                    continue;
+                const double* Via =
+                    V_ov_a.data()
+                    + static_cast<std::size_t>(ia)
+                          * static_cast<std::size_t>(npts);
+                for (long g = 0; g < npts; ++g)
+                    Ws[static_cast<std::size_t>(g)] += z * Via[g];
+            }
+            for (int ia = 0; ia < nov_b; ++ia) {
+                const double z =
+                    rpa.X[static_cast<std::size_t>(s)
+                               * static_cast<std::size_t>(nov)
+                           + static_cast<std::size_t>(nov_a + ia)]
+                    + rpa.Y[static_cast<std::size_t>(s)
+                                 * static_cast<std::size_t>(nov)
+                             + static_cast<std::size_t>(nov_a + ia)];
+                if (z == 0.0)
+                    continue;
+                const double* Via =
+                    V_ov_b.data()
+                    + static_cast<std::size_t>(ia)
+                          * static_cast<std::size_t>(npts);
+                for (long g = 0; g < npts; ++g)
+                    Ws[static_cast<std::size_t>(g)] += z * Via[g];
+            }
+            const std::size_t s0 = static_cast<std::size_t>(s)
+                                   * static_cast<std::size_t>(n_mo_a)
+                                   * static_cast<std::size_t>(n_mo_a);
+            for (int m = 0; m < n_mo_a; ++m) {
+                const double* pm =
+                    psi_all_a.data()
+                    + static_cast<std::size_t>(m)
+                          * static_cast<std::size_t>(npts);
+                for (int p = 0; p < n_mo_a; ++p) {
+                    const double* pp =
+                        psi_all_a.data()
+                        + static_cast<std::size_t>(p)
+                              * static_cast<std::size_t>(npts);
+                    double acc = 0.0;
+                    for (long g = 0; g < npts; ++g)
+                        acc += Ws[static_cast<std::size_t>(g)] * pm[g]
+                               * pp[g];
+                    tdm_a[s0 + static_cast<std::size_t>(m)
+                                   * static_cast<std::size_t>(n_mo_a)
+                               + static_cast<std::size_t>(p)] = gw * acc;
+                }
+            }
+        }
+
+        // Σ_x^α (MT) and v_xc^α diagonals from spin densities.
+        const std::vector<double> sigma_x_a =
+            internal::exchange_diag_mt(grid, psi_all_a, n_mo_a, n_oa);
+
+        std::vector<double> rho_a(static_cast<std::size_t>(npts), 0.0);
+        std::vector<double> rho_b(static_cast<std::size_t>(npts), 0.0);
+        for (int i = 0; i < n_oa; ++i) {
+            const double* pi =
+                psi_all_a.data()
+                + static_cast<std::size_t>(i) * static_cast<std::size_t>(npts);
+            for (long g = 0; g < npts; ++g)
+                rho_a[static_cast<std::size_t>(g)] += pi[g] * pi[g];
+        }
+        for (int i = 0; i < n_ob; ++i) {
+            const double* pi =
+                psi_all_b.data()
+                + static_cast<std::size_t>(i) * static_cast<std::size_t>(npts);
+            for (long g = 0; g < npts; ++g)
+                rho_b[static_cast<std::size_t>(g)] += pi[g] * pi[g];
+        }
+        const XcOnGridSpin xc_spin =
+            eval_xc_grid_spin(this->xc, grid, rho_a, rho_b);
+
+        std::vector<double> vxc_diag_a(static_cast<std::size_t>(n_mo_a), 0.0);
+        for (int p = 0; p < n_mo_a; ++p) {
+            const double* pp =
+                psi_all_a.data()
+                + static_cast<std::size_t>(p) * static_cast<std::size_t>(npts);
+            double acc = 0.0;
+            for (long g = 0; g < npts; ++g)
+                acc += pp[g] * pp[g]
+                       * xc_spin.vxc_a[static_cast<std::size_t>(g)];
+            vxc_diag_a[static_cast<std::size_t>(p)] = gw * acc;
+        }
+
+        std::vector<double> eps_a = result_.eps;
+
+        g0w0_result_ = G0W0Result{};
+        g0w0_result_.n_occ = n_oa;
+        g0w0_result_.n_virt = n_va + n_vb;
+        g0w0_result_.ri = use_ri;
+        g0w0_result_.n_kpts = 0;
+        g0w0_result_.mf_energy_ha = eps_a;
+        g0w0_result_.qp_energy_ha.resize(static_cast<std::size_t>(n_mo_a));
+        g0w0_result_.sigma_x_ha = sigma_x_a;
+        g0w0_result_.vxc_ha = vxc_diag_a;
+        g0w0_result_.converged = true;
+
+        for (int p = 0; p < n_mo_a; ++p) {
+            const double vx_m_vxc = sigma_x_a[static_cast<std::size_t>(p)]
+                                    - vxc_diag_a[static_cast<std::size_t>(p)];
+            double qp = eps_a[static_cast<std::size_t>(p)];
+            const bool ok =
+                solve_qp(eps_a[static_cast<std::size_t>(p)], vx_m_vxc, p, n_oa,
+                         n_mo_a, eps_a, rpa.omega, tdm_a, qp);
+            if (!ok)
+                g0w0_result_.converged = false;
+            g0w0_result_.qp_energy_ha[static_cast<std::size_t>(p)] = qp;
+        }
+
+        const int homo = n_oa - 1;
+        const int lumo = n_oa;
+        const double e_h =
+            g0w0_result_.qp_energy_ha[static_cast<std::size_t>(homo)];
+        const double e_l =
+            g0w0_result_.qp_energy_ha[static_cast<std::size_t>(lumo)];
+        const double mf_h = eps_a[static_cast<std::size_t>(homo)];
+        const double mf_l = eps_a[static_cast<std::size_t>(lumo)];
+        g0w0_result_.ip_ev = -e_h * units::kHartreeInEv;
+        g0w0_result_.ea_ev = e_l * units::kHartreeInEv;
+        g0w0_result_.gap_ev = (e_l - e_h) * units::kHartreeInEv;
+        g0w0_result_.mf_gap_ev = (mf_l - mf_h) * units::kHartreeInEv;
+        return g0w0_result_;
+    }
 
     // ── Multi-k (complex Bloch, finite-q inter-k spectral G0W0) ───────
     if (multi_k) {

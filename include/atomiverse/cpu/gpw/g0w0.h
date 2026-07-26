@@ -1,16 +1,19 @@
 /// @file cpu/gpw/g0w0.h
 /// @brief GPW spectral G0W0 quasiparticle result (public value type).
 ///
-/// User path: `GpwDft::g0w0(atoms)` after a converged closed-shell
-/// `run()` — the GPW analogue of molecular `RHF::g0w0()`
-/// (`cpu/scf/g0w0.h`). Supports **Γ** (real MOs; RI-GPW or Poisson) and
-/// **multi-k** (complex Bloch + **finite-\(q\) inter-\(k\)** dRPA
-/// screening; RI-GPW product only). Screening is direct RPA (dRPA) on
-/// the same dielectric path as multi-k `GpwDft::direct_rpa`; the
-/// correlation self-energy is the spectral (frequency-exact) sum over
-/// RPA poles at each transfer \(q\). Exact-exchange diagonals use
-/// truncated (MT) Coulomb so the product is G=0-safe without a
-/// periodic-HF path.
+/// User path: `GpwDft::g0w0(atoms)` after a converged `run()` — the GPW
+/// analogue of molecular `RHF::g0w0()` (`cpu/scf/g0w0.h`). Supports:
+/// - **Γ RKS** (real MOs; RI-GPW or Poisson) and **multi-k RKS**
+///   (complex Bloch + **finite-\(q\) inter-\(k\)** dRPA; RI-GPW product);
+/// - **Γ UKS** unrestricted spectral G0W0 (UGW): spin-conserving dRPA over
+///   α→α ⊕ β→β, same-spin \(G_\sigma W\), MT \(\Sigma_x^\sigma\), spin
+///   \(v_{\mathrm{xc}}^\sigma\). Multi-k UGW is a follow-on.
+///
+/// Screening is direct RPA (dRPA) on the same dielectric path as
+/// `GpwDft::direct_rpa` / UMP2 RI tensors; the correlation self-energy is
+/// the spectral (frequency-exact) sum over RPA poles. Exact-exchange
+/// diagonals use truncated (MT) Coulomb so the product is G=0-safe without
+/// a periodic-HF path.
 ///
 /// Quasiparticle equation (Newton, orbit-by-orbit, per \(k\)):
 /// \f[
@@ -29,44 +32,51 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
-/// @brief Diagonal spectral G0W0 quasiparticle energies of a closed-shell
-///        GPW RKS reference (Γ or multi-k finite-q inter-k product).
+/// @brief Diagonal spectral G0W0 quasiparticle energies of a GPW KS
+///        reference (Γ/multi-k RKS, or Γ UKS UGW).
 struct G0W0Result {
     /// @brief Quasiparticle orbital energies \(\varepsilon_p^{\mathrm{QP}}\)
     ///        [Hartree], same order as the KS MO spectrum (not re-sorted).
     ///        Multi-k: spectrum at the \(k\) realising the min direct QP gap.
+    ///        UKS: **α-channel** spectrum (primary report; dual-gates RKS
+    ///        when \(n_\alpha=n_\beta\) and \(C^\alpha\approx C^\beta\)).
     std::vector<double> qp_energy_ha;
 
     /// @brief Mean-field (KS) orbital energies \(\varepsilon_p\) [Hartree].
-    ///        Multi-k: same \(k\) as `qp_energy_ha`.
+    ///        Multi-k: same \(k\) as `qp_energy_ha`. UKS: α-channel.
     std::vector<double> mf_energy_ha;
 
     /// @brief Exact-exchange diagonals \(\Sigma_{x,p}\) [Hartree].
+    ///        UKS: α-channel MT exchange.
     std::vector<double> sigma_x_ha;
 
     /// @brief Local XC diagonals \(v_{\mathrm{xc},p}\) [Hartree].
+    ///        UKS: \(\langle p_\alpha|v_{\mathrm{xc}}^\alpha|p_\alpha\rangle\).
     std::vector<double> vxc_ha;
 
     /// @brief HOMO→LUMO quasiparticle gap [eV].
     ///        Multi-k: **minimum direct** gap over the sampled mesh.
+    ///        UKS: α HOMO→LUMO QP gap.
     double gap_ev = 0.0;
 
     /// @brief KS HOMO→LUMO gap [eV] (diagnostic).
-    ///        Multi-k: minimum direct KS gap over the mesh.
+    ///        Multi-k: minimum direct KS gap over the mesh. UKS: α.
     double mf_gap_ev = 0.0;
 
     /// @brief Vertical ionization potential \(-\varepsilon_{\mathrm{HOMO}}^{\mathrm{QP}}\)
-    ///        [eV] on the reported spectrum (\(k\) of min direct QP gap).
+    ///        [eV] on the reported spectrum (\(k\) of min direct QP gap / α).
     double ip_ev = 0.0;
 
     /// @brief Vertical electron affinity \(\varepsilon_{\mathrm{LUMO}}^{\mathrm{QP}}\)
     ///        [eV] on the reported spectrum.
     double ea_ev = 0.0;
 
-    /// @brief Number of occupied spatial MOs (closed-shell).
+    /// @brief Occupied count on the reported spectrum (RKS: spatial;
+    ///        UKS: \(n_\alpha\)).
     int n_occ = 0;
 
-    /// @brief Virtual spatial MOs in the dRPA screening space (after cap).
+    /// @brief Virtuals in the dRPA screening space (after cap).
+    ///        UKS: \(n_{\mathrm{virt}}^\alpha + n_{\mathrm{virt}}^\beta\).
     int n_virt = 0;
 
     /// @brief true when `(ia|jb)` used the RI-GPW product path.

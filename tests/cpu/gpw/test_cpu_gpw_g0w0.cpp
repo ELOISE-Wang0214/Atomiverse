@@ -21,6 +21,7 @@ using ATV::cpu::gpw::GridPrimitive;
 using ATV::cpu::gpw::internal::DirectRpaAmplitudes;
 using ATV::cpu::gpw::internal::direct_rpa_rhf;
 using ATV::cpu::gpw::internal::direct_rpa_rhf_energy;
+using ATV::cpu::gpw::internal::direct_rpa_uhf;
 
 namespace {
 
@@ -93,7 +94,8 @@ TEST(GpwG0W0, G0W0BeforeBuildThrows) {
     EXPECT_THROW(m.g0w0({}), std::logic_error);
 }
 
-TEST(GpwG0W0, G0W0UksThrows) {
+TEST(GpwG0W0, G0W0UksUnconvergedThrows) {
+    // UGW@UKS is product at Γ — still requires a converged run().
     GpwDft m;
     m.cell[0] = m.cell[1] = m.cell[2] = 6.0;
     m.n_alpha = 1;
@@ -102,7 +104,56 @@ TEST(GpwG0W0, G0W0UksThrows) {
     a.z_val = 2.0;
     a.basis.push_back(s_gauss(0.8, 3.0, 3.0, 3.0));
     m.build({a});
-    EXPECT_THROW(m.g0w0({a}), std::invalid_argument);
+    EXPECT_THROW(m.g0w0({a}), std::logic_error);
+}
+
+TEST(GpwG0W0, DirectRpaUhfDualGatesRhf) {
+    // Identical α=β tensors: unrestricted spin-conserving dRPA E_c must
+    // match closed-shell singlet dRPA (charge modes ≡ factor-2 RHF path).
+    const int no = 2, nv = 2, nov = no * nv;
+    std::vector<double> eps_occ = {-1.0, -0.5};
+    std::vector<double> eps_virt = {0.2, 0.7};
+    std::vector<double> v(static_cast<std::size_t>(nov) * nov, 0.0);
+    auto idx = [&](int i, int a, int j, int b) {
+        return static_cast<std::size_t>((i * nv + a) * nov + j * nv + b);
+    };
+    unsigned s = 424242u;
+    for (int i = 0; i < no; ++i)
+        for (int a = 0; a < nv; ++a)
+            for (int j = 0; j < no; ++j)
+                for (int b = 0; b < nv; ++b) {
+                    s = s * 1664525u + 1013904223u;
+                    const double x =
+                        0.025
+                        * (static_cast<double>(s >> 8)
+                               / static_cast<double>(1u << 24)
+                           - 0.5);
+                    v[idx(i, a, j, b)] = x;
+                    v[idx(j, b, i, a)] = x;
+                }
+
+    DirectRpaAmplitudes rhf;
+    direct_rpa_rhf(v, eps_occ, eps_virt, rhf);
+
+    DirectRpaAmplitudes uhf;
+    direct_rpa_uhf(v, v, v, eps_occ, eps_virt, eps_occ, eps_virt, uhf);
+
+    EXPECT_NEAR(uhf.e_corr, rhf.e_corr, 1e-10);
+    // Metric norm on each UHF root.
+    const int nov_u = 2 * nov;
+    for (int st = 0; st < nov_u; ++st) {
+        double nrm = 0.0;
+        for (int ia = 0; ia < nov_u; ++ia) {
+            const double Xs =
+                uhf.X[static_cast<std::size_t>(st) * nov_u
+                      + static_cast<std::size_t>(ia)];
+            const double Ys =
+                uhf.Y[static_cast<std::size_t>(st) * nov_u
+                      + static_cast<std::size_t>(ia)];
+            nrm += Xs * Xs - Ys * Ys;
+        }
+        EXPECT_NEAR(nrm, 1.0, 1e-8);
+    }
 }
 
 TEST(GpwG0W0, G0W0UnconvergedThrows) {
