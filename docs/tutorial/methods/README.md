@@ -172,6 +172,22 @@ emptied — not queue exhausted).
 | PW collinear-spin DOS Si | [dos-spin-si](dos-spin-si.md) | `regressions/pw/dos-spin-si` | **perf_exempt** |
 | Finite-q DFPT collinear spin + FD smear (Si) | [dfpt-finite-q-spin-smearing](dfpt-finite-q-spin-smearing.md) | `regressions/response/dfpt-finite-q-spin-smearing` | **perf_exempt** |
 
+## Index — CP2K capability wave 12 (2026-07-26)
+
+Offline CP2K pins only — see [cp2k-method-handoff](../../developer/cp2k-method-handoff.md)
+wave 12 and `tools/cp2k_oracle/`. Fair walls from harness (`ratio` or
+`perf_exempt`). Six staffed slugs closed 2026-07-26 (pending residual not
+queue exhausted).
+
+| Method | Page | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
+| ------ | ---- | ---------- | --------------------------------------------- |
+| Zero-SCF linearized XL-BOMD forces H₂O NVE | [xl-bomd-linearized-forces](xl-bomd-linearized-forces.md) | `regressions/dynamics/xl-bomd-linearized-forces` | **perf_exempt** |
+| Multi-k second-gen CP (ASPC on \(P_k\)) H₂ NVE | [second-gen-cpmd-kpoints](second-gen-cpmd-kpoints.md) | `regressions/dynamics/second-gen-cpmd-kpoints` | **perf_exempt** |
+| GPW PBE-D3 + ATM (C9) isolated water dimer | [gpw-d3-atm](gpw-d3-atm.md) | `regressions/gpw/gpw-d3-atm` | **perf_exempt** |
+| GPW PBE-D4 + ATM (\(s_9=1\)) periodic water dimer | [gpw-d4-atm](gpw-d4-atm.md) | `regressions/gpw/gpw-d4-atm` | **perf_exempt** |
+| PW collinear-spin + metallic-occupation bands Si | [bands-spin-metallic-si](bands-spin-metallic-si.md) | `regressions/pw/bands-spin-metallic-si` | **perf_exempt** |
+| PW collinear-spin + metallic FD DOS Si | [dos-spin-metallic-si](dos-spin-metallic-si.md) | `regressions/pw/dos-spin-metallic-si` | **perf_exempt** |
+
 ## Index — PySCF campaign methods
 
 | Method | Page | Regression |
