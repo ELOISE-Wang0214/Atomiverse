@@ -507,10 +507,11 @@ gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
 /// fractional coordinates (GPW analogue of `cpu::pw::pw_stress`). Supports
 /// Gamma RKS, Gamma UKS (spin-resolved fixed-\(P_\sigma\)), Dudarev DFT+U
 /// on Γ and multi-k (`plus_u`, \(E_U\) / BZ-averaged \(E_U\) on the fixed-\(P\)
-/// Lagrangian), closed-shell multi-k RKS (k-summed fixed-\(P_k\)), and multi-k
-/// collinear UKS (fixed \(\{P_k^\sigma,W_k^\sigma\}\) + spin XC).
-/// Off-diagonal shear is 0 (orthorhombic cell only). Multi-SCF oracle:
-/// `gpw_stress_fd`.
+/// Lagrangian), closed-shell multi-k RKS (k-summed fixed-\(P_k\)), multi-k
+/// collinear UKS (fixed \(\{P_k^\sigma,W_k^\sigma\}\) + spin XC), and
+/// geometry-only dispersion (`d3` / `d3bj` / `d4` / `ts` / `xdm` / `mbd`)
+/// rebuilt under strain. Off-diagonal shear is 0 (orthorhombic cell only).
+/// Multi-SCF oracle: `gpw_stress_fd`.
 ///
 /// @param atoms Geometry [Bohr] + basis/PP (as for `GpwDft::run`).
 /// @param method SCF configuration; `cell` must match the atom box [Bohr].

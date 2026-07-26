@@ -477,3 +477,32 @@ TEST(GpwStress, DftUKpointUksAnalyticMatchesFdDiagonal) {
             << "multi-k DFT+U UKS analytic vs multi-SCF FD diagonal";
     });
 }
+
+// ── Γ RKS + DFT-D4 analytic stress ────────────────────────────────────────
+TEST(GpwStress, AnalyticMatchesFdWithD4) {
+    // Geometry-only D4 folded into fixed-P Lagrangian; dual-gate vs multi-SCF
+    // FD on cheap MT H₂. Residual unit-tier loose; e2e is reg_gpw-d4-stress.
+    const auto atoms = cheap_h2_atoms();
+    GpwDft cfg = cheap_h2_cfg();
+    cfg.d4 = true;
+    const double h = 3e-3;
+    EXPECT_NO_THROW({
+        const auto san = gpw_stress(atoms, cfg, h);
+        const auto sfd = gpw_stress_fd(atoms, cfg, h);
+        double max_err = 0.0;
+        for (int a = 0; a < 3; ++a) {
+            const double err = std::abs(san[static_cast<std::size_t>(a)]
+                                        - sfd[static_cast<std::size_t>(a)]);
+            max_err = std::max(max_err, err);
+            std::printf("  D4 axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n", a,
+                        san[static_cast<std::size_t>(a)],
+                        sfd[static_cast<std::size_t>(a)], err);
+            EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(a)]));
+            EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(a)]));
+        }
+        EXPECT_DOUBLE_EQ(san[3], 0.0);
+        EXPECT_DOUBLE_EQ(san[4], 0.0);
+        EXPECT_DOUBLE_EQ(san[5], 0.0);
+        EXPECT_LT(max_err, 5e-5) << "Γ RKS + D4 analytic vs multi-SCF FD";
+    });
+}

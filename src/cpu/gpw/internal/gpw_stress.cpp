@@ -11,8 +11,9 @@
 ///      the fixed-P Lagrangian (Mulliken \(n\) at strained \(S\)/\(S_k\)).
 ///   2. Central FD of the *non-self-consistent* total energy E[P; ε] under
 ///      orthorhombic diagonal strain at fixed fractional coordinates. Geometry-
-///      dependent T, V_pp / S_k,T_k,V_nl^k, grid, Poisson, XC (and optional D3)
-///      are rebuilt; the SCF is *not* re-converged. This is the GPW form of the
+///      dependent T, V_pp / S_k,T_k,V_nl^k, grid, Poisson, XC (and optional
+///      D3/D4/TS/XDM/MBD geometry-only dispersion) are rebuilt; the SCF is
+///      *not* re-converged. This is the GPW form of the
 ///      Hellmann–Feynman cell theorem used for plane-wave Nielsen–Martin in
 ///      this tree (Nielsen & Martin, PRB 32, 3780 (1985); Quickstep energy
 ///      surface). Multi-k sums the fixed-P Lagrangian over sampled k.
@@ -38,6 +39,7 @@
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/xdm_dispersion.h"
+#include "atomiverse/cpu/scf/dftd4.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/gpw/internal/local_pp.h"
@@ -324,18 +326,16 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (!cfg.local_pp_on_grid)
         throw std::invalid_argument(
             "gpw_stress analytic k: requires local_pp_on_grid");
-    if (cfg.d4)
-        throw std::invalid_argument(
-            "gpw_stress analytic k: D4 not supported in this foothold");
     if (uks && cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
         && cfg.xc != XcKind::PBEsol)
         throw std::invalid_argument(
             "gpw_stress analytic k UKS: XcKind must be PADE, PBE, or PBEsol");
     const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
-                       + (cfg.ts ? 1 : 0);
+                       + (cfg.ts ? 1 : 0) + (cfg.xdm ? 1 : 0);
     if (n_disp > 1)
         throw std::invalid_argument(
-            "gpw_stress analytic k: d3, d3bj, d4, and ts are mutually exclusive");
+            "gpw_stress analytic k: d3, d3bj, d4, ts, and xdm are mutually "
+            "exclusive");
 
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
     const int nb = static_cast<int>(basis.size());
@@ -469,7 +469,7 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const double e_es = es.e_hartree - e_self;
 
     double e_disp = 0.0;
-    if (cfg.d3 || cfg.d3bj || cfg.ts || cfg.xdm) {
+    if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.xdm) {
         const int na = static_cast<int>(atoms.size());
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
@@ -490,6 +490,8 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         } else if (cfg.ts) {
             constexpr double kRcutTs = 50.0 * kAng2Bohr;
             e_disp = ts_pbe(Z, pos, cfg.cell, /*periodic=*/true, kRcutTs).energy;
+        } else if (cfg.d4) {
+            e_disp = cpu::scf::dftd4_energy(Z, pos, cfg.cell, /*periodic=*/true);
         } else {
             const D3Result d3 =
                 cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, true, D3Params{})
@@ -591,14 +593,12 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                       const RealMatrix& P, const RealMatrix& W,
                       const RealMatrix* P_beta = nullptr,
                       const RealMatrix* W_beta = nullptr) {
-    if (cfg.d4)
-        throw std::invalid_argument(
-            "gpw_stress analytic: D4 not supported in this foothold");
     const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
-                       + (cfg.ts ? 1 : 0) + (cfg.mbd ? 1 : 0);
+                       + (cfg.ts ? 1 : 0) + (cfg.mbd ? 1 : 0)
+                       + (cfg.xdm ? 1 : 0);
     if (n_disp > 1)
         throw std::invalid_argument(
-            "gpw_stress analytic: d3, d3bj, d4, ts, and mbd are mutually "
+            "gpw_stress analytic: d3, d3bj, d4, ts, xdm, and mbd are mutually "
             "exclusive");
 
     const bool uks = P_beta != nullptr;
@@ -787,7 +787,7 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const double e_es = es.e_hartree - e_self;
 
     double e_disp = 0.0;
-    if (cfg.d3 || cfg.d3bj || cfg.ts || cfg.xdm || cfg.mbd) {
+    if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.xdm || cfg.mbd) {
         const int na = static_cast<int>(atoms.size());
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
@@ -816,6 +816,8 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         } else if (cfg.ts) {
             constexpr double kRcutTs = 50.0 * kAng2Bohr;
             e_disp = ts_pbe(Z, pos, cfg.cell, periodic, kRcutTs).energy;
+        } else if (cfg.d4) {
+            e_disp = cpu::scf::dftd4_energy(Z, pos, cfg.cell, periodic);
         } else {
             const D3Result d3 =
                 cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{})
