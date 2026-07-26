@@ -26,6 +26,8 @@
 
 #include "atomiverse/cpu/linalg/matrix.h"
 
+#include <vector>
+
 namespace ATV {
 namespace cpu {
 namespace gpw {
@@ -176,6 +178,20 @@ OtCplxMatrix ot_tangent_k(const OtCplxMatrix& C0, const OtCplxMatrix& S,
 /// @param occ Closed-shell band occupation (default 2).
 OtCplxMatrix ot_gradient_k(const OtCplxMatrix& H, const OtCplxMatrix& S,
                            const OtCplxMatrix& C0, double occ = 2.0);
+
+/// @brief Projected gradient with **non-uniform** band occupations \(f_i\).
+///
+/// For \(P = C \mathrm{diag}(f) C^\dagger\) the band-energy derivative is
+/// \(2 H C f\) (column \(i\) scaled by \(f_i\)); project off the S-occupied
+/// subspace. Used by multi-k OT + metallic smearing (FD/MP).
+///
+/// @param H KS matrix [nb x nb].
+/// @param S Overlap [nb x nb].
+/// @param C0 Active coefficients [nb x no], `C0† S C0 = I`.
+/// @param f  Band occupations [no], closed-shell form \(f_i \in [0,2]\).
+OtCplxMatrix ot_gradient_k(const OtCplxMatrix& H, const OtCplxMatrix& S,
+                           const OtCplxMatrix& C0,
+                           const std::vector<double>& f);
 
 /// @brief Löwdin re-orthonormalize so `C† S C = I`.
 OtCplxMatrix ot_orthonormalize_k(const OtCplxMatrix& C, const OtCplxMatrix& S);

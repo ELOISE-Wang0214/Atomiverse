@@ -300,6 +300,24 @@ OtCplxMatrix ot_gradient_k(const OtCplxMatrix& H, const OtCplxMatrix& S,
     return W - c_mul(S, c_mul(C0, c_dagger_mul(C0, W)));
 }
 
+OtCplxMatrix ot_gradient_k(const OtCplxMatrix& H, const OtCplxMatrix& S,
+                           const OtCplxMatrix& C0,
+                           const std::vector<double>& f) {
+    const int nb = static_cast<int>(C0.shape(0));
+    const int no = static_cast<int>(C0.shape(1));
+    OtCplxMatrix HC = c_mul(H, C0); // [nb x no]
+    // W[:,i] = 2 f_i (H C)[:,i]  — fractional band occupations in [0, 2].
+    for (int o = 0; o < no; ++o) {
+        const double fo =
+            (o < static_cast<int>(f.size())) ? f[static_cast<std::size_t>(o)]
+                                             : 0.0;
+        const double s = 2.0 * fo;
+        for (int mu = 0; mu < nb; ++mu)
+            HC(mu, o) *= s;
+    }
+    return HC - c_mul(S, c_mul(C0, c_dagger_mul(C0, HC)));
+}
+
 OtCplxMatrix ot_orthonormalize_k(const OtCplxMatrix& C, const OtCplxMatrix& S) {
     const OtCplxMatrix G = c_dagger_mul(C, c_mul(S, C));
     const OtCplxMatrix Ginvhalf = herm_function(G, [](double t) {

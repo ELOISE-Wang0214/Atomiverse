@@ -1213,19 +1213,46 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         return e_ks + e_ent;
     };
 
-    // ── Multi-k OT (closed-shell RKS, integer occupations) ─────────────────
-    // Diagonalization-free: occupied C_k live on the complex OT manifold;
+    // ── Multi-k OT (closed-shell RKS; integer or metallic FD/MP occ) ───────
+    // Diagonalization-free: active C_k live on the complex OT manifold;
     // outer steps rebuild H_k from the k-summed density and take one joint
-    // PR+ CG step with Armijo on the total energy (same fixed point as DIIS).
+    // PR+ CG step with Armijo on the total (free) energy. With smearing the
+    // manifold is n_active = n_occ + max(extra_bands,1) and occupations are
+    // fractional (shared μ); fixed point matches DIIS + smear.
     if (cfg.use_ot) {
-        if (use_smear)
-            throw std::runtime_error(
-                "GPW kpoints OT: metallic smearing is incompatible with "
-                "use_ot (integer occupations only)");
         if (do_dftu)
             throw std::runtime_error(
                 "GPW kpoints OT: DFT+U is not wired on the multi-k OT path "
                 "(use_ot=false or drop plus_u)");
+        // Active OT manifold: integer path keeps n_occ double-occupied columns;
+        // metallic smear uses the full AO spectrum (same as DIIS + smear) so
+        // the free-energy fixed point matches; extra_bands remains API parity.
+        const int n_active = use_smear ? m_min : cfg.n_occ;
+        if (n_active < 1)
+            throw std::runtime_error(
+                "GPW kpoints OT: n_active < 1 (n_occ / basis)");
+        // Expand cold-start Cocc to the active manifold when smearing.
+        if (use_smear) {
+            for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+                const CplxMatrix H0k = T_k[static_cast<std::size_t>(ik)]
+                                       + Vnl_k[static_cast<std::size_t>(ik)];
+                auto [eps0, C0k] = internal::diagonalize_k(
+                    H0k, orth[static_cast<std::size_t>(ik)]);
+                (void)eps0;
+                const int mcols = std::min(
+                    n_active, static_cast<int>(C0k.shape(1)));
+                CplxMatrix Cocc = xt::zeros<Cplx>({nb, n_active});
+                for (int mu = 0; mu < nb; ++mu)
+                    for (int o = 0; o < mcols; ++o)
+                        Cocc(mu, o) = C0k(mu, o);
+                Cocc = internal::ot_orthonormalize_k(
+                    Cocc, S_k[static_cast<std::size_t>(ik)]);
+                Cocc_k[static_cast<std::size_t>(ik)] = Cocc;
+                // Cold density: integer fill of n_occ (smear re-fills after H).
+                P_k[static_cast<std::size_t>(ik)] =
+                    density_from_fixed(C0k, cfg.n_occ);
+            }
+        }
         constexpr double kOtGradTolK = 1e-5;
         auto frob_k = [](const CplxMatrix& a, const CplxMatrix& b) {
             double s = 0.0;
@@ -1236,18 +1263,112 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     s += (std::conj(a(i, j)) * b(i, j)).real();
             return s;
         };
-        auto dens_from_cocc = [&](const CplxMatrix& C) {
+        // Per-k band occupations (f ∈ [0,2] closed-shell); integer path all 2.
+        std::vector<std::vector<double>> occ_k(
+            static_cast<std::size_t>(nk),
+            std::vector<double>(static_cast<std::size_t>(n_active), 2.0));
+        if (!use_smear) {
+            for (auto& o : occ_k)
+                o.assign(static_cast<std::size_t>(n_active), 2.0);
+        }
+        auto dens_from_cocc = [&](const CplxMatrix& C, int ik) {
+            if (use_smear)
+                return density_from_occ(C, occ_k[static_cast<std::size_t>(ik)]);
             return density_from_fixed(C, cfg.n_occ);
         };
+        // Subspace-canonicalize C† H C → (ε, U), C ← C U; fill metallic f.
+        auto refresh_occupations = [&]() {
+            std::vector<std::vector<double>> evals_k(
+                static_cast<std::size_t>(nk));
+            for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+                auto& C = Cocc_k[static_cast<std::size_t>(ik)];
+                const auto& H = H_k[static_cast<std::size_t>(ik)];
+                const auto& S = S_k[static_cast<std::size_t>(ik)];
+                // h = C† H C (n_active × n_active Hermitian).
+                CplxMatrix h = xt::zeros<Cplx>({n_active, n_active});
+                for (int i = 0; i < n_active; ++i)
+                    for (int j = 0; j < n_active; ++j) {
+                        Cplx s(0, 0);
+                        for (int mu = 0; mu < nb; ++mu) {
+                            Cplx hcv(0, 0);
+                            for (int nu = 0; nu < nb; ++nu)
+                                hcv += H(mu, nu) * C(nu, j);
+                            s += std::conj(C(mu, i)) * hcv;
+                        }
+                        h(i, j) = s;
+                    }
+                std::vector<double> eps;
+                CplxMatrix U;
+                internal::eigh_hermitian(h, eps, U);
+                // C ← C U
+                CplxMatrix Cnew = xt::zeros<Cplx>({nb, n_active});
+                for (int mu = 0; mu < nb; ++mu)
+                    for (int o = 0; o < n_active; ++o) {
+                        Cplx s(0, 0);
+                        for (int p = 0; p < n_active; ++p)
+                            s += C(mu, p) * U(p, o);
+                        Cnew(mu, o) = s;
+                    }
+                C = internal::ot_orthonormalize_k(Cnew, S);
+                evals_k[static_cast<std::size_t>(ik)] = std::move(eps);
+            }
+#ifdef ATV_HAS_MPI
+            if (layout.active && use_smear) {
+                std::vector<double> pack(
+                    static_cast<std::size_t>(nk * n_active), 0.0);
+                std::vector<int> nband(static_cast<std::size_t>(nk), 0);
+                for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+                    const auto& ev = evals_k[static_cast<std::size_t>(ik)];
+                    nband[static_cast<std::size_t>(ik)] =
+                        static_cast<int>(ev.size());
+                    for (std::size_t b = 0; b < ev.size(); ++b)
+                        pack[static_cast<std::size_t>(ik * n_active) + b] =
+                            ev[b];
+                }
+                MPI_Allreduce(MPI_IN_PLACE, pack.data(), nk * n_active,
+                              MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+                MPI_Allreduce(MPI_IN_PLACE, nband.data(), nk, MPI_INT, MPI_SUM,
+                              MPI_COMM_WORLD);
+                for (int ik = 0; ik < nk; ++ik) {
+                    const int m = nband[static_cast<std::size_t>(ik)];
+                    evals_k[static_cast<std::size_t>(ik)].resize(
+                        static_cast<std::size_t>(m));
+                    for (int b = 0; b < m; ++b)
+                        evals_k[static_cast<std::size_t>(ik)]
+                               [static_cast<std::size_t>(b)] =
+                            pack[static_cast<std::size_t>(ik * n_active + b)];
+                }
+            }
+#endif
+            if (use_smear) {
+                auto filled =
+                    fill_metallic(evals_k, last_mu, last_n_elec, last_entropy);
+                for (int ik = 0; ik < nk; ++ik) {
+                    occ_k[static_cast<std::size_t>(ik)] =
+                        std::move(filled[static_cast<std::size_t>(ik)]);
+                    // Pad / trim to n_active.
+                    occ_k[static_cast<std::size_t>(ik)].resize(
+                        static_cast<std::size_t>(n_active), 0.0);
+                }
+            }
+        };
+
         std::vector<CplxMatrix> d_k(static_cast<std::size_t>(nk));
         std::vector<CplxMatrix> pz_prev_k(static_cast<std::size_t>(nk));
         double denom_prev = 1.0;
         bool have_prev = false;
 
         for (int iter = 0; iter < cfg.max_iter; ++iter) {
+            // Rebuild H from current P, then subspace-fill occupations so F
+            // and g see a consistent (C, f, H) triple.
             for (int ik = layout.rank; ik < nk; ik += layout.nprocs)
-                P_k[static_cast<std::size_t>(ik)] =
-                    dens_from_cocc(Cocc_k[static_cast<std::size_t>(ik)]);
+                P_k[static_cast<std::size_t>(ik)] = dens_from_cocc(
+                    Cocc_k[static_cast<std::size_t>(ik)], ik);
+            (void)build_k_energy(P_k);
+            refresh_occupations();
+            for (int ik = layout.rank; ik < nk; ik += layout.nprocs)
+                P_k[static_cast<std::size_t>(ik)] = dens_from_cocc(
+                    Cocc_k[static_cast<std::size_t>(ik)], ik);
             const double e_total = build_k_energy(P_k);
             res.iters = iter + 1;
             res.e_total = e_total;
@@ -1261,7 +1382,11 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 const auto& S = S_k[static_cast<std::size_t>(ik)];
                 const auto& H = H_k[static_cast<std::size_t>(ik)];
                 const auto& C = Cocc_k[static_cast<std::size_t>(ik)];
-                const CplxMatrix g = internal::ot_gradient_k(H, S, C, 2.0);
+                const CplxMatrix g =
+                    use_smear
+                        ? internal::ot_gradient_k(
+                              H, S, C, occ_k[static_cast<std::size_t>(ik)])
+                        : internal::ot_gradient_k(H, S, C, 2.0);
                 for (const Cplx v : g)
                     gnorm = std::max(gnorm, std::abs(v));
                 const internal::OtPrecondSingleInverseK pre(H, S, C);
@@ -1278,20 +1403,49 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 gnorm = gglob;
             }
 #endif
-            if (std::getenv("ATV_GPW_TRACE") && layout.rank == 0)
-                std::fprintf(stderr,
-                             "[gpw k OT %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f "
-                             "xc=%.4f  dE=%.2e gnorm=%.2e (nk=%d)\n",
-                             iter, e_total, res.e_kinetic, res.e_loc_sr,
-                             res.e_es, res.e_xc, std::abs(e_total - e_prev),
-                             gnorm, nk);
+            if (std::getenv("ATV_GPW_TRACE") && layout.rank == 0) {
+                if (use_smear)
+                    std::fprintf(
+                        stderr,
+                        "[gpw k OT %2d] F=%.8f  T=%.4f loc=%.4f es=%.4f "
+                        "xc=%.4f  dE=%.2e gnorm=%.2e mu=%.6f Ne=%.6f "
+                        "(nk=%d n_act=%d)\n",
+                        iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
+                        res.e_xc, std::abs(e_total - e_prev), gnorm, last_mu,
+                        last_n_elec, nk, n_active);
+                else
+                    std::fprintf(
+                        stderr,
+                        "[gpw k OT %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f "
+                        "xc=%.4f  dE=%.2e gnorm=%.2e (nk=%d)\n",
+                        iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
+                        res.e_xc, std::abs(e_total - e_prev), gnorm, nk);
+            }
 
-            if (iter > 0 && gnorm < kOtGradTolK
+            // Metallic: free-energy plateau + moderate gnorm is enough (FD
+            // occupations make the projected gradient softer than gapped OT).
+            const double gtol =
+                use_smear ? std::max(kOtGradTolK, 5e-4) : kOtGradTolK;
+            if (iter > 0 && gnorm < gtol
                 && std::abs(e_total - e_prev) < cfg.tol) {
                 res.converged = true;
                 store_k_payload(rebuild_all_H(last_veff));
-                // Prefer occupied orbitals from OT (store_k_payload re-diags).
                 fold_dispersion_k(res, P_k);
+                res.e_fermi = use_smear ? last_mu : 0.0;
+                res.e_entropy =
+                    use_smear ? (-degauss_ha * last_entropy) : 0.0;
+                res.n_elec_occ = use_smear ? last_n_elec : n_elec;
+                return res;
+            }
+            // Energy plateau fallback for metals (budget-friendly).
+            if (use_smear && iter > 15
+                && std::abs(e_total - e_prev) < cfg.tol) {
+                res.converged = true;
+                store_k_payload(rebuild_all_H(last_veff));
+                fold_dispersion_k(res, P_k);
+                res.e_fermi = last_mu;
+                res.e_entropy = -degauss_ha * last_entropy;
+                res.n_elec_occ = last_n_elec;
                 return res;
             }
             e_prev = e_total;
@@ -1304,7 +1458,9 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 const auto& pz = pz_k[static_cast<std::size_t>(ik)];
                 den += wk * frob_k(g, pz);
                 if (have_prev)
-                    num += wk * frob_k(g, pz - pz_prev_k[static_cast<std::size_t>(ik)]);
+                    num += wk
+                           * frob_k(g,
+                                    pz - pz_prev_k[static_cast<std::size_t>(ik)]);
             }
 #ifdef ATV_HAS_MPI
             if (layout.active) {
@@ -1332,7 +1488,6 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 else
                     d = internal::ot_tangent_k(
                         C, S, -pz + beta * d_k[static_cast<std::size_t>(ik)]);
-                // Ensure descent.
                 double sl = frob_k(g, d);
                 if (sl >= 0.0) {
                     d = -pz;
@@ -1349,18 +1504,29 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 #endif
             have_prev = true;
 
-            // Curvature guess from frozen-H band energy, then Armijo on E_tot.
-            auto band_k = [&](const CplxMatrix& H, const CplxMatrix& Cc) {
-                // 2 Re Tr(C† H C)
+            // Curvature from frozen-H band energy (weighted by f), Armijo on F.
+            auto band_k = [&](const CplxMatrix& H, const CplxMatrix& Cc,
+                              int ik) {
+                const auto& f = occ_k[static_cast<std::size_t>(ik)];
+                const int no = static_cast<int>(Cc.shape(1));
                 double s = 0.0;
-                for (int o = 0; o < cfg.n_occ; ++o)
+                for (int o = 0; o < no; ++o) {
+                    const double fo =
+                        (o < static_cast<int>(f.size()))
+                            ? f[static_cast<std::size_t>(o)]
+                            : (use_smear ? 0.0 : 2.0);
+                    if (!(fo > 1e-14))
+                        continue;
+                    double eorb = 0.0;
                     for (int mu = 0; mu < nb; ++mu) {
                         Cplx hcv(0, 0);
                         for (int nu = 0; nu < nb; ++nu)
                             hcv += H(mu, nu) * Cc(nu, o);
-                        s += (std::conj(Cc(mu, o)) * hcv).real();
+                        eorb += (std::conj(Cc(mu, o)) * hcv).real();
                     }
-                return 2.0 * s;
+                    s += fo * eorb;
+                }
+                return s;
             };
             double Eb0 = 0.0, Ebt = 0.0;
             for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
@@ -1369,8 +1535,9 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 const auto& S = S_k[static_cast<std::size_t>(ik)];
                 const auto& C = Cocc_k[static_cast<std::size_t>(ik)];
                 const auto& d = d_k[static_cast<std::size_t>(ik)];
-                Eb0 += wk * band_k(H, C);
-                Ebt += wk * band_k(H, internal::ot_parameterize_k(C, d, S));
+                Eb0 += wk * band_k(H, C, ik);
+                Ebt += wk
+                       * band_k(H, internal::ot_parameterize_k(C, d, S), ik);
             }
 #ifdef ATV_HAS_MPI
             if (layout.active) {
@@ -1396,7 +1563,8 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     const auto& d = d_k[static_cast<std::size_t>(ik)];
                     CplxMatrix Cnew = internal::ot_parameterize_k(C, a * d, S);
                     Cnew = internal::ot_orthonormalize_k(Cnew, S);
-                    Ptry[static_cast<std::size_t>(ik)] = dens_from_cocc(Cnew);
+                    Ptry[static_cast<std::size_t>(ik)] =
+                        dens_from_cocc(Cnew, ik);
                 }
                 return build_k_energy(Ptry);
             };
@@ -1407,21 +1575,23 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     break;
                 alpha *= 0.5;
             }
-            // Accept step.
+            // Accept step (occupations re-filled at the top of next iter).
             for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
                 const auto& S = S_k[static_cast<std::size_t>(ik)];
                 auto& C = Cocc_k[static_cast<std::size_t>(ik)];
                 const auto& d = d_k[static_cast<std::size_t>(ik)];
                 C = internal::ot_orthonormalize_k(
                     internal::ot_parameterize_k(C, alpha * d, S), S);
-                P_k[static_cast<std::size_t>(ik)] = dens_from_cocc(C);
+                P_k[static_cast<std::size_t>(ik)] = dens_from_cocc(C, ik);
             }
         }
         // Budget exhausted.
         if (!last_veff.empty())
             store_k_payload(rebuild_all_H(last_veff));
         fold_dispersion_k(res, P_k);
-        res.n_elec_occ = n_elec;
+        res.e_fermi = use_smear ? last_mu : 0.0;
+        res.e_entropy = use_smear ? (-degauss_ha * last_entropy) : 0.0;
+        res.n_elec_occ = use_smear ? last_n_elec : n_elec;
         return res;
     }
 
@@ -2256,10 +2426,13 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     int mimg[3];
     pair_image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
 
-    // k-point RKS branch selector: any non-Γ mesh or an explicit k list.
+    // k-point RKS branch selector: any non-Γ mesh, explicit k list, or
+    // metallic smearing (occupations live on the multi-k path — including
+    // effective Γ via k_mesh = {1,1,1}).
     // (Configuration conflicts are rejected fail-fast in GpwDft::build.)
     const bool use_kpath = !cfg.k_points.empty() || cfg.k_mesh[0] != 1
-                           || cfg.k_mesh[1] != 1 || cfg.k_mesh[2] != 1;
+                           || cfg.k_mesh[1] != 1 || cfg.k_mesh[2] != 1
+                           || cfg.smearing != Smearing::none;
 
     // Atom cell list + widest PP width, for the O(nb²) (was O(nb²·natoms)) GTH
     // build: each basis-pair queries only atoms near its product centre.
@@ -3689,12 +3862,12 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             + std::to_string(n_occ) + "); or set n_alpha/n_beta for UKS");
     }
     if (smearing != Smearing::none) {
-        // Multi-k RKS and multi-k collinear UKS both productized; OT stays
-        // fixed-integer (orbital transformation).
-        if (use_ot)
+        // Multi-k RKS (DIIS and OT) + multi-k collinear UKS (DIIS) productized.
+        // UKS OT + smear is out of product scope (multi-k UKS OT not wired).
+        if (use_ot && is_uks())
             throw std::invalid_argument(
-                "GpwDft::build: metallic smearing is incompatible with "
-                "use_ot (OT uses fixed integer occupations)");
+                "GpwDft::build: metallic smearing with OT is productized for "
+                "closed-shell RKS only (UKS OT + smear not supported)");
         if (!(degauss > 0.0) || !std::isfinite(degauss))
             throw std::invalid_argument(
                 "GpwDft::build: degauss must be finite and > 0 [Ry] when "
@@ -3727,8 +3900,11 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             "length (got "
             + std::to_string(k_points.size()) + " vs "
             + std::to_string(k_point_weights.size()) + ")");
+    // Match run_gpw_scf_impl: metallic smear always takes the k-point path
+    // (including effective Γ via k_mesh = {1,1,1}).
     const bool kpath =
-        !k_points.empty() || k_mesh[0] != 1 || k_mesh[1] != 1 || k_mesh[2] != 1;
+        !k_points.empty() || k_mesh[0] != 1 || k_mesh[1] != 1 || k_mesh[2] != 1
+        || smearing != Smearing::none;
     if (kpath) {
         // The k-point branch is periodic + single-grid + local-PP-on-grid
         // (RKS or collinear UKS); every other combination is rejected
@@ -3738,8 +3914,9 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
                 "GpwDft::build: k-point sampling does not support " + what
                 + " (k-point RKS/UKS path; no fallback)");
         };
-        // Multi-k OT is product for closed-shell RKS (integer occupations).
-        // UKS OT multi-k, OT+DFT+U, and OT+smearing remain fail-fast.
+        // Multi-k OT is product for closed-shell RKS (integer and metallic
+        // FD/MP occupations). UKS OT multi-k and multi-k OT+DFT+U remain
+        // fail-fast (see ot-uks-kpoints / ot-dftu-kpoints).
         if (use_ot && is_uks())
             reject("the OT minimizer with UKS (multi-k UKS OT not productized)");
         if (use_ot && !plus_u.empty())
