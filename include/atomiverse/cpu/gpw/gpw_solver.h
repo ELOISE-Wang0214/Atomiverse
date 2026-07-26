@@ -17,7 +17,8 @@
 /// spin-resolved density/XC). Periodic neutral electrostatics via the GTH
 /// Gaussian core charge. Analytic forces cover Γ RKS/UKS and multi-k RKS/UKS
 /// (`gpw_forces_analytic`); analytic cell stress covers Γ RKS/UKS, multi-k
-/// RKS, and multi-k collinear UKS (`gpw_stress` via fixed-\(P_k^\sigma\)).
+/// RKS/UKS, and Dudarev DFT+U on Γ and multi-k (`gpw_stress` via
+/// fixed-\(P_k^\sigma\) + BZ-averaged \(E_U\)).
 #pragma once
 
 #include <array>

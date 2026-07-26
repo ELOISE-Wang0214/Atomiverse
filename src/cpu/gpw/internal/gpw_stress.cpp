@@ -6,9 +6,9 @@
 ///      spin pair {Pα,Pβ,Wα,Wβ} (Γ UKS), per-k {P_k, W_k} from C_occ_k /
 ///      eps_k (multi-k RKS, occ=2), or per-k spin {P_k^σ, W_k^σ} from
 ///      C_occ_k / C_occ_k_beta (multi-k UKS, occ=1). Dudarev DFT+U
-///      (`plus_u`) is supported on the Γ path: \(E_U[n(P,S)]\) enters the
-///      fixed-P Lagrangian (Mulliken \(n\) at strained \(S\)). Multi-k DFT+U
-///      is not implemented.
+///      (`plus_u`) is supported on Γ and multi-k: \(E_U[n(P,S)]\) (Γ) or
+///      BZ-averaged \(E_U[n^\sigma(\{P_k^\sigma\},\{S_k\})]\) (k-path) enters
+///      the fixed-P Lagrangian (Mulliken \(n\) at strained \(S\)/\(S_k\)).
 ///   2. Central FD of the *non-self-consistent* total energy E[P; ε] under
 ///      orthorhombic diagonal strain at fixed fractional coordinates. Geometry-
 ///      dependent T, V_pp / S_k,T_k,V_nl^k, grid, Poisson, XC (and optional D3)
@@ -292,10 +292,15 @@ std::vector<KPoint> resolve_kpts(const GpwDft& cfg) {
 ///
 /// RKS:
 ///   E_L = Σ_k w_k [ Re Tr(P_k T_k) + Re Tr(P_k V_nl^k) − Re Tr(W_k S_k) ]
-///       + E_locgrid[ρ] + E_es[ρ−n_c] + E_xc[ρ] + E_disp
+///       + E_locgrid[ρ] + E_es[ρ−n_c] + E_xc[ρ] + E_disp + E_U[n(P/2,{S_k})]
 /// UKS (optional Pa_k / Pb_k for spin densities; P_k/W_k are spin totals):
 ///   E_L = Σ_k w_k [ Re Tr(P^tot T) + Re Tr(P^tot V_nl) − Re Tr(W^tot S) ]
 ///       + E_locgrid[ρα+ρβ] + E_es + E_xc[ρα,ρβ] + E_disp
+///       + E_U[n^α({Pa_k},{S_k})] + E_U[n^β({Pb_k},{S_k})]
+///
+/// Dudarev \(E_U\) uses BZ-averaged Mulliken occupations at fixed spin
+/// densities and strained \(S_k\) (same formula as multi-k SCF). \(W_k\) is
+/// built from KS eigenvalues that already include \(V_U\).
 ///
 /// Density via collocate_density_k. Requires local_pp_on_grid (k foothold).
 double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
@@ -317,9 +322,6 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (!cfg.local_pp_on_grid)
         throw std::invalid_argument(
             "gpw_stress analytic k: requires local_pp_on_grid");
-    if (!cfg.plus_u.empty())
-        throw std::invalid_argument(
-            "gpw_stress analytic k: DFT+U not supported in this foothold");
     if (cfg.d4)
         throw std::invalid_argument(
             "gpw_stress analytic k: D4 not supported in this foothold");
@@ -492,7 +494,73 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         }
     }
 
-    return e_kin + e_nl + e_locgrid + e_es + e_xc + e_disp - e_pulay;
+    // Dudarev DFT+U at fixed spin densities and strained S_k (BZ-averaged
+    // Mulliken n({P_k},{S_k})). Serial: all k, no MPI allreduce on occ.
+    double e_dftu = 0.0;
+    if (!cfg.plus_u.empty()) {
+        std::vector<int> z_keys;
+        std::vector<PlusUHa> slots;
+        z_keys.reserve(cfg.plus_u.size());
+        slots.reserve(cfg.plus_u.size());
+        for (const auto& pu : cfg.plus_u) {
+            if (!(pu.u_minus_j_ev > 0.0) || pu.l < 0)
+                continue;
+            z_keys.push_back(static_cast<int>(pu.element));
+            PlusUHa s;
+            s.l = pu.l;
+            s.U_ha = pu.u_minus_j_ev / ATV::units::kHartreeInEv;
+            slots.push_back(s);
+        }
+        if (!slots.empty()) {
+            std::vector<AoShellTag> tags;
+            tags.reserve(static_cast<std::size_t>(nb));
+            std::vector<int> z_of_atom(atoms.size());
+            for (int ia = 0; ia < static_cast<int>(atoms.size()); ++ia) {
+                const auto& a = atoms[static_cast<std::size_t>(ia)];
+                z_of_atom[static_cast<std::size_t>(ia)] = a.z;
+                const int nbf = static_cast<int>(a.basis.size());
+                const int nl = static_cast<int>(a.basis_l.size());
+                for (int k = 0; k < nbf; ++k) {
+                    AoShellTag t;
+                    t.atom = ia;
+                    t.l = (k < nl) ? a.basis_l[static_cast<std::size_t>(k)]
+                                   : -1;
+                    tags.push_back(t);
+                }
+            }
+            if (static_cast<int>(tags.size()) != nb)
+                throw std::invalid_argument(
+                    "gpw_stress analytic k: AO shell tags size != basis size");
+            std::vector<double> weights(static_cast<std::size_t>(nk));
+            for (int ik = 0; ik < nk; ++ik)
+                weights[static_cast<std::size_t>(ik)] =
+                    kpts[static_cast<std::size_t>(ik)].weight;
+            RealMatrix V_discard;
+            if (uks) {
+                e_dftu += build_dftu_potential_k(
+                    *Pa_k, S_k, weights, /*ik_begin=*/0, /*ik_stride=*/1,
+                    /*allreduce_occ=*/false, tags, z_of_atom, slots, z_keys,
+                    V_discard);
+                e_dftu += build_dftu_potential_k(
+                    *Pb_k, S_k, weights, /*ik_begin=*/0, /*ik_stride=*/1,
+                    /*allreduce_occ=*/false, tags, z_of_atom, slots, z_keys,
+                    V_discard);
+            } else {
+                // Closed-shell: two equal spin channels from P_k/2.
+                std::vector<CplxMatrix> Pspin_k(static_cast<std::size_t>(nk));
+                for (int ik = 0; ik < nk; ++ik)
+                    Pspin_k[static_cast<std::size_t>(ik)] =
+                        0.5 * P_k[static_cast<std::size_t>(ik)];
+                e_dftu = 2.0
+                         * build_dftu_potential_k(
+                               Pspin_k, S_k, weights, /*ik_begin=*/0,
+                               /*ik_stride=*/1, /*allreduce_occ=*/false, tags,
+                               z_of_atom, slots, z_keys, V_discard);
+            }
+        }
+    }
+
+    return e_kin + e_nl + e_locgrid + e_es + e_xc + e_disp + e_dftu - e_pulay;
 }
 
 /// @brief Hellmann–Feynman Lagrangian energy at fixed (P, W) and geometry.
