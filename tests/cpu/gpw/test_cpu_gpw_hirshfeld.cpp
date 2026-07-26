@@ -247,31 +247,108 @@ TEST(GpwHirshfeld, MultiKMbdHirshfeldReportsVolumesAndEDisp) {
     EXPECT_GT(std::abs(res.e_disp - free_atom), 1e-6);
 }
 
-// UKS + hirshfeld remains out of scope (Γ and multi-k).
-TEST(GpwHirshfeld, UksHirshfeldThrows) {
+// Γ UKS + mbd + hirshfeld: total density ρ=ρα+ρβ → volume ratios + E_disp.
+TEST(GpwHirshfeld, UksMbdHirshfeldReportsVolumesAndEDisp) {
     using ATV::cpu::gpw::GaussianBasis;
     using ATV::cpu::gpw::GpwAtom;
     using ATV::cpu::gpw::GpwDft;
     using ATV::cpu::gpw::GthPotential;
     using ATV::cpu::gpw::XcKind;
 
+    // O₂-like high-spin dimer fragment (single O, open shell) — light unit gate.
     const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
     const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
-    const double pos[3] = {0.0, 0.0, 0.0};
+    const double L = 10.0 * kAngToBohr;
+    const double pos[3] = {0.5 * L, 0.5 * L, 0.5 * L};
     std::vector<GpwAtom> atoms;
     atoms.emplace_back(pos, bO, pO, 8);
 
     GpwDft gpw;
-    const double L = 10.0 * kAngToBohr;
     gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
-    gpw.cutoff_ry = 80.0;
+    gpw.cutoff_ry = 120.0;
     gpw.n_alpha = 4;
     gpw.n_beta = 2;
-    gpw.max_iter = 2;
+    gpw.max_iter = 10;
+    gpw.tol = 1e-5;
+    gpw.mix = 0.4;
     gpw.xc = XcKind::PBE;
     gpw.mbd = true;
     gpw.hirshfeld = true;
 
     gpw.build(atoms);
-    EXPECT_THROW(gpw.run(atoms), std::runtime_error);
+    const auto& res = gpw.run(atoms);
+    std::printf("[Hirshfeld UKS] E_disp=%.16e  n_vol=%zu  s2=%.4f  iters=%d\n",
+                res.e_disp, res.volume_ratios.size(), res.s2, res.iters);
+    for (std::size_t i = 0; i < res.volume_ratios.size(); ++i)
+        std::printf("  v[%zu]=%.6f\n", i, res.volume_ratios[i]);
+
+    ASSERT_EQ(res.volume_ratios.size(), 1u);
+    EXPECT_TRUE(std::isfinite(res.e_disp));
+    // Single atom → MBD pair sum empty → E_disp ≈ 0; volumes still defined.
+    EXPECT_NEAR(res.e_disp, 0.0, 1e-12);
+    EXPECT_GT(res.volume_ratios[0], 0.2);
+    EXPECT_LT(res.volume_ratios[0], 2.0);
+}
+
+// Closed-shell water UKS (Nα=Nβ) + hirshfeld-MBD ≈ RKS hirshfeld-MBD (same ρ).
+TEST(GpwHirshfeld, ClosedShellUksMatchesRksHirshfeldEDisp) {
+    using ATV::cpu::gpw::GaussianBasis;
+    using ATV::cpu::gpw::GpwAtom;
+    using ATV::cpu::gpw::GpwDft;
+    using ATV::cpu::gpw::GthPotential;
+    using ATV::cpu::gpw::XcKind;
+
+    const double ang[6][3] = {
+        {0.000000, 0.000000, 0.000000}, {0.758602, 0.000000, 0.504284},
+        {0.758602, 0.000000, -0.504284}, {3.000000, 0.000000, 0.000000},
+        {3.758602, 0.000000, 0.504284}, {3.758602, 0.000000, -0.504284},
+    };
+    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
+    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
+    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
+    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
+    std::vector<GpwAtom> atoms;
+    for (int i = 0; i < 6; ++i) {
+        const double pos[3] = {ang[i][0] * kAngToBohr, ang[i][1] * kAngToBohr,
+                               ang[i][2] * kAngToBohr};
+        if (i == 0 || i == 3)
+            atoms.emplace_back(pos, bO, pO, 8);
+        else
+            atoms.emplace_back(pos, bH, pH, 1);
+    }
+
+    const double L = 12.0 * kAngToBohr;
+    auto run_disp = [&](bool uks) {
+        GpwDft gpw;
+        gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+        gpw.cutoff_ry = 160.0;
+        gpw.max_iter = 12;
+        gpw.tol = 1e-5;
+        gpw.mix = 0.4;
+        gpw.xc = XcKind::PBE;
+        gpw.mbd = true;
+        gpw.hirshfeld = true;
+        if (uks) {
+            gpw.n_alpha = 8;
+            gpw.n_beta = 8;
+        } else {
+            gpw.n_occ = 8;
+        }
+        gpw.build(atoms);
+        return gpw.run(atoms);
+    };
+
+    const auto rks = run_disp(false);
+    const auto uks = run_disp(true);
+    std::printf("[Hirshfeld RKS/UKS] E_disp RKS=%.16e  UKS=%.16e  d=%.3e\n",
+                rks.e_disp, uks.e_disp, uks.e_disp - rks.e_disp);
+    ASSERT_EQ(rks.volume_ratios.size(), 6u);
+    ASSERT_EQ(uks.volume_ratios.size(), 6u);
+    EXPECT_TRUE(std::isfinite(rks.e_disp));
+    EXPECT_TRUE(std::isfinite(uks.e_disp));
+    EXPECT_LT(rks.e_disp, 0.0);
+    EXPECT_LT(uks.e_disp, 0.0);
+    // Same total density at spin-unpolarized fixed point ⇒ E_disp parity.
+    // Loose gate: SCF residual + DIIS path differences at light cutoff.
+    EXPECT_NEAR(uks.e_disp, rks.e_disp, 5e-6);
 }

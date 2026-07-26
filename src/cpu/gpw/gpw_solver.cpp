@@ -1553,6 +1553,62 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         }
     };
 
+    // Fold free-atom e_d3, or Hirshfeld-scaled TS/MBD from k-summed total
+    // density ρ = ρα + ρβ (post-SCF). Mirrors RKS `fold_dispersion_k`.
+    const bool periodic_cell_uks = !cfg.nonperiodic;
+    auto fold_dispersion_k_uks = [&](GpwResult& out) {
+        if (cfg.hirshfeld && (cfg.ts || cfg.mbd)) {
+            std::vector<double> rho(static_cast<std::size_t>(grid.npts()), 0.0);
+            for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+                const double wk = weights[static_cast<std::size_t>(ik)];
+                internal::collocate_density_k(
+                    kbg, ik, Pa_k[static_cast<std::size_t>(ik)], wk, rho);
+                internal::collocate_density_k(
+                    kbg, ik, Pb_k[static_cast<std::size_t>(ik)], wk, rho);
+            }
+#ifdef ATV_HAS_MPI
+            if (layout.active) {
+                MPI_Allreduce(MPI_IN_PLACE, rho.data(),
+                              static_cast<int>(rho.size()), MPI_DOUBLE, MPI_SUM,
+                              MPI_COMM_WORLD);
+            }
+#endif
+            std::vector<int> Z(atoms.size());
+            std::vector<std::array<double, 3>> pos(Z.size());
+            for (std::size_t i = 0; i < Z.size(); ++i) {
+                Z[i] = atoms[i].z;
+                pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
+            }
+            out.volume_ratios = hirshfeld_volume_ratios(
+                grid, rho, Z, pos, cfg.cell, periodic_cell_uks);
+            if (cfg.mbd) {
+                const bool mbd_per =
+                    cfg.mbd_k_mesh[0] > 0 || cfg.mbd_k_mesh[1] > 0
+                    || cfg.mbd_k_mesh[2] > 0;
+                if (mbd_per && cfg.nonperiodic)
+                    throw std::runtime_error(
+                        "GPW MBD: mbd_k_mesh requires a periodic cell "
+                        "(!nonperiodic)");
+                out.e_disp =
+                    mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0,
+                                 out.volume_ratios,
+                                 mbd_per ? cfg.mbd_k_mesh : nullptr)
+                        .energy;
+            } else {
+                constexpr double kAng2Bohr = 1.0 / 0.52917720859;
+                constexpr double kRcutBohr = 50.0 * kAng2Bohr;
+                out.e_disp =
+                    ts_pbe(Z, pos, cfg.cell, periodic_cell_uks, kRcutBohr, 0.94,
+                           20.0, out.volume_ratios)
+                        .energy;
+            }
+            out.e_total += out.e_disp;
+            return;
+        }
+        out.e_disp = e_d3;
+        out.e_total += e_d3;
+    };
+
     std::vector<CplxMatrix> Ha_k(static_cast<std::size_t>(nk));
     std::vector<CplxMatrix> Hb_k(static_cast<std::size_t>(nk));
     std::vector<double> last_veff_ab; // α then β, length 2*npts
@@ -1701,8 +1757,7 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 // across k without a single-S Löwdin construction).
                 res.s2 = sz * (sz + 1.0) + static_cast<double>(n_b);
             }
-            res.e_disp = e_d3;
-            res.e_total += e_d3;
+            fold_dispersion_k_uks(res);
             return res;
         }
         e_prev = e_total;
@@ -1753,8 +1808,7 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         const double sz = 0.5 * static_cast<double>(n_a - n_b);
         res.s2 = sz * (sz + 1.0) + static_cast<double>(n_b);
     }
-    res.e_disp = e_d3;
-    res.e_total += e_d3;
+    fold_dispersion_k_uks(res);
     return res;
 }
 
@@ -1827,9 +1881,9 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
 
     // Dispersion — free-atom TS/MBD/XDM/D3/D4 are geometry-only (pre-SCF).
     // Hirshfeld-scaled TS/MBD and density-dependent vdw_df / vdw_df2 / rvv10
-    // are deferred to post-SCF on the RKS path (`fold_dispersion` / k-path
-    // density fold). `d3`, `d3bj`, `d4`, `ts`, `mbd`, `xdm`, `vdw_df`,
-    // `vdw_df2`, and `rvv10` are pairwise mutually exclusive.
+    // are deferred to post-SCF (`fold_dispersion` / k-path density fold) for
+    // RKS and UKS (total density ρ=ρα+ρβ). `d3`, `d3bj`, `d4`, `ts`, `mbd`,
+    // `xdm`, `vdw_df`, `vdw_df2`, and `rvv10` are pairwise mutually exclusive.
     double e_d3 = 0.0;
     const int n_disp_flags = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0)
                              + (cfg.d4 ? 1 : 0) + (cfg.ts ? 1 : 0)
@@ -1849,11 +1903,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             throw std::runtime_error(
                 "GPW: hirshfeld applies only to ts/mbd, not "
                 "d3/d3bj/d4/xdm/vdw_df/vdw_df2/rvv10");
-        // Multi-k RKS Hirshfeld is product (`run_gpw_scf_kpoints` folds the
-        // k-summed density). UKS remains out of scope (Γ and multi-k).
-        if (cfg.n_alpha + cfg.n_beta > 0)
-            throw std::runtime_error(
-                "GPW: hirshfeld TS/MBD supports closed-shell RKS only");
+        // RKS and UKS (Γ + multi-k): volumes from total valence density.
     }
     if (cfg.vdw_df || cfg.vdw_df2 || cfg.rvv10) {
         const char* tag = cfg.rvv10    ? "rvv10"
@@ -2623,7 +2673,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                                               nb_spin, nb);
                     res.mulliken_spin = internal::mulliken_spin_populations(
                         Pa, Pb, S, ao_tags, static_cast<int>(atoms.size()));
-                    res.e_total += e_d3;
+                    // Hirshfeld uses total density ρ=ρα+ρβ (Pα+Pβ).
+                    fold_dispersion(res, Pa + Pb);
                     return res;
                 }
                 e_prev = e_total;
@@ -2788,7 +2839,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 const auto rebuilt = build_uks_H(Pa, Pb);
                 res.e_total = std::get<2>(rebuilt);
             }
-            res.e_total += e_d3;
+            fold_dispersion(res, Pa + Pb);
             return res;
         }
 
@@ -2879,7 +2930,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                                           cfg.n_beta, nb);
                 res.mulliken_spin = internal::mulliken_spin_populations(
                     Pa, Pb, S, ao_tags, static_cast<int>(atoms.size()));
-                res.e_total += e_d3;
+                // Hirshfeld uses total density ρ=ρα+ρβ (Pα+Pβ).
+                fold_dispersion(res, Pa + Pb);
                 return res;
             }
             e_prev = e_total;
@@ -2944,7 +2996,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         }
         res.mulliken_spin = internal::mulliken_spin_populations(
             Pa, Pb, S, ao_tags, static_cast<int>(atoms.size()));
-        res.e_total += e_d3;
+        fold_dispersion(res, Pa + Pb);
         return res;
     }
 
