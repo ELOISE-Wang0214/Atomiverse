@@ -60,8 +60,8 @@ TEST(GpwEvaluatorSecondGenCp, BuildAcceptsWithUks) {
     EXPECT_NO_THROW(eval.build(bc));
 }
 
-TEST(GpwEvaluatorSecondGenCp, BuildRejectsUksWithOt) {
-    // UKS OT + ASPC corrector is still a follow-on (dual natural-orbital seed).
+TEST(GpwEvaluatorSecondGenCp, BuildAcceptsUksWithOt) {
+    // Γ-UKS OT + dual ASPC corrector (product path, second-gen-cpmd-uks-ot).
     auto frame = water_frame();
     auto eval = water_eval();
     eval.second_gen_cp = true;
@@ -70,7 +70,7 @@ TEST(GpwEvaluatorSecondGenCp, BuildRejectsUksWithOt) {
     eval.use_ot = true;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+    EXPECT_NO_THROW(eval.build(bc));
 }
 
 TEST(GpwEvaluatorSecondGenCp, BuildAcceptsWithOt) {

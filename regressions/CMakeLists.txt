@@ -256,6 +256,8 @@ if(ATV_BUILD_GPW)
         atv_add_regression(dynamics second-gen-cpmd-uks)
         # Second-generation CP with OT partial-SCF corrector (RKS Γ).
         atv_add_regression(dynamics second-gen-cpmd-ot)
+        # Second-generation CP with OT partial-SCF corrector on Γ-UKS.
+        atv_add_regression(dynamics second-gen-cpmd-uks-ot)
     endif()
     atv_add_regression(gpw gpw-pbesol-si)
     atv_add_regression(gpw gpw-revpbe-si)

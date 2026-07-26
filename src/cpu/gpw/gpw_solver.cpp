@@ -3628,10 +3628,12 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         } else {
             P = *guess_P;
         }
-        // RKS OT: purify ASPC/XL density to natural orbitals → C0 so the
-        // OT manifold starts on the predicted density (not a silent ignore
-        // of guess_P, and not the previous-step C alone). Eigenvalues of
-        // Xᵀ P X ascend; largest occupations occupy the last columns.
+        // OT: purify ASPC/XL density to natural orbitals so the OT manifold
+        // starts on the predicted density (not a silent ignore of guess_P,
+        // and not the previous-step C alone). Eigenvalues of Xᵀ P X ascend;
+        // largest occupations occupy the last columns.
+        // RKS: total P → C0. UKS: dual Pα/Pβ → Ca_prev / Cb_prev (UKS OT
+        // seeds from those; second-gen-cpmd-uks-ot).
         if (cfg.use_ot && !uks) {
             if (cfg.n_occ < 1)
                 throw std::invalid_argument(
@@ -3646,6 +3648,32 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                     C0(u, i) = Cnat(u, src);
             }
             C_prev = C0;
+        } else if (cfg.use_ot && uks) {
+            if (cfg.n_alpha < 1 && cfg.n_beta < 1)
+                throw std::invalid_argument(
+                    "GpwDft::run: UKS OT density warm-start requires "
+                    "n_alpha+n_beta >= 1");
+            auto [na_vals, Cnat_a] = linalg::diagonalize_fock(Pa, orth().X);
+            auto [nb_vals, Cnat_b] = linalg::diagonalize_fock(Pb, orth().X);
+            (void)na_vals;
+            (void)nb_vals;
+            Ca_prev = xt::zeros<double>({static_cast<std::size_t>(nb),
+                                         static_cast<std::size_t>(nb)});
+            Cb_prev = xt::zeros<double>({static_cast<std::size_t>(nb),
+                                         static_cast<std::size_t>(nb)});
+            for (int i = 0; i < cfg.n_alpha; ++i) {
+                const int src = nb - cfg.n_alpha + i;
+                for (int u = 0; u < nb; ++u)
+                    Ca_prev(u, i) = Cnat_a(u, src);
+            }
+            for (int i = 0; i < cfg.n_beta; ++i) {
+                const int src = nb - cfg.n_beta + i;
+                for (int u = 0; u < nb; ++u)
+                    Cb_prev(u, i) = Cnat_b(u, src);
+            }
+            // Keep C0 alpha-aligned for any code that still peeks C0[:,0:na].
+            C0 = Ca_prev;
+            C_prev = Ca_prev;
         }
     }
     smark("init_eigensolve");
@@ -4151,17 +4179,21 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         if (cfg.use_ot) {
             const int na = cfg.n_alpha;
             const int nb_spin = cfg.n_beta;
+            // Seed from Ca_prev/Cb_prev so dual-spin natural-orbital warm-start
+            // (ASPC density guess) can differ per spin; cold path sets both
+            // equal to C0 (core-guess) so this is bit-equivalent to reading C0.
             RealMatrix Cocc_a =
                 na > 0
                     ? internal::ot_orthonormalize(
-                          RealMatrix(xt::view(C0, xt::all(), xt::range(0, na))),
+                          RealMatrix(
+                              xt::view(Ca_prev, xt::all(), xt::range(0, na))),
                           S)
                     : RealMatrix(xt::zeros<double>({nb, 0}));
             RealMatrix Cocc_b =
                 nb_spin > 0
                     ? internal::ot_orthonormalize(
-                          RealMatrix(
-                              xt::view(C0, xt::all(), xt::range(0, nb_spin))),
+                          RealMatrix(xt::view(Cb_prev, xt::all(),
+                                              xt::range(0, nb_spin))),
                           S)
                     : RealMatrix(xt::zeros<double>({nb, 0}));
 
@@ -4351,47 +4383,28 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 if (nb_spin > 0)
                     Cocc_b = internal::ot_orthonormalize(Cnew_b, S);
             }
-            // Budget exhausted: expose OT densities / Löwdin S² from occupied.
+            // Budget exhausted: export full orbital state (P/C/eps + ⟨S²⟩) at
+            // the final OT densities so partial-SCF / SGCP UKS-OT force
+            // consumers (gpw_forces_from_scf) work. Matches RKS OT + DIIS
+            // UKS budget-exhaust: store_converged_state_uks fills eps;
+            // converged stays false.
             Pa = na > 0 ? linalg::build_density_matrix(Cocc_a, na, nb, 1.0)
                         : RealMatrix(xt::zeros<double>({nb, nb}));
             Pb = nb_spin > 0
                      ? linalg::build_density_matrix(Cocc_b, nb_spin, nb, 1.0)
                      : RealMatrix(xt::zeros<double>({nb, nb}));
-            res.P = Pa;
-            res.P_beta = Pb;
-            res.C = xt::zeros<double>({nb, nb});
-            res.C_beta = xt::zeros<double>({nb, nb});
-            for (int u = 0; u < nb; ++u) {
-                for (int i = 0; i < na; ++i)
-                    res.C(u, i) = Cocc_a(u, i);
-                for (int i = 0; i < nb_spin; ++i)
-                    res.C_beta(u, i) = Cocc_b(u, i);
-            }
-            {
-                const double sz = 0.5 * static_cast<double>(na - nb_spin);
-                double ov = 0.0;
-                if (na > 0 && nb_spin > 0) {
-                    const RealMatrix Sab = xt::linalg::dot(
-                        xt::transpose(Cocc_a), xt::linalg::dot(S, Cocc_b));
-                    for (int i = 0; i < na; ++i)
-                        for (int j = 0; j < nb_spin; ++j) {
-                            const double s = Sab(i, j);
-                            ov += s * s;
-                        }
-                }
-                res.s2 = sz * (sz + 1.0) + static_cast<double>(nb_spin) - ov;
-            }
-            res.mulliken_spin = internal::mulliken_spin_populations(
-                Pa, Pb, S, ao_tags, static_cast<int>(atoms.size()));
-            // Rebuild energy at the final OT densities (Ha_last is unused
-            // except as a shape probe that the loop ran).
             (void)Ha_last;
             (void)Hb_last;
             {
                 const auto rebuilt = build_uks_H(Pa, Pb);
                 res.e_total = std::get<2>(rebuilt);
+                store_converged_state_uks(res, std::get<0>(rebuilt),
+                                          std::get<1>(rebuilt), orth().X, S, na,
+                                          nb_spin, nb);
             }
-            fold_dispersion(res, Pa + Pb);
+            res.mulliken_spin = internal::mulliken_spin_populations(
+                res.P, res.P_beta, S, ao_tags, static_cast<int>(atoms.size()));
+            fold_dispersion(res, res.P + res.P_beta);
             return res;
         }
 
@@ -4853,21 +4866,15 @@ GpwResult& GpwDft::run(const std::vector<GpwAtom>& atoms,
             "GpwDft::run called before build() — validate the "
             "configuration first (no silent auto-build)");
     if (guess_P != nullptr || guess_P_beta != nullptr) {
-        // Density guess: DIIS replaces P; RKS OT purifies P → natural
-        // orbitals for C0 (SGCP ASPC corrector). UKS OT + density guess
-        // is not productized (dual-spin natural-orbital seed is a
-        // follow-on — no silent ignore of the guess).
-        if (use_ot && is_uks())
-            throw std::invalid_argument(
-                "GpwDft::run: UKS density guess with use_ot is not "
-                "productized (RKS OT + ASPC density guess is the SGCP OT "
-                "path; dual-spin natural orbitals are a follow-on)");
+        // Density guess: DIIS replaces P; OT purifies density → natural
+        // orbitals for the OT manifold (RKS: total P; UKS: dual-spin —
+        // SGCP OT corrector, second-gen-cpmd-uks-ot).
         if (is_uks()) {
             // UKS needs both spin channels; a partial guess would cold-
             // start one channel and look like a working XL path.
             if (guess_P == nullptr || guess_P_beta == nullptr)
                 throw std::invalid_argument(
-                    "GpwDft::run: UKS XL-BOMD density guess requires both "
+                    "GpwDft::run: UKS density guess requires both "
                     "guess_P (alpha) and guess_P_beta (no partial spin "
                     "guess)");
         } else if (guess_P_beta != nullptr) {
