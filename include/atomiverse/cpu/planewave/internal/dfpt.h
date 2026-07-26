@@ -110,8 +110,9 @@ struct DfptQOutput {
 /// Pure LSDA or pure GGA with a UPF pseudopotential (throws
 /// `std::invalid_argument` otherwise). Restricted **fixed occupations** or
 /// **metallic smearing** (`method.smearing` + `degauss` + `extra_bands`), or
-/// **collinear spin** with fixed occupations (`method.spin_polarized`).
-/// Spin + smear is rejected. Runs the ground-state SCF, then one
+/// **collinear spin** with fixed occupations or metallic smearing
+/// (`method.spin_polarized` + optional smearing). Runs the ground-state
+/// SCF, then one
 /// self-consistent Sternheimer response per Cartesian displacement with
 /// occupations \(f_{nk}\) weighting the density and force-constant terms.
 /// Pure GGA uses the spectral `XCBuilder` kernel (FD of \(V_{\mathrm{xc}}[n]\)
