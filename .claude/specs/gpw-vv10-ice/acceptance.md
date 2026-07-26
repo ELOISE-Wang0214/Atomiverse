@@ -1,6 +1,6 @@
 # Acceptance — `gpw-vv10-ice`
 
-## Gate result (waves 5–8 reconfirm)
+## Gate result (waves 5–9 reconfirm)
 
 | Gate | Result |
 | ---- | ------ |
@@ -12,6 +12,7 @@
 | Wave-6 re-probe | **ABORT** `invalid value for enumeration:VV10` (same as wave 5) |
 | Wave-7 re-probe | **ABORT** `invalid value for enumeration:VV10` (live `cp2k.psmp`; source enum unchanged) |
 | Wave-8 re-probe | **ABORT** `invalid value for enumeration:VV10` (live `cp2k.psmp`; source enum + kernels unchanged) |
+| Wave-9 re-probe | **ABORT** `invalid value for enumeration:VV10` (live `cp2k.psmp` 2026.1 @ 85b8a9b49c; enum + kernels unchanged; rebased onto `dev` @ `bf8be7ed`) |
 | `acceptance_met` | **false** |
 
 ## Block reason (one line)
