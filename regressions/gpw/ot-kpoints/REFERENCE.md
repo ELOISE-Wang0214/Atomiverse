@@ -48,7 +48,7 @@ Product API: concrete `cpu::gpw::GpwDft` members `use_ot`, `k_mesh`,
 | A1 | real Γ OT ≡ k-path Γ OT | 1e-6 Ha |
 | A2 | multi-k OT ≡ multi-k DIIS (κ=¼) | 1e-4 Ha |
 | A3 | MP 2×1×1 OT ≡ DIIS | 1e-4 Ha |
-| A4 | multi-k UKS OT throws | — |
+| A4 | multi-k UKS OT builds (product in `reg_ot-uks-kpoints`) | — |
 | A5 | absolute vs frozen first-green | 1e-3 Ha |
 
 ## Performance
