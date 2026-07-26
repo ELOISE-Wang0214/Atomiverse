@@ -33,7 +33,7 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 | 07 | scf-review-07-posthf-perf | 02 | DONE 2026-07-24 (closed; see git) — block eri_dense (10x/54x) + RI-MP2 GEMM + copy elision |
 | 08 | scf-review-08-ccsd-spatial-diis | 02, 03, 07 | DONE 2026-07-24 (closed; see git) — CcAmplitudeDiis + spatial CCSD (~87x, oracle parity 1e-9) |
 
-## Live — deferred PySCF only (CP2K staff residual on `wf/*` after harness wave 7)
+## Live — deferred PySCF only (CP2K staff residual on `wf/*` after harness wave 8)
 
 | Spec | Branch / track | Status |
 | ---- | -------------- | ------ |
@@ -42,8 +42,16 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 
 Open CP2K specs live only on incomplete `wf/*` tip (`gpw-vv10-ice`) — not on
 `dev`. Workers write `.claude/specs/<slug>/` on `wf/<slug>` before impl.
-Harness wave 7 2026-07-26 closed 9 CP2K specs (deleted); pending residual=0
+Harness wave 8 2026-07-26 closed 9 CP2K specs (deleted); pending residual=0
 (census list emptied — not exhausted); in_progress=1 `[~]`.
+
+## Closed — CP2K harness wave 8 (2026-07-26)
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| cp2k-method-loop harness wave 8 | periodic-urpa-kpoints, ot-smearing, ot-uks-kpoints, ot-dftu-kpoints, gpw-d4-stress, gpw-vdw-scf-potential, dfpt-metallic-si, dfpt-spin-incommensurate, gpw-optb88-vdw | multi-k URPA; OT+smear; multi-k UKS OT; multi-k OT+DFT+U; D4 analytic stress; nonlocal vdW SCF pot/forces; metallic DFPT; spin-incommensurate DFPT; optB88-vdW |
+
+Do not re-create closed slugs without superseding intent.
 
 ## Closed — CP2K harness wave 7 (2026-07-26)
 

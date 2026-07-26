@@ -1,6 +1,6 @@
 # CP2K capability loop — handoff
 
-## Harness wave 7 2026-07-26 (parent `dev` @ `8cb47664`)
+## Harness wave 8 2026-07-26 (parent `dev` @ `a6752916`)
 
 | Field | Value |
 | ----- | ----- |
@@ -21,39 +21,66 @@
 
 | Slug | Domain | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
 | ---- | ------ | ---------- | --------------------------------------------- |
-| `periodic-urpa-si` | gpw | `reg_periodic-urpa-si` | **perf_exempt** |
-| `periodic-ugw-kpoints` | gpw | `reg_periodic-ugw-kpoints` | **perf_exempt** |
-| `gpw-uks-smearing` | gpw | `reg_gpw-uks-smearing` | **~0.017** |
-| `gpw-hirshfeld-uks` | gpw | `reg_gpw-hirshfeld-uks` | **perf_exempt** (E_disp pin) |
-| `cpmd-uks` | dynamics | `reg_cpmd-uks` | **perf_exempt** (NVE drift) |
-| `second-gen-cpmd-uks` | dynamics | `reg_second-gen-cpmd-uks` | **perf_exempt** (NVE drift) |
-| `ot-kpoints` | gpw | `reg_ot-kpoints` | **perf_exempt** |
-| `ot-dftu` | gpw | `reg_ot-dftu` | **~0.26** |
-| `dfpt-spin-si` | response | `reg_dfpt-spin-si` | **perf_exempt** |
+| `periodic-urpa-kpoints` | gpw | `reg_periodic-urpa-kpoints` | **perf_exempt** |
+| `ot-smearing` | gpw | `reg_ot-smearing` | **~0.20** |
+| `ot-uks-kpoints` | gpw | `reg_ot-uks-kpoints` | **perf_exempt** |
+| `ot-dftu-kpoints` | gpw | `reg_ot-dftu-kpoints` | **perf_exempt** |
+| `gpw-d4-stress` | gpw | `reg_gpw-d4-stress` | **perf_exempt** |
+| `gpw-vdw-scf-potential` | gpw | `reg_gpw-vdw-scf-potential` | **perf_exempt** |
+| `dfpt-metallic-si` | response | `reg_dfpt-metallic-si` | **perf_exempt** |
+| `dfpt-spin-incommensurate` | response | `reg_dfpt-spin-incommensurate` | **perf_exempt** |
+| `gpw-optb88-vdw` | gpw | `reg_gpw-optb88-vdw` | **perf_exempt** (E_disp / XC combo) |
 
 ### Incomplete kept `[~]` (do not demote)
 
 | Slug | Branch | Tip | Note |
 | ---- | ------ | --- | ---- |
-| `gpw-vv10-ice` | `wf/gpw-vv10-ice` | `9be3808a` | CP2K 2026.1 has no stock `TYPE VV10` (≠ rVV10); incomplete |
+| `gpw-vv10-ice` | `wf/gpw-vv10-ice` | `d15cd804` | CP2K 2026.1 has no stock `TYPE VV10` (≠ rVV10); incomplete |
 
 ### Roadmap ○→✓ this harness
 
 | Row | Doc | Note |
 | --- | --- | ---- |
-| Table rows | — | **no new ○→✓ flips** (RPA/GW/DFPT/OT/smearing/CPMD/SGCP already ✓) |
-| Residual prose | `dft.md` §8/§10–12 + `index.md` + AIMD | URPA@UKS; multi-k UGW; GPW UKS smear; UKS Hirshfeld; CPMD/SGCP UKS; OT+k; OT+DFT+U; collinear-spin DFPT productized |
+| optB88-vdW | `dft.md` §8 | exchange + DRSLL nonlocal (`reg_gpw-optb88-vdw`) |
+| Residual prose | `dft.md` §8/§10–12 + `index.md` | multi-k URPA; OT+smear; multi-k UKS OT; multi-k OT+DFT+U; D4 stress; vdW SCF pot/forces; metallic DFPT; spin-incommensurate DFPT |
 | Still open | stock VV10 | `[~] gpw-vv10-ice` (incomplete staff) |
 
 ### Pending residual
 
-**Pending = 0** residual from GapCensus wave 7 staff list (emptied — **not**
+**Pending = 0** residual from GapCensus wave 8 staff list (emptied — **not**
 queue exhausted). **Incomplete = 1** `[~]` (`gpw-vv10-ice`). Next wave starts
 with **Recover incomplete** then **GapCensus** (tree/roadmap ○ vs `dev`).
 Blocked = 5 unchanged.
 
 Do **not** staff PySCF deferred specs. No push from parent.
 **Queue not exhausted** — GapCensus owns next discovery.
+
+---
+
+## Harness wave 7 2026-07-26 (parent `dev` @ `8cb47664`) — historical
+
+| Field | Value |
+| ----- | ----- |
+| Branch | `dev` (tracks `origin/dev`, ahead of origin by merges) |
+| Incomplete / `in_progress` | **1** (`[~] gpw-vv10-ice`) |
+| Open CP2K specs on `dev` | **0** (PySCF deferred only) |
+| Specs closed this harness | **9** (deleted on close) |
+| Pending residual | **0** then refilled by GapCensus wave 8 |
+| Done this wave | **9** landings |
+
+### Wave staff → done (historical)
+
+| Slug | Domain | ratio |
+| ---- | ------ | ----- |
+| `periodic-urpa-si` | gpw | **perf_exempt** |
+| `periodic-ugw-kpoints` | gpw | **perf_exempt** |
+| `gpw-uks-smearing` | gpw | **~0.017** |
+| `gpw-hirshfeld-uks` | gpw | **perf_exempt** (E_disp pin) |
+| `cpmd-uks` | dynamics | **perf_exempt** (NVE drift) |
+| `second-gen-cpmd-uks` | dynamics | **perf_exempt** (NVE drift) |
+| `ot-kpoints` | gpw | **perf_exempt** |
+| `ot-dftu` | gpw | **~0.26** |
+| `dfpt-spin-si` | response | **perf_exempt** |
 
 ---
 

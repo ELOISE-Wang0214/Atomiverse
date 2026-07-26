@@ -410,21 +410,40 @@ molecular post-HF / classical MW / CUDA ports (other loops). Roadmap:
 §10–12 open-residual prose + index GPW residual line refreshed for
 wave-8 queue. **Pending = 9**; **in_progress = 1**; **blocked = 5**.
 
+**Harness wave 8 2026-07-26 (parent `dev` @ `a6752916`):** 9 staffed
+slugs merged → `## done` (`periodic-urpa-kpoints`, `ot-smearing`,
+`ot-uks-kpoints`, `ot-dftu-kpoints`, `gpw-d4-stress`,
+`gpw-vdw-scf-potential`, `dfpt-metallic-si`, `dfpt-spin-incommensurate`,
+`gpw-optb88-vdw`). Specs deleted on close. **Pending residual = 0**
+(staff batch emptied the census pending list — **not** queue exhausted;
+GapCensus owns next discovery). **in_progress = 1** unmerged staff
+`[~]` (`gpw-vv10-ice` on `wf/gpw-vv10-ice` — CP2K stock VV10 oracle gap;
+do not demote). Roadmap: **optB88-vdW ✓**; residual prose closed multi-k
+URPA, OT+smear, multi-k UKS OT, multi-k OT+DFT+U, D4 analytic stress,
+nonlocal vdW SCF potential/forces, metallic DFPT, collinear-spin
+incommensurate DFPT; stock VV10 stays open. **Blocked = 5** unchanged.
+**Queue not exhausted** — GapCensus owns next discovery.
+
 ## pending
 
-- [ ] `periodic-urpa-kpoints` | Multi-k unrestricted direct RPA residual (URPA@UKS + k-mesh) | gpw | dep `periodic-urpa-si` ✓ + `periodic-rpa-kpoints` ✓; `direct_rpa` multi-k UKS throw
-- [ ] `ot-smearing` | OT orbital minimizer + metallic occupation smearing (FD/MP) | gpw | dep `ot-kpoints` ✓ + `gpw-metallic-smearing` ✓; `build` rejects OT+smear
-- [ ] `ot-uks-kpoints` | Multi-k UKS OT minimizer | gpw | dep `ot-uks-o2` ✓ + `ot-kpoints` ✓; multi-k UKS OT not productized
-- [ ] `ot-dftu-kpoints` | Multi-k OT + Dudarev DFT+U | gpw | dep `ot-dftu` ✓ + `ot-kpoints` ✓ + `gpw-dftu-kpoints` ✓; multi-k OT+PLUS_U not wired
-- [ ] `gpw-d4-stress` | Analytic fixed-P cell stress with DFT-D4 | gpw | dep `gpw-d4-water` ✓ + `gpw-analytic-stress` ✓; `gpw_stress` throws D4
-- [ ] `gpw-vdw-scf-potential` | Nonlocal vdW-DF/DF2/rVV10 SCF potential + forces (beyond post-SCF E_disp) | gpw | dep `gpw-vdw-df-ice` ✓ / `gpw-vdw-df2-ice` ✓ / `gpw-rvv10-ice` ✓; potential back-propagation follow-on
-- [ ] `dfpt-metallic-si` | DFPT phonons with metallic occupation smearing (PW) | response | dep `dfpt-spin-si` ✓ + `pw-smearing-al` ✓; Sternheimer rejects smearing
-- [ ] `dfpt-spin-incommensurate` | Collinear-spin DFPT at incommensurate q (PW) | response | dep `dfpt-spin-si` ✓ + `dfpt-incommensurate-si` ✓; incommensurate+spin throw
-- [ ] `gpw-optb88-vdw` | optB88 exchange + nonlocal vdW correlation | gpw | roadmap §8 ○; dep vdW-DF/rVV10 product depth; offline CP2K NON_LOCAL + OPTB88 twin
+_(empty — harness wave 8 emptied GapCensus wave-8 staff list; **not**
+queue exhausted)_
 
 ## in_progress
 
 - [~] `gpw-vv10-ice` | Stock VV10 nonlocal correlation (≠ rVV10) | gpw | unmerged `wf/gpw-vv10-ice` @ `d15cd804` (docs/block: CP2K 2026.1 has no `TYPE VV10`; incomplete — do not force-merge)
+
+## done (harness wave 8 2026-07-26)
+
+- [x] `periodic-urpa-kpoints` | Multi-k unrestricted direct RPA residual (URPA@UKS + k-mesh) | gpw | `regressions/gpw/periodic-urpa-kpoints` | ratio **perf_exempt** | 2026-07-26
+- [x] `ot-smearing` | OT orbital minimizer + metallic occupation smearing (FD/MP) | gpw | `regressions/gpw/ot-smearing` | ratio **~0.20** | 2026-07-26
+- [x] `ot-uks-kpoints` | Multi-k UKS OT minimizer | gpw | `regressions/gpw/ot-uks-kpoints` | ratio **perf_exempt** | 2026-07-26
+- [x] `ot-dftu-kpoints` | Multi-k OT + Dudarev DFT+U | gpw | `regressions/gpw/ot-dftu-kpoints` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-d4-stress` | Analytic fixed-P cell stress with DFT-D4 | gpw | `regressions/gpw/gpw-d4-stress` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-vdw-scf-potential` | Nonlocal vdW-DF/DF2/rVV10 SCF potential + forces | gpw | `regressions/gpw/gpw-vdw-scf-potential` | ratio **perf_exempt** | 2026-07-26
+- [x] `dfpt-metallic-si` | DFPT phonons with metallic occupation smearing (PW) | response | `regressions/response/dfpt-metallic-si` | ratio **perf_exempt** | 2026-07-26
+- [x] `dfpt-spin-incommensurate` | Collinear-spin DFPT at incommensurate q (PW) | response | `regressions/response/dfpt-spin-incommensurate` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-optb88-vdw` | optB88 exchange + nonlocal vdW correlation | gpw | `regressions/gpw/gpw-optb88-vdw` | ratio **perf_exempt** (E_disp / XC combo) | 2026-07-26
 
 ## done (harness wave 7 2026-07-26)
 

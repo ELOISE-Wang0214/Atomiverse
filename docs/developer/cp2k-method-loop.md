@@ -68,6 +68,31 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 harness wave 8 (parent `dev` @ `a6752916`):** 9 merged →
+  done: `periodic-urpa-kpoints`, `ot-smearing`, `ot-uks-kpoints`,
+  `ot-dftu-kpoints`, `gpw-d4-stress`, `gpw-vdw-scf-potential`,
+  `dfpt-metallic-si`, `dfpt-spin-incommensurate`, `gpw-optb88-vdw`.
+  Incomplete remaining **1** (`[~] gpw-vv10-ice` on unmerged
+  `wf/gpw-vv10-ice`); pending residual **0** (census list emptied —
+  **not** queue exhausted); blocked **5**. Specs closed (deleted) for
+  all 9. Roadmap: **optB88-vdW ✓**; residual prose closed multi-k URPA,
+  OT+smear, multi-k UKS OT, multi-k OT+DFT+U, D4 analytic stress,
+  nonlocal vdW SCF pot/forces, metallic DFPT, spin-incommensurate DFPT;
+  stock VV10 stays open. Clearup already ran (no isolation worktrees;
+  no builds). **Queue not exhausted** — next wave Recover incomplete
+  then GapCensus. No push.
+- **2026-07-26 GapCensus wave 8 (parent `dev` @ `9c57a290`):** recover
+  incomplete=**1** (`[~] gpw-vv10-ice` on unmerged `wf/gpw-vv10-ice` —
+  not demoted); CP2K specs on `dev`=0; isolation worktrees=0;
+  builds=none. Prior pending residual **0**; **+9** residuals → pending
+  **9** (`periodic-urpa-kpoints`, `ot-smearing`, `ot-uks-kpoints`,
+  `ot-dftu-kpoints`, `gpw-d4-stress`, `gpw-vdw-scf-potential`,
+  `dfpt-metallic-si`, `dfpt-spin-incommensurate`, `gpw-optb88-vdw`);
+  in_progress **1**; blocked **5**. No ○/✓ table flips; §8/§10–12 open
+  residual prose + index GPW residual line refreshed. Next: Assign
+  prefers incomplete first (VV10 docs/block) then surface-disjoint
+  pending (OT family careful share; URPA ∥ DFPT free; D4 stress ∥ vdW
+  SCF careful dispersion surface; optB88 after vdW depth).
 - **2026-07-26 harness wave 7 (parent `dev` @ `8cb47664`):** 9 merged →
   done: `periodic-urpa-si`, `periodic-ugw-kpoints`, `gpw-uks-smearing`,
   `gpw-hirshfeld-uks`, `cpmd-uks`, `second-gen-cpmd-uks`, `ot-kpoints`,
