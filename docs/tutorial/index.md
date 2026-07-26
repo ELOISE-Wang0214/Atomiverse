@@ -191,6 +191,7 @@ and `tools/cp2k_oracle/`. Narrative chapters: [Ch. 8 PW](ch08-plane-wave.md),
 | FD supercell phonons diamond Si (Γ) | [fd-phonon-supercell](methods/fd-phonon-supercell.md) | `regressions/pw/fd-phonon-supercell` |
 | Dudarev DFT+U NiO mol (Γ-UKS GPW) | [gpw-dftu-nio](methods/gpw-dftu-nio.md) | `regressions/gpw/gpw-dftu-nio` |
 | PW bands + DOS bulk Si | [bands-dos-si](methods/bands-dos-si.md) | `regressions/pw/bands-dos-si` |
+| PW metallic-occupation bands Si | [bands-metallic-si](methods/bands-metallic-si.md) | `regressions/pw/bands-metallic-si` |
 | PW k-point collinear UKS O₂ | [pw-uks-kmesh-fe](methods/pw-uks-kmesh-fe.md) | `regressions/pw/pw-uks-kmesh-fe` |
 | GPW Γ-RKS PBEsol Si₂ (MT) | [gpw-pbesol-si](methods/gpw-pbesol-si.md) | `regressions/gpw/gpw-pbesol-si` |
 | GPW PBE-D4 periodic water dimer | [gpw-d4-water](methods/gpw-d4-water.md) | `regressions/gpw/gpw-d4-water` |

@@ -153,6 +153,25 @@ and `tools/cp2k_oracle/`. Fair walls from harness (`ratio` or `perf_exempt`).
 | GPW Γ-RKS PBEsol Si₂ (MT) | [gpw-pbesol-si](gpw-pbesol-si.md) | `regressions/gpw/gpw-pbesol-si` | **perf_exempt** |
 | GPW PBE-D4 periodic water dimer | [gpw-d4-water](gpw-d4-water.md) | `regressions/gpw/gpw-d4-water` | **perf_exempt** |
 
+## Index — CP2K capability wave 11 (2026-07-26)
+
+Offline CP2K pins only — see [cp2k-method-handoff](../../developer/cp2k-method-handoff.md)
+wave 11 and `tools/cp2k_oracle/`. Fair walls from harness (`ratio` or
+`perf_exempt`). All nine staffed slugs closed 2026-07-26 (pending residual
+emptied — not queue exhausted).
+
+| Method | Page | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
+| ------ | ---- | ---------- | --------------------------------------------- |
+| Γ-UGW@UKS with RPBE spin XC (sc-Si₂) | [ugw-uks-rpbe](ugw-uks-rpbe.md) | `regressions/gpw/ugw-uks-rpbe` | **perf_exempt** |
+| Free-atom TS analytic ionic forces (water dimer) | [gpw-ts-forces](gpw-ts-forces.md) | `regressions/gpw/gpw-ts-forces` | **perf_exempt** |
+| Free-atom XDM analytic ionic forces (water dimer) | [gpw-xdm-forces](gpw-xdm-forces.md) | `regressions/gpw/gpw-xdm-forces` | **perf_exempt** |
+| Multi-k UKS analytic stress RevPBE/RPBE/BLYP | [gpw-kpoint-uks-stress-gga](gpw-kpoint-uks-stress-gga.md) | `regressions/gpw/gpw-kpoint-uks-stress-gga` | **perf_exempt** |
+| CPMD + Nosé–Hoover electronic thermostat (H₂O GPW) | [cpmd-electronic-thermostat](cpmd-electronic-thermostat.md) | `regressions/dynamics/cpmd-electronic-thermostat` | **perf_exempt** |
+| Multi-k UKS XL-BOMD dual-spin \(P_k^\sigma\) (H₂) | [xl-bomd-uks-kpoints](xl-bomd-uks-kpoints.md) | `regressions/dynamics/xl-bomd-uks-kpoints` | **perf_exempt** |
+| PW metallic-occupation bands Si | [bands-metallic-si](bands-metallic-si.md) | `regressions/pw/bands-metallic-si` | **perf_exempt** |
+| PW collinear-spin DOS Si | [dos-spin-si](dos-spin-si.md) | `regressions/pw/dos-spin-si` | **perf_exempt** |
+| Finite-q DFPT collinear spin + FD smear (Si) | [dfpt-finite-q-spin-smearing](dfpt-finite-q-spin-smearing.md) | `regressions/response/dfpt-finite-q-spin-smearing` | **perf_exempt** |
+
 ## Index — PySCF campaign methods
 
 | Method | Page | Regression |
