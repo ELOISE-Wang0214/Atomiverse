@@ -1,6 +1,6 @@
 # Acceptance — `gpw-vv10-ice`
 
-## Gate result (wave 5 + wave 6 reconfirm)
+## Gate result (waves 5–7 reconfirm)
 
 | Gate | Result |
 | ---- | ------ |
@@ -10,6 +10,7 @@
 | Implementation `GpwDft::vv10` | **not written** (would be false closure) |
 | Dual gate green | **no** |
 | Wave-6 re-probe | **ABORT** `invalid value for enumeration:VV10` (same as wave 5) |
+| Wave-7 re-probe | **ABORT** `invalid value for enumeration:VV10` (live `cp2k.psmp`; source enum unchanged) |
 | `acceptance_met` | **false** |
 
 ## Block reason (one line)
