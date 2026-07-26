@@ -410,16 +410,16 @@ class GpwDft {
     ///         min HOMO–LUMO gap (< 1e-6 Ha).
     const Mp2Result& mp2(const std::vector<GpwAtom>& atoms);
 
-    /// @brief GPW direct RPA (dRPA) correlation on the converged closed-shell
-    ///        orbitals of the last `run()` — Γ (real) or multi-k (complex).
+    /// @brief GPW direct RPA (dRPA) correlation on the converged orbitals of
+    ///        the last `run()` — Γ/multi-k RKS, or **Γ UKS (URPA)**.
     ///
-    /// **Γ path** (`n_kpts == 0`): Coulomb-only singlet Casida
+    /// **Γ RKS** (`n_kpts == 0`): Coulomb-only singlet Casida
     /// (\(\alpha_{\mathrm{hf}}=0\)) from the same \((ia|jb)\) path as
     /// `mp2()` (product RI-GPW when `mp2_ri` and periodic; else Poisson
     /// foothold), then Furche
     /// \(E_c=\tfrac12(\sum\Omega_s-\mathrm{Tr}\,A)\).
     ///
-    /// **Multi-k path** (`n_kpts >= 1` with `C_k` populated): **finite-\(q\)
+    /// **Multi-k RKS** (`n_kpts >= 1` with `C_k` populated): **finite-\(q\)
     /// inter-\(k\)** RI-GPW dRPA — for each transfer \(q\) on the closed MP
     /// mesh, Casida from transitions \(i_k\to a_{k+q}\) with Coulomb at
     /// \(q\), Furche-averaged
@@ -427,14 +427,25 @@ class GpwDft {
     /// Requires `mp2_ri` product and a periodic cell. Prefer
     /// `k_time_reversal = false` so weights stay equal.
     ///
+    /// **Γ UKS (URPA):** spin-conserving dRPA over α→α ⊕ β→β (Coulomb
+    /// kernel, spins explicit — no closed-shell factor 2). Same-spin
+    /// tensors via `mo_eri_ovov{,_ri}`; cross-spin via
+    /// `mo_eri_ovov_ab{,_ri}`; Furche \(E_c\) from
+    /// `internal::direct_rpa_uhf`. When \(C^\alpha\approx C^\beta\) and
+    /// \(n_\alpha=n_\beta\), \(E_c\) dual-gates closed-shell dRPA.
+    /// Multi-k URPA is a follow-on. `RpaResult::n_occ` / `n_virt` are
+    /// spin-orbital totals (\(n_\alpha+n_\beta\), …); `omega_ha` length is
+    /// the composite OV space \(n_{\mathrm{ov}}^\alpha+n_{\mathrm{ov}}^\beta\).
+    ///
     /// Virtual space capped by `mp2_n_virt`. Total energy is dRPA@KS
     /// (\(E_{\mathrm{SCF}}+E_c\); no EXX replacement).
     /// @param atoms Same geometry [Bohr] the last `run()` converged on.
     /// @return The owned RPA result (valid until the next `direct_rpa()`).
-    /// @throws std::logic_error before `build()` or a converged `run()`.
-    /// @throws std::invalid_argument for UKS, for `use_ot`, when multi-k
-    ///         `C_k` is missing, when no virtuals remain, or for a vanishing
-    ///         HOMO–LUMO gap (< 1e-6 Ha).
+    /// @throws std::logic_error before `build()` or a converged `run()`,
+    ///         or when UKS β orbitals are missing.
+    /// @throws std::invalid_argument for multi-k UKS, for `use_ot`, when
+    ///         multi-k `C_k` is missing, when no virtuals remain, or for a
+    ///         vanishing HOMO–LUMO gap (< 1e-6 Ha).
     /// @throws std::runtime_error when the dRPA reduction is ill-conditioned.
     const RpaResult& direct_rpa(const std::vector<GpwAtom>& atoms);
 

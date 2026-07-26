@@ -1,8 +1,9 @@
 /// @file src/cpu/gpw/rpa.cpp
 /// @brief GpwDft::direct_rpa — Γ-point (real) and multi-k finite-q (complex
-///        Bloch) GPW dRPA on the converged RKS orbitals. Product: RI-GPW
-///        (ia|jb); Γ foothold: Poisson tensor. Plasmon formula in
-///        internal::direct_rpa_rhf_energy{,_kpoints}.
+///        Bloch) GPW dRPA on the converged RKS or UKS orbitals. Product:
+///        RI-GPW (ia|jb); Γ foothold: Poisson tensor. Plasmon formula in
+///        internal::direct_rpa_rhf_energy{,_kpoints} (RKS) and
+///        internal::direct_rpa_uhf (Γ URPA@UKS).
 
 #include <algorithm>
 #include <cmath>
@@ -18,14 +19,46 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
+namespace {
+
+// Cap virtual count and check HOMO–LUMO gap for one spin channel (URPA).
+int cap_virt_rpa_(int n_mo, int n_occ, int mp2_n_virt,
+                  const std::vector<double>& eps, const char* channel) {
+    if (n_mo <= n_occ)
+        throw std::invalid_argument(
+            std::string("GpwDft::direct_rpa: no virtual orbitals in the ")
+            + channel + " channel (n_mo = " + std::to_string(n_mo)
+            + ", n_occ = " + std::to_string(n_occ) + ")");
+    int n_virt = n_mo - n_occ;
+    if (mp2_n_virt > 0)
+        n_virt = std::min(n_virt, mp2_n_virt);
+    if (n_occ < 1 || n_virt < 1)
+        return n_virt;
+    constexpr double kMinGapHa = 1e-6;
+    const double gap = eps[static_cast<std::size_t>(n_occ)]
+                       - eps[static_cast<std::size_t>(n_occ - 1)];
+    if (gap < kMinGapHa)
+        throw std::invalid_argument(
+            std::string("GpwDft::direct_rpa: vanishing ") + channel
+            + " HOMO-LUMO gap (" + std::to_string(gap)
+            + " Ha < 1e-6) — dRPA (A−B) is singular");
+    return n_virt;
+}
+
+int count_basis_rpa_(const std::vector<GpwAtom>& atoms) {
+    int nb = 0;
+    for (const auto& a : atoms)
+        nb += static_cast<int>(a.basis.size());
+    return nb;
+}
+
+} // namespace
+
 const RpaResult& GpwDft::direct_rpa(const std::vector<GpwAtom>& atoms) {
     if (!built_)
         throw std::logic_error(
             "GpwDft::direct_rpa called before build() — validate the "
             "configuration first (no silent auto-build)");
-    if (is_uks())
-        throw std::invalid_argument(
-            "GpwDft::direct_rpa: closed-shell RKS only (URPA is a follow-on)");
     if (use_ot)
         throw std::invalid_argument(
             "GpwDft::direct_rpa: OT stores occupied orbitals only — canonical "
@@ -45,6 +78,122 @@ const RpaResult& GpwDft::direct_rpa(const std::vector<GpwAtom>& atoms) {
             "GpwDft::direct_rpa: multi-k SCF result is missing Bloch C_k "
             "(re-run with a current multi-k path that stores orbitals)");
 
+    // ── Unrestricted Γ URPA (spin-conserving dRPA@UKS) ────────────────
+    if (is_uks()) {
+        if (multi_k || result_.n_kpts > 0)
+            throw std::invalid_argument(
+                "GpwDft::direct_rpa: multi-k URPA is a follow-on (Γ UKS only)");
+        if (result_.C_beta.size() == 0 || result_.eps_beta.empty())
+            throw std::logic_error(
+                "GpwDft::direct_rpa: UKS result is missing β orbitals/"
+                "eigenvalues");
+
+        const int nb_atoms = count_basis_rpa_(atoms);
+        const int nb = static_cast<int>(result_.C.shape(0));
+        const int n_mo_a = static_cast<int>(result_.C.shape(1));
+        const int n_mo_b = static_cast<int>(result_.C_beta.shape(1));
+        if (nb_atoms != nb)
+            throw std::invalid_argument(
+                "GpwDft::direct_rpa: atom basis count ("
+                + std::to_string(nb_atoms)
+                + ") does not match the converged orbitals ("
+                + std::to_string(nb)
+                + ") — same geometry/basis as the last run() required");
+        if (static_cast<int>(result_.eps.size()) != n_mo_a
+            || static_cast<int>(result_.eps_beta.size()) != n_mo_b)
+            throw std::logic_error(
+                "GpwDft::direct_rpa: UKS eps/C shape mismatch in the "
+                "converged result");
+        if (static_cast<int>(result_.C_beta.shape(0)) != nb)
+            throw std::logic_error(
+                "GpwDft::direct_rpa: UKS α/β basis dimension mismatch");
+
+        const int n_oa = n_alpha;
+        const int n_ob = n_beta;
+        const int n_va =
+            cap_virt_rpa_(n_mo_a, n_oa, mp2_n_virt, result_.eps, "α");
+        const int n_vb =
+            cap_virt_rpa_(n_mo_b, n_ob, mp2_n_virt, result_.eps_beta, "β");
+        if ((n_oa < 1 || n_va < 1) && (n_ob < 1 || n_vb < 1))
+            throw std::invalid_argument(
+                "GpwDft::direct_rpa: URPA needs at least one non-empty "
+                "spin channel (n_occ and n_virt both >= 1)");
+
+        const bool periodic = !nonperiodic;
+        const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+        std::vector<GridBasisFunction> basis;
+        basis.reserve(static_cast<std::size_t>(nb));
+        for (const auto& a : atoms)
+            for (const auto& bf : a.basis)
+                basis.push_back(bf);
+        const CompactBasisGrid cbg =
+            build_compact_basis_grid(grid, basis, periodic, eps_default);
+
+        const std::vector<double> psi_oa =
+            (n_oa > 0) ? internal::mo_on_grid(cbg, result_.C, 0, n_oa)
+                       : std::vector<double>{};
+        const std::vector<double> psi_va =
+            (n_va > 0) ? internal::mo_on_grid(cbg, result_.C, n_oa, n_va)
+                       : std::vector<double>{};
+        const std::vector<double> psi_ob =
+            (n_ob > 0)
+                ? internal::mo_on_grid(cbg, result_.C_beta, 0, n_ob)
+                : std::vector<double>{};
+        const std::vector<double> psi_vb =
+            (n_vb > 0)
+                ? internal::mo_on_grid(cbg, result_.C_beta, n_ob, n_vb)
+                : std::vector<double>{};
+
+        const bool use_ri = mp2_ri && periodic;
+        std::vector<double> v_aa, v_bb, v_ab;
+        if (n_oa > 0 && n_va > 0)
+            v_aa = use_ri ? internal::mo_eri_ovov_ri(grid, psi_oa, n_oa,
+                                                      psi_va, n_va)
+                          : internal::mo_eri_ovov(grid, psi_oa, n_oa, psi_va,
+                                                   n_va, nonperiodic);
+        if (n_ob > 0 && n_vb > 0)
+            v_bb = use_ri ? internal::mo_eri_ovov_ri(grid, psi_ob, n_ob,
+                                                      psi_vb, n_vb)
+                          : internal::mo_eri_ovov(grid, psi_ob, n_ob, psi_vb,
+                                                   n_vb, nonperiodic);
+        if (n_oa > 0 && n_va > 0 && n_ob > 0 && n_vb > 0)
+            v_ab =
+                use_ri
+                    ? internal::mo_eri_ovov_ab_ri(grid, psi_oa, n_oa, psi_va,
+                                                   n_va, psi_ob, n_ob, psi_vb,
+                                                   n_vb)
+                    : internal::mo_eri_ovov_ab(grid, psi_oa, n_oa, psi_va,
+                                                n_va, psi_ob, n_ob, psi_vb,
+                                                n_vb, nonperiodic);
+
+        const std::vector<double> eps_oa(result_.eps.begin(),
+                                         result_.eps.begin() + n_oa);
+        const std::vector<double> eps_va(result_.eps.begin() + n_oa,
+                                         result_.eps.begin() + n_oa + n_va);
+        const std::vector<double> eps_ob(result_.eps_beta.begin(),
+                                         result_.eps_beta.begin() + n_ob);
+        const std::vector<double> eps_vb(
+            result_.eps_beta.begin() + n_ob,
+            result_.eps_beta.begin() + n_ob + n_vb);
+
+        internal::DirectRpaAmplitudes amp;
+        internal::direct_rpa_uhf(v_aa, v_bb, v_ab, eps_oa, eps_va, eps_ob,
+                                 eps_vb, amp);
+
+        rpa_result_ = RpaResult{};
+        rpa_result_.e_corr = amp.e_corr;
+        rpa_result_.e_scf = result_.e_total;
+        rpa_result_.e_total = rpa_result_.e_scf + rpa_result_.e_corr;
+        rpa_result_.tr_A = amp.tr_A;
+        // Spin-orbital occupied / virtual counts (UMP2 convention).
+        rpa_result_.n_occ = n_oa + n_ob;
+        rpa_result_.n_virt = n_va + n_vb;
+        rpa_result_.ri = use_ri;
+        rpa_result_.n_kpts = 0;
+        rpa_result_.omega_ha = std::move(amp.omega);
+        return rpa_result_;
+    }
+
     // ── Multi-k (complex Bloch, finite-q inter-k RI-GPW dRPA) ──────────
     if (multi_k) {
         if (nonperiodic)
@@ -56,12 +205,7 @@ const RpaResult& GpwDft::direct_rpa(const std::vector<GpwAtom>& atoms) {
                 "(Poisson multi-k foothold is not offered)");
 
         const int nk = result_.n_kpts;
-        const int nb_atoms = [&] {
-            int nb = 0;
-            for (const auto& a : atoms)
-                nb += static_cast<int>(a.basis.size());
-            return nb;
-        }();
+        const int nb_atoms = count_basis_rpa_(atoms);
         const int nb = static_cast<int>(result_.C_k[0].shape(0));
         if (nb_atoms != nb)
             throw std::invalid_argument(
@@ -173,12 +317,7 @@ const RpaResult& GpwDft::direct_rpa(const std::vector<GpwAtom>& atoms) {
     }
 
     // ── Γ-point real path (product RI-GPW or Poisson foothold) ────────
-    const int nb_atoms = [&] {
-        int nb = 0;
-        for (const auto& a : atoms)
-            nb += static_cast<int>(a.basis.size());
-        return nb;
-    }();
+    const int nb_atoms = count_basis_rpa_(atoms);
     const int nb = static_cast<int>(result_.C.shape(0));
     const int n_mo = static_cast<int>(result_.C.shape(1));
     if (nb_atoms != nb)
