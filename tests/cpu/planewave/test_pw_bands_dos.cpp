@@ -78,3 +78,12 @@ TEST(GaussianDos, SinglePeakIntegratesToWeightTimesTwo) {
         integ += 0.5 * (dos[i] + dos[i + 1]) * de;
     EXPECT_NEAR(integ, 2.0, 1e-3);
 }
+
+TEST(BandsResult, DefaultIsRestricted) {
+    BandsResult br;
+    EXPECT_EQ(br.nspin, 1);
+    EXPECT_TRUE(br.eigenvalues_beta_ry.empty());
+    EXPECT_NEAR(br.magnetization, 0.0, 1e-15);
+    EXPECT_EQ(br.vbm_spin, 0);
+    EXPECT_EQ(br.cbm_spin, 0);
+}

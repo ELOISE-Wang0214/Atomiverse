@@ -157,6 +157,7 @@ if(ATV_BUILD_PW)
     atv_add_regression(pw pw-spin-polarized-o2)
     atv_add_regression(pw pw-spin-gga)
     atv_add_regression(pw bands-dos-si)
+    atv_add_regression(pw bands-spin-si)
     atv_add_regression(pw berry-polarization)
     target_compile_definitions(reg_berry-polarization PRIVATE
         ATV_PW_UPF_PATH="${_atv_si_upf}")

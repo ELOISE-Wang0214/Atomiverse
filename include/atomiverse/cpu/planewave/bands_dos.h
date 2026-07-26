@@ -18,6 +18,9 @@
 ///   bands.set_diamond_path(4);
 ///   auto br = bands.compute(pw, frame);   // gap_ry, eigenvalues_ry
 ///
+///   // Collinear spin (product): set method.spin_polarized = true
+///   // → br.nspin == 2, br.eigenvalues_beta_ry holds spin-down.
+///
 ///   cpu::pw::Dos dos;
 ///   dos.k_mesh = 4;
 ///   dos.n_bands = 8;
@@ -41,7 +44,14 @@ struct BandsResult {
     /// Fractional k-points used for the path (same order as eigenvalues).
     std::vector<std::array<double, 3>> kfrac;
     /// Eigenvalues \(\varepsilon_n(\mathbf{k})\) [Ry], layout `[ik][ib]`.
+    /// Restricted: sole channel. Collinear spin: **spin-up** (\(\alpha\)).
     std::vector<std::vector<double>> eigenvalues_ry;
+    /// Spin-down eigenvalues [Ry] when `nspin == 2`; empty when restricted.
+    std::vector<std::vector<double>> eigenvalues_beta_ry;
+    /// 1 = restricted (closed-shell); 2 = collinear spin-polarized.
+    int nspin = 1;
+    /// \(N_\uparrow - N_\downarrow\) (fixed occupations; 0 when restricted).
+    double magnetization = 0;
     double e_vbm_ry = 0;        ///< Valence-band maximum [Ry].
     double e_cbm_ry = 0;        ///< Conduction-band minimum [Ry].
     double gap_ry = 0;          ///< \(E_\mathrm{cbm}-E_\mathrm{vbm}\) [Ry].
@@ -49,6 +59,9 @@ struct BandsResult {
     int cbm_k = 0;              ///< k-index of CBM.
     int vbm_band = 0;           ///< Band index of VBM (0-based).
     int cbm_band = 0;           ///< Band index of CBM (0-based).
+    /// Spin channel of VBM/CBM (0=α, 1=β); 0 when restricted.
+    int vbm_spin = 0;
+    int cbm_spin = 0;
     bool scf_converged = false; ///< Whether the preceding SCF converged.
     double energy_ry = 0;       ///< SCF total energy [Ry].
 };
@@ -71,10 +84,16 @@ struct DosResult {
 ///
 /// SCF uses `method` members (`ecut_ry`, `k_mesh`, `xc`, …). Path k-points
 /// are `kfrac` (filled by `set_diamond_path` when empty at `compute` time).
+///
+/// **Collinear spin** (`method.spin_polarized`): fixed-occupation SCF with
+/// \(N_\uparrow,N_\downarrow\) from `multiplicity`, then per-spin NSCF on
+/// frozen \(V_{\mathrm{eff},\sigma}\). Metallic smearing is rejected (see
+/// `dos-metallic-si` residual).
 class Bands {
   public:
-    /// @brief Total bands to diagonalize (valence + conduction).
-    ///        Silicon has 4 occupied valence bands (\(n_e=8\)).
+    /// @brief Total bands to diagonalize per spin channel (valence + conduction).
+    ///        Silicon has 4 occupied valence bands (\(n_e=8\); \(N_\sigma=4\)
+    ///        when \(M=0\)).
     int n_bands = 8;
     /// @brief Fractional (crystal) k-list. Empty → `set_diamond_path(4)`.
     std::vector<std::array<double, 3>> kfrac;
