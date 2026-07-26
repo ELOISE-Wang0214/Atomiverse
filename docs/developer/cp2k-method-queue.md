@@ -465,21 +465,42 @@ table flips** (nothing new merged since harness wave 8); §8/§10–12 +
 MD AIMD open-residual prose + index GPW residual line refreshed for
 wave-9 queue. **Pending = 9**; **in_progress = 1**; **blocked = 5**.
 
+**Harness wave 9 2026-07-26 (parent `dev` @ `dab2b190`):** 8 staffed
+slugs merged → `## done` (`ot-uks-smearing`, `ot-uks-dftu`,
+`ot-dftu-smearing`, `gpw-d4-forces`, `gpw-mbd-forces`,
+`gpw-uks-multigrid`, `dfpt-finite-q-smearing`, `second-gen-cpmd-ot`).
+Specs deleted on close. **Pending residual = 0** (staff batch emptied
+the landed list — **not** queue exhausted; GapCensus owns next
+discovery). **in_progress = 2** unmerged staff `[~]`: `gpw-vv10-ice` on
+`wf/gpw-vv10-ice` (CP2K stock VV10 oracle gap; do not demote) +
+`dfpt-spin-smearing` on `wf/dfpt-spin-smearing` @ `d7576dea` (feat + reg
+on branch; not merged to `dev` — keep incomplete). Roadmap: **no new
+○→✓ table flips** (D4/MBD/OT/multigrid rows already ✓; stock VV10 stays
+○); residual prose closed UKS OT+smear, multi-k UKS OT+DFT+U,
+OT+DFT+U+smear, D4/MBD analytic forces, UKS multigrid, finite-q DFPT
+smear, SGCP OT corrector; **DFPT spin+smear** stays open incomplete;
+stock VV10 stays open. **Blocked = 5** unchanged. **Queue not
+exhausted** — GapCensus owns next discovery.
+
 ## pending
 
-- [ ] `ot-uks-smearing` | UKS OT + metallic occupation smearing (FD/MP) | gpw | offline CP2K O₂ / Na twin
-- [ ] `ot-uks-dftu` | Multi-k UKS OT + Dudarev DFT+U | gpw | offline CP2K H₂ / NiO-class twin
-- [ ] `ot-dftu-smearing` | OT + DFT+U + metallic smearing (RKS multi-k) | gpw | offline CP2K twin
-- [ ] `gpw-d4-forces` | Analytic ionic forces with DFT-D4 | gpw | offline dftd4 / CP2K force pin
-- [ ] `gpw-mbd-forces` | Analytic ionic forces with MBD@rsSCS | gpw | offline libMBD / CP2K force pin
-- [ ] `gpw-uks-multigrid` | UKS multigrid product collocation (`ngrids>1`) | gpw | offline CP2K NGRIDS UKS twin
-- [ ] `dfpt-spin-smearing` | DFPT collinear spin + metallic occupation smearing (PW) | response | offline CP2K / literature twin
-- [ ] `dfpt-finite-q-smearing` | Finite-q DFPT with metallic smearing (PW) | response | offline CP2K / literature twin
-- [ ] `second-gen-cpmd-ot` | Second-gen CP with OT partial-SCF corrector | dynamics | offline CP2K SGCP+OT twin
+_(empty after harness wave 9 — not queue exhausted; GapCensus owns refill)_
 
 ## in_progress
 
-- [~] `gpw-vv10-ice` | Stock VV10 nonlocal correlation (≠ rVV10) | gpw | unmerged `wf/gpw-vv10-ice` @ `b8a2e6ca` (docs/block: CP2K 2026.1 has no `TYPE VV10`; incomplete — do not force-merge)
+- [~] `gpw-vv10-ice` | Stock VV10 nonlocal correlation (≠ rVV10) | gpw | unmerged `wf/gpw-vv10-ice` @ `2f1d90e2` (docs/block: CP2K 2026.1 has no `TYPE VV10`; incomplete — do not force-merge)
+- [~] `dfpt-spin-smearing` | DFPT collinear spin + metallic occupation smearing (PW) | response | unmerged `wf/dfpt-spin-smearing` @ `d7576dea` (feat+reg on branch; not merged — keep incomplete)
+
+## done (harness wave 9 2026-07-26)
+
+- [x] `ot-uks-smearing` | UKS OT + metallic occupation smearing (FD/MP) | gpw | `regressions/gpw/ot-uks-smearing` | ratio **~0.12** | 2026-07-26
+- [x] `ot-uks-dftu` | Multi-k UKS OT + Dudarev DFT+U | gpw | `regressions/gpw/ot-uks-dftu` | ratio **perf_exempt** | 2026-07-26
+- [x] `ot-dftu-smearing` | OT + DFT+U + metallic smearing (RKS multi-k) | gpw | `regressions/gpw/ot-dftu-smearing` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-d4-forces` | Analytic ionic forces with DFT-D4 | gpw | `regressions/gpw/gpw-d4-forces` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-mbd-forces` | Analytic ionic forces with MBD@rsSCS | gpw | `regressions/gpw/gpw-mbd-forces` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-uks-multigrid` | UKS multigrid product collocation (`ngrids>1`) | gpw | `regressions/gpw/gpw-uks-multigrid` | ratio **~1.54** | 2026-07-26
+- [x] `dfpt-finite-q-smearing` | Finite-q DFPT with metallic smearing (PW) | response | `regressions/response/dfpt-finite-q-smearing` | ratio **perf_exempt** | 2026-07-26
+- [x] `second-gen-cpmd-ot` | Second-gen CP with OT partial-SCF corrector | dynamics | `regressions/dynamics/second-gen-cpmd-ot` | ratio **perf_exempt** (NVE drift) | 2026-07-26
 
 ## done (harness wave 8 2026-07-26)
 

@@ -68,6 +68,21 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 harness wave 9 (parent `dev` @ `dab2b190`):** 8 merged →
+  done: `ot-uks-smearing`, `ot-uks-dftu`, `ot-dftu-smearing`,
+  `gpw-d4-forces`, `gpw-mbd-forces`, `gpw-uks-multigrid`,
+  `dfpt-finite-q-smearing`, `second-gen-cpmd-ot`. Incomplete remaining
+  **2** (`[~] gpw-vv10-ice` on unmerged `wf/gpw-vv10-ice`;
+  `[~] dfpt-spin-smearing` on unmerged `wf/dfpt-spin-smearing` @
+  `d7576dea` — not demoted); pending residual **0** (landed list emptied
+  — **not** queue exhausted); blocked **5**. Specs closed (deleted) for
+  all 8. Roadmap: **no new ○→✓ table flips** (rows already ✓ or VV10
+  still ○); residual prose closed UKS OT+smear, multi-k UKS OT+DFT+U,
+  OT+DFT+U+smear, D4/MBD analytic forces, UKS multigrid, finite-q DFPT
+  smear, SGCP OT corrector; DFPT spin+smear + stock VV10 stay open
+  incomplete. Clearup already ran (no isolation worktrees; no builds).
+  **Queue not exhausted** — next wave Recover incomplete then
+  GapCensus. No push.
 - **2026-07-26 GapCensus wave 9 (parent `dev` @ `07dd7bf3`):** recover
   incomplete=**1** (`[~] gpw-vv10-ice` on unmerged `wf/gpw-vv10-ice` —
   not demoted); CP2K specs on `dev`=0; isolation worktrees=0;

@@ -16,16 +16,17 @@ tests; libxc is never a runtime dependency.
 **Periodic DFT is DFT**, so it lives here too: sections 10–11 cover the
 plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
 remaining periodic-only gaps (hybrids, meta-GGA, stock VV10 incomplete staff,
-GAPW/PAW; GapCensus wave-9 queue: UKS OT+smear, multi-k UKS OT+DFT+U,
-OT+DFT+U+smear, D4/MBD analytic forces, UKS multigrid, DFPT spin+smear,
-SGCP OT corrector; product already ships multi-k URPA,
-OT+smear RKS, multi-k UKS OT, multi-k OT+DFT+U, D4 analytic stress, nonlocal
-vdW SCF potential/forces, optB88-vdW, metallic DFPT, finite-q+smear DFPT,
-collinear-spin incommensurate DFPT, URPA@UKS Γ+multi-k, multi-k UGW, GPW UKS
-smear, UKS Hirshfeld, CPMD/SGCP UKS, OT+k / OT+DFT+U, collinear-spin DFPT, XDM,
-GPW RKS/UKS metallic smear, Γ-UKS RPBE/revPBE/BLYP, multi-k DFT+U
-energy/stress, multi-k UMP2, multi-k MP2/RPA/G0W0, vdW-DF / DF2 / rVV10,
-periodic Ewald MBD, PW true spin-GGA, finite-q dRPA, OT-UKS, CPMD RATTLE).
+GAPW/PAW; open after harness wave 9: DFPT collinear spin+smear incomplete
+staff, stock VV10 incomplete staff; product already ships UKS OT+smear,
+multi-k UKS OT+DFT+U, OT+DFT+U+smear, D4/MBD analytic forces, UKS multigrid,
+finite-q+smear DFPT, SGCP OT corrector, multi-k URPA, OT+smear RKS, multi-k
+UKS OT, multi-k OT+DFT+U, D4 analytic stress, nonlocal vdW SCF
+potential/forces, optB88-vdW, metallic DFPT, collinear-spin incommensurate
+DFPT, URPA@UKS Γ+multi-k, multi-k UGW, GPW UKS smear, UKS Hirshfeld,
+CPMD/SGCP UKS, OT+k / OT+DFT+U, collinear-spin DFPT, XDM, GPW RKS/UKS
+metallic smear, Γ-UKS RPBE/revPBE/BLYP, multi-k DFT+U energy/stress,
+multi-k UMP2, multi-k MP2/RPA/G0W0, vdW-DF / DF2 / rVV10, periodic Ewald
+MBD, PW true spin-GGA, finite-q dRPA, OT-UKS, CPMD RATTLE).
 
 ## 1. Kohn–Sham Methods
 
@@ -235,8 +236,9 @@ volumes productize for **closed-shell RKS** (Γ + multi-k) **and Γ-UKS**
 ships on GPW (`reg_gpw-optb88-vdw`). Stock **VV10** (distinct from rVV10;
 CP2K 2026.1 has no `TYPE VV10`; `[~] gpw-vv10-ice`) remains incomplete staff.
 **DFT-D4 analytic fixed-\(P\) stress** productizes (`reg_gpw-d4-stress`);
-**D4 / MBD analytic ionic forces** remain open (`gpw-d4-forces` /
-`gpw-mbd-forces` in the CP2K queue — energy + stress only today).
+**D4 analytic ionic forces** productize (`reg_gpw-d4-forces`; dftd4
+gradient pin + product wiring) and **MBD@rsSCS analytic ionic forces**
+productize (`reg_gpw-mbd-forces`; free-atom / periodic path).
 
 ## 9. Composite DFT Methods
 
@@ -285,21 +287,25 @@ Two periodic DFT engines exist, with disjoint strengths:
   product **OT** minimizer (`use_ot` RKS + **Γ-UKS** `reg_ot-uks-o2` +
   **multi-k RKS** `reg_ot-kpoints` + **multi-k UKS** `reg_ot-uks-kpoints` +
   **Γ OT+DFT+U** `reg_ot-dftu` + **multi-k OT+DFT+U** `reg_ot-dftu-kpoints`
-  + **OT+metallic smear** `reg_ot-smearing`),
+  + **OT+metallic smear** RKS `reg_ot-smearing` + **UKS OT+smear**
+  `reg_ot-uks-smearing` + **multi-k UKS OT+DFT+U** `reg_ot-uks-dftu` +
+  **OT+DFT+U+smear** `reg_ot-dftu-smearing`),
   **Dudarev DFT+U** (`plus_u`; Γ `reg_gpw-dftu-nio` + **multi-k**
   `reg_gpw-dftu-kpoints` + **multi-k analytic stress**
   `reg_gpw-dftu-kpoint-stress`), **metallic occupation smearing** on
   multi-k **RKS** (`reg_gpw-metallic-smearing`) **and multi-k UKS**
-  (`reg_gpw-uks-smearing`), **D4 analytic stress** (`reg_gpw-d4-stress`).
+  (`reg_gpw-uks-smearing`), **D4 analytic stress** (`reg_gpw-d4-stress`) +
+  **D4 / MBD ionic forces** (`reg_gpw-d4-forces` / `reg_gpw-mbd-forces`),
+  **UKS multigrid** product collocation (`reg_gpw-uks-multigrid`).
   **Γ-point** RKS and **Γ-point UKS**
   (PADE LSD + **PBE-GGA** `reg_gpw-uks-pbe`; `n_alpha`/`n_beta`), plus
   **Monkhorst–Pack k-point RKS** and **k-point UKS** (`k_mesh` / explicit
   `k_points`; phased lattice sums, KB nonlocal, per-k DIIS;
   `reg_gpw-kpoints-si` / `reg_gpw-kpoints-uks`). **Open residuals** after
-  GapCensus wave 9: UKS OT+smear, multi-k UKS OT+DFT+U, OT+DFT+U+smear,
-  D4/MBD analytic forces, UKS multigrid product collocation; stock VV10
-  incomplete staff; hybrids / meta-GGA / GAPW / PAW remain blocked (queue
-  not exhausted — see `cp2k-method-queue.md`). CPU only.
+  harness wave 9: DFPT collinear **spin+smear** incomplete staff
+  (`dfpt-spin-smearing`); stock VV10 incomplete staff; hybrids /
+  meta-GGA / GAPW / PAW remain blocked (queue not exhausted — see
+  `cp2k-method-queue.md`). CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
 | -------------------------------- | :-: | :--: | :---: |
@@ -349,14 +355,16 @@ Which engine backs which ✓:
   (`reg_gpw-dftu-kpoint-stress`). Molecular Gaussian DFT+U remains ○.
 - **Periodic dispersion-corrected DFT** is GPW + DFT-D3 zero damping,
   **D3(BJ)** (§8; `reg_gpw-pbe-d3bj-ice`), **D4** energy (`reg_gpw-d4-water`)
-  **+ analytic stress** (`reg_gpw-d4-stress`), **TS** (`reg_gpw-ts-ice`),
-  free-atom **MBD@rsSCS** (`reg_gpw-mbd-ice`), **Hirshfeld-scaled MBD**
-  (Γ `reg_gpw-mbd-hirshfeld` + multi-k `reg_gpw-hirshfeld-kpoints` +
-  **Γ-UKS** `reg_gpw-hirshfeld-uks`), **periodic Ewald MBD**
-  (`reg_gpw-mbd-periodic`), **XDM** (`reg_gpw-xdm-ice`), **vdW-DF DRSLL**
-  (`reg_gpw-vdw-df-ice`), **vdW-DF2 LMKLL** (`reg_gpw-vdw-df2-ice`),
-  **rVV10** (`reg_gpw-rvv10-ice`), **optB88-vdW** (`reg_gpw-optb88-vdw`),
-  and **nonlocal SCF potential/forces** (`reg_gpw-vdw-scf-potential`).
+  **+ analytic stress** (`reg_gpw-d4-stress`) **+ ionic forces**
+  (`reg_gpw-d4-forces`), **TS** (`reg_gpw-ts-ice`), free-atom **MBD@rsSCS**
+  (`reg_gpw-mbd-ice`) **+ ionic forces** (`reg_gpw-mbd-forces`),
+  **Hirshfeld-scaled MBD** (Γ `reg_gpw-mbd-hirshfeld` + multi-k
+  `reg_gpw-hirshfeld-kpoints` + **Γ-UKS** `reg_gpw-hirshfeld-uks`),
+  **periodic Ewald MBD** (`reg_gpw-mbd-periodic`), **XDM**
+  (`reg_gpw-xdm-ice`), **vdW-DF DRSLL** (`reg_gpw-vdw-df-ice`), **vdW-DF2
+  LMKLL** (`reg_gpw-vdw-df2-ice`), **rVV10** (`reg_gpw-rvv10-ice`),
+  **optB88-vdW** (`reg_gpw-optb88-vdw`), and **nonlocal SCF
+  potential/forces** (`reg_gpw-vdw-scf-potential`).
 - **Periodic MP2** is **Γ-point RI-GPW product** (`GpwDft::mp2` with
   `mp2_ri` default true; Del Ben et al. 2012 layout;
   `reg_periodic-ri-mp2-si` vs CP2K 2026.1; Poisson foothold
@@ -423,8 +431,8 @@ Which engine backs which ✓:
   \(q\)** `reg_dfpt-spin-incommensurate`; **metallic occupation smearing**
   `reg_dfpt-metallic-si`; **finite-q + metallic smear**
   `reg_dfpt-finite-q-smearing`). **Open residual:** collinear **spin + smear**
-  still throws (`dfpt-spin-smearing` in the CP2K queue). NC-UPF;
-  fixed-occupation and restricted metallic-smear Sternheimer paths
+  incomplete staff on `wf/dfpt-spin-smearing` (not merged — keep `[~]`).
+  NC-UPF; fixed-occupation and restricted metallic-smear Sternheimer paths
   (Γ / commensurate / direct finite-\(q\)) productized.
 - **Berry-phase polarization**: King-Smith–Vanderbilt (KSV) electronic
   polarization on the PW method (`cpu::pw::BerryPolarization`; string-averaged
@@ -460,7 +468,10 @@ FD/MP (`reg_gpw-metallic-smearing`) **and multi-k UKS** (`reg_gpw-uks-smearing`)
 OT on GPW is a product member (`use_ot`; RKS `reg_ot-minimizer-water` +
 **Γ-UKS** `reg_ot-uks-o2` + **multi-k RKS** `reg_ot-kpoints` + **multi-k
 UKS** `reg_ot-uks-kpoints` + **Γ OT+DFT+U** `reg_ot-dftu` + **multi-k
-OT+DFT+U** `reg_ot-dftu-kpoints` + **OT+smear** `reg_ot-smearing`).
+OT+DFT+U** `reg_ot-dftu-kpoints` + **OT+smear** RKS `reg_ot-smearing` +
+**UKS OT+smear** `reg_ot-uks-smearing` + **multi-k UKS OT+U**
+`reg_ot-uks-dftu` + **OT+U+smear** `reg_ot-dftu-smearing`). **UKS multigrid**
+product collocation ships (`reg_gpw-uks-multigrid`).
 **Band structure / DOS** on CPU PW: `cpu::pw::Bands`
 (high-symmetry path) + `cpu::pw::Dos` (MP mesh + Gaussian smearing;
 `reg_bands-dos-si`).
