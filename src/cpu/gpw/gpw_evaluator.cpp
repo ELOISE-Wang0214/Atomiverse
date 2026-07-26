@@ -90,6 +90,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.nonperiodic = nonperiodic;
     cfg.d3 = d3;
     cfg.d3bj = d3bj;
+    cfg.d3_atm = d3_atm;
     cfg.d4 = d4;
     cfg.ts = ts;
     cfg.xdm = xdm;

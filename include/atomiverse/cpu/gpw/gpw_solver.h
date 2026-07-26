@@ -245,6 +245,9 @@ class GpwDft {
     /// @brief Grimme DFT-D3 Becke–Johnson damping (PBE params, CP2K CN form).
     /// Mutually exclusive with `d3` / `d4` / `ts` / `mbd` / `xdm`.
     bool d3bj = false; ///< Grimme DFT-D3(BJ) dispersion.
+    /// @brief Three-body ATM / C9 on top of `d3` or `d3bj` (CP2K
+    ///        `CALCULATE_C9_TERM`). Ignored when neither D3 flag is set.
+    bool d3_atm = false; ///< DFT-D3 Axilrod–Teller–Muto (C9).
     /// @brief Grimme DFT-D4 BJ damping (PBE params, two-body; periodic EEQ).
     /// Mutually exclusive with `d3` / `d3bj` / `ts` / `mbd` / `xdm`.
     bool d4 = false; ///< Grimme DFT-D4 dispersion.

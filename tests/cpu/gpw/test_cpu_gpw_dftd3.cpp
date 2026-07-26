@@ -253,6 +253,106 @@ TEST(GpwDftD3BJ, IntegratedIntoGpwScf) {
     EXPECT_NEAR(r_off.e_disp, 0.0, 1e-15);
 }
 
+// ---------------------------------------------------------------------------
+// Three-body ATM / C9 (CP2K CALCULATE_C9_TERM .TRUE.)
+// ---------------------------------------------------------------------------
+//
+// Offline CP2K 2026.1, TYPE DFTD3 / PBE / R_CUTOFF 20 / CALCULATE_C9_TERM T /
+// no LRC, water dimer PERIODIC NONE (tools/cp2k_oracle/inputs/gpw-d3-atm):
+//     Dispersion energy:   -0.00081414118193  [Hartree]
+// Two-body-only on same geometry: -0.00081399213205 Ha.
+
+TEST(GpwDftD3Atm, WaterDimerEnergyMatchesCP2K) {
+    const D3Params params{};
+    const auto pos = water_dimer_bohr();
+    const double cell[3] = {0.0, 0.0, 0.0};
+
+    const D3Result two =
+        dftd3_pbe(kZ, pos, cell, /*periodic=*/false, params, 40.0, false);
+    const D3Result atm =
+        dftd3_pbe(kZ, pos, cell, /*periodic=*/false, params, 40.0, true);
+
+    const double cp2k_atm = -0.00081414118193;
+    const double cp2k_two = -0.00081399213205;
+    std::printf("[D3-ATM] E_two=%.14f  E_atm=%.14f  CP2K_atm=%.14f  "
+                "Δ_ATM=%.3e Ha\n",
+                two.energy, atm.energy, cp2k_atm, atm.energy - two.energy);
+    EXPECT_NEAR(two.energy, cp2k_two, 1e-9);
+    EXPECT_NEAR(atm.energy, cp2k_atm, 1e-9);
+    // ATM shifts the two-body pin by a small but finite amount.
+    EXPECT_GT(std::abs(atm.energy - two.energy), 1e-10);
+}
+
+TEST(GpwDftD3Atm, AnalyticForcesMatchFiniteDifference) {
+    const D3Params params{};
+    auto pos = water_dimer_bohr();
+    const double cell[3] = {0.0, 0.0, 0.0};
+    const auto eval = [&](const std::vector<std::array<double, 3>>& p) {
+        return dftd3_pbe(kZ, p, cell, false, params, 40.0, /*calculate_c9=*/true);
+    };
+
+    const D3Result r = eval(pos);
+    const double h = 1e-5;
+    double max_err = 0.0;
+    for (std::size_t i = 0; i < pos.size(); ++i) {
+        for (int d = 0; d < 3; ++d) {
+            const double save = pos[i][d];
+            pos[i][d] = save + h;
+            const double ep = eval(pos).energy;
+            pos[i][d] = save - h;
+            const double em = eval(pos).energy;
+            pos[i][d] = save;
+            const double fd = -(ep - em) / (2.0 * h);
+            max_err = std::max(max_err, std::abs(fd - r.forces[i][d]));
+        }
+    }
+    std::printf("[D3-ATM] max |F_analytic - F_fd| = %.2e Ha/Bohr\n", max_err);
+    EXPECT_LT(max_err, 1e-7);
+}
+
+// GpwDft.d3_atm folds standalone ATM energy into e_disp for the water dimer.
+TEST(GpwDftD3Atm, IntegratedIntoGpwScf) {
+    using namespace ATV::cpu::gpw;
+
+    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
+    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
+    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
+    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
+    const auto pos = water_dimer_bohr();
+    std::vector<GpwAtom> atoms;
+    atoms.reserve(6);
+    for (int i = 0; i < 6; ++i) {
+        const double p[3] = {pos[i][0], pos[i][1], pos[i][2]};
+        if (kZ[static_cast<std::size_t>(i)] == 8)
+            atoms.emplace_back(p, bO, pO, 8);
+        else
+            atoms.emplace_back(p, bH, pH, 1);
+    }
+    const double L = 12.0 * kAngToBohr;
+    const double cell[3] = {L, L, L};
+    const double ed3 = dftd3_pbe(kZ, pos, cell, /*periodic=*/false, D3Params{},
+                                 40.0, /*calculate_c9=*/true)
+                           .energy;
+
+    GpwDft m;
+    m.cell[0] = m.cell[1] = m.cell[2] = L;
+    m.cutoff_ry = 200.0;
+    m.n_occ = 8;
+    m.tol = 1e-6;
+    m.max_iter = 8;
+    m.mix = 0.4;
+    m.xc = XcKind::PBE;
+    m.nonperiodic = true;
+    m.d3 = true;
+    m.d3_atm = true;
+    m.build(atoms);
+    const auto& r = m.run(atoms);
+    std::printf("[D3-ATM integ] e_disp=%.14f  standalone=%.14f\n", r.e_disp,
+                ed3);
+    EXPECT_NEAR(r.e_disp, ed3, 1e-9);
+    EXPECT_NEAR(r.e_disp, -0.00081414118193, 1e-9);
+}
+
 TEST(GpwDftD3BJ, MutualExclusionWithZeroDamping) {
     using namespace ATV::cpu::gpw;
     const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
