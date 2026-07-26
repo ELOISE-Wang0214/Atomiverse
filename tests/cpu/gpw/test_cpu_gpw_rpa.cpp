@@ -163,7 +163,8 @@ TEST(GpwRpa, DirectRpaBeforeBuildThrows) {
     EXPECT_THROW(m.direct_rpa({}), std::logic_error);
 }
 
-TEST(GpwRpa, DirectRpaUksThrows) {
+// URPA@UKS is product at Γ — still requires a converged run().
+TEST(GpwRpa, DirectRpaUksUnconvergedThrows) {
     GpwDft m;
     m.cell[0] = m.cell[1] = m.cell[2] = 6.0;
     m.n_alpha = 1;
@@ -172,7 +173,47 @@ TEST(GpwRpa, DirectRpaUksThrows) {
     a.z_val = 2.0;
     a.basis.push_back(s_gauss(0.8, 3.0, 3.0, 3.0));
     m.build({a});
-    EXPECT_THROW(m.direct_rpa({a}), std::invalid_argument);
+    EXPECT_THROW(m.direct_rpa({a}), std::logic_error);
+}
+
+// Identical α=β tensors: unrestricted spin-conserving dRPA E_c must match
+// closed-shell singlet dRPA (charge modes ≡ factor-2 RHF path). Surface pin
+// for GpwDft::direct_rpa URPA wiring (kernel also dual-gated in G0W0 unit).
+TEST(GpwRpa, DirectRpaUhfDualGatesRhf) {
+    using ATV::cpu::gpw::internal::direct_rpa_rhf;
+    using ATV::cpu::gpw::internal::direct_rpa_uhf;
+    using ATV::cpu::gpw::internal::DirectRpaAmplitudes;
+
+    const int no = 2, nv = 2, nov = no * nv;
+    std::vector<double> eps_occ = {-1.0, -0.5};
+    std::vector<double> eps_virt = {0.2, 0.7};
+    std::vector<double> v(static_cast<std::size_t>(nov) * nov, 0.0);
+    auto idx = [&](int i, int a, int j, int b) {
+        return static_cast<std::size_t>((i * nv + a) * nov + j * nv + b);
+    };
+    unsigned s = 314159u;
+    for (int i = 0; i < no; ++i)
+        for (int a = 0; a < nv; ++a)
+            for (int j = 0; j < no; ++j)
+                for (int b = 0; b < nv; ++b) {
+                    s = s * 1664525u + 1013904223u;
+                    const double x =
+                        0.025
+                        * (static_cast<double>(s >> 8)
+                               / static_cast<double>(1u << 24)
+                           - 0.5);
+                    v[idx(i, a, j, b)] = x;
+                    v[idx(j, b, i, a)] = x;
+                }
+
+    DirectRpaAmplitudes rhf;
+    direct_rpa_rhf(v, eps_occ, eps_virt, rhf);
+    DirectRpaAmplitudes uhf;
+    direct_rpa_uhf(v, v, v, eps_occ, eps_virt, eps_occ, eps_virt, uhf);
+    EXPECT_NEAR(uhf.e_corr, rhf.e_corr, 1e-10);
+    EXPECT_EQ(uhf.omega.size(), static_cast<std::size_t>(2 * nov));
+    for (double w : uhf.omega)
+        EXPECT_GT(w, 0.0);
 }
 
 TEST(GpwRpa, DirectRpaUnconvergedThrows) {
