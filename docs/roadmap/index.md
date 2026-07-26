@@ -262,9 +262,11 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   `reg_gpw-uks-stress` / `reg_gpw-kpoint-stress` / `reg_gpw-stress-water`)
   and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice` + MOLOPT
   `reg_gpw-variable-cell-molopt`). Open residuals after harness wave 10
-  are queue-owned (stock VV10 incomplete staff; UGW@UKS-RPBE; hybrids /
-  meta-GGA / GAPW blocked — see `cp2k-method-queue.md`; queue not
-  exhausted; incomplete `[~]` first).
+  are queue-owned (UGW@UKS-RPBE; multi-k UKS XL; metallic bands / spin
+  DOS; finite-q DFPT spin+smear; multi-k UKS stress GGA; CPMD
+  electronic thermostat; TS/XDM force pins; stock VV10 **blocked** —
+  no CP2K twin; hybrids / meta-GGA / GAPW blocked — see
+  `cp2k-method-queue.md`; queue not exhausted).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member
   `local_pp_on_grid` consistent between energy and gradient

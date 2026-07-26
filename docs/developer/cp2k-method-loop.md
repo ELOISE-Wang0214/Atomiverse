@@ -68,6 +68,20 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 GapCensus wave 11 (parent `dev` @ `96a0a7d2`):** recover
+  incomplete=**1** (`[~] gpw-vv10-ice` → **blocked**, no CP2K `TYPE
+  VV10`); CP2K specs on `dev`=0; isolation worktrees=0; builds=none.
+  Prior pending residual **1** (`ugw-uks-rpbe`) re-verified; **+8**
+  residuals → pending **9** (`ugw-uks-rpbe`, `xl-bomd-uks-kpoints`,
+  `bands-metallic-si`, `dos-spin-si`, `dfpt-finite-q-spin-smearing`,
+  `gpw-kpoint-uks-stress-gga`, `cpmd-electronic-thermostat`,
+  `gpw-ts-forces`, `gpw-xdm-forces`); in_progress **0**; blocked **6**.
+  No ○/✓ table flips; §8/§10–12 + MD AIMD residual prose + index GPW
+  residual line refreshed. Next: Assign surface-disjoint staff
+  (UGW-RPBE free of XL-UKS-k; bands-metallic ∥ dos-spin careful PW
+  bands_dos share; DFPT finite-q spin+smear free of GPW; k-UKS stress
+  GGA careful stress tree; CPMD e-T free of XL; TS forces ∥ XDM forces
+  careful dispersion surface).
 - **2026-07-26 harness wave 10 (parent `dev` @ `06ecaa66`):** 9 merged →
   done: `dfpt-spin-smearing`, `ot-uks-dftu-smearing`,
   `second-gen-cpmd-uks-ot`, `xl-bomd-kpoints`, `bands-spin-si`,

@@ -538,13 +538,58 @@ spin Berry, multi-k MBD forces; **UGW@UKS-RPBE** + stock VV10 stay open.
 **Blocked = 5** unchanged. **Queue not exhausted** — GapCensus owns next
 discovery.
 
+**GapCensus wave 11 2026-07-26 (parent `dev` @ `96a0a7d2`):** recover —
+incomplete_count=**1** (`[~] gpw-vv10-ice` unmerged `wf/gpw-vv10-ice` @
+`a60c73d5` docs/block — CP2K 2026.1 `TYPE VV10` enum reject, only
+DRSLL|LMKLL|RVV10; **resolved → blocked**, no force-merge / no product
+`GpwDft::vv10`). Open CP2K/GPW/PW specs on `dev`=**0** (PySCF deferred
+only: `periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`); isolation worktrees=**0**;
+leftover builds=**none**. Tree re-diff vs `docs/roadmap/dft.md` §3/§8/
+§10–12 + MD AIMD + `tools/cp2k_oracle` +
+`include/atomiverse/cpu/{gpw,planewave}`: prior pending residual **1**
+(`ugw-uks-rpbe`) still true (`g0w0` `eval_xc_grid_spin` throws UKS RPBE
+despite SCF `xc_grid_rpbe_spin` product). **Added 8** tree-declared
+follow-ons with offline CP2K / literature twins:
+`xl-bomd-uks-kpoints` (multi-k RKS XL ✓ + Γ-UKS XL ✓; multi-k UKS XL
+throws dual-spin `P_k^σ`),
+`bands-metallic-si` (`Bands::compute` throws metallic smearing foothold
+after `dos-metallic-si` ✓),
+`dos-spin-si` (`Dos::compute` throws spin-polarized foothold after
+`bands-spin-si` ✓),
+`dfpt-finite-q-spin-smearing` (Γ spin+smear ✓ + finite-q smear RKS ✓ +
+finite-q spin fixed-occ ✓; finite-q collinear spin+smear throws),
+`gpw-kpoint-uks-stress-gga` (multi-k UKS stress product for PADE/PBE/
+PBEsol only; Γ UKS stress already RevPBE/RPBE/BLYP — expand k-path
+XcKind),
+`cpmd-electronic-thermostat` (CPMD + RATTLE + UKS/SGCP depth ✓;
+electronic thermostat residual per MD AIMD roadmap),
+`gpw-ts-forces` / `gpw-xdm-forces` (force assembly already folds TS/XDM
+on Γ + multi-k; dedicated offline pins after MBD×k forces ✓). **Not
+added:** BP86/B97/OLYP/HCTH (molecular PySCF path); stock VV10 (moved
+**blocked** — no CP2K twin); shear/off-diagonal stress (orthorhombic
+design); multi-k SGCP / multi-k CPMD (no explicit throw; unpinned
+depth hold); GAPW/PAW/periodic hybrid/meta-GGA (blocked); molecular
+post-HF / classical MW / CUDA ports (other loops). Roadmap: **no ○/✓
+table flips** (nothing new merged since harness wave 10); §8/§10–12 +
+MD AIMD open-residual prose + index GPW residual line refreshed;
+**VV10** remains ○ with blocked note. **Pending = 9**; **in_progress
+= 0**; **blocked = 6**.
+
 ## pending
 
 - [ ] `ugw-uks-rpbe` | UGW@UKS with RPBE spin XC | gpw | residual: UGW + RPBE UKS SCF ✓; g0w0 RPBE spin XC throw
+- [ ] `xl-bomd-uks-kpoints` | Multi-k UKS XL-BOMD (dual-spin \(P_k^\sigma\)) | dynamics | residual: multi-k RKS XL + Γ-UKS XL ✓; multi-k UKS XL throw
+- [ ] `bands-metallic-si` | Metallic occupation band structure (PW) | pw | residual: Bands::compute throws metallic smear after dos-metallic-si ✓
+- [ ] `dos-spin-si` | Collinear-spin DOS (PW) | pw | residual: Dos::compute throws spin foothold after bands-spin-si ✓
+- [ ] `dfpt-finite-q-spin-smearing` | Finite-q DFPT collinear spin + metallic smear (PW) | response | residual: Γ spin+smear ✓; finite-q spin / finite-q smear product; combo throws
+- [ ] `gpw-kpoint-uks-stress-gga` | Multi-k UKS analytic stress for RevPBE/RPBE/BLYP | gpw | residual: k-UKS stress XcKind PADE\|PBE\|PBEsol only; Γ UKS GGA ✓
+- [ ] `cpmd-electronic-thermostat` | Electronic thermostat on CPMD (GPW) | dynamics | residual: CPMD + RATTLE + UKS/SGCP ✓; electronic T residual
+- [ ] `gpw-ts-forces` | Analytic ionic forces with free-atom TS | gpw | residual: force fold exists; dedicated offline pin after MBD×k forces ✓
+- [ ] `gpw-xdm-forces` | Analytic ionic forces with free-atom XDM | gpw | residual: force fold exists; dedicated offline pin after MBD×k forces ✓
 
 ## in_progress
 
-- [~] `gpw-vv10-ice` | Stock VV10 nonlocal correlation (≠ rVV10) | gpw | unmerged `wf/gpw-vv10-ice` @ `2f1d90e2` (docs/block: CP2K 2026.1 has no `TYPE VV10`; incomplete — do not force-merge)
+_(empty — incomplete `gpw-vv10-ice` resolved to blocked; no open CP2K specs / no unmerged feature `wf/*`)_
 
 ## done (harness wave 10 2026-07-26)
 
@@ -672,6 +717,7 @@ discovery.
 
 ## blocked
 
+- [!] `gpw-vv10-ice` | blocked — stock VV10 (≠ rVV10): CP2K 2026.1 has no `NON_LOCAL TYPE VV10` (enum DRSLL|LMKLL|RVV10 only; no VV10 kernel table); reconfirmed waves 6–10 on `wf/gpw-vv10-ice` @ `a60c73d5`; product VV-family remains rVV10; no offline CP2K twin — scope_out of pending
 - [!] `periodic-hybrid-gpw` | blocked — no periodic exact exchange (same as periodic HF); HSE/PBE0 periodic ○
 - [!] `gapw-dft` | blocked — GAPW not in tree; long-horizon
 - [!] `ultrasoft-paw` | blocked — UPF NC + GTH only; PAW/USPP ○
