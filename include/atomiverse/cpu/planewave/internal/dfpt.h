@@ -107,11 +107,12 @@ struct DfptQOutput {
 
 /// @brief Assemble the q = 0 DFPT force-constant matrix for `frame`.
 ///
-/// Restricted fixed-occupation pure LSDA or pure GGA with a UPF
-/// pseudopotential only (throws `std::invalid_argument` otherwise). Runs
-/// the ground-state SCF, then one self-consistent Sternheimer response per
-/// Cartesian displacement. Pure GGA uses the spectral `XCBuilder` kernel
-/// (FD of \(V_{\mathrm{xc}}[n]\)); hybrids are rejected.
+/// Fixed-occupation pure LSDA or pure GGA with a UPF pseudopotential
+/// (throws `std::invalid_argument` otherwise). Restricted or **collinear
+/// spin** (`method.spin_polarized`). Runs the ground-state SCF, then one
+/// self-consistent Sternheimer response per Cartesian displacement. Pure
+/// GGA uses the spectral `XCBuilder` kernel (FD of \(V_{\mathrm{xc}}[n]\) or
+/// `step_spin`); hybrids are rejected.
 ///
 /// @param frame  Geometry [Å], types (Z), cell.
 /// @param method Plane-wave method members (`xc` pure LSDA or pure GGA).

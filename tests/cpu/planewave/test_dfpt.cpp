@@ -200,13 +200,27 @@ TEST(DfptPhonon, ThrowsOnSmearing) {
     EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
 }
 
-TEST(DfptPhonon, ThrowsOnSpinPolarized) {
+TEST(DfptPhonon, ThrowsOnSpinWithSmearing) {
+    // Collinear spin + fixed occupations is supported; smear remains out.
+    auto frame = si_frame();
+    PW method;
+    method.upf_path = "unused.upf";
+    method.xc = cpu::scf::XCType::LSDA;
+    method.spin_polarized = true;
+    method.smearing = Smearing::fermi_dirac;
+    DfptPhonon dfpt;
+    EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
+}
+
+TEST(DfptPhonon, ThrowsOnSpinIncommensurateQ) {
+    // Direct finite-q Sternheimer still rejects collinear spin.
     auto frame = si_frame();
     PW method;
     method.upf_path = "unused.upf";
     method.xc = cpu::scf::XCType::LSDA;
     method.spin_polarized = true;
     DfptPhonon dfpt;
+    dfpt.q_frac = {0.3, 0.0, 0.0};
     EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
 }
 
