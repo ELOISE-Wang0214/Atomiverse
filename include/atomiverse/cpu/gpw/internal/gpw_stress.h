@@ -18,8 +18,10 @@ namespace internal {
 /// under orthorhombic diagonal strain at fixed fractional coordinates (GPW
 /// analogue of plane-wave Nielsen–Martin in this tree). Supports Gamma RKS,
 /// Gamma UKS (spin densities \(P_\alpha,P_\beta\) + \(W_\alpha,W_\beta\)),
-/// multi-k closed-shell RKS (k-summed fixed-\(P_k\) Lagrangian), and multi-k
-/// collinear UKS (fixed \(\{P_k^\sigma,W_k^\sigma\}\), spin XC). Off-diagonal = 0.
+/// multi-k closed-shell RKS (k-summed fixed-\(P_k\) Lagrangian), multi-k
+/// collinear UKS (fixed \(\{P_k^\sigma,W_k^\sigma\}\), spin XC), and Dudarev
+/// DFT+U on Γ and multi-k (BZ-averaged Mulliken \(E_U\) at strained
+/// \(S\)/\(S_k\)). Off-diagonal = 0.
 ///
 /// @param atoms Geometry [Bohr] + basis/PP (same as `GpwDft::run`).
 /// @param method SCF configuration (`cell` must match atoms' box).

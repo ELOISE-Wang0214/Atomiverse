@@ -430,14 +430,50 @@ TEST(GpwStress, DftUUksAnalyticMatchesFdDiagonal) {
     });
 }
 
-TEST(GpwStress, DftUKpointStillThrows) {
-    // Multi-k + PLUS_U remains out of scope for this slug.
+// ── Multi-k + Dudarev DFT+U analytic stress ───────────────────────────────
+
+TEST(GpwStress, DftUKpointUksAnalyticMatchesFdDiagonal) {
+    // High-spin H₂ UKS + MP 1×1×2 + PLUS_U on H L=0: unit-tier smoke that
+    // energy_fixed_P_k includes BZ-averaged E_U[n({P_k},{S_k})] and dual-gates
+    // against multi-SCF FD. Product residual lives in
+    // reg_gpw-dftu-kpoint-stress.
     const auto atoms = cheap_h2_atoms();
     GpwDft cfg = cheap_h2_cfg();
-    cfg.n_occ = 1;
+    cfg.n_occ = 0;
+    cfg.n_alpha = 2;
+    cfg.n_beta = 0;
+    cfg.xc = XcKind::PADE;
     cfg.nonperiodic = false;
     cfg.local_pp_on_grid = true;
-    cfg.k_mesh[0] = cfg.k_mesh[1] = cfg.k_mesh[2] = 2;
+    cfg.k_mesh[0] = 1;
+    cfg.k_mesh[1] = 1;
+    cfg.k_mesh[2] = 2;
+    cfg.max_iter = 120;
+    cfg.mix = 0.35;
     cfg.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_ev=*/4.0});
-    EXPECT_THROW(gpw_stress(atoms, cfg, 3e-3), std::invalid_argument);
+    const double h = 3e-3;
+    EXPECT_NO_THROW({
+        const auto san = gpw_stress(atoms, cfg, h);
+        const auto sfd = gpw_stress_fd(atoms, cfg, h);
+        double max_err = 0.0;
+        for (int a = 0; a < 3; ++a) {
+            const double err = std::abs(san[static_cast<std::size_t>(a)]
+                                        - sfd[static_cast<std::size_t>(a)]);
+            max_err = std::max(max_err, err);
+            std::printf("  k+DFT+U axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n", a,
+                        san[static_cast<std::size_t>(a)],
+                        sfd[static_cast<std::size_t>(a)], err);
+            EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(a)]));
+            EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(a)]));
+        }
+        EXPECT_DOUBLE_EQ(san[3], 0.0);
+        EXPECT_DOUBLE_EQ(san[4], 0.0);
+        EXPECT_DOUBLE_EQ(san[5], 0.0);
+        const double max_diag =
+            std::max({std::abs(san[0]), std::abs(san[1]), std::abs(san[2])});
+        EXPECT_GT(max_diag, 1e-8);
+        // Unit smoke: order-of-magnitude; e2e dual-gate is tighter.
+        EXPECT_LT(max_err, 2e-3)
+            << "multi-k DFT+U UKS analytic vs multi-SCF FD diagonal";
+    });
 }
