@@ -268,3 +268,35 @@ TEST(GpwXcGGA, PotentialIsFunctionalDerivative) {
     EXPECT_NEAR(fd, analytic, 1e-4 * std::max(1.0, std::abs(analytic)))
         << "fd=" << fd << " analytic=" << analytic;
 }
+
+// OptB88VdW at σ=0 matches evaluate_xc (optB88-x + PW92).
+TEST(GpwXcGGA, OptB88VdWConstantDensityLdaLimit) {
+    using ATV::cpu::gpw::xc_grid_optb88_vdw;
+    const double cell[3] = {8.0, 8.0, 8.0};
+    UniformGrid grid = make_uniform_grid(cell, 150.0);
+    const double rho0 = 0.2;
+    std::vector<double> rho(static_cast<std::size_t>(grid.npts()), rho0);
+
+    XcOnGrid xc = xc_grid_optb88_vdw(grid, rho);
+    const ATV::cpu::scf::XCOutput ref = ATV::cpu::scf::evaluate_xc(
+        ATV::cpu::scf::XCType::OptB88VdW, 0.5 * rho0, 0.5 * rho0, 0, 0, 0);
+    const double volume = cell[0] * cell[1] * cell[2];
+    EXPECT_NEAR(xc.e_xc, volume * rho0 * ref.exc,
+                1e-9 * std::abs(volume * rho0 * ref.exc));
+    EXPECT_NEAR(xc.vxc_r[0], ref.vrho_alpha, 1e-9);
+}
+
+// Nonuniform density: OptB88VdW differs from PBE (activation).
+TEST(GpwXcGGA, OptB88VdWDiffersFromPBEOnGaussian) {
+    using ATV::cpu::gpw::xc_grid_optb88_vdw;
+    const double cell[3] = {10.0, 10.0, 10.0};
+    UniformGrid grid = make_uniform_grid(cell, 200.0);
+    const double c[3] = {5.0, 5.0, 5.0};
+    std::vector<double> rho = gaussian_density(grid, c, 0.8, 1.0);
+    XcOnGrid pbe = xc_grid_pbe(grid, rho);
+    XcOnGrid opt = xc_grid_optb88_vdw(grid, rho);
+    EXPECT_TRUE(std::isfinite(opt.e_xc));
+    EXPECT_LT(opt.e_xc, 0.0);
+    EXPECT_GT(std::abs(opt.e_xc - pbe.e_xc), 1e-6)
+        << "OptB88VdW inactive? |dE|=" << std::abs(opt.e_xc - pbe.e_xc);
+}

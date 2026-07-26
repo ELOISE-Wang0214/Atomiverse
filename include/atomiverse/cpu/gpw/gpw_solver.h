@@ -92,10 +92,11 @@ struct GpwAtom {
 
 /// @brief Exchange-correlation functional choice.
 ///
-/// `PADE` — LDA Padé; `PBE` / `PBEsol` / `RevPBE` / `RPBE` / `BLYP` — pure GGA
+/// `PADE` — LDA Padé; `PBE` / `PBEsol` / `RevPBE` / `RPBE` / `BLYP` /
+/// `OptB88VdW` — pure GGA (OptB88VdW = optB88-x + PW92-c; pair with `vdw_df`)
 /// (shared `evaluate_xc`). RKS and Γ-UKS support all six (spin-GGA via
 /// `xc_grid_*_spin`; closed-shell via `xc_grid_*`).
-enum class XcKind { PADE, PBE, PBEsol, RevPBE, RPBE, BLYP };
+enum class XcKind { PADE, PBE, PBEsol, RevPBE, RPBE, BLYP, OptB88VdW };
 
 /// @brief Metallic occupation smearing kind (product path: multi-k RKS/UKS).
 ///
@@ -226,7 +227,7 @@ class GpwDft {
     double lindep_threshold = 1e-8; ///< S-eigenvalue keep threshold.
     double level_shift = 0.0;       ///< virtual level shift [Hartree].
     XcKind xc =
-        XcKind::PADE; ///< LDA (PADE) or GGA (PBE / PBEsol / RevPBE / RPBE / BLYP).
+        XcKind::PADE; ///< LDA (PADE) or GGA (PBE / PBEsol / RevPBE / RPBE / BLYP / OptB88VdW).
     bool nonperiodic = false;       ///< isolated (MT) Poisson solver.
     bool local_pp_on_grid = true;   ///< collocate GTH local SR PP on grid.
     bool d3 =

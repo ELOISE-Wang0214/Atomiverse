@@ -248,6 +248,35 @@ TEST(XCFunctional, RPBEDiffersFromRevPBEAtFiniteGradient) {
     EXPECT_GT(std::abs(rpbe.exc - rev.exc), 1e-8);
 }
 
+
+TEST(XCFunctional, OptB88VdWMetadata) {
+    EXPECT_TRUE(is_gga(XCType::OptB88VdW));
+    EXPECT_DOUBLE_EQ(hybrid_exchange_fraction(XCType::OptB88VdW), 0.0);
+    EXPECT_DOUBLE_EQ(hybrid_pt2_fraction(XCType::OptB88VdW), 0.0);
+}
+
+TEST(XCFunctional, OptB88VdWDiffersFromB88AtFiniteGradient) {
+    // optB88 beta/gamma != B88; pure OptB88VdW uses PW92 not LYP.
+    auto blyp = evaluate_xc(XCType::BLYP, 0.3, 0.3, 0.2, 0.1, 0.2);
+    auto opt = evaluate_xc(XCType::OptB88VdW, 0.3, 0.3, 0.2, 0.1, 0.2);
+    EXPECT_GT(std::abs(opt.exc - blyp.exc), 1e-6);
+    EXPECT_TRUE(std::isfinite(opt.exc));
+    EXPECT_TRUE(std::isfinite(opt.vsigma_aa));
+    EXPECT_NEAR(opt.vsigma_ab, 0.0, 1e-15); // LDA-C only
+}
+
+TEST(XCFunctional, OptB88VdWDiffersFromPBEAtFiniteGradient) {
+    auto pbe = evaluate_xc(XCType::PBE, 0.3, 0.3, 0.2, 0.1, 0.2);
+    auto opt = evaluate_xc(XCType::OptB88VdW, 0.3, 0.3, 0.2, 0.1, 0.2);
+    EXPECT_GT(std::abs(opt.exc - pbe.exc), 1e-6);
+}
+
+TEST(XCFunctional, OptB88VdWClosedShellSymmetry) {
+    auto out = evaluate_xc(XCType::OptB88VdW, 0.25, 0.25, 0.1, 0.05, 0.1);
+    EXPECT_NEAR(out.vrho_alpha, out.vrho_beta, 1e-12);
+    EXPECT_NEAR(out.vsigma_aa, out.vsigma_bb, 1e-12);
+}
+
 // ── Numerical stability ─────────────────────────────────────────────────
 
 TEST(XCFunctional, NoNaNAtVariousDensities) {
