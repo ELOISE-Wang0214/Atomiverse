@@ -123,6 +123,12 @@ if(ATV_BUILD_PW)
         target_compile_definitions(reg_dfpt-gga-si PRIVATE
             ATV_PW_UPF_PATH="${_atv_si_upf}")
     endif()
+    # Γ DFPT with collinear spin (LSDA, multiplicity=1 Si twin).
+    atv_add_regression(response dfpt-spin-si)
+    if(TARGET reg_dfpt-spin-si)
+        target_compile_definitions(reg_dfpt-spin-si PRIVATE
+            ATV_PW_UPF_PATH="${_atv_si_upf}")
+    endif()
     atv_add_regression(pw pw-pbe-gga-si)
     atv_add_regression(pw pw-spin-polarized-o2)
     atv_add_regression(pw pw-spin-gga)
