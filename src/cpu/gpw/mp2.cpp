@@ -76,11 +76,183 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
             "GpwDft::mp2: multi-k SCF result is missing Bloch C_k (re-run "
             "with a current multi-k path that stores orbitals)");
 
-    // ── Unrestricted (UKS) Γ path ─────────────────────────────────────
+    // ── Unrestricted (UKS) — multi-k then Γ ───────────────────────────
     if (is_uks()) {
-        if (multi_k || result_.n_kpts > 0)
-            throw std::invalid_argument(
-                "GpwDft::mp2: multi-k UMP2 is a follow-on (Γ UKS only)");
+        // Multi-k UKS: momentum-conserving RI-GPW UMP2 on C_k / C_k_beta.
+        if (multi_k || result_.n_kpts > 0) {
+            if (!multi_k)
+                throw std::invalid_argument(
+                    "GpwDft::mp2: multi-k UKS SCF result is missing Bloch "
+                    "C_k (re-run with a current multi-k path that stores "
+                    "full α/β orbitals)");
+            if (nonperiodic)
+                throw std::invalid_argument(
+                    "GpwDft::mp2: multi-k UMP2 requires a periodic cell");
+            if (!mp2_ri)
+                throw std::invalid_argument(
+                    "GpwDft::mp2: multi-k UMP2 requires mp2_ri = true "
+                    "(Poisson multi-k foothold is not offered)");
+            if (static_cast<int>(result_.C_k_beta.size()) != result_.n_kpts
+                || static_cast<int>(result_.eps_k_beta.size())
+                       != result_.n_kpts)
+                throw std::invalid_argument(
+                    "GpwDft::mp2: multi-k UKS result is missing C_k_beta / "
+                    "eps_k_beta (full β Bloch MOs required for UMP2)");
+
+            const int nk = result_.n_kpts;
+            const int nb_atoms = count_basis_(atoms);
+            const int nb = static_cast<int>(result_.C_k[0].shape(0));
+            if (nb_atoms != nb)
+                throw std::invalid_argument(
+                    "GpwDft::mp2: atom basis count ("
+                    + std::to_string(nb_atoms)
+                    + ") does not match the converged orbitals ("
+                    + std::to_string(nb)
+                    + ") — same geometry/basis as the last run() required");
+
+            int n_mo_a_min = static_cast<int>(result_.C_k[0].shape(1));
+            int n_mo_b_min = static_cast<int>(result_.C_k_beta[0].shape(1));
+            for (int ik = 0; ik < nk; ++ik) {
+                n_mo_a_min = std::min(
+                    n_mo_a_min,
+                    static_cast<int>(
+                        result_.C_k[static_cast<std::size_t>(ik)].shape(1)));
+                n_mo_b_min = std::min(
+                    n_mo_b_min,
+                    static_cast<int>(
+                        result_.C_k_beta[static_cast<std::size_t>(ik)]
+                            .shape(1)));
+                if (static_cast<int>(
+                        result_.eps_k[static_cast<std::size_t>(ik)].size())
+                        < n_mo_a_min
+                    || static_cast<int>(
+                           result_.eps_k_beta[static_cast<std::size_t>(ik)]
+                               .size())
+                           < n_mo_b_min)
+                    throw std::logic_error(
+                        "GpwDft::mp2: multi-k UKS eps_k/C_k shape mismatch");
+            }
+
+            const int n_oa = n_alpha;
+            const int n_ob = n_beta;
+            // Cap virtuals with the worst-case gap over the mesh (per spin).
+            auto min_eps_gap = [&](const std::vector<std::vector<double>>& ek,
+                                   int n_occ) {
+                double g = 1e300;
+                for (int ik = 0; ik < nk; ++ik) {
+                    const auto& e = ek[static_cast<std::size_t>(ik)];
+                    g = std::min(g, e[static_cast<std::size_t>(n_occ)]
+                                        - e[static_cast<std::size_t>(n_occ
+                                                                    - 1)]);
+                }
+                return g;
+            };
+            // Build a synthetic full eps vector at the min-gap k for
+            // cap_virt_ gap check — use first k and enforce min gap below.
+            std::vector<double> eps_a0(
+                result_.eps_k[0].begin(),
+                result_.eps_k[0].begin() + n_mo_a_min);
+            std::vector<double> eps_b0(
+                result_.eps_k_beta[0].begin(),
+                result_.eps_k_beta[0].begin() + n_mo_b_min);
+            const int n_va =
+                cap_virt_(n_mo_a_min, n_oa, mp2_n_virt, eps_a0, "α");
+            const int n_vb =
+                cap_virt_(n_mo_b_min, n_ob, mp2_n_virt, eps_b0, "β");
+            constexpr double kMinGapHa = 1e-6;
+            if (n_oa >= 1 && n_va >= 1
+                && min_eps_gap(result_.eps_k, n_oa) < kMinGapHa)
+                throw std::invalid_argument(
+                    "GpwDft::mp2: vanishing α HOMO-LUMO gap on the k-mesh");
+            if (n_ob >= 1 && n_vb >= 1
+                && min_eps_gap(result_.eps_k_beta, n_ob) < kMinGapHa)
+                throw std::invalid_argument(
+                    "GpwDft::mp2: vanishing β HOMO-LUMO gap on the k-mesh");
+
+            const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+            std::vector<GridBasisFunction> basis;
+            basis.reserve(static_cast<std::size_t>(nb));
+            for (const auto& a : atoms)
+                for (const auto& bf : a.basis)
+                    basis.push_back(bf);
+
+            std::vector<internal::KPoint> kpts(
+                static_cast<std::size_t>(nk));
+            for (int ik = 0; ik < nk; ++ik) {
+                kpts[static_cast<std::size_t>(ik)].frac[0] =
+                    result_.k_frac[static_cast<std::size_t>(ik)][0];
+                kpts[static_cast<std::size_t>(ik)].frac[1] =
+                    result_.k_frac[static_cast<std::size_t>(ik)][1];
+                kpts[static_cast<std::size_t>(ik)].frac[2] =
+                    result_.k_frac[static_cast<std::size_t>(ik)][2];
+                kpts[static_cast<std::size_t>(ik)].weight =
+                    result_.k_weights[static_cast<std::size_t>(ik)];
+            }
+            const internal::KpointBasisGrid kbg =
+                internal::build_kpoint_basis_grid(grid, basis, kpts,
+                                                  eps_default);
+
+            std::vector<std::vector<internal::Cplx>> psi_oa_k(
+                static_cast<std::size_t>(nk));
+            std::vector<std::vector<internal::Cplx>> psi_va_k(
+                static_cast<std::size_t>(nk));
+            std::vector<std::vector<internal::Cplx>> psi_ob_k(
+                static_cast<std::size_t>(nk));
+            std::vector<std::vector<internal::Cplx>> psi_vb_k(
+                static_cast<std::size_t>(nk));
+            std::vector<std::vector<double>> eps_oa_k(
+                static_cast<std::size_t>(nk));
+            std::vector<std::vector<double>> eps_va_k(
+                static_cast<std::size_t>(nk));
+            std::vector<std::vector<double>> eps_ob_k(
+                static_cast<std::size_t>(nk));
+            std::vector<std::vector<double>> eps_vb_k(
+                static_cast<std::size_t>(nk));
+            for (int ik = 0; ik < nk; ++ik) {
+                const auto& Ca = result_.C_k[static_cast<std::size_t>(ik)];
+                const auto& Cb =
+                    result_.C_k_beta[static_cast<std::size_t>(ik)];
+                psi_oa_k[static_cast<std::size_t>(ik)] =
+                    internal::mo_on_grid_k(kbg, ik, Ca, 0, n_oa);
+                psi_va_k[static_cast<std::size_t>(ik)] =
+                    internal::mo_on_grid_k(kbg, ik, Ca, n_oa, n_va);
+                psi_ob_k[static_cast<std::size_t>(ik)] =
+                    internal::mo_on_grid_k(kbg, ik, Cb, 0, n_ob);
+                psi_vb_k[static_cast<std::size_t>(ik)] =
+                    internal::mo_on_grid_k(kbg, ik, Cb, n_ob, n_vb);
+                const auto& ea = result_.eps_k[static_cast<std::size_t>(ik)];
+                const auto& eb =
+                    result_.eps_k_beta[static_cast<std::size_t>(ik)];
+                eps_oa_k[static_cast<std::size_t>(ik)].assign(
+                    ea.begin(), ea.begin() + n_oa);
+                eps_va_k[static_cast<std::size_t>(ik)].assign(
+                    ea.begin() + n_oa, ea.begin() + n_oa + n_va);
+                eps_ob_k[static_cast<std::size_t>(ik)].assign(
+                    eb.begin(), eb.begin() + n_ob);
+                eps_vb_k[static_cast<std::size_t>(ik)].assign(
+                    eb.begin() + n_ob, eb.begin() + n_ob + n_vb);
+            }
+
+            double e_os = 0.0, e_ss = 0.0;
+            internal::mp2_uhf_energy_kpoints(
+                grid, psi_oa_k, psi_va_k, psi_ob_k, psi_vb_k, eps_oa_k,
+                eps_va_k, eps_ob_k, eps_vb_k, result_.k_frac,
+                result_.k_weights, e_os, e_ss);
+
+            mp2_result_ = Mp2Result{};
+            mp2_result_.e_corr_os = e_os;
+            mp2_result_.e_corr_ss = e_ss;
+            mp2_result_.e_corr = mp2_os_scale * e_os + mp2_ss_scale * e_ss;
+            mp2_result_.e_scf = result_.e_total;
+            mp2_result_.e_total = mp2_result_.e_scf + mp2_result_.e_corr;
+            mp2_result_.n_occ = n_oa + n_ob;
+            mp2_result_.n_virt = n_va + n_vb;
+            mp2_result_.ri = true;
+            mp2_result_.n_kpts = nk;
+            return mp2_result_;
+        }
+
+        // Γ UKS
         if (result_.C_beta.size() == 0 || result_.eps_beta.empty())
             throw std::logic_error(
                 "GpwDft::mp2: UKS result is missing β orbitals/eigenvalues");

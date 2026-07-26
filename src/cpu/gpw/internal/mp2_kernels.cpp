@@ -705,6 +705,284 @@ void mp2_rhf_energy_kpoints(
     }
 }
 
+namespace {
+
+// Build Via_cache[ki*nk+ka][ia*npts+g] for one spin channel.
+std::vector<std::vector<Cplx>> build_via_cache_k_(
+    const UniformGrid& grid,
+    const std::vector<std::vector<Cplx>>& psi_occ_k,
+    const std::vector<std::vector<Cplx>>& psi_virt_k, int n_occ, int n_virt) {
+    const int nk = static_cast<int>(psi_occ_k.size());
+    const long npts = grid.npts();
+    const int nov = n_occ * n_virt;
+    std::vector<std::vector<Cplx>> Via_cache(
+        static_cast<std::size_t>(nk) * static_cast<std::size_t>(nk));
+    std::vector<Cplx> rho(static_cast<std::size_t>(npts));
+    for (int ki = 0; ki < nk; ++ki) {
+        for (int ka = 0; ka < nk; ++ka) {
+            auto& block =
+                Via_cache[static_cast<std::size_t>(ki) * nk
+                          + static_cast<std::size_t>(ka)];
+            block.resize(static_cast<std::size_t>(nov)
+                         * static_cast<std::size_t>(npts));
+            const auto& po = psi_occ_k[static_cast<std::size_t>(ki)];
+            const auto& pv = psi_virt_k[static_cast<std::size_t>(ka)];
+            for (int i = 0; i < n_occ; ++i) {
+                for (int a = 0; a < n_virt; ++a) {
+                    const int ia = i * n_virt + a;
+                    const Cplx* pi =
+                        po.data()
+                        + static_cast<std::size_t>(i)
+                              * static_cast<std::size_t>(npts);
+                    const Cplx* pa =
+                        pv.data()
+                        + static_cast<std::size_t>(a)
+                              * static_cast<std::size_t>(npts);
+                    for (long g = 0; g < npts; ++g)
+                        rho[static_cast<std::size_t>(g)] =
+                            std::conj(pi[g]) * pa[g];
+                    std::vector<Cplx> V;
+                    poisson_complex(grid, rho.data(), V);
+                    Cplx* dest =
+                        block.data()
+                        + static_cast<std::size_t>(ia)
+                              * static_cast<std::size_t>(npts);
+                    for (long g = 0; g < npts; ++g)
+                        dest[g] = V[static_cast<std::size_t>(g)];
+                }
+            }
+        }
+    }
+    return Via_cache;
+}
+
+Cplx contract_ovov_k_(const std::vector<std::vector<Cplx>>& Via_cache,
+                      const std::vector<std::vector<Cplx>>& psi_occ_k,
+                      const std::vector<std::vector<Cplx>>& psi_virt_k, int nk,
+                      int n_virt, long npts, double w_grid, int ki, int ka,
+                      int i, int a, int kj, int kb, int j, int b) {
+    const auto& Vblock =
+        Via_cache[static_cast<std::size_t>(ki) * nk
+                  + static_cast<std::size_t>(ka)];
+    const int ia = i * n_virt + a;
+    const Cplx* Via =
+        Vblock.data()
+        + static_cast<std::size_t>(ia) * static_cast<std::size_t>(npts);
+    const Cplx* pj =
+        psi_occ_k[static_cast<std::size_t>(kj)].data()
+        + static_cast<std::size_t>(j) * static_cast<std::size_t>(npts);
+    const Cplx* pb =
+        psi_virt_k[static_cast<std::size_t>(kb)].data()
+        + static_cast<std::size_t>(b) * static_cast<std::size_t>(npts);
+    Cplx s{0.0, 0.0};
+    for (long g = 0; g < npts; ++g)
+        s += Via[g] * (std::conj(pj[g]) * pb[g]);
+    return w_grid * s;
+}
+
+// UMP2 same-spin multi-k: (1/4) Σ |v_iajb − v_ibja|² / Δ
+double same_spin_ump2_k_(
+    const UniformGrid& grid,
+    const std::vector<std::vector<Cplx>>& psi_occ_k,
+    const std::vector<std::vector<Cplx>>& psi_virt_k,
+    const std::vector<std::vector<double>>& eps_occ_k,
+    const std::vector<std::vector<double>>& eps_virt_k,
+    const std::vector<std::array<double, 3>>& k_frac,
+    const std::vector<double>& k_weights) {
+    const int nk = static_cast<int>(k_frac.size());
+    const int n_occ = static_cast<int>(eps_occ_k[0].size());
+    const int n_virt = static_cast<int>(eps_virt_k[0].size());
+    if (n_occ < 2 || n_virt < 2)
+        return 0.0;
+    const long npts = grid.npts();
+    const double w = grid.weight();
+    const auto Via = build_via_cache_k_(grid, psi_occ_k, psi_virt_k, n_occ,
+                                        n_virt);
+    double e = 0.0;
+    for (int ki = 0; ki < nk; ++ki) {
+        for (int kj = 0; kj < nk; ++kj) {
+            const double w_ij =
+                static_cast<double>(nk) * k_weights[static_cast<std::size_t>(ki)]
+                * k_weights[static_cast<std::size_t>(kj)];
+            for (int ka = 0; ka < nk; ++ka) {
+                const double fbx = k_frac[static_cast<std::size_t>(ki)][0]
+                                   + k_frac[static_cast<std::size_t>(kj)][0]
+                                   - k_frac[static_cast<std::size_t>(ka)][0];
+                const double fby = k_frac[static_cast<std::size_t>(ki)][1]
+                                   + k_frac[static_cast<std::size_t>(kj)][1]
+                                   - k_frac[static_cast<std::size_t>(ka)][1];
+                const double fbz = k_frac[static_cast<std::size_t>(ki)][2]
+                                   + k_frac[static_cast<std::size_t>(kj)][2]
+                                   - k_frac[static_cast<std::size_t>(ka)][2];
+                const int kb = find_k_index(k_frac, fbx, fby, fbz);
+                if (kb < 0)
+                    throw std::runtime_error(
+                        "gpw mp2_uhf_energy_kpoints: momentum-conserving kb "
+                        "not in the sampled mesh — use a closed (uniform) "
+                        "k-mesh");
+                for (int i = 0; i < n_occ; ++i)
+                    for (int j = 0; j < n_occ; ++j)
+                        for (int a = 0; a < n_virt; ++a)
+                            for (int b = 0; b < n_virt; ++b) {
+                                const Cplx v_iajb = contract_ovov_k_(
+                                    Via, psi_occ_k, psi_virt_k, nk, n_virt,
+                                    npts, w, ki, ka, i, a, kj, kb, j, b);
+                                const Cplx v_ibja = contract_ovov_k_(
+                                    Via, psi_occ_k, psi_virt_k, nk, n_virt,
+                                    npts, w, ki, kb, i, b, kj, ka, j, a);
+                                const double denom =
+                                    eps_occ_k[static_cast<std::size_t>(ki)]
+                                             [static_cast<std::size_t>(i)]
+                                    + eps_occ_k[static_cast<std::size_t>(kj)]
+                                               [static_cast<std::size_t>(j)]
+                                    - eps_virt_k[static_cast<std::size_t>(ka)]
+                                                [static_cast<std::size_t>(a)]
+                                    - eps_virt_k[static_cast<std::size_t>(kb)]
+                                                [static_cast<std::size_t>(b)];
+                                if (std::abs(denom) < 1e-12)
+                                    continue;
+                                e += 0.25 * std::norm(v_iajb - v_ibja) * w_ij
+                                     / denom;
+                            }
+            }
+        }
+    }
+    return e;
+}
+
+} // namespace
+
+void mp2_uhf_energy_kpoints(
+    const UniformGrid& grid,
+    const std::vector<std::vector<Cplx>>& psi_occ_a_k,
+    const std::vector<std::vector<Cplx>>& psi_virt_a_k,
+    const std::vector<std::vector<Cplx>>& psi_occ_b_k,
+    const std::vector<std::vector<Cplx>>& psi_virt_b_k,
+    const std::vector<std::vector<double>>& eps_occ_a_k,
+    const std::vector<std::vector<double>>& eps_virt_a_k,
+    const std::vector<std::vector<double>>& eps_occ_b_k,
+    const std::vector<std::vector<double>>& eps_virt_b_k,
+    const std::vector<std::array<double, 3>>& k_frac,
+    const std::vector<double>& k_weights, double& e_os, double& e_ss) {
+    const int nk = static_cast<int>(k_frac.size());
+    if (nk < 1)
+        throw std::invalid_argument(
+            "gpw mp2_uhf_energy_kpoints: empty k mesh");
+    if (static_cast<int>(psi_occ_a_k.size()) != nk
+        || static_cast<int>(psi_virt_a_k.size()) != nk
+        || static_cast<int>(psi_occ_b_k.size()) != nk
+        || static_cast<int>(psi_virt_b_k.size()) != nk
+        || static_cast<int>(eps_occ_a_k.size()) != nk
+        || static_cast<int>(eps_virt_a_k.size()) != nk
+        || static_cast<int>(eps_occ_b_k.size()) != nk
+        || static_cast<int>(eps_virt_b_k.size()) != nk
+        || static_cast<int>(k_weights.size()) != nk)
+        throw std::invalid_argument(
+            "gpw mp2_uhf_energy_kpoints: per-k array length mismatch");
+
+    const int n_oa = static_cast<int>(eps_occ_a_k[0].size());
+    const int n_va = static_cast<int>(eps_virt_a_k[0].size());
+    const int n_ob = static_cast<int>(eps_occ_b_k[0].size());
+    const int n_vb = static_cast<int>(eps_virt_b_k[0].size());
+    const long npts = grid.npts();
+    const double w = grid.weight();
+
+    double wsum = 0.0;
+    for (double wk : k_weights)
+        wsum += wk;
+    if (std::abs(wsum - 1.0) > 1e-8)
+        throw std::invalid_argument(
+            "gpw mp2_uhf_energy_kpoints: k_weights must sum to 1");
+
+    for (int ik = 0; ik < nk; ++ik) {
+        if (static_cast<int>(eps_occ_a_k[static_cast<std::size_t>(ik)].size())
+                != n_oa
+            || static_cast<int>(
+                   eps_virt_a_k[static_cast<std::size_t>(ik)].size())
+                   != n_va
+            || static_cast<int>(
+                   eps_occ_b_k[static_cast<std::size_t>(ik)].size())
+                   != n_ob
+            || static_cast<int>(
+                   eps_virt_b_k[static_cast<std::size_t>(ik)].size())
+                   != n_vb)
+            throw std::invalid_argument(
+                "gpw mp2_uhf_energy_kpoints: inconsistent n_occ/n_virt across k");
+        const std::size_t need_oa =
+            static_cast<std::size_t>(n_oa) * static_cast<std::size_t>(npts);
+        const std::size_t need_va =
+            static_cast<std::size_t>(n_va) * static_cast<std::size_t>(npts);
+        const std::size_t need_ob =
+            static_cast<std::size_t>(n_ob) * static_cast<std::size_t>(npts);
+        const std::size_t need_vb =
+            static_cast<std::size_t>(n_vb) * static_cast<std::size_t>(npts);
+        if (psi_occ_a_k[static_cast<std::size_t>(ik)].size() != need_oa
+            || psi_virt_a_k[static_cast<std::size_t>(ik)].size() != need_va
+            || psi_occ_b_k[static_cast<std::size_t>(ik)].size() != need_ob
+            || psi_virt_b_k[static_cast<std::size_t>(ik)].size() != need_vb)
+            throw std::invalid_argument(
+                "gpw mp2_uhf_energy_kpoints: MO grid size mismatch");
+    }
+
+    e_ss = same_spin_ump2_k_(grid, psi_occ_a_k, psi_virt_a_k, eps_occ_a_k,
+                             eps_virt_a_k, k_frac, k_weights)
+           + same_spin_ump2_k_(grid, psi_occ_b_k, psi_virt_b_k, eps_occ_b_k,
+                               eps_virt_b_k, k_frac, k_weights);
+
+    e_os = 0.0;
+    if (n_oa < 1 || n_va < 1 || n_ob < 1 || n_vb < 1)
+        return;
+
+    // Cross-spin: V_ia from α, contract with ρ_jb from β.
+    const auto Via_a =
+        build_via_cache_k_(grid, psi_occ_a_k, psi_virt_a_k, n_oa, n_va);
+    for (int ki = 0; ki < nk; ++ki) {
+        for (int kj = 0; kj < nk; ++kj) {
+            const double w_ij =
+                static_cast<double>(nk) * k_weights[static_cast<std::size_t>(ki)]
+                * k_weights[static_cast<std::size_t>(kj)];
+            for (int ka = 0; ka < nk; ++ka) {
+                const double fbx = k_frac[static_cast<std::size_t>(ki)][0]
+                                   + k_frac[static_cast<std::size_t>(kj)][0]
+                                   - k_frac[static_cast<std::size_t>(ka)][0];
+                const double fby = k_frac[static_cast<std::size_t>(ki)][1]
+                                   + k_frac[static_cast<std::size_t>(kj)][1]
+                                   - k_frac[static_cast<std::size_t>(ka)][1];
+                const double fbz = k_frac[static_cast<std::size_t>(ki)][2]
+                                   + k_frac[static_cast<std::size_t>(kj)][2]
+                                   - k_frac[static_cast<std::size_t>(ka)][2];
+                const int kb = find_k_index(k_frac, fbx, fby, fbz);
+                if (kb < 0)
+                    throw std::runtime_error(
+                        "gpw mp2_uhf_energy_kpoints: momentum-conserving kb "
+                        "not in the sampled mesh — use a closed (uniform) "
+                        "k-mesh");
+                for (int i = 0; i < n_oa; ++i)
+                    for (int j = 0; j < n_ob; ++j)
+                        for (int a = 0; a < n_va; ++a)
+                            for (int b = 0; b < n_vb; ++b) {
+                                // Via_a indexed with n_va; ρ_jb from β grids.
+                                const Cplx v = contract_ovov_k_(
+                                    Via_a, psi_occ_b_k, psi_virt_b_k, nk, n_va,
+                                    npts, w, ki, ka, i, a, kj, kb, j, b);
+                                const double denom =
+                                    eps_occ_a_k[static_cast<std::size_t>(ki)]
+                                               [static_cast<std::size_t>(i)]
+                                    + eps_occ_b_k[static_cast<std::size_t>(kj)]
+                                                 [static_cast<std::size_t>(j)]
+                                    - eps_virt_a_k[static_cast<std::size_t>(ka)]
+                                                  [static_cast<std::size_t>(a)]
+                                    - eps_virt_b_k[static_cast<std::size_t>(kb)]
+                                                  [static_cast<std::size_t>(b)];
+                                if (std::abs(denom) < 1e-12)
+                                    continue;
+                                e_os += std::norm(v) * w_ij / denom;
+                            }
+            }
+        }
+    }
+}
+
 void direct_rpa_rhf(const std::vector<double>& v_ovov,
                     const std::vector<double>& eps_occ,
                     const std::vector<double>& eps_virt,
