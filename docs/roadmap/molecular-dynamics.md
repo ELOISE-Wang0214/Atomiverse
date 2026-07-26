@@ -238,8 +238,8 @@ AIMD works by binding a force-providing method/component to `md::Phase::force`
 `cpu::gpw::XlBomd` + `GPWEvaluator::{xl_bomd, xl_bomd_k}` on closed-shell
 GPW (`reg_xl-bomd-water`) **and Γ-UKS** dual-spin auxiliary densities
 (`reg_xl-bomd-uks`). ASPC remains a separate density *predictor* (warm start);
-OT/k-point XL and zero-SCF linearized forces stay ○ (held behind OT residual
-depth in the CP2K queue).
+OT/k-point XL and zero-SCF linearized forces stay ○ (held behind OT combo
+depth in the CP2K queue; wave-9 staff prefers OT+smear/UKS+U first).
 
 **Car–Parrinello MD** (fictitious electronic DOF) ships as `cpu::gpw::Cpmd` +
 `GPWEvaluator::{cpmd, cpmd_mu, cpmd_dt}` on closed-shell Γ GPW: cold SCF seed,
@@ -253,7 +253,8 @@ on the closed-shell path. Electronic thermostat remains a residual.
 partial-SCF corrector, no fictitious electronic mass) ships on closed-shell Γ
 GPW via `GPWEvaluator::{second_gen_cp, second_gen_cp_k, second_gen_cp_max_iter}`
 (`reg_second-gen-cpmd-water`) **and Γ-UKS** (`reg_second-gen-cpmd-uks`).
-OT corrector path still throws (`second_gen_cp` requires diagonalization SCF).
+OT corrector path still throws (`second_gen_cp` requires diagonalization SCF;
+queued as `second-gen-cpmd-ot`).
 
 ## 8. Nuclear Quantum Dynamics
 

@@ -424,14 +424,62 @@ nonlocal vdW SCF potential/forces, metallic DFPT, collinear-spin
 incommensurate DFPT; stock VV10 stays open. **Blocked = 5** unchanged.
 **Queue not exhausted** — GapCensus owns next discovery.
 
+**GapCensus wave 9 2026-07-26 (parent `dev` @ `07dd7bf3`):** recover —
+incomplete_count=**1** (`[~] gpw-vv10-ice` unmerged `wf/gpw-vv10-ice` @
+`b8a2e6ca` docs/block — CP2K 2026.1 has no `TYPE VV10`; do not demote).
+Open CP2K/GPW/PW specs on `dev`=**0** (PySCF deferred only:
+`periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`); isolation worktrees=**0**;
+leftover builds=**none**. Tree re-diff vs `docs/roadmap/dft.md` §3/§8/
+§10–12 + MD AIMD + `tools/cp2k_oracle` +
+`include/atomiverse/cpu/{gpw,planewave}`: prior pending residual **0**
+(harness emptied list — not capability-closed). **True residuals
+re-opened (9)** with offline CP2K / literature twins:
+`ot-uks-smearing` (RKS OT+smear ✓ + multi-k UKS OT ✓; `build` /
+k-UKS OT path throws UKS OT+smear — integer occupations only),
+`ot-uks-dftu` (Γ OT+DFT+U ✓ + multi-k RKS OT+DFT+U ✓ + multi-k UKS OT ✓;
+multi-k UKS OT + PLUS_U throws “not wired”),
+`ot-dftu-smearing` (OT+smear ✓ + multi-k OT+DFT+U ✓; multi-k OT path
+throws smear+PLUS_U together),
+`gpw-d4-forces` (D4 energy ✓ + analytic stress ✓; Γ forces skip D4 —
+energy-only policy; `dftd4_energy` has no force twin),
+`gpw-mbd-forces` (MBD energy ✓ + Γ/periodic stress ✓; forces energy-only
+v1 per `mbd_dispersion.h`),
+`gpw-uks-multigrid` (RKS multigrid product collocation ✓ when `ngrids>1`;
+UKS throws “multigrid product collocation is not wired”),
+`dfpt-spin-smearing` (spin DFPT ✓ + metallic DFPT ✓ separately; collinear
+spin + smear rejected on Γ Sternheimer path),
+`dfpt-finite-q-smearing` (finite-q DFPT ✓ fixed-occ + Γ metallic DFPT ✓;
+finite-q + smear throws — “use Γ restricted smear”),
+`second-gen-cpmd-ot` (SGCP ASPC+partial SCF RKS/UKS ✓; OT corrector
+throws — diagonalization SCF required). **Not added:** BP86/B97/OLYP/
+HCTH (molecular PySCF path); stock VV10 (kept `[~]` incomplete — no
+demote; no CP2K twin); shear/off-diagonal stress (orthorhombic design);
+multi-k UKS stress XcKind expand RevPBE/RPBE/BLYP (thin after
+PADE/PBE/PBEsol k-UKS stress ✓); UGW@UKS-RPBE XC throw (thin after UKS
+RPBE SCF); spin/metallic bands-DOS footholds (hold behind DFPT
+spin+smear depth); XL-BOMD multi-k / OT-XL (hold behind OT combo depth
+this wave); multi-k dispersion forces on k-path (hold behind D4/MBD
+force product); GAPW/PAW/periodic hybrid/meta-GGA (blocked); molecular
+post-HF / classical MW / CUDA ports (other loops). Roadmap: **no ○/✓
+table flips** (nothing new merged since harness wave 8); §8/§10–12 +
+MD AIMD open-residual prose + index GPW residual line refreshed for
+wave-9 queue. **Pending = 9**; **in_progress = 1**; **blocked = 5**.
+
 ## pending
 
-_(empty — harness wave 8 emptied GapCensus wave-8 staff list; **not**
-queue exhausted)_
+- [ ] `ot-uks-smearing` | UKS OT + metallic occupation smearing (FD/MP) | gpw | offline CP2K O₂ / Na twin
+- [ ] `ot-uks-dftu` | Multi-k UKS OT + Dudarev DFT+U | gpw | offline CP2K H₂ / NiO-class twin
+- [ ] `ot-dftu-smearing` | OT + DFT+U + metallic smearing (RKS multi-k) | gpw | offline CP2K twin
+- [ ] `gpw-d4-forces` | Analytic ionic forces with DFT-D4 | gpw | offline dftd4 / CP2K force pin
+- [ ] `gpw-mbd-forces` | Analytic ionic forces with MBD@rsSCS | gpw | offline libMBD / CP2K force pin
+- [ ] `gpw-uks-multigrid` | UKS multigrid product collocation (`ngrids>1`) | gpw | offline CP2K NGRIDS UKS twin
+- [ ] `dfpt-spin-smearing` | DFPT collinear spin + metallic occupation smearing (PW) | response | offline CP2K / literature twin
+- [ ] `dfpt-finite-q-smearing` | Finite-q DFPT with metallic smearing (PW) | response | offline CP2K / literature twin
+- [ ] `second-gen-cpmd-ot` | Second-gen CP with OT partial-SCF corrector | dynamics | offline CP2K SGCP+OT twin
 
 ## in_progress
 
-- [~] `gpw-vv10-ice` | Stock VV10 nonlocal correlation (≠ rVV10) | gpw | unmerged `wf/gpw-vv10-ice` @ `d15cd804` (docs/block: CP2K 2026.1 has no `TYPE VV10`; incomplete — do not force-merge)
+- [~] `gpw-vv10-ice` | Stock VV10 nonlocal correlation (≠ rVV10) | gpw | unmerged `wf/gpw-vv10-ice` @ `b8a2e6ca` (docs/block: CP2K 2026.1 has no `TYPE VV10`; incomplete — do not force-merge)
 
 ## done (harness wave 8 2026-07-26)
 

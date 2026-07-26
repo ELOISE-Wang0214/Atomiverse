@@ -235,9 +235,11 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   **bands/DOS** (`reg_bands-dos-si`), **BOMD foothold** (`reg_pw-bomd-h`),
   **PW CELL_OPT** (`reg_pw-variable-cell-si`), **periodic MLWF**
   (`reg_periodic-wannier-si`), **DFPT** Γ / finite-q / incommensurate /
-  **GGA kernel** / **collinear spin** (`reg_dfpt-phonon-si` /
-  `reg_dfpt-finite-q-si` / `reg_dfpt-incommensurate-si` / `reg_dfpt-gga-si` /
-  `reg_dfpt-spin-si`). CUDA PW remains LDA / spin-unpolarized.
+  **GGA kernel** / **collinear spin** / **metallic smear** /
+  spin-incommensurate (`reg_dfpt-phonon-si` / `reg_dfpt-finite-q-si` /
+  `reg_dfpt-incommensurate-si` / `reg_dfpt-gga-si` / `reg_dfpt-spin-si` /
+  `reg_dfpt-metallic-si` / `reg_dfpt-spin-incommensurate`; spin+smear and
+  finite-q+smear still open). CUDA PW remains LDA / spin-unpolarized.
 - Norm-conserving UPF only (no USPP/PAW). Empty UPF = toy V_loc.
 - CUDA: H·ψ / FFT / Poisson / V_eff / LDA on device; Ritz + SCF control on host.
 
@@ -254,10 +256,12 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   (fixed-\(P\)+Pulay product; multi-SCF FD oracle; `reg_gpw-analytic-stress` /
   `reg_gpw-uks-stress` / `reg_gpw-kpoint-stress` / `reg_gpw-stress-water`)
   and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice` + MOLOPT
-  `reg_gpw-variable-cell-molopt`). Open residuals after harness wave 8
-  are GapCensus-owned (stock VV10 incomplete staff; hybrids / meta-GGA /
-  GAPW blocked — see `cp2k-method-queue.md`; queue not exhausted;
-  incomplete `[~]` first).
+  `reg_gpw-variable-cell-molopt`). Open residuals after GapCensus wave 9
+  are queue-owned (UKS OT+smear / multi-k UKS OT+DFT+U / OT+U+smear /
+  D4·MBD forces / UKS multigrid; DFPT spin+smear + finite-q+smear; SGCP
+  OT corrector; stock VV10 incomplete staff; hybrids / meta-GGA / GAPW
+  blocked — see `cp2k-method-queue.md`; queue not exhausted; incomplete
+  `[~]` first).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member
   `local_pp_on_grid` consistent between energy and gradient

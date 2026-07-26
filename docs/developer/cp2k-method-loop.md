@@ -68,6 +68,19 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 GapCensus wave 9 (parent `dev` @ `07dd7bf3`):** recover
+  incomplete=**1** (`[~] gpw-vv10-ice` on unmerged `wf/gpw-vv10-ice` —
+  not demoted); CP2K specs on `dev`=0; isolation worktrees=0;
+  builds=none. Prior pending residual **0**; **+9** residuals → pending
+  **9** (`ot-uks-smearing`, `ot-uks-dftu`, `ot-dftu-smearing`,
+  `gpw-d4-forces`, `gpw-mbd-forces`, `gpw-uks-multigrid`,
+  `dfpt-spin-smearing`, `dfpt-finite-q-smearing`, `second-gen-cpmd-ot`);
+  in_progress **1**; blocked **5**. No ○/✓ table flips; §8/§10–12 + MD
+  AIMD residual prose + index GPW residual line refreshed. Next: Assign
+  prefers incomplete first (VV10 docs/block) then surface-disjoint
+  pending (OT family careful share; D4 forces ∥ MBD forces careful
+  dispersion surface; UKS multigrid free of OT; DFPT spin+smear ∥
+  finite-q+smear careful DFPT tree; SGCP OT free of GPW OT smear).
 - **2026-07-26 harness wave 8 (parent `dev` @ `a6752916`):** 9 merged →
   done: `periodic-urpa-kpoints`, `ot-smearing`, `ot-uks-kpoints`,
   `ot-dftu-kpoints`, `gpw-d4-stress`, `gpw-vdw-scf-potential`,
