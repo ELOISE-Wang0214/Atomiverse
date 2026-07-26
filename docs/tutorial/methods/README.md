@@ -188,6 +188,21 @@ queue exhausted).
 | PW collinear-spin + metallic-occupation bands Si | [bands-spin-metallic-si](bands-spin-metallic-si.md) | `regressions/pw/bands-spin-metallic-si` | **perf_exempt** |
 | PW collinear-spin + metallic FD DOS Si | [dos-spin-metallic-si](dos-spin-metallic-si.md) | `regressions/pw/dos-spin-metallic-si` | **perf_exempt** |
 
+## Index — CP2K capability wave 14 (2026-07-26)
+
+Offline CP2K 2026.1 / pymbd pins only — see
+[cp2k-method-queue](../../developer/cp2k-method-queue.md) wave 14 and
+`tools/cp2k_oracle/`. Five slugs closed; `gpw-fd-phonon-si` stays open on SCF
+conditioning (not force correctness — its earlier block reason was retracted).
+
+| Method | Page | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
+| ------ | ---- | ---------- | --------------------------------------------- |
+| Multi-k Car–Parrinello MD on Bloch \(C_k\) (H₂ NVE) | [cpmd-kpoints](cpmd-kpoints.md) | `regressions/dynamics/cpmd-kpoints` | **perf_exempt** |
+| Multi-k Marzari–Vanderbilt MLWF on GPW | [periodic-wannier-gpw](periodic-wannier-gpw.md) | `regressions/gpw/periodic-wannier-gpw` | **perf_exempt** |
+| GPW PBE-D3 analytic ionic forces (isolated dimer) | [gpw-d3-forces](gpw-d3-forces.md) | `regressions/gpw/gpw-d3-forces` | **1.4** |
+| GPW PBE-D3(BJ) analytic ionic forces (periodic dimer) | [gpw-d3bj-forces](gpw-d3bj-forces.md) | `regressions/gpw/gpw-d3bj-forces` | **2.7** |
+| GPW Γ analytic cell stress with periodic MBD@rsSCS | [gpw-mbd-stress](gpw-mbd-stress.md) | `regressions/gpw/gpw-mbd-stress` | **perf_exempt** |
+
 ## Index — PySCF campaign methods
 
 | Method | Page | Regression |

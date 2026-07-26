@@ -819,6 +819,25 @@ DZVP-MOLOPT-GTH surface. Three setup defects produced the symptom:
 
 The analytic force code was never at fault.
 
+**Remaining blocker (measured, not inferred).** Si2-triplet GTH in a cluster box
+is SCF-ill-conditioned for **both** codes, in complementary regions, so there is
+no cheap settings window with a twin:
+
+| Setting | Atomiverse SCF | CP2K SCF | ATV cost/SCF |
+| ------- | -------------- | -------- | ------------ |
+| 8 A / 150 Ry | converges (153 it) | **fails** | 3.2 s |
+| 9 A / 200 Ry | **fails** (400 it) | converges | ~7 s |
+| 10 A / 400 Ry | **fails** (300 it) | converges | ~38 s |
+| 12 A / 400 Ry (r = 2.351) | converges (45 it) | - | ~38 s |
+
+CP2K uses Broyden mixing; Atomiverse has linear + DIIS + OT, and OT lands on the
+closed-shell saddle. Next step is an **open-shell cluster mixer**, not force
+work. Secondary blocker: 12 displacements at 7-38 s per SCF exceed the 60 s e2e
+tier wherever a CP2K twin exists (the known GPW performance gap). Offline pins
+for the 10 A / 400 Ry twin (E = -7.613235635 Ha, F_x = 1.99658355e-2 Ha/Bohr,
+stretch **463.489 cm^-1**) and the 9 A / 200 Ry twin are recorded in the case
+REFERENCE, so re-enabling is a one-line CMake change.
+
 
 ## done (harness wave 14 2026-07-26)
 

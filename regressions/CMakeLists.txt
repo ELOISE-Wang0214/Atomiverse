@@ -319,18 +319,18 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw gpw-kpoint-uks-stress)
     atv_add_regression(gpw gpw-kpoint-uks-stress-gga)
     atv_add_regression(gpw gpw-kpoints-uks)
-    # FD Γ phonons with GPW analytic forces (Phonon + GPWEvaluator residual).
-    # NOT REGISTERED — RED, and the failure is a real product bug, not a flaky
-    # gate: GPW analytic ionic forces on Si (nonperiodic MT, GTH-PBE-q4 +
-    # DZVP-MOLOPT-GTH) disagree with the energy finite difference by ~271x and
-    # with the offline CP2K ENERGY_FORCE pin by ~40x, while the total energy
-    # matches to ~0.014 Ha at L = 12 Å. Water analytic forces stay green, so the
-    # defect is in the Si GTH force assembly, not the FD/Phonon wiring above.
-    # The unit wiring gate (test_cpu_vib_phonon_gpw_wiring) and the recorded
-    # CP2K vib pin (regressions/gpw/gpw-fd-phonon-si/REFERENCE.md) are kept in
-    # tree so re-enabling is one line once the force bug is fixed. Debt tracked
-    # in docs/developer/cp2k-method-queue.md (blocked: gpw-fd-phonon-si) and
-    # .claude/notes/notes.md.
+    # FD vibrational spectrum from GPW analytic forces (Si2 UKS triplet,
+    # isolated). NOT REGISTERED — and NOT because the forces are wrong. The
+    # earlier "analytic vs FD off by 271x" claim was measured on `dev` and is
+    # false: analytic matches FD to 1.7e-6 Ha/Bohr wherever the SCF reaches a
+    # genuine stationary point (details + numbers in the case REFERENCE and
+    # .claude/notes/notes.md). What blocks it is SCF conditioning plus cost for
+    # the open-shell dimer in a cluster box: Atomiverse converges at 8 A/150 Ry
+    # where CP2K does not, CP2K converges at 9 A/200 Ry and 10 A/400 Ry where
+    # Atomiverse does not (linear/DIIS/OT vs CP2K's Broyden mixer), and 12
+    # displacements at ~7-38 s per SCF exceed the 60 s e2e tier at every setting
+    # where a CP2K twin exists. The offline pins ARE recorded, so re-enabling is
+    # this one line once an open-shell cluster mixer lands.
     # if(ATV_BUILD_VIB)
     #     atv_add_regression(gpw gpw-fd-phonon-si)
     # endif()

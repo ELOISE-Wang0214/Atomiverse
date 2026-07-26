@@ -168,6 +168,10 @@ and `tools/cp2k_oracle/`. Narrative chapters: [Ch. 8 PW](ch08-plane-wave.md),
 | Γ-UKS GPW O₂ | [gpw-uks-o2-gamma](methods/gpw-uks-o2-gamma.md) | `regressions/gpw/gpw-uks-o2-gamma` |
 | GPW PBE-D3(BJ) ice dimer | [gpw-pbe-d3bj-ice](methods/gpw-pbe-d3bj-ice.md) | `regressions/gpw/gpw-pbe-d3bj-ice` |
 | GPW PBE-D3 + ATM (C9) isolated dimer | [gpw-d3-atm](methods/gpw-d3-atm.md) | `regressions/gpw/gpw-d3-atm` |
+| GPW PBE-D3 analytic ionic forces | [gpw-d3-forces](methods/gpw-d3-forces.md) | `regressions/gpw/gpw-d3-forces` |
+| GPW PBE-D3(BJ) analytic ionic forces | [gpw-d3bj-forces](methods/gpw-d3bj-forces.md) | `regressions/gpw/gpw-d3bj-forces` |
+| GPW Γ cell stress with periodic MBD@rsSCS | [gpw-mbd-stress](methods/gpw-mbd-stress.md) | `regressions/gpw/gpw-mbd-stress` |
+| Multi-k MLWF on GPW (Marzari–Vanderbilt) | [periodic-wannier-gpw](methods/periodic-wannier-gpw.md) | `regressions/gpw/periodic-wannier-gpw` |
 | PW LDA Si (k-mesh) | [pw-lda-si](methods/pw-lda-si.md) | `regressions/pw/pw-lda-si` |
 | PW true PBE GGA Si | [pw-pbe-gga-si](methods/pw-pbe-gga-si.md) | `regressions/pw/pw-pbe-gga-si` |
 | Metallic Fermi–Dirac Al | [pw-smearing-al](methods/pw-smearing-al.md) | `regressions/pw/pw-smearing-al` |
@@ -189,6 +193,7 @@ and `tools/cp2k_oracle/`. Narrative chapters: [Ch. 8 PW](ch08-plane-wave.md),
 | Car–Parrinello MD H₂O NVE (fictitious e⁻ DOF) | [cpmd-water](methods/cpmd-water.md) | `regressions/dynamics/cpmd-water` |
 | Car–Parrinello MD + electronic RATTLE H₂O NVE | [cpmd-rattle-water](methods/cpmd-rattle-water.md) | `regressions/dynamics/cpmd-rattle-water` |
 | Multi-k second-gen CP (ASPC on \(P_k\)) H₂ NVE | [second-gen-cpmd-kpoints](methods/second-gen-cpmd-kpoints.md) | `regressions/dynamics/second-gen-cpmd-kpoints` |
+| Multi-k Car–Parrinello MD on Bloch \(C_k\) H₂ NVE | [cpmd-kpoints](methods/cpmd-kpoints.md) | `regressions/dynamics/cpmd-kpoints` |
 | PW Nielsen–Martin analytic stress Si | [pw-analytic-stress-si](methods/pw-analytic-stress-si.md) | `regressions/pw/pw-analytic-stress-si` |
 | FD supercell phonons diamond Si (Γ) | [fd-phonon-supercell](methods/fd-phonon-supercell.md) | `regressions/pw/fd-phonon-supercell` |
 | Dudarev DFT+U NiO mol (Γ-UKS GPW) | [gpw-dftu-nio](methods/gpw-dftu-nio.md) | `regressions/gpw/gpw-dftu-nio` |

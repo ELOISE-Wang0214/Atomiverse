@@ -1,30 +1,59 @@
 # Architecture notes
 
-## [2026-07-26] DEBT: GPW analytic ionic forces are wrong for Si GTH
+## [2026-07-26] GPW Si forces are CORRECT; the phonon block was a setup bug
 
-**Found while landing `gpw-fd-phonon-si` (CP2K loop wave 14). Open.**
+**Supersedes the earlier entry in this file that claimed "GPW analytic ionic
+forces are wrong for Si GTH". That claim was wrong** — it came from the
+`gpw-fd-phonon-si` worker tip and did not survive measurement. Recorded here so
+nobody re-opens it.
 
-Symptom on Si₂ (nonperiodic MT host, `GTH-PBE-q4` + `DZVP-MOLOPT-GTH`,
-L = 12 Å cubic): the **total energy** matches the offline CP2K 2026.1
-`ENERGY_FORCE` pin to ~0.014 Ha, but **analytic forces** are off by ~271×
-against the energy finite difference on the same functional, and ~40× against
-CP2K's printed \(F_x = \pm 3.370\times 10^{-3}\) Ha/Bohr. Water analytic forces
-(`gpw-forces-water`) stay green, so the defect is in the **Si GTH force
-assembly**, not the Phonon/FD wiring, and not the shared collocation path
-water also exercises. Prime suspects, in order: the nonlocal-projector
-(`h_ij`, l = 0/1 for q4) derivative term, and the local-PP short-range grid
-gradient for a 4-valence-electron GTH kind (`local_pp_on_grid` route).
+**Measured on `dev` (2026-07-26).** Wherever the SCF reaches a genuine
+stationary point, GPW analytic forces equal the multi-SCF energy FD on the same
+Si / `GTH-PBE-q4` / `DZVP-MOLOPT-GTH` surface:
 
-Consequence: **`regressions/gpw/gpw-fd-phonon-si` is de-registered** in
-`regressions/CMakeLists.txt` (loud comment there); the wiring unit gate
-`test_cpu_vib_phonon_gpw_wiring` and the recorded CP2K vib pin
-(`REFERENCE.md`: optical −263.481, −194.722, 383.783 cm⁻¹) are kept in tree so
-re-enabling is a one-line revert. Queue row stays **blocked**
-(`docs/developer/cp2k-method-queue.md`).
+| Case | analytic vs FD |
+| --- | --- |
+| Si2, a = 5.43 A box, 150 Ry, grid local PP | **1.7e-6** Ha/Bohr |
+| Si2, same, analytic local PP | 3.6e-6 |
+| Si2, same, 400 Ry | 2.1e-6 |
+| Si2 UKS triplet, 12 A, 400 Ry | **2.5e-6** |
 
-Do not build FD/DFPT phonon capabilities on GPW Si forces until this is fixed —
-they will inherit the error. Route via `/mol:fix` with the FD-vs-analytic
-comparison on Si₂ as the reproducer.
+Three **setup** defects produced the reported "271x":
+
+1. **Forced closed shell.** Si2's ground state is a triplet. Run RKS + OT and
+   the SCF reports `converged` on a saddle of the closed-shell functional, where
+   the frozen-density force is not the energy gradient: analytic 0.1308 Ha/Bohr,
+   analytic-vs-FD residual 7.5e-2 — exactly the 0.131 the worker reported. UKS
+   triplet on the same code: 2.5e-6 with |sum F| = 1.0e-7.
+2. **Cluster boundary placement** (a REAL product defect, now fixed). With
+   `nonperiodic = true` the collocation does not wrap, so a Gaussian near a cell
+   face is clipped: the energy stays plausible while the forces gain a boundary
+   term. Si2 with an atom at (0,0,0): |sum F| = 1.98 Ha/Bohr. Water dimer at
+   CP2K's origin-based coordinates: max|F_atv - F_cp2k| = 31.9 Ha/Bohr, dropping
+   to 7.5e-3 once centred. `GpwDft::build` now **throws** on off-centre
+   nonperiodic systems, and `gpw-d3-forces` / `gpw-d3bj-forces` assert |sum F|.
+3. **Twin mismatch.** An isolated-cluster (MT) spectrum was compared against a
+   CP2K `FULLY_PERIODIC T` crystal pin expecting three optical modes; an
+   isolated diatomic has one stretch plus five near-zero modes.
+
+**What still blocks the `gpw-fd-phonon-si` e2e** (not forces): Si2-triplet GTH in
+a cluster box is SCF-ill-conditioned for **both** codes, in complementary
+regions, so there is no settings window where both converge cheaply:
+
+| Setting | Atomiverse SCF | CP2K SCF | ATV cost/SCF |
+| --- | --- | --- | --- |
+| 8 A / 150 Ry | **converges** (153 it) | **fails** | 3.2 s |
+| 9 A / 150 Ry | untested | **fails** | ~4.5 s |
+| 9 A / 200 Ry | **fails** (400 it) | **converges** | ~7 s |
+| 10 A / 400 Ry | **fails** (300 it) | **converges** | ~38 s |
+| 12 A / 400 Ry (r = 2.351) | **converges** (45 it) | untested | ~38 s |
+
+Actionable next step is a **better mixer** for open-shell cluster GPW (CP2K uses
+Broyden; Atomiverse has linear + DIIS + OT, and OT lands on the closed-shell
+saddle). With 12 displacements at ~7-38 s per SCF the case also exceeds the 60 s
+e2e tier at every setting where CP2K converges, which is the known GPW
+performance gap, not a correctness issue. Regression stays de-registered with
+these numbers recorded in its REFERENCE; queue row stays `[~]`.
 
 ## [2026-07-23] Iron law: no public Config bags
 
