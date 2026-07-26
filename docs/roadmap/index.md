@@ -257,7 +257,7 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   `reg_gpw-variable-cell-molopt`). Open residuals after GapCensus wave 8
   are GapCensus-owned (multi-k URPA; OT+smear / multi-k UKS OT / multi-k
   OT+DFT+U; D4 analytic stress; nonlocal vdW SCF potential; DFPT metallic
-  + spin-incommensurate; optB88-vdW; stock VV10 incomplete staff; hybrids /
+  residual; optB88-vdW; stock VV10 incomplete staff; hybrids /
   meta-GGA / GAPW blocked — see `cp2k-method-queue.md`; queue not exhausted;
   incomplete `[~]` first).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
