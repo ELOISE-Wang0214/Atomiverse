@@ -1,5 +1,5 @@
 /// @file cpu/gpw/internal/xc_grid_gga.h
-/// @brief GGA (PBE / PBEsol / revPBE / RPBE / BLYP) exchange-correlation energy
+/// @brief GGA (PBE / PBEsol / revPBE / RPBE / BLYP / OptB88VdW) exchange-correlation energy
 ///        and potential on the GPW grid.
 ///
 /// The GGA counterpart of `xc_grid_pade` (LDA). Density gradients are computed
@@ -29,7 +29,8 @@ namespace gpw {
 ///
 /// @param grid  Uniform grid.
 /// @param rho_r Total electron density on the grid, length grid.npts().
-/// @param xc    Pure GGA type (`PBE`, `PBEsol`, `RevPBE`, `RPBE`, or `BLYP`).
+/// @param xc    Pure GGA type (`PBE`, `PBEsol`, `RevPBE`, `RPBE`, `BLYP`,
+///              or `OptB88VdW`).
 /// @return XcOnGrid with the total energy and the real-space potential.
 XcOnGrid xc_grid_gga(const UniformGrid& grid, const std::vector<double>& rho_r,
                      cpu::scf::XCType xc);
@@ -51,6 +52,10 @@ XcOnGrid xc_grid_rpbe(const UniformGrid& grid, const std::vector<double>& rho_r)
 /// @brief BLYP GGA on the grid (`xc_grid_gga` with `XCType::BLYP`).
 XcOnGrid xc_grid_blyp(const UniformGrid& grid, const std::vector<double>& rho_r);
 
+/// @brief optB88-vdW semi-local on the grid (`XCType::OptB88VdW`).
+XcOnGrid xc_grid_optb88_vdw(const UniformGrid& grid,
+                            const std::vector<double>& rho_r);
+
 /// @brief Spin-resolved pure GGA on the grid (UKS).
 ///
 /// E_xc = sum_g w (ρ_α+ρ_β) ε_xc; potentials
@@ -61,7 +66,8 @@ XcOnGrid xc_grid_blyp(const UniformGrid& grid, const std::vector<double>& rho_r)
 /// @param grid  Uniform grid.
 /// @param rho_a Alpha density on the grid.
 /// @param rho_b Beta density on the grid.
-/// @param xc    Pure GGA type (`PBE`, `PBEsol`, `RevPBE`, `RPBE`, or `BLYP`).
+/// @param xc    Pure GGA type (`PBE`, `PBEsol`, `RevPBE`, `RPBE`, `BLYP`,
+///              or `OptB88VdW`).
 /// @return Spin-resolved XC energy and potentials.
 XcOnGridSpin xc_grid_gga_spin(const UniformGrid& grid,
                               const std::vector<double>& rho_a,
@@ -92,6 +98,11 @@ XcOnGridSpin xc_grid_rpbe_spin(const UniformGrid& grid,
 XcOnGridSpin xc_grid_blyp_spin(const UniformGrid& grid,
                                const std::vector<double>& rho_a,
                                const std::vector<double>& rho_b);
+
+/// @brief Spin-resolved optB88-vdW semi-local (`XCType::OptB88VdW`).
+XcOnGridSpin xc_grid_optb88_vdw_spin(const UniformGrid& grid,
+                                     const std::vector<double>& rho_a,
+                                     const std::vector<double>& rho_b);
 
 } // namespace gpw
 } // namespace cpu

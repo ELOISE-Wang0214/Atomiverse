@@ -29,6 +29,9 @@
 ///   - BLYP: B88 (Becke, Phys. Rev. A 38, 3098 (1988)) + LYP (Lee-Yang-Parr,
 ///     Phys. Rev. B 37, 785 (1988); Miehlich et al., Chem. Phys. Lett. 157,
 ///     200 (1989))
+///   - OptB88VdW semi-local: optimized B88 exchange (Klimeš et al., J. Phys.:
+///     Condens. Matter 22, 022201 (2010); libxc GGA_X_OPTB88_VDW) + PW92 LDA
+///     correlation. Pair with GPW `vdw_df` (DRSLL) for full optB88-vdW.
 ///   - B3LYP: Stephens, Devlin, Chabalowski, Frisch, J. Phys. Chem. 98, 11623 (1994)
 ///   - PBE0: Adamo, Barone, J. Chem. Phys. 110, 6158 (1999)
 ///   - B2PLYP: Grimme, J. Chem. Phys. 124, 034108 (2006) — a_x=0.53 HF,
@@ -42,8 +45,8 @@ namespace scf {
 
 /// @brief XC functional type selector.
 ///
-/// `LSDA`, `PBE`, `PBEsol`, `RevPBE`, `RPBE` and `BLYP` are pure (semi-local)
-/// functionals. `B3LYP` and `PBE0` are global hybrids: their semi-local part
+/// `LSDA`, `PBE`, `PBEsol`, `RevPBE`, `RPBE`, `BLYP` and `OptB88VdW` are pure
+/// (semi-local) functionals. `B3LYP` and `PBE0` are global hybrids: their semi-local part
 /// is evaluated by `evaluate_xc` while a fixed fraction of exact HF exchange
 /// (`hybrid_exchange_fraction`) is added by the Fock builder. `B2PLYP` is
 /// a **double hybrid**: same hybrid-KS build with a_x=0.53 plus a PT2
@@ -56,6 +59,7 @@ enum class XCType {
     RevPBE,
     RPBE,
     BLYP,
+    OptB88VdW, ///< optB88 exchange + PW92 LDA-C (use with GPW vdw_df for full).
     B3LYP,
     PBE0,
     B2PLYP
@@ -65,7 +69,7 @@ enum class XCType {
 ///
 /// Returns the global-hybrid exact-exchange admixture: `0.20` for B3LYP,
 /// `0.25` for PBE0, `0.53` for B2PLYP, and `0.0` for every pure functional
-/// (`LSDA`, `PBE`, `PBEsol`, `RevPBE`, `RPBE`, `BLYP`). A `0.0` return is the
+/// (`LSDA`, `PBE`, `PBEsol`, `RevPBE`, `RPBE`, `BLYP`, `OptB88VdW`). A `0.0` return is the
 /// signal "pure functional, no exchange-matrix build".
 ///
 /// @param type XC functional type.
@@ -86,8 +90,8 @@ double hybrid_pt2_fraction(XCType type);
 
 /// @brief Whether a functional has a gradient (GGA) dependence.
 ///
-/// True for `PBE`, `PBEsol`, `RevPBE`, `RPBE`, `BLYP`, `B3LYP`, `PBE0` and
-/// `B2PLYP` (all carry a semi-local GGA term); false for the pure-LDA
+/// True for `PBE`, `PBEsol`, `RevPBE`, `RPBE`, `BLYP`, `OptB88VdW`, `B3LYP`,
+/// `PBE0` and `B2PLYP` (all carry a semi-local GGA term); false for the pure-LDA
 /// `LSDA`. Used to decide whether the XC grid engine must build
 /// basis-function gradients.
 ///
@@ -115,7 +119,7 @@ struct XCOutput {
 /// Applies density cutoff: if rho_total < 1e-12, returns zero for all outputs.
 ///
 /// @param type  Functional type (LSDA, PBE, PBEsol, RevPBE, RPBE, BLYP,
-///              B3LYP, PBE0 or B2PLYP).
+///              OptB88VdW, B3LYP, PBE0 or B2PLYP).
 /// @param rho_a Alpha density at grid point [electrons/Bohr^3].
 /// @param rho_b Beta density at grid point [electrons/Bohr^3].
 /// @param sigma_aa |grad rho_alpha|^2 (GGA only, ignored for LSDA).
@@ -132,7 +136,7 @@ XCOutput evaluate_xc(XCType type, double rho_a, double rho_b,
 /// transcendental functions (pow, log, exp).
 ///
 /// @param type     Functional type (LSDA, PBE, PBEsol, RevPBE, RPBE, BLYP,
-///                 B3LYP, PBE0 or B2PLYP).
+///                 OptB88VdW, B3LYP, PBE0 or B2PLYP).
 /// @param n        Number of grid points.
 /// @param rho_a    Alpha densities [n].
 /// @param rho_b    Beta densities [n].

@@ -97,6 +97,11 @@ XcOnGrid xc_grid_blyp(const UniformGrid& grid,
     return xc_grid_gga(grid, rho_r, cpu::scf::XCType::BLYP);
 }
 
+XcOnGrid xc_grid_optb88_vdw(const UniformGrid& grid,
+                            const std::vector<double>& rho_r) {
+    return xc_grid_gga(grid, rho_r, cpu::scf::XCType::OptB88VdW);
+}
+
 // Spin-resolved GGA: v_σ = vrho_σ − div[ 2 vσ_σσ ∇ρ_σ + vσ_αβ ∇ρ_σ̄ ].
 XcOnGridSpin xc_grid_gga_spin(const UniformGrid& grid,
                               const std::vector<double>& rho_a,
@@ -195,6 +200,12 @@ XcOnGridSpin xc_grid_blyp_spin(const UniformGrid& grid,
                                const std::vector<double>& rho_a,
                                const std::vector<double>& rho_b) {
     return xc_grid_gga_spin(grid, rho_a, rho_b, cpu::scf::XCType::BLYP);
+}
+
+XcOnGridSpin xc_grid_optb88_vdw_spin(const UniformGrid& grid,
+                                     const std::vector<double>& rho_a,
+                                     const std::vector<double>& rho_b) {
+    return xc_grid_gga_spin(grid, rho_a, rho_b, cpu::scf::XCType::OptB88VdW);
 }
 
 } // namespace gpw

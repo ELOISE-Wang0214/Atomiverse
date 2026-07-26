@@ -97,6 +97,8 @@ XcOnGrid eval_xc_grid(XcKind xc, const UniformGrid& grid,
         return xc_grid_rpbe(grid, rho);
     case XcKind::BLYP:
         return xc_grid_blyp(grid, rho);
+    case XcKind::OptB88VdW:
+        return xc_grid_optb88_vdw(grid, rho);
     case XcKind::PADE:
     default:
         return xc_grid_pade(grid, rho);
@@ -115,6 +117,8 @@ XcOnGridSpin eval_xc_grid_spin(XcKind xc, const UniformGrid& grid,
         return xc_grid_revpbe_spin(grid, rho_a, rho_b);
     case XcKind::BLYP:
         return xc_grid_blyp_spin(grid, rho_a, rho_b);
+    case XcKind::OptB88VdW:
+        return xc_grid_optb88_vdw_spin(grid, rho_a, rho_b);
     case XcKind::RPBE:
         // RPBE spin path is a follow-on (gpw-uks-rpbe); fall back to PBE
         // spin shape only after an explicit product lands — refuse silently

@@ -1151,7 +1151,11 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                                      ? xc_grid_rpbe(grid, rho)
                                      : (cfg.xc == XcKind::BLYP
                                             ? xc_grid_blyp(grid, rho)
-                                            : xc_grid_pade(grid, rho)))));
+                                            : (cfg.xc == XcKind::OptB88VdW
+                                                   ? xc_grid_optb88_vdw(
+                                                         grid, rho)
+                                                   : xc_grid_pade(grid,
+                                                                  rho))))));
         std::vector<double> veff(rho.size());
         double e_locgrid = 0.0;
         for (std::size_t g = 0; g < rho.size(); ++g) {
@@ -1814,9 +1818,10 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const int n_b = cfg.n_beta;
     if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
         && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::RevPBE
-        && cfg.xc != XcKind::RPBE && cfg.xc != XcKind::BLYP)
+        && cfg.xc != XcKind::RPBE && cfg.xc != XcKind::BLYP
+            && cfg.xc != XcKind::OptB88VdW)
         throw std::runtime_error(
-            "GPW k-UKS: XcKind must be PADE, PBE, PBEsol, RevPBE, RPBE, or BLYP");
+            "GPW k-UKS: XcKind must be PADE, PBE, PBEsol, RevPBE, RPBE, BLYP, or OptB88VdW");
 
     const GpwMpiLayout layout = gpw_mpi_layout();
     int n_kpts_local = 0;
@@ -1990,6 +1995,8 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             return xc_grid_rpbe_spin(grid, ra, rb);
         if (cfg.xc == XcKind::BLYP)
             return xc_grid_blyp_spin(grid, ra, rb);
+        if (cfg.xc == XcKind::OptB88VdW)
+            return xc_grid_optb88_vdw_spin(grid, ra, rb);
         return xc_grid_pade_lsd(grid, ra, rb);
     };
 
@@ -3517,7 +3524,11 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                                      ? xc_grid_rpbe(grid, rho)
                                      : (cfg.xc == XcKind::BLYP
                                             ? xc_grid_blyp(grid, rho)
-                                            : xc_grid_pade(grid, rho)))));
+                                            : (cfg.xc == XcKind::OptB88VdW
+                                                   ? xc_grid_optb88_vdw(
+                                                         grid, rho)
+                                                   : xc_grid_pade(grid,
+                                                                  rho))))));
         auto t3p = ProfClk::now();
         std::vector<double> veff(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g)
@@ -3633,9 +3644,10 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     if (uks) {
         if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
             && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::RevPBE
-            && cfg.xc != XcKind::RPBE && cfg.xc != XcKind::BLYP)
+            && cfg.xc != XcKind::RPBE && cfg.xc != XcKind::BLYP
+            && cfg.xc != XcKind::OptB88VdW)
             throw std::runtime_error(
-                "GPW UKS: XcKind must be PADE, PBE, PBEsol, RevPBE, RPBE, or BLYP");
+                "GPW UKS: XcKind must be PADE, PBE, PBEsol, RevPBE, RPBE, BLYP, or OptB88VdW");
         if (use_prod)
             throw std::runtime_error(
                 "GPW UKS: multigrid product collocation is not wired — use "
@@ -3659,6 +3671,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 return xc_grid_rpbe_spin(grid, ra, rb);
             if (cfg.xc == XcKind::BLYP)
                 return xc_grid_blyp_spin(grid, ra, rb);
+            if (cfg.xc == XcKind::OptB88VdW)
+                return xc_grid_optb88_vdw_spin(grid, ra, rb);
             return xc_grid_pade_lsd(grid, ra, rb);
         };
 
@@ -4380,10 +4394,11 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
                 + std::to_string(n_alpha) + " n_beta=" + std::to_string(n_beta)
                 + ")");
         if (xc != XcKind::PADE && xc != XcKind::PBE && xc != XcKind::PBEsol
-            && xc != XcKind::RevPBE && xc != XcKind::RPBE && xc != XcKind::BLYP)
+            && xc != XcKind::RevPBE && xc != XcKind::RPBE && xc != XcKind::BLYP
+            && xc != XcKind::OptB88VdW)
             throw std::invalid_argument(
                 "GpwDft::build: UKS supports XcKind::PADE, PBE, PBEsol, "
-                "RevPBE, RPBE, or BLYP");
+                "RevPBE, RPBE, BLYP, or OptB88VdW");
     } else if (n_occ < 1) {
         throw std::invalid_argument(
             "GpwDft::build: n_occ must be >= 1 for closed-shell RKS (got "
@@ -4460,9 +4475,10 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             reject("level shifting");
         if (is_uks() && xc != XcKind::PADE && xc != XcKind::PBE
             && xc != XcKind::PBEsol && xc != XcKind::RevPBE
-            && xc != XcKind::RPBE && xc != XcKind::BLYP)
+            && xc != XcKind::RPBE && xc != XcKind::BLYP
+            && xc != XcKind::OptB88VdW)
             reject("k-UKS with this XcKind (need PADE, PBE, PBEsol, RevPBE, "
-                   "RPBE, or BLYP)");
+                   "RPBE, BLYP, or OptB88VdW)");
         if (!k_points.empty()) {
             double wsum = 0.0;
             for (const double w : k_point_weights) {

@@ -680,6 +680,8 @@ double hybrid_exchange_fraction(XCType type) {
         return 0.0; // pure GGA (HHN exponential exchange + PBE correlation)
     case XCType::BLYP:
         return 0.0; // pure GGA (B88 + LYP); no exact exchange
+    case XCType::OptB88VdW:
+        return 0.0; // pure GGA (optB88 + PW92); no exact exchange
     case XCType::B3LYP:
         return 0.20; // libxc XC_HYB_GGA_XC_B3LYP
     case XCType::PBE0:
@@ -700,6 +702,7 @@ double hybrid_pt2_fraction(XCType type) {
     case XCType::RevPBE:
     case XCType::RPBE:
     case XCType::BLYP:
+    case XCType::OptB88VdW:
     case XCType::B3LYP:
     case XCType::PBE0:
         return 0.0;
@@ -721,6 +724,8 @@ bool is_gga(XCType type) {
         return true;
     case XCType::BLYP:
         return true;
+    case XCType::OptB88VdW:
+        return true; // optB88 GGA exchange (PW92 LDA correlation)
     case XCType::B3LYP:
         return true;
     case XCType::PBE0:
@@ -857,6 +862,39 @@ void b2plyp_semilocal(double ra, double rb, double sigma_aa, double sigma_ab,
     out.vsigma_bb = kB2PLYP_cB88 * vsig_b_bb + kB2PLYP_cLYP * vsig_l_bb;
 }
 
+// optB88-vdW semi-local (libxc GGA_X_OPTB88_VDW + LDA_C_PW / CP2K PW92):
+// optimized B88 exchange + PW92 LDA correlation. Nonlocal DRSLL is added
+// post-SCF on GPW via GpwDft::vdw_df (not here).
+// Klimeš, Bowler, Michaelides, J. Phys.: Condens. Matter 22, 022201 (2010).
+constexpr double kOptB88_beta = 0.003368671161034469;
+constexpr double kOptB88_gamma = 6.981317007977318;
+
+void optb88_vdw_semilocal(double ra, double rb, double sigma_aa, double sigma_ab,
+                          double sigma_bb, XCOutput& out) {
+    const double rho = ra + rb;
+    double sa = std::max(sigma_aa, 0.0);
+    double sb = std::max(sigma_bb, 0.0);
+    (void)sigma_ab; // exchange is per-spin; no cross-spin sigma term
+
+    double exb_a, vrho_x_a, vsig_x_aa;
+    double exb_b, vrho_x_b, vsig_x_bb;
+    b88_exchange_spin(ra, sa, exb_a, vrho_x_a, vsig_x_aa, kOptB88_beta,
+                      kOptB88_gamma);
+    b88_exchange_spin(rb, sb, exb_b, vrho_x_b, vsig_x_bb, kOptB88_beta,
+                      kOptB88_gamma);
+    const double ex = (exb_a + exb_b) / rho; // per-electron
+
+    double ec, vc_a, vc_b;
+    pw92_correlation(ra, rb, ec, vc_a, vc_b);
+
+    out.exc = ex + ec;
+    out.vrho_alpha = vrho_x_a + vc_a;
+    out.vrho_beta = vrho_x_b + vc_b;
+    out.vsigma_aa = vsig_x_aa;
+    out.vsigma_ab = 0.0;
+    out.vsigma_bb = vsig_x_bb;
+}
+
 // Evaluate the PBE0 semi-local energy density / potential at one grid point.
 // PBE0 reuses the native PBE engine: the PBE exchange contribution is scaled
 // by 0.75; PBE correlation stays at 1.0.
@@ -975,6 +1013,9 @@ XCOutput evaluate_xc(XCType type, double rho_a, double rho_b, double sigma_aa,
     } else if (type == XCType::BLYP) {
         // Pure BLYP GGA: full B88 exchange + full LYP correlation.
         blyp_pure(ra, rb, sigma_aa, sigma_ab, sigma_bb, out);
+    } else if (type == XCType::OptB88VdW) {
+        // optB88 exchange + PW92 LDA-C (nonlocal DRSLL via GPW vdw_df).
+        optb88_vdw_semilocal(ra, rb, sigma_aa, sigma_ab, sigma_bb, out);
     } else if (type == XCType::B3LYP) {
         // B3LYP semi-local part only; HF-exchange admixture (alpha=0.20)
         // is added by the Fock builder.
@@ -1070,17 +1111,20 @@ void evaluate_xc_batch(XCType type, int n, const double* rho_a_arr,
             vsigma_aa_arr[g] = vsig_x_aa + vsig_c_aa;
             vsigma_ab_arr[g] = vsig_c_ab;
             vsigma_bb_arr[g] = vsig_x_bb + vsig_c_bb;
-        } else if (type == XCType::BLYP || type == XCType::B3LYP
-                   || type == XCType::PBE0 || type == XCType::B2PLYP) {
-            // Pure BLYP, global hybrids, and B2PLYP share the GGA semi-local
-            // path. HF-exchange admixture (hybrids / double hybrids) is
-            // applied by the Fock builder, not here; PT2 is post-SCF.
+        } else if (type == XCType::BLYP || type == XCType::OptB88VdW
+                   || type == XCType::B3LYP || type == XCType::PBE0
+                   || type == XCType::B2PLYP) {
+            // Pure BLYP / OptB88VdW, global hybrids, and B2PLYP share the GGA
+            // semi-local path. HF-exchange admixture (hybrids / double hybrids)
+            // is applied by the Fock builder, not here; PT2 is post-SCF.
             double sa = sigma_aa_arr ? sigma_aa_arr[g] : 0.0;
             double sab = sigma_ab_arr ? sigma_ab_arr[g] : 0.0;
             double sb = sigma_bb_arr ? sigma_bb_arr[g] : 0.0;
             XCOutput out{};
             if (type == XCType::BLYP)
                 blyp_pure(ra, rb, sa, sab, sb, out);
+            else if (type == XCType::OptB88VdW)
+                optb88_vdw_semilocal(ra, rb, sa, sab, sb, out);
             else if (type == XCType::B3LYP)
                 b3lyp_semilocal(ra, rb, sa, sab, sb, out);
             else if (type == XCType::B2PLYP)

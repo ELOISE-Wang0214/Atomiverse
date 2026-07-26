@@ -68,7 +68,8 @@ static constexpr double kB88_gamma = 6.0;
 /// @param[out] vrho_s    d(ex_s)/drho_s, exchange potential [Hartree].
 /// @param[out] vsigma_ss d(ex_s)/dsigma_ss [Hartree*Bohr^2].
 void b88_exchange_spin(double rho_s, double sigma_ss, double& ex_s,
-                       double& vrho_s, double& vsigma_ss) {
+                       double& vrho_s, double& vsigma_ss, double beta,
+                       double gamma) {
     // Empty spin channel: exact zero on every channel, matching libxc's
     // dens_threshold early-return for B88 exchange.
     if (rho_s < kRhoMin * 0.5) {
@@ -79,7 +80,7 @@ void b88_exchange_spin(double rho_s, double sigma_ss, double& ex_s,
     }
 
     const double C = kXFactorC;
-    const double k = kB88_beta / C; // = beta / X_FACTOR_C
+    const double k = beta / C; // = beta / X_FACTOR_C
 
     // Reduced gradient x = |grad rho_s| / rho_s^{4/3}.
     const double r43 = std::pow(rho_s, 4.0 / 3.0);
@@ -90,12 +91,11 @@ void b88_exchange_spin(double rho_s, double sigma_ss, double& ex_s,
     // Becke enhancement factor F(x) = 1 + k x^2 / D,
     //   D = 1 + gamma*beta*x*asinh(x).
     const double asinh_x = std::asinh(x);
-    const double D = 1.0 + kB88_gamma * kB88_beta * x * asinh_x;
+    const double D = 1.0 + gamma * beta * x * asinh_x;
     const double F = 1.0 + k * x * x / D;
 
     // D'(x) = gamma*beta*(asinh(x) + x/sqrt(1+x^2)).
-    const double dD =
-        kB88_gamma * kB88_beta * (asinh_x + x / std::sqrt(1.0 + x * x));
+    const double dD = gamma * beta * (asinh_x + x / std::sqrt(1.0 + x * x));
 
     // F'(x)/x = k (2D - x D') / D^2  -- finite as x -> 0 (-> 2k).
     const double dF_over_x = k * (2.0 * D - x * dD) / (D * D);
@@ -112,6 +112,8 @@ void b88_exchange_spin(double rho_s, double sigma_ss, double& ex_s,
 
     // vsigma_ss = d(ex_s)/dsigma_ss = -C (F'(x)/x) / (2 rho_s^{4/3}).
     vsigma_ss = -C * dF_over_x / (2.0 * r43);
+    (void)kB88_beta;
+    (void)kB88_gamma;
 }
 
 // ── LYP correlation ──────────────────────────────────────────────────────

@@ -455,7 +455,11 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                                      ? xc_grid_rpbe(grid, rho)
                                      : (cfg.xc == XcKind::BLYP
                                             ? xc_grid_blyp(grid, rho)
-                                            : xc_grid_pade(grid, rho)))));
+                                            : (cfg.xc == XcKind::OptB88VdW
+                                                   ? xc_grid_optb88_vdw(
+                                                         grid, rho)
+                                                   : xc_grid_pade(grid,
+                                                                  rho))))));
         e_xc = xc.e_xc;
     }
 
@@ -740,10 +744,11 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         // Spin XC path matches Γ-UKS SCF / forces (PADE LSD + pure GGA spin).
         if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
             && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::RevPBE
-            && cfg.xc != XcKind::RPBE && cfg.xc != XcKind::BLYP)
+            && cfg.xc != XcKind::RPBE && cfg.xc != XcKind::BLYP
+            && cfg.xc != XcKind::OptB88VdW)
             throw std::invalid_argument(
                 "gpw_stress analytic UKS: XcKind must be PADE, PBE, PBEsol, "
-                "RevPBE, RPBE, or BLYP");
+                "RevPBE, RPBE, BLYP, or OptB88VdW");
         const XcOnGridSpin xc =
             cfg.xc == XcKind::PBE
                 ? xc_grid_pbe_spin(grid, rho_a, rho_b)
@@ -756,8 +761,12 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                                      : (cfg.xc == XcKind::BLYP
                                             ? xc_grid_blyp_spin(grid, rho_a,
                                                                 rho_b)
-                                            : xc_grid_pade_lsd(grid, rho_a,
-                                                               rho_b)))));
+                                            : (cfg.xc == XcKind::OptB88VdW
+                                                   ? xc_grid_optb88_vdw_spin(
+                                                         grid, rho_a, rho_b)
+                                                   : xc_grid_pade_lsd(
+                                                         grid, rho_a,
+                                                         rho_b))))));
         e_xc = xc.e_xc;
     } else {
         const XcOnGrid xc =
@@ -771,7 +780,11 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                                      ? xc_grid_rpbe(grid, rho)
                                      : (cfg.xc == XcKind::BLYP
                                             ? xc_grid_blyp(grid, rho)
-                                            : xc_grid_pade(grid, rho)))));
+                                            : (cfg.xc == XcKind::OptB88VdW
+                                                   ? xc_grid_optb88_vdw(
+                                                         grid, rho)
+                                                   : xc_grid_pade(grid,
+                                                                  rho))))));
         e_xc = xc.e_xc;
     }
 
