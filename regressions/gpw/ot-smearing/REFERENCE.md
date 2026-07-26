@@ -36,7 +36,7 @@ fail-fast.
 | A3 | \(\lvert F_{\mathrm{OT}} - F_{\mathrm{DIIS}}\rvert\) | \(10^{-4}\) Ha |
 | A4 | \(N_{\mathrm{occ}} = 18\) | \(10^{-5}\) |
 | A5 | frozen free-energy pin (first green) | \(10^{-3}\) Ha |
-| A6 | multi-k UKS OT still throws | — |
+| A6 | multi-k UKS OT + FD smear throws | — |
 
 ## Offline free-energy pin (first green 2026-07-26)
 

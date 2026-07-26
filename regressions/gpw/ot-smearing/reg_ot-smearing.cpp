@@ -143,7 +143,9 @@ int main() {
         check(d <= kAbsTol, "A5 |F_OT - frozen| <= 1e-3 Ha");
     }
 
-    // ── A6: multi-k UKS OT still throws ────────────────────────────────────
+    // ── A6: multi-k UKS OT + metallic smear still throws ───────────────────
+    // Multi-k UKS OT (integer occupations) is productized (ot-uks-kpoints);
+    // UKS OT combined with FD/MP smear remains a residual.
     {
         bool threw = false;
         try {
@@ -152,12 +154,13 @@ int main() {
             m.n_alpha = 10;
             m.n_beta = 8;
             m.use_ot = true;
-            m.smearing = Smearing::none; // multi-k UKS OT rejected regardless
+            m.smearing = Smearing::fermi_dirac;
+            m.degauss = 0.02;
             m.build(atoms);
         } catch (const std::invalid_argument&) {
             threw = true;
         }
-        check(threw, "A6 multi-k UKS OT throws at build");
+        check(threw, "A6 multi-k UKS OT + FD smear throws at build");
     }
 
     if (g_fail) {
