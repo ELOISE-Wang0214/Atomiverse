@@ -5,7 +5,7 @@
 /// (self-consistent Sternheimer response) instead of `6N` finite-displacement
 /// SCF solves. Pure LSDA **or pure GGA** (PBE, PBEsol, revPBE, RPBE, BLYP)
 /// with a UPF norm-conserving pseudopotential. **Fixed occupations** or
-/// **restricted metallic smearing** (`method.smearing` = Fermi–Dirac /
+/// **metallic smearing** (restricted or collinear spin) (`method.smearing` = Fermi–Dirac /
 /// Methfessel–Paxton / Gaussian with `degauss` [Ry] and `extra_bands`) at
 /// Γ, commensurate finite \(\mathbf{q}\), and **direct** finite-\(q\)
 /// Sternheimer. **Collinear spin** (`method.spin_polarized`) is supported
@@ -13,9 +13,13 @@
 /// **incommensurate** \(\mathbf{q}\) (direct Sternheimer) with fixed
 /// occupations: spin-resolved response with \(f=1\) per spin-orbital and a
 /// spin XC kernel (local \(f_{\mathrm{xc}}^{\sigma\sigma'}\) for LDA; FD of
-/// `XCBuilder::step_spin` for GGA). Hybrids and **spin+smear** are rejected.
-/// Default `q_frac = {0,0,0}` is the Γ path. Finite \(\mathbf{q}\) that is
-/// **commensurate** with a small supercell (e.g. \(X=(1/2,0,0)\) →
+/// `XCBuilder::step_spin` for GGA). **Restricted metallic smearing** is
+/// allowed at Γ, commensurate finite \(\mathbf{q}\), and direct finite-\(q\)
+/// Sternheimer. **Collinear spin + metallic smearing** (shared \(\mu\),
+/// spinor \(f\)) is allowed at Γ and commensurate \(\mathbf{q}\) (supercell
+/// Γ path); direct finite-\(q\) + spin+smear is rejected. Hybrids are
+/// rejected. Default `q_frac = {0,0,0}` is the Γ path. Finite \(\mathbf{q}\)
+/// that is **commensurate** with a small supercell (e.g. \(X=(1/2,0,0)\) →
 /// \(2\times1\times1\)) is evaluated as Γ-DFPT on that supercell plus IFC
 /// Fourier (exactly equivalent for rational \(q\)). **Incommensurate** (or
 /// oversize-supercell) \(\mathbf{q}\) uses the direct finite-\(q\) Sternheimer
@@ -118,7 +122,9 @@ class DfptPhonon {
     /// set. Restricted metallic smearing is allowed at Γ, commensurate
     /// \(\mathbf{q}\), and direct finite-\(q\) Sternheimer. Collinear spin
     /// is allowed at Γ, commensurate \(\mathbf{q}\), and incommensurate
-    /// \(\mathbf{q}\) with fixed occupations only; spin+smear throws.
+    /// \(\mathbf{q}\) with fixed occupations; collinear spin + metallic
+    /// smearing is allowed at Γ / commensurate \(\mathbf{q}\); direct
+    /// finite-\(q\) spin+smear throws.
     ///
     /// @param method Plane-wave method (members only; not mutated).
     /// @param frame  Atom positions [Å], types (Z), simulation cell.
