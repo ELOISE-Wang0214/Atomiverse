@@ -131,6 +131,17 @@ class GPWEvaluator : public cpu::GPW {
     bool xl_bomd = false;
     /// @brief XL-BOMD dissipation order K (Table I rows K = 3..9).
     int xl_bomd_k = 5;
+    /// @brief Zero-SCF linearized-functional XL-BOMD forces (Niklasson
+    ///        shadow Born–Oppenheimer potential). Requires `xl_bomd` and
+    ///        `compute_forces`. After the cold full-SCF seed, each warm
+    ///        force step builds \(H[n]\) from the auxiliary density \(n\),
+    ///        diagonalizes once to \(D = q[n]\), writes the shadow energy
+    ///        \(\mathcal{E}=\mathrm{Tr}(H D)-\mathrm{Tr}(H n)+E_{\mathrm{KS}}[n]\)
+    ///        and assembles forces at \((D,H[n])\) with **no iterative
+    ///        SCF** (`last_result().iters == 0`). Γ RKS diagonalization
+    ///        path only — `build()` throws for UKS, multi-k, `use_ot`,
+    ///        `cpmd`, or `second_gen_cp`.
+    bool xl_bomd_linearized = false;
     /// @brief Car–Parrinello MD: propagate occupied MO coefficients with a
     ///        fictitious mass and electronic RATTLE (not BOMD, not XL-BOMD).
     ///        After one cold SCF seed, each force step is a fixed-density KS

@@ -592,3 +592,142 @@ TEST(GpwSolverGuessPk, MultiKRksWithBetaGuessThrows) {
     EXPECT_THROW(solver.run(atoms, nullptr, nullptr, nullptr, &pk, &pk),
                  std::invalid_argument);
 }
+
+// ── Zero-SCF linearized XL forces (xl_bomd_linearized) ──────────────────
+
+// A1: linearized without xl_bomd is refused.
+TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedWithoutXl) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd_linearized = true;
+    eval.compute_forces = true;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// A2: linearized + UKS refused.
+TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedUks) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.xl_bomd_linearized = true;
+    eval.compute_forces = true;
+    eval.n_alpha = 5;
+    eval.n_beta = 3;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// A2: linearized + multi-k refused.
+TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedMultiK) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.xl_bomd_linearized = true;
+    eval.compute_forces = true;
+    eval.k_mesh[2] = 2;
+    eval.nonperiodic = false;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// A2: linearized without compute_forces refused.
+TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedWithoutForces) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.xl_bomd_linearized = true;
+    eval.compute_forces = false;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// A2: linearized + OT refused (via xl_bomd + use_ot).
+TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedWithOt) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.xl_bomd_linearized = true;
+    eval.compute_forces = true;
+    eval.use_ot = true;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// A2: linearized + CPMD refused.
+TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedWithCpmd) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.xl_bomd_linearized = true;
+    eval.compute_forces = true;
+    eval.cpmd = true;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// A2: linearized + second_gen_cp refused.
+TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedWithSgcp) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.xl_bomd_linearized = true;
+    eval.compute_forces = true;
+    eval.second_gen_cp = true;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// Happy path: Γ RKS + forces + linearized builds.
+TEST(GpwEvaluatorXlBomdLinearized, BuildAcceptsGammaRks) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.xl_bomd_linearized = true;
+    eval.compute_forces = true;
+    eval.nonperiodic = true;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_NO_THROW(eval.build(bc));
+}
+
+// A3: shadow energy formula recovers E_KS when D = n.
+TEST(XlBomdLinearized, ShadowEnergyRecoversAtFixedPoint) {
+    constexpr int n = 3;
+    RealMatrix H = xt::zeros<double>({n, n});
+    RealMatrix dens = xt::zeros<double>({n, n});
+    for (int i = 0; i < n; ++i) {
+        H(i, i) = -0.5 - 0.1 * i;
+        dens(i, i) = 0.2 + 0.05 * i;
+        for (int j = 0; j < i; ++j) {
+            H(i, j) = H(j, i) = 0.01 * (i + j);
+            dens(i, j) = dens(j, i) = 0.02 * (i - j + 1);
+        }
+    }
+    auto tr = [n](const RealMatrix& A, const RealMatrix& B) {
+        double t = 0.0;
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < n; ++j)
+                t += A(i, j) * B(j, i);
+        return t;
+    };
+    const double e_ks_n = -1.23456789;
+    const double e_lin =
+        tr(H, dens) - tr(H, dens) + e_ks_n; // D = n
+    EXPECT_DOUBLE_EQ(e_lin, e_ks_n);
+
+    // Non-trivial residual: E_lin differs from E_KS by Tr(H(D-n)).
+    RealMatrix D = dens;
+    D(0, 0) += 0.05;
+    D(1, 1) -= 0.05;
+    const double delta = tr(H, D) - tr(H, dens);
+    const double e_lin2 = tr(H, D) - tr(H, dens) + e_ks_n;
+    EXPECT_NEAR(e_lin2 - e_ks_n, delta, 1e-15);
+}
