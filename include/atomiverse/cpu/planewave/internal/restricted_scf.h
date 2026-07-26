@@ -26,6 +26,25 @@ namespace internal {
 PWResult run_restricted_scf(const cpu::Frame& frame, const PW& method,
                             PWProblem& prob);
 
+/// @brief Collinear (nspin=2) fixed-occupation SCF for post-processors.
+///
+/// Requires `method.spin_polarized` and `method.smearing == none`. Leaves
+/// total \(\rho\), spin XC channels, and a consistent \(V_\mathrm{eff}\) for
+/// the **last** spin channel on `prob.ws`; callers that need both spins
+/// re-bind `V_xc_G ← V_xc_spin_G[s]` and call `VeffBuilder::step` before
+/// NSCF on channel \(s\). Occupation counts:
+/// \(N_\uparrow=(N_e+M)/2\), \(N_\downarrow=(N_e-M)/2\) with
+/// \(M=\mathrm{multiplicity}-1\).
+///
+/// @param frame  Geometry: positions [Å], types (Z), simulation cell.
+/// @param method Plane-wave method (`spin_polarized` must be true).
+/// @param prob   Problem to assemble and converge (must outlive NSCF use).
+/// @param n_alpha Out: occupied α bands.
+/// @param n_beta  Out: occupied β bands.
+/// @return SCF result (energy [Ry]/[Ha] may be partial diagnostic; flags).
+PWResult run_collinear_scf(const cpu::Frame& frame, const PW& method,
+                           PWProblem& prob, int& n_alpha, int& n_beta);
+
 } // namespace internal
 } // namespace pw
 } // namespace cpu
