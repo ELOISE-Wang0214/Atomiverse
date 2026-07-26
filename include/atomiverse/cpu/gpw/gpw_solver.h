@@ -97,14 +97,16 @@ struct GpwAtom {
 /// `xc_grid_*_spin`; closed-shell via `xc_grid_*`).
 enum class XcKind { PADE, PBE, PBEsol, RevPBE, RPBE, BLYP };
 
-/// @brief Metallic occupation smearing kind (product path: multi-k RKS).
+/// @brief Metallic occupation smearing kind (product path: multi-k RKS/UKS).
 ///
 /// Mirrors `cpu::pw::Smearing` for API parity with QE/CP2K. Default `none`
-/// keeps fixed integer fillings (`n_occ` double-occupied). When not `none`,
-/// the SCF reports the Mermin free energy \(F=E_{\mathrm{KS}}-TS\) as
-/// `e_total` and fills bands via a shared chemical potential \(\mu\).
+/// keeps fixed integer fillings (`n_occ` double-occupied, or `n_alpha`/
+/// `n_beta` for UKS). When not `none`, the SCF reports the Mermin free
+/// energy \(F=E_{\mathrm{KS}}-TS\) as `e_total` and fills bands via a
+/// shared chemical potential \(\mu\) (RKS: band form \(f\in[0,2]\); UKS:
+/// spin-orbital form \(f_\sigma\in[0,1]\) over \(\alpha+\beta\)).
 enum class Smearing : int {
-    none = 0,              ///< Fixed closed-shell occupations.
+    none = 0,              ///< Fixed integer occupations.
     fermi_dirac = 1,       ///< Fermi–Dirac (CP2K `METHOD FERMI_DIRAC`).
     methfessel_paxton = 2, ///< Methfessel–Paxton of order `mp_order`.
 };
@@ -310,16 +312,17 @@ class GpwDft {
     ///        the cold-start densities, not as an external potential.
     std::vector<double> atom_spin_guess;
     /// @brief Metallic occupation smearing (default: fixed integer fillings).
-    ///        Product path: multi-k closed-shell RKS. UKS / OT throw at build.
+    ///        Product path: multi-k RKS **and** multi-k collinear UKS.
+    ///        OT + smear still throws at build.
     Smearing smearing = Smearing::none;
     /// @brief Smearing width [Ry] (QE `degauss` / CP2K \(k_B T_e\)). Required
     ///        `> 0` when `smearing != none`. Converted to Ha inside the SCF.
     double degauss = 0.02;
     /// @brief Methfessel–Paxton order \(N\) (used when `smearing == methfessel_paxton`).
     int mp_order = 1;
-    /// @brief Extra empty bands beyond `n_occ` (CP2K `ADDED_MOS` / PW
-    ///        `extra_bands`). GPW already diagonalizes the full AO spectrum, so
-    ///        this is API parity; a future band-cap may honour it.
+    /// @brief Extra empty bands beyond `n_occ` (RKS) or \(\max(n_\alpha,n_\beta)\)
+    ///        (UKS) — CP2K `ADDED_MOS` / PW `extra_bands`. GPW diagonalizes the
+    ///        full AO spectrum; this is API parity.
     int extra_bands = 0;
 
     GpwDft() = default;
