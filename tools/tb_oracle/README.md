@@ -40,7 +40,8 @@ tools/tb_oracle/
 | Path | Family | Notes |
 | ---- | ------ | ----- |
 | `inputs/dftbplus/ch4_3ob_dftb2/` | DFTB+ | CH4 3ob-3-1 under pure DFTB2 (`SCC=Yes`, no `ThirdOrder`) |
-| `inputs/dftbplus/dftb2_analytic_forces_note.md` | DFTB+ | Formula-level force module boundary (no host binary) |
+| `inputs/dftbplus/dftb2_analytic_forces_note.md` | DFTB+ | Formula-level force module boundary (MioSketch) |
+| `inputs/dftbplus/dftb2_analytic_forces_threeob_note.md` | DFTB+ | ThreeOb closed-form F vs re-SCC FD (formula) |
 
 Additional twins may exist only on unmerged `wf/*` tips (e.g. H2 mio SCC,
 DFTB0 notes, D3 dimer XYZ, Γ-point PBC). Merge brings them onto `dev`.

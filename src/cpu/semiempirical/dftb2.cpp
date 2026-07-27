@@ -1,5 +1,6 @@
 /// @file src/cpu/semiempirical/dftb2.cpp
-/// SCC-DFTB2 multi-element: mio sketch (spin + analytic F) + 3ob-3-1 SK.
+/// SCC-DFTB2 multi-element: mio sketch (spin + analytic F) + 3ob-3-1 SK
+/// (closed-shell analytic F on both SK sets).
 #include "atomiverse/cpu/semiempirical/dftb2.h"
 
 #include <algorithm>
@@ -779,6 +780,38 @@ void interp_3ob_sk(const Dftb3obPair& p, double r_bohr, double out[8]) {
     out[7] = u * a.s_ppp + t * b.s_ppp;
 }
 
+/// d(channel)/dR [1/Bohr] of linear table interp (flat outside the grid).
+void interp_3ob_sk_dr(const Dftb3obPair& p, double r_bohr, double dout[8]) {
+    if (r_bohr <= p.grid) {
+        for (int i = 0; i < 8; ++i)
+            dout[i] = 0;
+        return;
+    }
+    const double x = r_bohr / p.grid;
+    if (x >= static_cast<double>(p.n_grid)) {
+        for (int i = 0; i < 8; ++i)
+            dout[i] = 0;
+        return;
+    }
+    int i0 = static_cast<int>(std::floor(x)) - 1;
+    if (i0 < 0)
+        i0 = 0;
+    if (i0 > p.n_grid - 2)
+        i0 = p.n_grid - 2;
+    const int i1 = i0 + 1;
+    const Dftb3obSkPoint& a = p.sk[i0];
+    const Dftb3obSkPoint& b = p.sk[i1];
+    const double inv_g = 1.0 / p.grid;
+    dout[0] = (static_cast<double>(b.h_ss) - static_cast<double>(a.h_ss)) * inv_g;
+    dout[1] = (static_cast<double>(b.h_sp) - static_cast<double>(a.h_sp)) * inv_g;
+    dout[2] = (static_cast<double>(b.h_pps) - static_cast<double>(a.h_pps)) * inv_g;
+    dout[3] = (static_cast<double>(b.h_ppp) - static_cast<double>(a.h_ppp)) * inv_g;
+    dout[4] = (static_cast<double>(b.s_ss) - static_cast<double>(a.s_ss)) * inv_g;
+    dout[5] = (static_cast<double>(b.s_sp) - static_cast<double>(a.s_sp)) * inv_g;
+    dout[6] = (static_cast<double>(b.s_pps) - static_cast<double>(a.s_pps)) * inv_g;
+    dout[7] = (static_cast<double>(b.s_ppp) - static_cast<double>(a.s_ppp)) * inv_g;
+}
+
 double rep_3ob(const Dftb3obPair& p, double r_bohr) {
     if (r_bohr >= p.rep_cutoff)
         return 0.0;
@@ -799,6 +832,33 @@ double rep_3ob(const Dftb3obPair& p, double r_bohr) {
                 pow *= dr;
             }
             return e;
+        }
+    }
+    return 0.0;
+}
+
+/// dE_rep/dR [Ha/Bohr] of the 3ob repulsive (exp + spline).
+double rep_3ob_dr(const Dftb3obPair& p, double r_bohr) {
+    if (r_bohr >= p.rep_cutoff)
+        return 0.0;
+    const double r0 = p.rep_int[0];
+    if (r_bohr < r0)
+        return -p.rep_a1 * std::exp(-p.rep_a1 * r_bohr + p.rep_a2);
+    for (int i = 0; i < p.n_rep_int; ++i) {
+        const double* iv = p.rep_int + static_cast<std::size_t>(i) * 8;
+        const double ra = iv[0];
+        const double rb = iv[1];
+        if (r_bohr < rb || std::abs(r_bohr - rb) < 1e-14) {
+            const double dr = r_bohr - ra;
+            // e = c0 + c1 dr + c2 dr^2 + ... + c5 dr^5
+            // de/dr = c1 + 2 c2 dr + ... + 5 c5 dr^4
+            double de = 0;
+            double pow = 1.0;
+            for (int k = 1; k < 6; ++k) {
+                de += static_cast<double>(k) * iv[2 + k] * pow;
+                pow *= dr;
+            }
+            return de;
         }
     }
     return 0.0;
@@ -860,6 +920,82 @@ void fill_sk_block_3ob(const Dftb3obElement& ea, const Dftb3obElement& eb,
     }
 }
 
+/// SK block derivatives w.r.t. bond vector R_B − R_A [Bohr] (3ob tables).
+void fill_sk_block_deriv_3ob(const Dftb3obElement& ea, const Dftb3obElement& eb,
+                             int za, int zb, double dx, double dy, double dz,
+                             double r, linalg::RealMatrix dH0[3],
+                             linalg::RealMatrix dS[3], int ia0, int ib0) {
+    if (r < 1e-12)
+        return;
+    const double inv_r = 1.0 / r;
+    const double dir[3] = {dx * inv_r, dy * inv_r, dz * inv_r};
+
+    const Dftb3obPair& p_ab = pair_3ob(za, zb);
+    double ch[8], dch[8];
+    interp_3ob_sk(p_ab, r, ch);
+    interp_3ob_sk_dr(p_ab, r, dch);
+    double Hss = ch[0], Hsp = ch[1], Hpps = ch[2], Hppp = ch[3];
+    double Sss = ch[4], Ssp = ch[5], Spps = ch[6], Sppp = ch[7];
+    double dHss = dch[0], dHsp = dch[1], dHpps = dch[2], dHppp = dch[3];
+    double dSss = dch[4], dSsp = dch[5], dSpps = dch[6], dSppp = dch[7];
+    // X–H tables store only ss; s–p lives in H–X.
+    if (za != 1 && zb == 1) {
+        const Dftb3obPair& p_ba = pair_3ob(zb, za);
+        double rev[8], drev[8];
+        interp_3ob_sk(p_ba, r, rev);
+        interp_3ob_sk_dr(p_ba, r, drev);
+        Hsp = rev[1];
+        Ssp = rev[5];
+        dHsp = drev[1];
+        dSsp = drev[5];
+    }
+
+    auto ddir = [&](int alpha, int k) {
+        const double dab = (alpha == k) ? 1.0 : 0.0;
+        return (dab - dir[alpha] * dir[k]) * inv_r;
+    };
+
+    for (int k = 0; k < 3; ++k) {
+        const double dr_dk = dir[k];
+        dH0[k](ia0, ib0) = dHss * dr_dk;
+        dS[k](ia0, ib0) = dSss * dr_dk;
+
+        if (ea.n_ao >= 1 && eb.n_ao == 4) {
+            for (int a = 0; a < 3; ++a) {
+                dH0[k](ia0, ib0 + 1 + a) =
+                    ddir(a, k) * Hsp + dir[a] * dHsp * dr_dk;
+                dS[k](ia0, ib0 + 1 + a) =
+                    ddir(a, k) * Ssp + dir[a] * dSsp * dr_dk;
+            }
+        }
+        if (ea.n_ao == 4 && eb.n_ao >= 1) {
+            for (int a = 0; a < 3; ++a) {
+                dH0[k](ia0 + 1 + a, ib0) =
+                    -(ddir(a, k) * Hsp + dir[a] * dHsp * dr_dk);
+                dS[k](ia0 + 1 + a, ib0) =
+                    -(ddir(a, k) * Ssp + dir[a] * dSsp * dr_dk);
+            }
+        }
+        if (ea.n_ao == 4 && eb.n_ao == 4) {
+            const double dHsig = dHpps - dHppp;
+            const double dSsig = dSpps - dSppp;
+            const double Hsig = Hpps - Hppp;
+            const double Ssig = Spps - Sppp;
+            for (int a = 0; a < 3; ++a) {
+                for (int b = 0; b < 3; ++b) {
+                    const double dab = (a == b) ? 1.0 : 0.0;
+                    dH0[k](ia0 + 1 + a, ib0 + 1 + b) =
+                        (ddir(a, k) * dir[b] + dir[a] * ddir(b, k)) * Hsig
+                        + dir[a] * dir[b] * dHsig * dr_dk + dab * dHppp * dr_dk;
+                    dS[k](ia0 + 1 + a, ib0 + 1 + b) =
+                        (ddir(a, k) * dir[b] + dir[a] * ddir(b, k)) * Ssig
+                        + dir[a] * dir[b] * dSsig * dr_dk + dab * dSppp * dr_dk;
+                }
+            }
+        }
+    }
+}
+
 double gamma_ab_ha(double r_bohr, double ua_ha, double ub_ha) {
     if (r_bohr < 1e-14)
         return ua_ha;
@@ -867,7 +1003,23 @@ double gamma_ab_ha(double r_bohr, double ua_ha, double ub_ha) {
     return 1.0 / std::sqrt(r_bohr * r_bohr + tau * tau);
 }
 
-double energy_3ob_ha(const std::vector<const Dftb3obElement*>& el,
+/// dγ/dR [Ha/Bohr²] for Ohno–Klopman γ in Ha/Bohr.
+double dgamma_dr_ha(double r_bohr, double ua_ha, double ub_ha) {
+    if (r_bohr < 1e-14)
+        return 0.0;
+    const double g = gamma_ab_ha(r_bohr, ua_ha, ub_ha);
+    return -r_bohr * g * g * g;
+}
+
+struct Scc3obResult {
+    double energy_ha = 0;
+    std::vector<double> dq;
+    linalg::RealMatrix C;
+    linalg::RealVector eps;
+    int n_occ = 0;
+};
+
+Scc3obResult scc_3ob(const std::vector<const Dftb3obElement*>& el,
                      const std::vector<int>& ao0, const std::vector<int>& Z,
                      const std::vector<double>& x_b,
                      const std::vector<double>& y_b,
@@ -908,6 +1060,8 @@ double energy_3ob_ha(const std::vector<const Dftb3obElement*>& el,
 
     std::vector<double> dq(static_cast<std::size_t>(n_at), 0.0);
     linalg::RealMatrix P = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealMatrix C = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealVector eps = xt::zeros<double>({n_ao});
     double e_scc = 0;
 
     for (int it = 0; it < max_scc; ++it) {
@@ -945,7 +1099,8 @@ double energy_3ob_ha(const std::vector<const Dftb3obElement*>& el,
         }
 
         auto sol = linalg::diagonalize_fock_generalized(H, S);
-        auto C = sol.second;
+        eps = sol.first;
+        C = sol.second;
 
         P = xt::zeros<double>({n_ao, n_ao});
         for (int o = 0; o < n_occ; ++o)
@@ -1001,11 +1156,152 @@ double energy_3ob_ha(const std::vector<const Dftb3obElement*>& el,
             e_repulsive += rep_3ob(pr, r);
         }
 
-    return e_h0 + e_scc + e_repulsive;
+    Scc3obResult out;
+    out.energy_ha = e_h0 + e_scc + e_repulsive;
+    out.dq = std::move(dq);
+    out.C = std::move(C);
+    out.eps = std::move(eps);
+    out.n_occ = n_occ;
+    return out;
 }
 
-double launch_3ob(DFTB2& self, cpu::Frame& f, double scc_tol, int max_scc,
-                  bool with_forces) {
+double energy_3ob_ha(const std::vector<const Dftb3obElement*>& el,
+                     const std::vector<int>& ao0, const std::vector<int>& Z,
+                     const std::vector<double>& x_b,
+                     const std::vector<double>& y_b,
+                     const std::vector<double>& z_b, int n_at, int n_ao,
+                     int n_occ, double scc_tol, int max_scc) {
+    return scc_3ob(el, ao0, Z, x_b, y_b, z_b, n_at, n_ao, n_occ, scc_tol,
+                   max_scc)
+        .energy_ha;
+}
+
+/// Closed-form nuclear gradient for restricted SCC-DFTB2 on 3ob tables.
+/// Internally Ha/Bohr; writes Frame forces in eV/Å.
+void analytic_forces_3ob(int n_at, int n_ao, int n_occ,
+                         const std::vector<const Dftb3obElement*>& el,
+                         const std::vector<int>& ao0, const std::vector<int>& Z,
+                         const std::vector<double>& x_b,
+                         const std::vector<double>& y_b,
+                         const std::vector<double>& z_b,
+                         const std::vector<double>& dq,
+                         const linalg::RealMatrix& C,
+                         const linalg::RealVector& eps, AccReal* fx, AccReal* fy,
+                         AccReal* fz) {
+    auto dist = [&](int i, int j, double& dx, double& dy, double& dz) {
+        dx = x_b[static_cast<std::size_t>(j)] - x_b[static_cast<std::size_t>(i)];
+        dy = y_b[static_cast<std::size_t>(j)] - y_b[static_cast<std::size_t>(i)];
+        dz = z_b[static_cast<std::size_t>(j)] - z_b[static_cast<std::size_t>(i)];
+        return std::sqrt(dx * dx + dy * dy + dz * dz);
+    };
+
+    std::vector<double> dV(static_cast<std::size_t>(n_at), 0.0);
+    for (int a = 0; a < n_at; ++a) {
+        double shift = 0;
+        for (int b = 0; b < n_at; ++b) {
+            double dx, dy, dz;
+            const double r = (a == b) ? 0.0 : dist(a, b, dx, dy, dz);
+            const double g =
+                (a == b)
+                    ? el[static_cast<std::size_t>(a)]->hubbard_u
+                    : gamma_ab_ha(r, el[static_cast<std::size_t>(a)]->hubbard_u,
+                                  el[static_cast<std::size_t>(b)]->hubbard_u);
+            shift += g * dq[static_cast<std::size_t>(b)];
+        }
+        dV[static_cast<std::size_t>(a)] = shift;
+    }
+
+    linalg::RealMatrix P = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealMatrix W = xt::zeros<double>({n_ao, n_ao});
+    for (int o = 0; o < n_occ; ++o)
+        for (int mu = 0; mu < n_ao; ++mu)
+            for (int nu = 0; nu < n_ao; ++nu) {
+                P(mu, nu) += 2.0 * C(mu, o) * C(nu, o);
+                W(mu, nu) += 2.0 * eps(o) * C(mu, o) * C(nu, o);
+            }
+
+    // Ha/Bohr → eV/Å: F_eV_A = F_Ha_Bohr * kHa2eV / kBohr2A
+    const double fscale = kHa2eV / kBohr2A;
+
+    linalg::RealMatrix dH0[3] = {xt::zeros<double>({n_ao, n_ao}),
+                                 xt::zeros<double>({n_ao, n_ao}),
+                                 xt::zeros<double>({n_ao, n_ao})};
+    linalg::RealMatrix dS[3] = {xt::zeros<double>({n_ao, n_ao}),
+                                xt::zeros<double>({n_ao, n_ao}),
+                                xt::zeros<double>({n_ao, n_ao})};
+
+    for (int a = 0; a < n_at; ++a) {
+        const auto& ea = *el[static_cast<std::size_t>(a)];
+        const int ia = ao0[static_cast<std::size_t>(a)];
+        for (int b = a + 1; b < n_at; ++b) {
+            const auto& eb = *el[static_cast<std::size_t>(b)];
+            double dx, dy, dz;
+            const double r = dist(a, b, dx, dy, dz);
+            if (r < 1e-12)
+                continue;
+            const int ib = ao0[static_cast<std::size_t>(b)];
+            const double dir[3] = {dx / r, dy / r, dz / r};
+            double dE_dbond[3] = {0, 0, 0}; // ∂E/∂bond [Ha/Bohr]
+
+            if (r <= std::max(ea.r_cut, eb.r_cut)) {
+                for (int k = 0; k < 3; ++k) {
+                    dH0[k] = xt::zeros<double>({n_ao, n_ao});
+                    dS[k] = xt::zeros<double>({n_ao, n_ao});
+                }
+                fill_sk_block_deriv_3ob(ea, eb, Z[static_cast<std::size_t>(a)],
+                                        Z[static_cast<std::size_t>(b)], dx, dy,
+                                        dz, r, dH0, dS, ia, ib);
+                const double shift = 0.5
+                                     * (dV[static_cast<std::size_t>(a)]
+                                        + dV[static_cast<std::size_t>(b)]);
+                const int na = ea.n_ao;
+                const int nb = eb.n_ao;
+                for (int k = 0; k < 3; ++k) {
+                    double acc = 0;
+                    for (int i = 0; i < na; ++i)
+                        for (int j = 0; j < nb; ++j) {
+                            const double p = P(ia + i, ib + j);
+                            const double w = W(ia + i, ib + j);
+                            const double dh = dH0[k](ia + i, ib + j);
+                            const double ds = dS[k](ia + i, ib + j);
+                            acc += p * (dh + shift * ds) - w * ds;
+                        }
+                    dE_dbond[k] += 2.0 * acc;
+                }
+            }
+
+            // E = Tr(PH0) + 1/2 Δq γ Δq + E_rep  ⇔  band − E_scc form at SCF.
+            // SCC pair term in the band−E_scc force: ∂E/∂R_B = −Δq_A Δq_B ∂γ/∂R.
+            const double dgdR =
+                dgamma_dr_ha(r, ea.hubbard_u, eb.hubbard_u);
+            const double dqa = dq[static_cast<std::size_t>(a)];
+            const double dqb = dq[static_cast<std::size_t>(b)];
+            for (int k = 0; k < 3; ++k)
+                dE_dbond[k] += -dqa * dqb * dgdR * dir[k];
+
+            const auto& pr = pair_3ob(Z[static_cast<std::size_t>(a)],
+                                      Z[static_cast<std::size_t>(b)]);
+            const double dErep_dr = rep_3ob_dr(pr, r);
+            for (int k = 0; k < 3; ++k)
+                dE_dbond[k] += dErep_dr * dir[k];
+
+            // F = −∂E/∂R; bond = R_B − R_A ⇒ F_A += ∂E/∂bond, F_B −= ∂E/∂bond
+            // after converting Ha/Bohr → eV/Å.
+            const double fax = dE_dbond[0] * fscale;
+            const double fay = dE_dbond[1] * fscale;
+            const double faz = dE_dbond[2] * fscale;
+            fx[a] += static_cast<AccReal>(fax);
+            fy[a] += static_cast<AccReal>(fay);
+            fz[a] += static_cast<AccReal>(faz);
+            fx[b] -= static_cast<AccReal>(fax);
+            fy[b] -= static_cast<AccReal>(fay);
+            fz[b] -= static_cast<AccReal>(faz);
+        }
+    }
+}
+
+double launch_3ob(cpu::Frame& f, double scc_tol, int max_scc, bool with_forces,
+                  std::vector<double>& out_dq) {
     const int n_at = f.nlocal();
     const auto type = f.span(kAtom_type);
     StorageReal* x = f.span(kAtom_x);
@@ -1044,43 +1340,16 @@ double launch_3ob(DFTB2& self, cpu::Frame& f, double scc_tol, int max_scc,
             "DFTB2(ThreeOb): odd/non-integer valence electron count");
     const int n_occ = static_cast<int>(std::lround(n_elec)) / 2;
 
-    const double e_ha =
-        energy_3ob_ha(el, ao0, Z, xb, yb, zb, n_at, n_ao, n_occ, scc_tol,
-                      max_scc);
-    const double energy = e_ha * kHa2eV;
+    auto res = scc_3ob(el, ao0, Z, xb, yb, zb, n_at, n_ao, n_occ, scc_tol,
+                       max_scc);
+    const double energy = res.energy_ha * kHa2eV;
     energy_meta += energy;
+    out_dq = std::move(res.dq);
 
     if (with_forces) {
-        constexpr double h_fd_A = 1.0e-4; // Å
-        const double h_fd_B = h_fd_A * kA2Bohr;
-        for (int a = 0; a < n_at; ++a) {
-            for (int k = 0; k < 3; ++k) {
-                double* col = (k == 0)   ? xb.data()
-                              : (k == 1) ? yb.data()
-                                         : zb.data();
-                const double saved = col[static_cast<std::size_t>(a)];
-                col[static_cast<std::size_t>(a)] = saved + h_fd_B;
-                const double ep =
-                    energy_3ob_ha(el, ao0, Z, xb, yb, zb, n_at, n_ao, n_occ,
-                                  scc_tol, max_scc)
-                    * kHa2eV;
-                col[static_cast<std::size_t>(a)] = saved - h_fd_B;
-                const double em =
-                    energy_3ob_ha(el, ao0, Z, xb, yb, zb, n_at, n_ao, n_occ,
-                                  scc_tol, max_scc)
-                    * kHa2eV;
-                col[static_cast<std::size_t>(a)] = saved;
-                const double fi = -(ep - em) / (2.0 * h_fd_A);
-                if (k == 0)
-                    fx[a] += static_cast<AccReal>(fi);
-                else if (k == 1)
-                    fy[a] += static_cast<AccReal>(fi);
-                else
-                    fz[a] += static_cast<AccReal>(fi);
-            }
-        }
+        analytic_forces_3ob(n_at, n_ao, res.n_occ, el, ao0, Z, xb, yb, zb,
+                            out_dq, res.C, res.eps, fx, fy, fz);
     }
-    (void)self;
     return energy;
 }
 
@@ -1098,8 +1367,7 @@ void DFTB2::launch(const LaunchContext& ctx) {
         if (multiplicity != 1 || charge != 0)
             throw std::runtime_error(
                 "DFTB2(ThreeOb): open-shell/charge not supported on this path");
-        energy_ = launch_3ob(*this, f, scc_tol, max_scc, with_forces);
-        last_dq_.clear();
+        energy_ = launch_3ob(f, scc_tol, max_scc, with_forces, last_dq_);
         last_spin_.assign(static_cast<std::size_t>(f.nlocal()), 0.0);
     } else {
         energy_ = launch_mio(f, scc_tol, max_scc, with_forces, charge,

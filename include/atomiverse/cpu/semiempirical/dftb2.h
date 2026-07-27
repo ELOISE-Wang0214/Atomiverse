@@ -33,8 +33,9 @@ enum class DftbSkSet {
 ///   sketch (+ spin_W). Closed shell (`multiplicity == 1`): analytic nuclear
 ///   forces (HF + Pulay + SCC γ + repulsive). Open shell: re-SCC central FD.
 /// - `sk_set = ThreeOb`: `basis_data/dftb_3ob_tables.h` 3ob-3-1 radial H/S +
-///   repulsive (Gaus et al., JCTC 2013; organic CHNO). Closed-shell energy;
-///   forces are re-SCC FD. Spin channel is MioSketch-only.
+///   repulsive (Gaus et al., JCTC 2013; organic CHNO). Closed shell: analytic
+///   nuclear forces (same HF+Pulay+γ+rep assembly as MioSketch; Ha/Bohr SK).
+///   Spin / nonzero charge not supported on the ThreeOb path.
 ///
 /// Open shell uses `charge` and `multiplicity` to set nα, nβ. Units: energy
 /// [eV], positions [Å], forces [eV/Å].
