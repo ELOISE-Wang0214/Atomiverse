@@ -183,6 +183,31 @@ void Runtime::step(int step_idx) {
 // replay, below) never index into it. Nested ops are deliberately untimed on
 // both replay paths — extending TimerRegistry to sparse nested handles is a
 // separate decision.
+//
+// ## Resolution windows on the replay paths
+//
+// `Runtime::step` is the reference semantics: it opens a window around each
+// COMPONENT launch and closes it — `end_resolution_window` deactivates — before
+// the next op, so a driver op is dispatched with NO constrained window active.
+// A nested node's own driver-level lookups (MeanFieldMethod's force-span
+// epilogue, for one; its SCF loop parks its own window already) are therefore
+// charged to nobody.
+//
+// Both replay paths below can be entered from INSIDE a live window: `run_slot_`
+// is called from an Optimizer's `launch` via `ctx.opt.reeval_forces`, and
+// `step_plan` from a driver nested under such a call. So every op here —
+// component and driver alike — saves the caller's window first and restores it
+// afterwards. `restore_resolution_window` writes count, budget and active back
+// together, so the caller resumes with its own count untouched and never pays
+// for the nested work (before this, a nested RHF billed each line-search trial
+// to the enclosing optimizer and blew its component budget after a few trials).
+//
+// A driver op is handed the default-constructed window — inactive, the exact
+// state a step-level dispatch sees. It deliberately gets no
+// `end_resolution_window`: that pairing exists only to run the NAMED overrun
+// check, and a driver op has no component-sized budget to check against.
+// `restore` alone is the complete counterpart to a saved snapshot (there is no
+// window stack to unwind — `ResolutionState` is three atomics).
 
 void Runtime::build_plan(const Plan<cpu::Component>& plan) {
     BuildContext ctx{context_, *frame_};
@@ -207,8 +232,13 @@ void Runtime::step_plan(const Plan<cpu::Component>& plan, int step_idx) {
             if (op.frequency > 0 && step_idx % op.frequency != 0)
                 continue;
             if (op.is_driver()) {
+                // Step-level state for the node (no active window), caller's
+                // window back untouched — see the section note above.
+                const auto saved = frame_->resolution_window();
+                frame_->restore_resolution_window(ResolutionWindow{});
                 static_cast<cpu::DriverNode*>(op.nested_driver)
                     ->run_nested_erased(context_, *frame_, op.nested_budget);
+                frame_->restore_resolution_window(saved);
                 continue;
             }
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
@@ -243,10 +273,12 @@ void Runtime::run_slot_(int slot_index, int step_idx) {
     // line-search trial evaluations. Re-entrant: must not touch the timing
     // registry (op_handle_ indices belong to the outer step) and must not
     // recurse. Frequency gating is bypassed: a trial is not a simulation step.
-    // Nested driver ops dispatch exactly the way step_plan does — no
-    // resolution window around them (the nested node parks its own, the way
-    // MeanFieldMethod does). Nested ops are deliberately untimed on both
-    // replay paths (here and step_plan): op_handle_ indices belong to the
+    // Nested driver ops dispatch exactly the way step_plan does, resolution
+    // windows included: this replay runs INSIDE the calling component's window
+    // (an Optimizer's, via ctx.opt.reeval_forces), so the node is handed the
+    // step-level state and the caller's window is put back afterwards — see
+    // the section note above step_plan. Nested ops are deliberately untimed on
+    // both replay paths (here and step_plan): op_handle_ indices belong to the
     // bound outer plan — extending TimerRegistry to sparse nested handles is
     // a separate decision.
     for (auto& slot : plan_->slots) {
@@ -254,8 +286,11 @@ void Runtime::run_slot_(int slot_index, int step_idx) {
             continue;
         for (auto& op : slot.ops) {
             if (op.is_driver()) {
+                const auto saved = frame_->resolution_window();
+                frame_->restore_resolution_window(ResolutionWindow{});
                 static_cast<cpu::DriverNode*>(op.nested_driver)
                     ->run_nested_erased(context_, *frame_, op.nested_budget);
+                frame_->restore_resolution_window(saved);
                 continue;
             }
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
