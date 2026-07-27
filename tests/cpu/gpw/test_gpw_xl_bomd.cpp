@@ -1,3 +1,7 @@
+#include "atomiverse/cpu/electronic/second_gen_cp.h"
+#include "atomiverse/cpu/electronic/car_parrinello.h"
+#include "atomiverse/cpu/electronic/aimd_method.h"
+#include "atomiverse/cpu/electronic/xl_bomd_force.h"
 /// @file tests/cpu/gpw/test_gpw_xl_bomd.cpp
 /// @brief Unit tests: the GpwDft guess_P / guess_P_k plumbing XL-BOMD drives +
 ///        the GPWEvaluator xl_bomd(_linearized) build() guards.
@@ -38,6 +42,10 @@ using ATV::cpu::gpw::GridPrimitive;
 using ATV::cpu::linalg::RealMatrix;
 
 namespace {
+using ATV::cpu::electronic::XlBomdForce;
+using ATV::cpu::electronic::XlBomdLinearized;
+using ATV::cpu::electronic::SecondGenCp;
+using ATV::cpu::electronic::CarParrinello;
 
 RealMatrix constant_matrix(int n, double v) {
     RealMatrix m = xt::zeros<double>({n, n});
@@ -232,10 +240,10 @@ ATV::cpu::gpw::GPWEvaluator water_eval() {
 // A6: xl_bomd + UKS occupations is allowed at build() (dual spin XL).
 TEST(GpwEvaluatorXlBomd, BuildAcceptsXlWithUks) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.n_alpha = 5;
-    eval.n_beta = 3;
+    auto base = water_eval();
+    base.n_alpha = 5;
+    base.n_beta = 3;
+    XlBomdForce eval{std::move(base), 5};
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));
@@ -244,9 +252,9 @@ TEST(GpwEvaluatorXlBomd, BuildAcceptsXlWithUks) {
 // A6: xl_bomd with the OT minimizer is refused at build().
 TEST(GpwEvaluatorXlBomd, BuildRejectsXlWithOt) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.use_ot = true;
+    auto base = water_eval();
+    base.use_ot = true;
+    XlBomdForce eval{std::move(base), 5};
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
@@ -255,11 +263,11 @@ TEST(GpwEvaluatorXlBomd, BuildRejectsXlWithOt) {
 // A6: xl_bomd + UKS + OT still refused (OT wins the mutual exclusion).
 TEST(GpwEvaluatorXlBomd, BuildRejectsXlUksWithOt) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.n_alpha = 5;
-    eval.n_beta = 3;
-    eval.use_ot = true;
+    auto base = water_eval();
+    base.n_alpha = 5;
+    base.n_beta = 3;
+    base.use_ot = true;
+    XlBomdForce eval{std::move(base), 5};
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
@@ -268,9 +276,8 @@ TEST(GpwEvaluatorXlBomd, BuildRejectsXlUksWithOt) {
 // A6: an out-of-table dissipation order is refused at build().
 TEST(GpwEvaluatorXlBomd, BuildRejectsXlOrderOutsideTable) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.xl_bomd_k = 11;
+    auto base = water_eval();
+    XlBomdForce eval{std::move(base), 11};
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
@@ -358,13 +365,13 @@ TEST(GpwSolverGuessPk, MultiKWithRealGuessPThrows) {
 // A5: multi-k RKS + XL accepted; multi-k UKS + XL productized.
 TEST(GpwEvaluatorXlBomd, BuildAcceptsMultiKRksXl) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.k_mesh[0] = 1;
-    eval.k_mesh[1] = 1;
-    eval.k_mesh[2] = 2;
-    eval.k_time_reversal = false;
-    eval.nonperiodic = false;
+    auto base = water_eval();
+    XlBomdForce eval{std::move(base), 5};
+    eval.method().k_mesh[0] = 1;
+    eval.method().k_mesh[1] = 1;
+    eval.method().k_mesh[2] = 2;
+    eval.method().k_time_reversal = false;
+    eval.method().nonperiodic = false;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));
@@ -372,12 +379,12 @@ TEST(GpwEvaluatorXlBomd, BuildAcceptsMultiKRksXl) {
 
 TEST(GpwEvaluatorXlBomd, BuildAcceptsMultiKUksXl) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.n_alpha = 5;
-    eval.n_beta = 3;
-    eval.k_mesh[2] = 2;
-    eval.nonperiodic = false;
+    auto base = water_eval();
+    base.n_alpha = 5;
+    base.n_beta = 3;
+    XlBomdForce eval{std::move(base), 5};
+    eval.method().k_mesh[2] = 2;
+    eval.method().nonperiodic = false;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));
@@ -454,26 +461,24 @@ TEST(GpwSolverGuessPk, MultiKRksWithBetaGuessThrows) {
 
 // ── Zero-SCF linearized XL forces (xl_bomd_linearized) ──────────────────
 
-// A1: linearized without xl_bomd is refused.
-TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedWithoutXl) {
-    auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd_linearized = true;
-    eval.compute_forces = true;
-    ATV::cpu::Context rt;
-    ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+// A1: linearized is only available via XlBomdForce(..., XlBomdLinearized{}).
+TEST(GpwEvaluatorXlBomdLinearized, LinearizedRequiresXlBomdForceCtor) {
+    auto base = water_eval();
+    base.compute_forces = true;
+    // Bare GPW has no public linearized switch; XL path is the wrapper type.
+    EXPECT_FALSE(base.is_xl_bomd());
+    XlBomdForce xl{std::move(base), 5, XlBomdLinearized{}};
+    EXPECT_TRUE(xl.method().is_xl_bomd());
 }
 
 // A2: linearized + UKS refused.
 TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedUks) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.xl_bomd_linearized = true;
-    eval.compute_forces = true;
-    eval.n_alpha = 5;
-    eval.n_beta = 3;
+    auto base = water_eval();
+    base.compute_forces = true;
+    base.n_alpha = 5;
+    base.n_beta = 3;
+    XlBomdForce eval{std::move(base), 5, XlBomdLinearized{}};
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
@@ -482,76 +487,57 @@ TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedUks) {
 // A2: linearized + multi-k refused.
 TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedMultiK) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.xl_bomd_linearized = true;
-    eval.compute_forces = true;
-    eval.k_mesh[2] = 2;
-    eval.nonperiodic = false;
+    auto base = water_eval();
+    base.compute_forces = true;
+    XlBomdForce eval{std::move(base), 5, XlBomdLinearized{}};
+    eval.method().k_mesh[2] = 2;
+    eval.method().nonperiodic = false;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
 }
 
-// A2: linearized without compute_forces refused.
-TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedWithoutForces) {
-    auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.xl_bomd_linearized = true;
-    eval.compute_forces = false;
-    ATV::cpu::Context rt;
-    ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+// A2: linearized ctor forces compute_forces=true.
+TEST(GpwEvaluatorXlBomdLinearized, CtorEnablesForces) {
+    auto base = water_eval();
+    base.compute_forces = false;
+    XlBomdForce eval{std::move(base), 5, XlBomdLinearized{}};
+    EXPECT_TRUE(eval.method().compute_forces);
 }
 
 // A2: linearized + OT refused (via xl_bomd + use_ot).
 TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedWithOt) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.xl_bomd_linearized = true;
-    eval.compute_forces = true;
-    eval.use_ot = true;
+    auto base = water_eval();
+    base.compute_forces = true;
+    base.use_ot = true;
+    XlBomdForce eval{std::move(base), 5, XlBomdLinearized{}};
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
 }
 
-// A2: linearized + CPMD refused.
-TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedWithCpmd) {
-    auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.xl_bomd_linearized = true;
-    eval.compute_forces = true;
-    eval.cpmd = true;
-    ATV::cpu::Context rt;
-    ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+// A2: XL and CP are distinct types (cannot combine on one object).
+TEST(GpwEvaluatorXlBomdLinearized, DistinctFromCarParrinello) {
+    XlBomdForce xl{water_eval(), 5, XlBomdLinearized{}};
+    CarParrinello cp{water_eval(), 400.0};
+    EXPECT_NE(xl.name(), cp.name());
 }
 
-// A2: linearized + second_gen_cp refused.
-TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedWithSgcp) {
-    auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.xl_bomd_linearized = true;
-    eval.compute_forces = true;
-    eval.second_gen_cp = true;
-    ATV::cpu::Context rt;
-    ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+// A2: XL and SGCP are distinct types.
+TEST(GpwEvaluatorXlBomdLinearized, DistinctFromSecondGenCp) {
+    XlBomdForce xl{water_eval(), 5, XlBomdLinearized{}};
+    SecondGenCp sg{water_eval(), 3, 5};
+    EXPECT_NE(xl.name(), sg.name());
 }
 
 // Happy path: Γ RKS + forces + linearized builds.
 TEST(GpwEvaluatorXlBomdLinearized, BuildAcceptsGammaRks) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.xl_bomd = true;
-    eval.xl_bomd_linearized = true;
-    eval.compute_forces = true;
-    eval.nonperiodic = true;
+    auto base = water_eval();
+    base.compute_forces = true;
+    base.nonperiodic = true;
+    XlBomdForce eval{std::move(base), 5, XlBomdLinearized{}};
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));

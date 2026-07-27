@@ -24,56 +24,86 @@ namespace ATV::cpu::task {
 namespace {
 
 void register_md_entry(md::MD& driver, const MDComponentEntry& entry) {
-    const auto reg = [&](auto component) {
-        if (entry.binding)
-            driver.on(entry.binding->phase)
-                .add(std::move(component), entry.binding->order);
-        else
-            driver.add(std::move(component));
-    };
     std::visit(
         [&](const auto& p) {
             using P = std::decay_t<decltype(p)>;
+            if (entry.binding) {
+                auto bind = [&](auto component) {
+                    driver.on(entry.binding->phase)
+                        .add(std::move(component), entry.binding->order);
+                };
+                if constexpr (std::is_same_v<P, PairLJCutParams>)
+                    bind(cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff});
+                else if constexpr (std::is_same_v<P, NeighborListParams>)
+                    bind(cpu::md::NeighborList<>{p.cutoff, p.skin});
+                else if constexpr (std::is_same_v<P, BondHarmonicParams>)
+                    bind(cpu::BondHarmonic{p.K, p.r0});
+                else if constexpr (std::is_same_v<P, AngleHarmonicParams>)
+                    bind(cpu::AngleHarmonic{p.K, p.theta0});
+                else if constexpr (std::is_same_v<P, DihedralMultiHarmonicParams>)
+                    bind(cpu::DihedralMultiHarmonic{p.Cn});
+                else if constexpr (std::is_same_v<P, VelocityVerletParams>)
+                    bind(cpu::md::VelocityVerlet{p.dt});
+                else if constexpr (std::is_same_v<P, InitVelocityParams>)
+                    bind(cpu::md::InitVelocity{p.temperature, p.seed});
+                else if constexpr (std::is_same_v<P, NoseHooverParams>)
+                    bind(cpu::md::NoseHoover{p.T_start, p.tau_T, p.dt});
+                else if constexpr (std::is_same_v<P, ThermoParams>)
+                    bind(cpu::Thermo{p.freq});
+                return;
+            }
+            // Categorical path — no public Driver::add
             if constexpr (std::is_same_v<P, PairLJCutParams>)
-                reg(cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff});
+                driver.set_evaluator(
+                    cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff});
             else if constexpr (std::is_same_v<P, NeighborListParams>)
-                reg(cpu::md::NeighborList<>{p.cutoff, p.skin});
+                driver.set_neighbor(cpu::md::NeighborList<>{p.cutoff, p.skin});
             else if constexpr (std::is_same_v<P, BondHarmonicParams>)
-                reg(cpu::BondHarmonic{p.K, p.r0});
+                driver.set_evaluator(cpu::BondHarmonic{p.K, p.r0});
             else if constexpr (std::is_same_v<P, AngleHarmonicParams>)
-                reg(cpu::AngleHarmonic{p.K, p.theta0});
+                driver.set_evaluator(cpu::AngleHarmonic{p.K, p.theta0});
             else if constexpr (std::is_same_v<P, DihedralMultiHarmonicParams>)
-                reg(cpu::DihedralMultiHarmonic{p.Cn});
+                driver.set_evaluator(cpu::DihedralMultiHarmonic{p.Cn});
             else if constexpr (std::is_same_v<P, VelocityVerletParams>)
-                reg(cpu::md::VelocityVerlet{p.dt});
+                driver.set_integrator(cpu::md::VelocityVerlet{p.dt});
             else if constexpr (std::is_same_v<P, InitVelocityParams>)
-                reg(cpu::md::InitVelocity{p.temperature, p.seed});
+                driver.set_observer(
+                    cpu::md::InitVelocity{p.temperature, p.seed});
             else if constexpr (std::is_same_v<P, NoseHooverParams>)
-                reg(cpu::md::NoseHoover{p.T_start, p.tau_T, p.dt});
+                driver.set_thermostat(
+                    cpu::md::NoseHoover{p.T_start, p.tau_T, p.dt});
             else if constexpr (std::is_same_v<P, ThermoParams>)
-                reg(cpu::Thermo{p.freq});
+                driver.set_thermo(p.freq);
         },
         entry.params);
 }
 
 void register_minimize_entry(minimizer::Minimize& driver,
                              const MinimizeComponentEntry& entry) {
-    const auto reg = [&](auto component) {
-        if (entry.binding)
-            driver.on(entry.binding->phase)
-                .add(std::move(component), entry.binding->order);
-        else
-            driver.add(std::move(component));
-    };
     std::visit(
         [&](const auto& p) {
             using P = std::decay_t<decltype(p)>;
+            if (entry.binding) {
+                auto bind = [&](auto component) {
+                    driver.on(entry.binding->phase)
+                        .add(std::move(component), entry.binding->order);
+                };
+                if constexpr (std::is_same_v<P, PairLJCutParams>)
+                    bind(cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff});
+                else if constexpr (std::is_same_v<P, NeighborListParams>)
+                    bind(cpu::md::NeighborList<>{p.cutoff, p.skin});
+                else if constexpr (std::is_same_v<P, LBFGSParams>)
+                    bind(cpu::minimizer::LBFGS{p.memory, p.alpha0, p.max_ls});
+                return;
+            }
             if constexpr (std::is_same_v<P, PairLJCutParams>)
-                reg(cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff});
+                driver.set_evaluator(
+                    cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff});
             else if constexpr (std::is_same_v<P, NeighborListParams>)
-                reg(cpu::md::NeighborList<>{p.cutoff, p.skin});
+                driver.set_neighbor(cpu::md::NeighborList<>{p.cutoff, p.skin});
             else if constexpr (std::is_same_v<P, LBFGSParams>)
-                reg(cpu::minimizer::LBFGS{p.memory, p.alpha0, p.max_ls});
+                driver.set_optimizer(
+                    cpu::minimizer::LBFGS{p.memory, p.alpha0, p.max_ls});
         },
         entry.params);
 }

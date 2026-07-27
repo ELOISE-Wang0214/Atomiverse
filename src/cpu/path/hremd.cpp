@@ -57,7 +57,7 @@ void HRemd::ensure_built_(cpu::Frame& frame) {
     for (int i = 0; i < n; ++i) {
         auto md = std::make_unique<cpu::md::MD>();
         md->set_integrator(cpu::md::VelocityVerlet{dt});
-        md->add(cpu::md::InitVelocity{temperature,
+        md->set_observer(cpu::md::InitVelocity{temperature,
                                       static_cast<unsigned>(seed ^ (i + 1u))});
         builder_(*md, lambdas[static_cast<std::size_t>(i)], builder_user_);
         md->enable_timing(false);

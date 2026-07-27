@@ -134,6 +134,13 @@ class Hessian : public Driver<ATV::vib::Phase> {
     /// @return The cached Hessian result.
     const HessianResult& last_result() const { return last_result_; }
 
+  private:
+    /// @brief Register the full vib component chain via bind_defaults / on().
+    void wire_full_chain_(HessianWorkspace* ws, double temperature,
+                          double pressure, int multiplicity, int symmetry_number,
+                          const std::string& frequency_tsv,
+                          const std::string& mode_xyz_prefix);
+
   protected:
     /// @brief A force evaluator to displace against, and an accumulator to build into.
     void validate_components() const override {

@@ -169,7 +169,7 @@ class MD : public Driver<ATV::md::Phase> {
         // MPI infrastructure (single-rank no-ops in Phase 1). `Reduce` is
         // injected in install_defaults() so set_scalar_reduce_every() (which
         // runs after construction) can configure its cadence.
-        add(comm::Migrate{10});
+        this->on(ATV::md::Phase::pre_exchange).add(comm::Migrate{10});
 
         // Async-analysis publisher — shared infrastructure, explicitly
         // bound to *this driver's* end_of_step @ +10. Subscribers
@@ -180,8 +180,8 @@ class MD : public Driver<ATV::md::Phase> {
 
     // ─── MD-specific categorical setters ────────────────────────────
     //
-    // add_potential, add_potential, set_angle, set_dihedral, set_neighbor,
-    // set_observer, set_record, set_thermo are inherited from Driver.
+    // set_evaluator, set_neighbor, set_observer, set_record, set_thermo
+    // are inherited from Driver.
 
     /// @brief Configure the time integrator (LAMMPS `fix … nve|nvt|npt`).
     template <typename I>
@@ -207,13 +207,13 @@ class MD : public Driver<ATV::md::Phase> {
     template <typename T>
         requires(!std::is_lvalue_reference_v<T>)
     MD& set_thermostat(T&& t) {
-        this->add(std::forward<T>(t));
+        this->bind_defaults(std::forward<T>(t));
         return *this;
     }
 
     template <typename T>
     MD& set_thermostat_ref(T& t) {
-        this->add_ref(t);
+        this->bind_defaults_ref(t);
         return *this;
     }
 
@@ -224,13 +224,13 @@ class MD : public Driver<ATV::md::Phase> {
     template <typename Bs>
         requires(!std::is_lvalue_reference_v<Bs>)
     MD& set_barostat(Bs&& b) {
-        this->add(std::forward<Bs>(b));
+        this->bind_defaults(std::forward<Bs>(b));
         return *this;
     }
 
     template <typename Bs>
     MD& set_barostat_ref(Bs& b) {
-        this->add_ref(b);
+        this->bind_defaults_ref(b);
         return *this;
     }
 
@@ -257,13 +257,13 @@ class MD : public Driver<ATV::md::Phase> {
             if (cfg.has_ramp())
                 th.set_T_stop(cfg.T_stop)
                     .set_run_span(cfg.ramp_first, cfg.ramp_last);
-            this->add(std::move(th));
+            this->bind_defaults(std::move(th));
         } else {
             NoseHoover th{cfg.T, cfg.tau, cfg.dt};
             if (cfg.has_ramp())
                 th.set_T_stop(cfg.T_stop)
                     .set_run_span(cfg.ramp_first, cfg.ramp_last);
-            this->add(std::move(th));
+            this->bind_defaults(std::move(th));
         }
         return *this;
     }
@@ -403,10 +403,10 @@ class MD : public Driver<ATV::md::Phase> {
 
         // Global scalar reduction (single-rank no-op). Injected here rather
         // than in the ctor so set_scalar_reduce_every() can set the cadence.
-        this->add(mpi::Reduce{scalar_reduce_every_});
+        this->bind_defaults(mpi::Reduce{scalar_reduce_every_});
 
         if (s.needs_stress && !s.has_virial_stress)
-            this->add(Virial{});
+            this->bind_defaults(Virial{});
 
 #ifdef ATV_HAS_MPI
         if (s.neighbor_consumer_cutoff) {
@@ -439,9 +439,9 @@ class MD : public Driver<ATV::md::Phase> {
             const double halo_cut =
                 1.1 * static_cast<double>(*s.neighbor_consumer_cutoff);
             if (!s.has_halo_send)
-                this->add(comm::HaloSend{halo_cut});
+                this->bind_defaults(comm::HaloSend{halo_cut});
             if (!s.has_halo_recv)
-                this->add(comm::HaloRecv{});
+                this->bind_defaults(comm::HaloRecv{});
         }
 
         // A constraint needs ghost positions AFTER the drift and ghost velocities

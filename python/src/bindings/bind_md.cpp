@@ -58,10 +58,31 @@ struct MdHandle {
     template <typename Params, typename Component>
     void add(const Params& p, Component comp,
              std::optional<MDBinding> binding) {
-        if (binding)
+        if (binding) {
             driver.on(binding->phase).add(std::move(comp), binding->order);
-        else
-            driver.add(std::move(comp));
+        } else {
+            // Categorical only — no public Driver::add.
+            using P = std::decay_t<Params>;
+            if constexpr (std::is_same_v<P, cpu::task::PairLJCutParams>
+                          || std::is_same_v<P, cpu::task::BondHarmonicParams>
+                          || std::is_same_v<P, cpu::task::AngleHarmonicParams>
+                          || std::is_same_v<P,
+                                            cpu::task::DihedralMultiHarmonicParams>)
+                driver.set_evaluator(std::move(comp));
+            else if constexpr (std::is_same_v<P, cpu::task::NeighborListParams>)
+                driver.set_neighbor(std::move(comp));
+            else if constexpr (std::is_same_v<P, cpu::task::VelocityVerletParams>)
+                driver.set_integrator(std::move(comp));
+            else if constexpr (std::is_same_v<P, cpu::task::NoseHooverParams>)
+                driver.set_thermostat(std::move(comp));
+            else if constexpr (std::is_same_v<P, cpu::task::InitVelocityParams>)
+                driver.set_observer(std::move(comp));
+            else if constexpr (std::is_same_v<P, cpu::task::ThermoParams>)
+                driver.set_thermo(
+                    static_cast<const cpu::task::ThermoParams&>(p).freq);
+            else
+                driver.set_observer(std::move(comp));
+        }
         mirror.push_back(MDComponentEntry{p, binding});
     }
 

@@ -190,72 +190,12 @@ class Driver {
         return *this;
     }
 
-    /// @brief Add a component using its `default_bindings()` (owned rvalue).
-    template <typename Comp,
-              std::enable_if_t<
-                  std::is_base_of_v<Component, std::remove_reference_t<Comp>>
-                      && !std::is_lvalue_reference_v<Comp>
-                      && !std::is_base_of_v<cpu::DriverNode,
-                                            std::remove_reference_t<Comp>>,
-                  int> = 0>
-    void add(Comp&& comp) {
-        using C = std::remove_reference_t<Comp>;
-        add(std::make_unique<C>(std::forward<Comp>(comp)));
-    }
-
-    /// @brief Transfer ownership from an explicit unique pointer.
-    template <typename Comp,
-              std::enable_if_t<std::is_base_of_v<Component, Comp>, int> = 0>
-    void add(std::unique_ptr<Comp> comp) {
-        if (!comp)
-            throw std::invalid_argument("Driver::add: null component");
-        auto bindings = comp->default_bindings();
-        if (bindings.empty())
-            throw std::runtime_error(
-                "Component '" + comp->name()
-                + "' has no default bindings. Use .on(phase).add().");
-        validate_binding_kinds_(comp->name(), bindings);
-        Component* raw = comp.get();
-        owned_components_.push_back(std::move(comp));
-        for (const auto& db : bindings)
-            pending_.push_back({db.phase, db.order, raw, nullptr, 0});
-    }
-
-    /// @brief Borrow a component whose lifetime is owned by the caller.
-    template <typename Comp,
-              std::enable_if_t<std::is_base_of_v<Component, Comp>
-                                   && !std::is_base_of_v<cpu::DriverNode, Comp>,
-                               int> = 0>
-    void add_ref(Comp& comp) {
-        auto bindings = comp.default_bindings();
-        if (bindings.empty())
-            throw std::runtime_error(
-                "Component '" + comp.name()
-                + "' has no default bindings. Use .on(phase).add_ref().");
-        validate_binding_kinds_(comp.name(), bindings);
-        for (const auto& db : bindings)
-            pending_.push_back({db.phase, db.order, &comp, nullptr, 0});
-    }
-
-    /// Drivers have no default bindings — use `.on(phase).add(...)`.
-    template <
-        typename Nested,
-        std::enable_if_t<
-            std::is_base_of_v<cpu::DriverNode, std::remove_reference_t<Nested>>,
-            int> = 0>
-    void add(Nested&&) = delete;
-
-    /// Drivers have no default bindings — use `.on(phase).add_ref(...)`.
-    template <
-        typename Nested,
-        std::enable_if_t<std::is_base_of_v<cpu::DriverNode, Nested>, int> = 0>
-    void add_ref(Nested&) = delete;
-
-    /// Implicit lvalue borrowing is forbidden. Use `add_ref(comp)`.
-    template <typename Comp>
-    void add(Comp&) = delete;
-
-    /// @brief Begin explicit phase binding.
+    /// @brief Begin explicit phase binding — the only public Plan-registration
+    ///        primitive (with `PhaseBuilder::add` / `add_ref`).
+    ///
+    /// Categorical setters (`set_evaluator`, `set_integrator`, …) call this
+    /// (or protected `bind_defaults`) internally. There is no public
+    /// `Driver::add` that guesses the phase from `default_bindings()`.
     /// @param phase Phase value returned by the driver's `Phase` enum.
     /// @return A `PhaseBuilder` bound to that phase.
     PhaseBuilder<PhaseEnum, DeviceTag> on(PhaseEnum phase) {
@@ -298,6 +238,59 @@ class Driver {
   protected:
     // Internals are protected (not private) so the backend loop node
     // (cpu::Driver / cuda::Driver) can drive the per-iteration loop itself.
+
+    /// @brief Bind a component using its `default_bindings()` (owned rvalue).
+    ///
+    /// **Not public.** Categorical helpers (`set_observer`,
+    /// `set_singular_default_owned_`, criteria with stage bindings) call this.
+    /// Users must use `on(phase).add` or `set_evaluator` / other categorical
+    /// setters.
+    template <typename Comp,
+              std::enable_if_t<
+                  std::is_base_of_v<Component, std::remove_reference_t<Comp>>
+                      && !std::is_lvalue_reference_v<Comp>
+                      && !std::is_base_of_v<cpu::DriverNode,
+                                            std::remove_reference_t<Comp>>,
+                  int> = 0>
+    void bind_defaults(Comp&& comp) {
+        using C = std::remove_reference_t<Comp>;
+        bind_defaults(std::make_unique<C>(std::forward<Comp>(comp)));
+    }
+
+    /// @brief Transfer ownership and bind via `default_bindings()`.
+    template <typename Comp,
+              std::enable_if_t<std::is_base_of_v<Component, Comp>, int> = 0>
+    void bind_defaults(std::unique_ptr<Comp> comp) {
+        if (!comp)
+            throw std::invalid_argument("Driver::bind_defaults: null component");
+        auto bindings = comp->default_bindings();
+        if (bindings.empty())
+            throw std::runtime_error(
+                "Component '" + comp->name()
+                + "' has no default bindings. Use .on(phase).add().");
+        validate_binding_kinds_(comp->name(), bindings);
+        Component* raw = comp.get();
+        owned_components_.push_back(std::move(comp));
+        for (const auto& db : bindings)
+            pending_.push_back({db.phase, db.order, raw, nullptr, 0});
+    }
+
+    /// @brief Borrow a component via its `default_bindings()`.
+    template <typename Comp,
+              std::enable_if_t<std::is_base_of_v<Component, Comp>
+                                   && !std::is_base_of_v<cpu::DriverNode, Comp>,
+                               int> = 0>
+    void bind_defaults_ref(Comp& comp) {
+        auto bindings = comp.default_bindings();
+        if (bindings.empty())
+            throw std::runtime_error(
+                "Component '" + comp.name()
+                + "' has no default bindings. Use .on(phase).add_ref().");
+        validate_binding_kinds_(comp.name(), bindings);
+        for (const auto& db : bindings)
+            pending_.push_back({db.phase, db.order, &comp, nullptr, 0});
+    }
+
     std::vector<detail::PendingBinding<Component>> pending_;
     std::vector<std::unique_ptr<Component>> owned_components_;
     std::vector<std::unique_ptr<cpu::DriverNode>> owned_drivers_;

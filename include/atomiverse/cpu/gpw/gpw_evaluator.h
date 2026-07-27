@@ -21,6 +21,13 @@
 
 namespace ATV {
 namespace cpu {
+
+namespace electronic {
+class CarParrinello;
+class XlBomdForce;
+class SecondGenCp;
+} // namespace electronic
+
 namespace gpw {
 
 /// @brief One element's basis + pseudopotential — CP2K's `&KIND` concept.
@@ -126,76 +133,11 @@ class GPWEvaluator : public cpu::GPW, public cpu::TimestepConsumer {
     int n_beta = 0;
     /// @brief Monkhorst–Pack k mesh (CP2K `&KPOINTS SCHEME MONKHORST-PACK`).
     ///        `{1,1,1}` keeps the Γ-point path. Non-Γ engages multi-k RKS/UKS
-    ///        SCF and (with `xl_bomd`) multi-k XL on RKS or UKS.
+    ///        SCF (and multi-k XL/SGCP when those wrappers are used).
     int k_mesh[3] = {1, 1, 1};
     /// @brief Fold ±k pairs by time reversal (default true; set false for
     ///        an explicit unreduced mesh, e.g. multi-k XL regression).
     bool k_time_reversal = true;
-    /// @brief Extended-Lagrangian BOMD (dissipative XL-BOMD, Niklasson
-    ///        JCP 130, 214109 (2009)): propagate an auxiliary density as the
-    ///        SCF initial guess across MD steps. Γ RKS (one total \(P\)),
-    ///        Γ UKS (independent \(P_\alpha,P_\beta\)), multi-k RKS (one
-    ///        complex \(P_k\) per k), or multi-k UKS (dual \(P_k^\alpha,
-    ///        P_k^\beta\) per k via `XlBomdCplx`). Diagonalization path
-    ///        only — `build()` throws with `use_ot`, `cpmd`, or
-    ///        `second_gen_cp`. Units-free switch.
-    bool xl_bomd = false;
-    /// @brief XL-BOMD dissipation order K (Table I rows K = 3..9).
-    int xl_bomd_k = 5;
-    /// @brief Zero-SCF linearized-functional XL-BOMD forces (Niklasson
-    ///        shadow Born–Oppenheimer potential). Requires `xl_bomd` and
-    ///        `compute_forces`. After the cold full-SCF seed, each warm
-    ///        force step builds \(H[n]\) from the auxiliary density \(n\),
-    ///        diagonalizes once to \(D = q[n]\), writes the shadow energy
-    ///        \(\mathcal{E}=\mathrm{Tr}(H D)-\mathrm{Tr}(H n)+E_{\mathrm{KS}}[n]\)
-    ///        and assembles forces at \((D,H[n])\) with **no iterative
-    ///        SCF** (`last_result().iters == 0`). Γ RKS diagonalization
-    ///        path only — `build()` throws for UKS, multi-k, `use_ot`,
-    ///        `cpmd`, or `second_gen_cp`.
-    bool xl_bomd_linearized = false;
-    /// @brief Car–Parrinello MD: propagate occupied MO coefficients with a
-    ///        fictitious mass and electronic RATTLE (not BOMD, not XL-BOMD).
-    ///        After one cold SCF seed, each force step is a fixed-density KS
-    ///        eval + electronic VV/RATTLE + analytic forces at that density.
-    ///        Closed-shell RKS Γ, collinear Γ-UKS (dual α/β), or multi-k RKS
-    ///        (one `CpmdCplx` per sampled \(k\); Bloch \(C_k\)). Multi-k UKS
-    ///        + CPMD throws at `build()`. Also throws with `use_ot`,
-    ///        `xl_bomd`, `second_gen_cp`, or `compute_stress` (the CPMD
-    ///        stress/variable-cell path is not yet productized).
-    bool cpmd = false;
-    /// @brief Fictitious electron mass \(\mu\) [a.u. electron mass]. Typical
-    ///        CPMD values \(10^2\)–\(10^3\). Default 400.
-    double cpmd_mu = 400.0;
-    /// @brief Nosé–Hoover electronic thermostat on fictitious \(\dot C\)
-    ///        (requires `cpmd = true`). Regulates \(T_e\) toward
-    ///        `cpmd_ekin_target_ha` with coupling time `cpmd_tau_e`.
-    ///        Default false (NVE electrons / pure CP).
-    bool cpmd_thermostat = false;
-    /// @brief Target fictitious electronic kinetic energy \(K_0\) [Hartree].
-    ///        Must be > 0 when `cpmd_thermostat` is true.
-    double cpmd_ekin_target_ha = 1e-5;
-    /// @brief Electronic thermostat coupling time \(\tau_e\) [fs].
-    double cpmd_tau_e = 50.0;
-    /// @brief Second-generation Car–Parrinello MD (Kühne et al., PRL 98,
-    ///        066401 (2007)): Kolafa ASPC density predictor + a **partial**
-    ///        SCF corrector (not full BOMD, not fictitious-mass CPMD, not
-    ///        Niklasson XL-BOMD).
-    ///        - **Γ RKS:** one real total \(P\) (`ASPCPredictor`)
-    ///        - **Γ UKS:** dual real \(P_\alpha, P_\beta\)
-    ///        - **multi-k RKS:** one complex ASPC per sampled \(k\) on \(P_k\)
-    ///        - **multi-k UKS:** dual complex ASPC per \(k\) (\(P_k^\alpha,
-    ///          P_k^\beta\))
-    ///        **OT corrector** is product at Γ when `use_ot=true` (RKS:
-    ///        `second-gen-cpmd-ot`; UKS: `second-gen-cpmd-uks-ot`). Multi-k +
-    ///        `use_ot` throws (solver has no \(P_k\) OT warm-start).
-    ///        Mutually exclusive with `cpmd` / `xl_bomd`. Requires
-    ///        `compute_forces=true`.
-    bool second_gen_cp = false;
-    /// @brief ASPC extrapolation order \(K\) (Kolafa 2004). Typical 1–4.
-    int second_gen_cp_k = 3;
-    /// @brief Corrector SCF iteration budget (≪ full BOMD `max_iter`).
-    ///        Production steps after ASPC is warm use this cap.
-    int second_gen_cp_max_iter = 5;
     /// @brief Dudarev DFT+U (PLUS_U); empty disables. U−J in eV per entry.
     std::vector<PlusU> plus_u;
     /// @brief Per-atom initial spin seed for UKS AFM/FM (0 or n_atoms).
@@ -258,7 +200,77 @@ class GPWEvaluator : public cpu::GPW, public cpu::TimestepConsumer {
     /// @brief Nosé–Hoover electronic thermostat energy \(E_{\mathrm{therm}}\)
     ///        [eV] from the last CPMD advance (0 when thermostat is off).
     double last_electronic_thermostat_ev() const { return last_etherm_ev_; }
+    bool is_cpmd() const { return cpmd; }
+    bool is_xl_bomd() const { return xl_bomd; }
+    bool is_second_gen_cp() const { return second_gen_cp; }
+    int xl_bomd_order() const { return xl_bomd_k; }
+
+    // AIMD wrappers (types, not flags) configure private mode bits.
+    friend class electronic::CarParrinello;
+    friend class electronic::XlBomdForce;
+    friend class electronic::SecondGenCp;
+
   private:
+    // ── AIMD mode (private — use electronic::CarParrinello / XlBomdForce /
+    //    SecondGenCp). Friends may write these; public API has no flags.
+    bool xl_bomd = false;
+    /// @brief XL-BOMD dissipation order K (Table I rows K = 3..9).
+    int xl_bomd_k = 5;
+    /// @brief Zero-SCF linearized-functional XL-BOMD forces (Niklasson
+    ///        shadow Born–Oppenheimer potential). Requires `xl_bomd` and
+    ///        `compute_forces`. After the cold full-SCF seed, each warm
+    ///        force step builds \(H[n]\) from the auxiliary density \(n\),
+    ///        diagonalizes once to \(D = q[n]\), writes the shadow energy
+    ///        \(\mathcal{E}=\mathrm{Tr}(H D)-\mathrm{Tr}(H n)+E_{\mathrm{KS}}[n]\)
+    ///        and assembles forces at \((D,H[n])\) with **no iterative
+    ///        SCF** (`last_result().iters == 0`). Γ RKS diagonalization
+    ///        path only — `build()` throws for UKS, multi-k, `use_ot`,
+    ///        `cpmd`, or `second_gen_cp`.
+    bool xl_bomd_linearized = false;
+    /// @brief Car–Parrinello MD: propagate occupied MO coefficients with a
+    ///        fictitious mass and electronic RATTLE (not BOMD, not XL-BOMD).
+    ///        After one cold SCF seed, each force step is a fixed-density KS
+    ///        eval + electronic VV/RATTLE + analytic forces at that density.
+    ///        Closed-shell RKS Γ, collinear Γ-UKS (dual α/β), or multi-k RKS
+    ///        (one `CpmdCplx` per sampled \(k\); Bloch \(C_k\)). Multi-k UKS
+    ///        + CPMD throws at `build()`. Also throws with `use_ot`,
+    ///        `xl_bomd`, `second_gen_cp`, or `compute_stress` (the CPMD
+    ///        stress/variable-cell path is not yet productized).
+    bool cpmd = false;
+    /// @brief Fictitious electron mass \(\mu\) [a.u. electron mass]. Typical
+    ///        CPMD values \(10^2\)–\(10^3\). Default 400.
+    double cpmd_mu = 400.0;
+    /// @brief Nosé–Hoover electronic thermostat on fictitious \(\dot C\)
+    ///        (requires `cpmd = true`). Regulates \(T_e\) toward
+    ///        `cpmd_ekin_target_ha` with coupling time `cpmd_tau_e`.
+    ///        Default false (NVE electrons / pure CP).
+    bool cpmd_thermostat = false;
+    /// @brief Target fictitious electronic kinetic energy \(K_0\) [Hartree].
+    ///        Must be > 0 when `cpmd_thermostat` is true.
+    double cpmd_ekin_target_ha = 1e-5;
+    /// @brief Electronic thermostat coupling time \(\tau_e\) [fs].
+    double cpmd_tau_e = 50.0;
+    /// @brief Second-generation Car–Parrinello MD (Kühne et al., PRL 98,
+    ///        066401 (2007)): Kolafa ASPC density predictor + a **partial**
+    ///        SCF corrector (not full BOMD, not fictitious-mass CPMD, not
+    ///        Niklasson XL-BOMD).
+    ///        - **Γ RKS:** one real total \(P\) (`ASPCPredictor`)
+    ///        - **Γ UKS:** dual real \(P_\alpha, P_\beta\)
+    ///        - **multi-k RKS:** one complex ASPC per sampled \(k\) on \(P_k\)
+    ///        - **multi-k UKS:** dual complex ASPC per \(k\) (\(P_k^\alpha,
+    ///          P_k^\beta\))
+    ///        **OT corrector** is product at Γ when `use_ot=true` (RKS:
+    ///        `second-gen-cpmd-ot`; UKS: `second-gen-cpmd-uks-ot`). Multi-k +
+    ///        `use_ot` throws (solver has no \(P_k\) OT warm-start).
+    ///        Mutually exclusive with `cpmd` / `xl_bomd`. Requires
+    ///        `compute_forces=true`.
+    bool second_gen_cp = false;
+    /// @brief ASPC extrapolation order \(K\) (Kolafa 2004). Typical 1–4.
+    int second_gen_cp_k = 3;
+    /// @brief Corrector SCF iteration budget (≪ full BOMD `max_iter`).
+    ///        Production steps after ASPC is warm use this cap.
+    int second_gen_cp_max_iter = 5;
+
     /// Nuclear (and electronic) timestep [fs], pushed by the MD integrator
     /// through `set_timestep`. 0 = never pushed ⇒ `build()` refuses `cpmd`.
     double cpmd_dt_fs_ = 0.0;

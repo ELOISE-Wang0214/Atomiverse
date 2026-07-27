@@ -77,27 +77,17 @@ class EvaluateKindProbe : public ATV::cpu::Component {
     void launch(const ATV::cpu::LaunchContext&) override {}
 };
 
-// ─── Violating evaluator: AM1Evaluator loses default_bindings() ────────
+// ─── Kind gate via bind_defaults (set_observer / set_integrator) ────────
 //
-// Regression target: pre-refactor, `md.add(AM1Evaluator{})` silently landed
-// the evaluator on `md::Phase::post_integrate` (the erased int `1` of
-// `evaluate::Phase::evaluate`). Post-refactor the override is deleted, so
-// `add()` takes the existing "has no default bindings. Use
-// .on(phase).add()." rejection path.
+// Cross-workflow default_bindings rejection lives on protected
+// `bind_defaults`, used by categorical setters that still honour
+// default_bindings (set_observer, set_integrator, …). `set_evaluator`
+// binds at eval_phase explicitly and does not consult default_bindings.
 
-TEST(DriverBindingKind, MdAddAm1EvaluatorThrows) {
-    ATV::cpu::md::MD md;
-    EXPECT_THROW(md.add(ATV::cpu::semiempirical::AM1Evaluator{}),
-                 std::runtime_error);
-}
-
-// ─── Kind gate: error names BOTH workflows ──────────────────────────────
-
-TEST(DriverBindingKind, EvaluateAddVelocityVerletThrowsWithBothKinds) {
+TEST(DriverBindingKind, EvaluateSetObserverVelocityVerletThrowsWithBothKinds) {
     ATV::cpu::Evaluate ev;
     try {
-        // rvalue `add()` branch.
-        ev.add(ATV::cpu::md::VelocityVerlet{0.01});
+        ev.set_observer(ATV::cpu::md::VelocityVerlet{0.01});
         FAIL() << "expected throw — MD-kind default bindings registered "
                   "into an Evaluate driver";
     } catch (const std::runtime_error& e) {
@@ -106,11 +96,10 @@ TEST(DriverBindingKind, EvaluateAddVelocityVerletThrowsWithBothKinds) {
     }
 }
 
-TEST(DriverBindingKind, MinimizeAddVelocityVerletThrowsWithBothKinds) {
+TEST(DriverBindingKind, MinimizeSetObserverVelocityVerletThrowsWithBothKinds) {
     ATV::cpu::minimizer::Minimize opt;
     try {
-        // rvalue `add()` branch.
-        opt.add(ATV::cpu::md::VelocityVerlet{0.01});
+        opt.set_observer(ATV::cpu::md::VelocityVerlet{0.01});
         FAIL() << "expected throw — MD-kind default bindings registered "
                   "into a Minimize driver";
     } catch (const std::runtime_error& e) {
@@ -119,12 +108,11 @@ TEST(DriverBindingKind, MinimizeAddVelocityVerletThrowsWithBothKinds) {
     }
 }
 
-TEST(DriverBindingKind, MdAddEvaluateKindProbeThrows) {
+TEST(DriverBindingKind, MdSetObserverEvaluateKindProbeThrows) {
     ATV::cpu::md::MD md;
     EvaluateKindProbe probe;
     try {
-        // Explicit borrowed-registration branch.
-        md.add_ref(probe);
+        md.set_observer_ref(probe);
         FAIL() << "expected throw — Evaluate-kind default bindings "
                   "registered into an MD driver";
     } catch (const std::runtime_error& e) {
@@ -133,16 +121,23 @@ TEST(DriverBindingKind, MdAddEvaluateKindProbeThrows) {
     }
 }
 
+// AIMD-style explicit force binding is legal (no default_bindings kind gate).
+TEST(DriverBindingKind, MdSetEvaluatorAm1NoThrow) {
+    ATV::cpu::md::MD md;
+    EXPECT_NO_THROW(
+        md.set_evaluator(ATV::cpu::semiempirical::AM1Evaluator{}));
+}
+
 // ─── Same-kind add() unchanged ──────────────────────────────────────────
 
 TEST(DriverBindingKind, MdAddSameKindVelocityVerletNoThrow) {
     ATV::cpu::md::MD md;
-    EXPECT_NO_THROW(md.add(ATV::cpu::md::VelocityVerlet{0.01}));
+    EXPECT_NO_THROW(md.set_integrator(ATV::cpu::md::VelocityVerlet{0.01}));
 }
 
 TEST(DriverBindingKind, MinimizeAddSameKindLbfgsNoThrow) {
     ATV::cpu::minimizer::Minimize opt;
-    EXPECT_NO_THROW(opt.add(ATV::cpu::minimizer::LBFGS{5, 0.01, 10}));
+    EXPECT_NO_THROW(opt.set_optimizer(ATV::cpu::minimizer::LBFGS{5, 0.01, 10}));
 }
 
 // ─── Plan-shape regression anchors (six driver categories) ──────────────
@@ -189,7 +184,7 @@ TEST(DriverBindingKind, MdPlanShapeUnchanged) {
     ATV::cpu::md::MD sim;
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{0.01});
     atv_test::NoOpForce force;
-    sim.add_ref(force);
+    sim.set_evaluator_ref(force);
     sim.build();
 
     const auto& plan = sim.plan();
@@ -222,7 +217,7 @@ TEST(DriverBindingKind, MdPlanShapeUnchanged) {
 
 TEST(DriverBindingKind, MinimizePlanShapeUnchanged) {
     ATV::cpu::minimizer::Minimize opt;
-    opt.add(ATV::cpu::minimizer::LBFGS{5, 0.01, 10});
+    opt.set_optimizer(ATV::cpu::minimizer::LBFGS{5, 0.01, 10});
     atv_test::StubForceEvaluator force;
     opt.on(ATV::minimizer::Phase::force).add_ref(force);
     opt.build();
@@ -301,7 +296,7 @@ TEST(DriverBindingKind, McPlanShapeUnchanged) {
 TEST(DriverBindingKind, MdAddPathKindNebCouplingThrows) {
     ATV::cpu::md::MD sim;
     try {
-        sim.add(ATV::cpu::path::NebCoupling{1.0});
+        sim.set_observer(ATV::cpu::path::NebCoupling{1.0});
         FAIL() << "MD accepted a Path-kind component";
     } catch (const std::exception& e) {
         const std::string msg = e.what();
@@ -311,10 +306,10 @@ TEST(DriverBindingKind, MdAddPathKindNebCouplingThrows) {
 }
 
 /// ... and the reverse: a Path driver rejects an MD-kind integrator.
-TEST(DriverBindingKind, PathAddMdKindVelocityVerletThrows) {
+TEST(DriverBindingKind, PathSetObserverMdKindVelocityVerletThrows) {
     ATV::cpu::PathDriver neb;
     try {
-        neb.add(ATV::cpu::md::VelocityVerlet{1.0});
+        neb.set_observer(ATV::cpu::md::VelocityVerlet{1.0});
         FAIL() << "Path accepted an MD-kind component";
     } catch (const std::exception& e) {
         const std::string msg = e.what();
@@ -328,8 +323,8 @@ TEST(DriverBindingKind, PathPlanShapeUnchanged) {
     ATV::cpu::PathDriver neb;
     atv_test::StubForceEvaluator force;
     neb.on(ATV::path::Phase::force).add_ref(force);
-    neb.add(ATV::cpu::path::NebCoupling{1.0});
-    neb.add(ATV::cpu::path::BandLBFGS{});
+    neb.set_observer(ATV::cpu::path::NebCoupling{1.0});
+    neb.set_observer(ATV::cpu::path::BandLBFGS{});
     neb.build();
 
     const auto& plan = neb.plan();
