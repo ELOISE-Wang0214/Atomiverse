@@ -752,6 +752,17 @@ if(ATV_BUILD_HF)
     # while plain last-P reuse under MC stays legal. H2/STO-3G, one sweep.
     atv_add_cpp_test(test_cpu_scf_mc_predictor_guard
                      cpu/scf/test_scf_mc_predictor_guard.cpp)
+    # esmm-contract-05-accumulate-switch: the ONE entry that runs two SCF
+    # epilogues — the ASPC corrector-miss fallback — must leave exactly one
+    # contribution in the driver-owned accumulators (kEnergy /
+    # kEnergyElectronic / kAtom_f*) now that the in-plan entry accumulates.
+    # Four 6-step H2/STO-3G nested trajectories, ~20 ms. Serial for the same
+    # ULP-determinism reason as test_cpu_scf_method_driver_parity: the pin is
+    # bit-identity against the method's own energy() readback.
+    atv_add_cpp_test(test_cpu_scf_aspc_fallback_accumulate
+                     cpu/scf/test_scf_aspc_fallback_accumulate.cpp)
+    set_tests_properties(test_cpu_scf_aspc_fallback_accumulate PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
     # hf-capability-gaps-08-stability: MO orbital-Hessian A/B kernel +
     # Seeger-Pople stability analysis. NO SCF loop: the converged H2/STO-3G
     # determinant is symmetry-exact in closed form (one Fock build, no

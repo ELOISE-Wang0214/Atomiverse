@@ -28,7 +28,7 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
 | W1-2 | esmm-contract-02-validation-walks | — | DONE 2026-07-27 (closed; see git 17f52238 + close commit) — node-aware validation walks |
 | W1-3 | esmm-contract-03-runslot-nested | — | DONE 2026-07-27 (closed; see git 3480c6ab/6ea2ea23) — run_slot_ nested dispatch + R2 CCCBDB pin |
 | W1-4 | esmm-contract-04-forces-requested | W1-2 | DONE 2026-07-27 (closed; see git fc204c63 + R3 commit) — energy-only phases in the Plan + ASPC-under-MC guard + first QM-in-MC regression |
-| W1-5 | esmm-contract-05-accumulate-switch | W1-1 | all ES sources `=`→`+=` + kEnergyElectronic + R1 |
+| W1-5 | esmm-contract-05-accumulate-switch | W1-1 | DONE 2026-07-27 (closed) — one accumulation contract: 5 ES evaluators `+=`, kEnergyElectronic, ASPC-fallback 2x guard, first ES+MM co-bound regression |
 | W2-1 | esmm-qmmm-01-embed-forces | — | analytic embedding gradient + MM-site forces (third law) |
 | W2-2 | esmm-qmmm-02-qm-engine-protocol | W2-1 | QmEngine/EmbeddingEngine protocols; MFM×7 + AM1 + DFTB2 |
 | W2-3 | esmm-qmmm-03-electrostatic-rewrite | W2-2, W1-4, W1-5 | qm_z mask column + engine slot + real MM coupling |
@@ -81,6 +81,17 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   exposed. Fix options: per-case `set_threads` sweep, or the regressions
   CMake target exporting `OMP_NUM_THREADS=1` by default with per-case
   opt-out. Route /mol:fix (mechanical, wide).
+- **13 GPW-gated dynamics regressions do not compile at pristine HEAD**
+  (named 2026-07-27, esmm-contract-05 GREEN; proven pre-existing by
+  stash-baseline): xl-bomd-{water,uks,kpoints,linearized-forces,
+  uks-kpoints}, cpmd-{kpoints,rattle-water,uks,electronic-thermostat},
+  second-gen-cpmd-{water,uks,ot,uks-ot} still call `MD::set_evaluator_ref`,
+  `.cpmd_mu`, `.last_s2`, `.second_gen_cp_k/_max_iter`, `.use_ot` — all
+  removed by the operator's no-compat migration 17f52238; invisible because
+  GPW was OFF in that sweep's builds. Migration target: the
+  `electronic::CarParrinello` / wrapper API (see the 5 already-migrated
+  siblings cpmd-rhf-h2 / cpmd-rks-water / cpmd-uhf-o2 / xl-bomd-rhf-water /
+  cpmd-water). Route /mol:fix (mechanical, 13 TUs).
 
 ## Live — deferred PySCF engine gaps (2026-07-24)
 

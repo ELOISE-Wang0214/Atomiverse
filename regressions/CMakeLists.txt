@@ -509,6 +509,16 @@ if(ATV_BUILD_PATH)
 endif()
 atv_add_regression(architecture harmonic_driver_matrix)
 atv_add_regression(architecture module_compile_defs)
+if(ATV_BUILD_HF AND ATV_BUILD_POTENTIALS AND ATV_BUILD_NEIGHBOR)
+    # esmm-contract-05-accumulate-switch (R1): the first ES x MM co-bound case.
+    # One cpu::Evaluate over one Frame — a He pair under PairLJCut plus a
+    # nested cpu::scf::RHF H2 30 A away (the He sites are ghosts in the QM
+    # Hamiltonian) — must report kEnergy = E_LJ(analytic) + E_RHF(literature).
+    # Before the accumulate switch the electronic evaluator overwrote kEnergy
+    # and the MM term was erased. HF for the QM source; POTENTIALS/NEIGHBOR for
+    # the LJ pair style and its neighbor list (both default ON).
+    atv_add_regression(architecture lj_rhf_coupled)
+endif()
 if(ATV_BUILD_MINIMIZER)
     atv_add_regression(minimizer lj_dimer)
     atv_add_regression(minimizer fire_lj_dimer)
