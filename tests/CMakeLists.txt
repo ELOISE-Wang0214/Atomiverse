@@ -358,6 +358,11 @@ atv_add_cpp_test(test_cpu_path_zeroing    cpu/path/test_path_zeroing.cpp)
 # nested `Driver<scf::Phase> + HF` method node as the band's force source.
 atv_add_cpp_test(test_cpu_path_validation cpu/path/test_path_validation.cpp)
 atv_add_cpp_test(test_cpu_minimizer_joint_cell cpu/minimize/test_joint_cell.cpp)
+# esmm-contract-03-runslot-nested: Minimize's StrongWolfe trials must re-enter a
+# nested `Driver<scf::Phase> + HF` force source (run_stage → Runtime::run_slot_).
+# Stub physics (harmonic well) — no SCF, milliseconds.
+atv_add_cpp_test(test_cpu_minimizer_line_search_nested_node
+                 cpu/minimize/test_line_search_nested_node.cpp)
 atv_add_cpp_test(test_cpu_criterion       cpu/driver/test_criterion.cpp)
 atv_add_cpp_test(test_cpu_driver_nesting  cpu/driver/test_driver_nesting.cpp)
 # scf-driver-refactor-01-plumb: scf::Phase / PhaseKind::SCF / PhaseTraits<scf::Phase>

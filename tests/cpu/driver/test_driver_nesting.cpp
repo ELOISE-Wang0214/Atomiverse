@@ -117,6 +117,40 @@ class RuntimeProbe : public cpu::Component {
     const void* frame_addr = nullptr;
 };
 
+/// @brief A parent loop whose lifecycle is opened by hand, so a test can call
+///        the backend's `run_stage` replay while the Runtime is still live.
+///
+/// `teardown_pass()` nulls the Runtime's frame and plan, so the replay path
+/// (`Runtime::run_slot_`, reached through `run_stage`) is only reachable
+/// between `begin()` and `finish()` — which is exactly where its two in-tree
+/// callers sit: `Minimize`'s line-search `reeval_forces` handle
+/// (`minimize.h`) and `PathDriver`'s per-replica force pass
+/// (`path_driver.h`).
+class ReplayableLoop : public cpu::Driver<ATV::md::Phase> {
+  public:
+    void begin(cpu::Frame& frame) { setup_pass(frame); }
+    void one_step(int s) {
+        mutable_outer_status().reset();
+        step_once(s);
+    }
+    /// @brief The entry point under test: replay every binding of one phase.
+    void replay(ATV::md::Phase phase, int s) {
+        this->backend_->run_stage(phase, s);
+    }
+    void finish() { teardown_pass(); }
+
+  protected:
+    void validate_components() const override {}
+};
+
+/// @brief The node shape a concrete Gaussian method presents to an outer
+///        driver: a `Driver<scf::Phase>` with its own phase enum, nested as a
+///        NODE (`RHF` is this plus physics and the `HF` kind tag).
+class MethodLoop : public cpu::Driver<ATV::scf::Phase> {
+  protected:
+    void validate_components() const override {}
+};
+
 cpu::Frame two_atoms() {
     cpu::Frame f(2);
     for (int i = 0; i < 2; ++i) {
@@ -224,6 +258,45 @@ TEST(DriverNesting, ChildKeepsItsOwnPhaseEnum) {
     static_assert(std::is_base_of_v<cpu::DriverNode, InnerLoop>,
                   "child is a nestable Driver node");
     SUCCEED();
+}
+
+// ── esmm-contract-03 ac-001: run_stage replays nested driver NODES ─────────
+//
+// `Runtime::step` dispatches a nested driver op; `Runtime::run_slot_` — the
+// replay behind `run_stage` — skipped it (`runtime.cpp:246-247`
+// `if (op.is_driver()) continue;`). Every caller of `run_stage` therefore
+// replayed the Zero* components and the reduce around a force source that
+// never ran: not stale forces, ZEROED ones (E = 0, f = 0) for each Minimize
+// line-search trial and each PathDriver per-replica pass.
+//
+// The counter is bound INSIDE the nested loop's own plan, so it can only be
+// reached by actually re-entering the node.
+TEST(DriverNesting, RunStageReplaysNestedDriver) {
+    cpu::Frame frame = two_atoms();
+
+    MethodLoop method;
+    RuntimeProbe counter; // counts one launch per nested re-entry
+    method.on(ATV::scf::Phase::fock).add_ref(counter);
+
+    ReplayableLoop outer;
+    outer.on(ATV::md::Phase::force).add_ref(method, /*order=*/0, /*budget=*/1);
+    outer.build();
+
+    outer.begin(frame);
+    outer.one_step(0);
+    const int after_step = counter.calls;
+
+    outer.replay(ATV::md::Phase::force, /*step=*/0);
+    const int after_replay = counter.calls;
+    outer.finish();
+
+    EXPECT_EQ(after_step, 1)
+        << "baseline: Runtime::step already dispatches nested driver nodes";
+    EXPECT_EQ(after_replay, 2)
+        << "run_stage(force) did not re-enter the nested driver node "
+           "(calls stayed at the step value) — Runtime::run_slot_ skips "
+           "driver ops, so every line-search trial and every per-replica "
+           "force pass evaluates a zeroed frame";
 }
 
 TEST(DriverNesting, DefaultBudgetWhenUnspecified) {

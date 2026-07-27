@@ -178,7 +178,11 @@ void Runtime::step(int step_idx) {
 //
 // A sub-driver runs its own Plan on ITS PARENT'S runtime — this one. No second
 // runtime, no second Context, no rebuilt domain decomposition, no re-bound
-// frame. No timing: `op_handle_` is dense over the BOUND plan's slots.
+// frame. No timing: `op_handle_` is dense over the BOUND plan's slots, so
+// `step_plan` (and nested driver ops dispatched from `run_slot_`'s trial
+// replay, below) never index into it. Nested ops are deliberately untimed on
+// both replay paths — extending TimerRegistry to sparse nested handles is a
+// separate decision.
 
 void Runtime::build_plan(const Plan<cpu::Component>& plan) {
     BuildContext ctx{context_, *frame_};
@@ -239,12 +243,21 @@ void Runtime::run_slot_(int slot_index, int step_idx) {
     // line-search trial evaluations. Re-entrant: must not touch the timing
     // registry (op_handle_ indices belong to the outer step) and must not
     // recurse. Frequency gating is bypassed: a trial is not a simulation step.
+    // Nested driver ops dispatch exactly the way step_plan does — no
+    // resolution window around them (the nested node parks its own, the way
+    // MeanFieldMethod does). Nested ops are deliberately untimed on both
+    // replay paths (here and step_plan): op_handle_ indices belong to the
+    // bound outer plan — extending TimerRegistry to sparse nested handles is
+    // a separate decision.
     for (auto& slot : plan_->slots) {
         if (slot.phase != slot_index)
             continue;
         for (auto& op : slot.ops) {
-            if (op.is_driver())
-                continue; // nested drivers are not force-phase trial replayers
+            if (op.is_driver()) {
+                static_cast<cpu::DriverNode*>(op.nested_driver)
+                    ->run_nested_erased(context_, *frame_, op.nested_budget);
+                continue;
+            }
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
             const auto saved = frame_->resolution_window();
             frame_->begin_resolution_window(kResolveBudgetPerLaunch);

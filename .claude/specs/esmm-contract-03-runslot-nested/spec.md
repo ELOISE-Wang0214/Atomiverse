@@ -1,6 +1,6 @@
 ---
 slug: esmm-contract-03-runslot-nested
-status: approved
+status: in-progress
 created: 2026-07-26
 revised: 2026-07-26
 domain: driver / pipeline-contract
@@ -102,13 +102,19 @@ set (verified 2026-07-26); `regressions/CMakeLists.txt` is **inside** it.
 
 ## Tasks
 
-- [ ] RED: `test_driver_nesting.cpp` "RunStageReplaysNestedDriver" — nested
+- [x] RED: `test_driver_nesting.cpp` "RunStageReplaysNestedDriver" — nested
   inner driver carrying a call-counting component, bound on the outer force
   phase; invoke the outer backend's `run_stage(force)`; assert the counter
   incremented (fails today: stays 0)
-- [ ] RED (U5): Minimize + nested stub node + StrongWolfe — after `run`, the
+  (captured 1-vs-expected-2; replay window is mid-run only — shutdown nulls
+  frame/plan, documented in the case)
+- [x] RED (U5): Minimize + nested stub node + StrongWolfe — after `run`, the
   stub's call counter exceeds the outer iteration count (line-search trials
   re-entered it; fails today: equal)
+  (captured 4-vs-4 + Fixed-mode green control; the degenerate search is now
+  OBSERVED: every accepted step max_disp == alpha_init exactly. Implementer
+  notes recorded: no resolution window around driver ops; nodes park their
+  own windows)
 - [ ] Implement the `run_slot_` dispatch; extend the timing-deferral comments
 - [ ] GREEN both units + full ctest (existing minimize/path regressions must
   pass; `05_geom_opt` behavior may improve, not degrade)

@@ -33,7 +33,7 @@ TEST(MinimizeSwap, LBFGSThenCG) {
     opt.run(frame, 5);
     // rebuild with CG
     cpu::minimizer::Minimize opt2;
-    opt2.add(cpu::minimizer::CG{});
+    opt2.set_optimizer(cpu::minimizer::CG{});
     opt2.on(minimizer::Phase::force).add(cpu::scf::RHF{});
     opt2.add_criterion(cpu::ForceConverged{0.5, 0.3, 0.5, 0.3, 1e-3});
     opt2.build();
