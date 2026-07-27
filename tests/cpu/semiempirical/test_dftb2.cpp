@@ -217,6 +217,70 @@ TEST(DFTB2, O2TripletSpinPopulation) {
     EXPECT_NEAR(m0, m1, 0.15);
 }
 
+TEST(DFTB2, SpinAnalyticForceMatchesFdO2) {
+    // Off-eq triplet O₂ so |F| ≠ 0; collinear open-shell closed-form F.
+    auto f = make_o2(1.30);
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 dftb;
+    dftb.multiplicity = 3;
+    dftb.with_forces = true;
+    dftb.scc_tol = 1e-12;
+    dftb.max_scc = 80;
+    dftb.build({ctx, f});
+    dftb.launch({ctx, f, 0, 0});
+    EXPECT_TRUE(std::isfinite(dftb.last_energy()));
+
+    const double fx0 = static_cast<double>(f.span(kAtom_fx)[0]);
+    const double fx1 = static_cast<double>(f.span(kAtom_fx)[1]);
+    const double fy0 = static_cast<double>(f.span(kAtom_fy)[0]);
+    const double fz0 = static_cast<double>(f.span(kAtom_fz)[0]);
+    EXPECT_TRUE(std::isfinite(fx0));
+    EXPECT_GT(fx0 * fx0 + fy0 * fy0 + fz0 * fz0, 1e-8);
+    // Translation / action-reaction on bond axis
+    EXPECT_NEAR(fx0 + fx1, 0.0, 1e-6);
+    EXPECT_NEAR(static_cast<double>(f.span(kAtom_fy)[0]
+                                    + f.span(kAtom_fy)[1]),
+                0.0, 1e-6);
+    EXPECT_NEAR(static_cast<double>(f.span(kAtom_fz)[0]
+                                    + f.span(kAtom_fz)[1]),
+                0.0, 1e-6);
+
+    auto energy_spin = [](cpu::Frame g) {
+        g.meta.get(kEnergy) = 0;
+        for (int i = 0; i < g.nlocal(); ++i)
+            g.span(kAtom_fx)[i] = g.span(kAtom_fy)[i] = g.span(kAtom_fz)[i] =
+                0;
+        cpu::Context c;
+        cpu::semiempirical::DFTB2 d;
+        d.multiplicity = 3;
+        d.with_forces = false;
+        d.scc_tol = 1e-12;
+        d.max_scc = 80;
+        d.build({c, g});
+        d.launch({c, g, 0, 0});
+        return d.last_energy();
+    };
+
+    constexpr double h = 1.0e-4;
+    // Gate F_O0_x (same-element residual should be tighter than multi-element).
+    {
+        auto gp = make_o2(1.30);
+        auto gm = make_o2(1.30);
+        gp.span(kAtom_x)[0] += static_cast<StorageReal>(h);
+        gm.span(kAtom_x)[0] -= static_cast<StorageReal>(h);
+        const double fd = -(energy_spin(gp) - energy_spin(gm)) / (2.0 * h);
+        EXPECT_NEAR(fx0, fd, 5e-2) << "analytic=" << fx0 << " fd=" << fd;
+    }
+    {
+        auto gp = make_o2(1.30);
+        auto gm = make_o2(1.30);
+        gp.span(kAtom_x)[1] += static_cast<StorageReal>(h);
+        gm.span(kAtom_x)[1] -= static_cast<StorageReal>(h);
+        const double fd = -(energy_spin(gp) - energy_spin(gm)) / (2.0 * h);
+        EXPECT_NEAR(fx1, fd, 5e-2) << "analytic=" << fx1 << " fd=" << fd;
+    }
+}
+
 TEST(DFTB2, RejectsBadMultiplicity) {
     auto f = make_o2();
     cpu::Context ctx;

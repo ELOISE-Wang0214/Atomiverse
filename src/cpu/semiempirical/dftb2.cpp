@@ -242,10 +242,18 @@ struct SccResult {
     double energy = 0;
     std::vector<double> dq;
     std::vector<double> spin; // m_A = Nα − Nβ
-    // Restricted-path orbitals for closed-form forces (empty if unrestricted).
+    // Restricted-path orbitals for closed-form forces.
     linalg::RealMatrix C;
     linalg::RealVector eps;
     int n_occ = 0;
+    // Unrestricted-path orbitals (α/β) for collinear open-shell analytic F.
+    linalg::RealMatrix Ca;
+    linalg::RealMatrix Cb;
+    linalg::RealVector eps_a;
+    linalg::RealVector eps_b;
+    int n_alpha = 0;
+    int n_beta = 0;
+    bool unrestricted = false;
 };
 
 /// Build H0/S once for current geometry.
@@ -433,6 +441,10 @@ SccResult scc_energy_unrestricted(
     }
 
     double e_band = 0, e_scc = 0, e_spin = 0;
+    linalg::RealMatrix CA = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealMatrix CB = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealVector epsA = xt::zeros<double>({n_ao});
+    linalg::RealVector epsB = xt::zeros<double>({n_ao});
 
     for (int it = 0; it < max_scc; ++it) {
         std::vector<double> dVc(static_cast<std::size_t>(n_at), 0.0);
@@ -449,27 +461,27 @@ SccResult scc_energy_unrestricted(
         }
 
         // ε^σ_A = dVc + σ dVs  (σ = +1 α, −1 β)
-        std::vector<double> eps_a(static_cast<std::size_t>(n_at));
-        std::vector<double> eps_b(static_cast<std::size_t>(n_at));
+        std::vector<double> eps_shift_a(static_cast<std::size_t>(n_at));
+        std::vector<double> eps_shift_b(static_cast<std::size_t>(n_at));
         for (int a = 0; a < n_at; ++a) {
-            eps_a[static_cast<std::size_t>(a)] =
+            eps_shift_a[static_cast<std::size_t>(a)] =
                 dVc[static_cast<std::size_t>(a)]
                 + dVs[static_cast<std::size_t>(a)];
-            eps_b[static_cast<std::size_t>(a)] =
+            eps_shift_b[static_cast<std::size_t>(a)] =
                 dVc[static_cast<std::size_t>(a)]
                 - dVs[static_cast<std::size_t>(a)];
         }
 
         linalg::RealMatrix Ha, Hb;
-        apply_shift(n_at, el, ao0, H0, S, eps_a, Ha);
-        apply_shift(n_at, el, ao0, H0, S, eps_b, Hb);
+        apply_shift(n_at, el, ao0, H0, S, eps_shift_a, Ha);
+        apply_shift(n_at, el, ao0, H0, S, eps_shift_b, Hb);
 
         auto sol_a = linalg::diagonalize_fock_generalized(Ha, S);
         auto sol_b = linalg::diagonalize_fock_generalized(Hb, S);
-        auto epsA = sol_a.first;
-        auto CA = sol_a.second;
-        auto epsB = sol_b.first;
-        auto CB = sol_b.second;
+        epsA = sol_a.first;
+        CA = sol_a.second;
+        epsB = sol_b.first;
+        CB = sol_b.second;
 
         linalg::RealMatrix Pa = xt::zeros<double>({n_ao, n_ao});
         linalg::RealMatrix Pb = xt::zeros<double>({n_ao, n_ao});
@@ -530,9 +542,140 @@ SccResult scc_energy_unrestricted(
                  + repulsive_energy(n_at, type, x, y, z, box);
     out.dq = std::move(dq);
     out.spin = std::move(mspin);
+    out.Ca = std::move(CA);
+    out.Cb = std::move(CB);
+    out.eps_a = std::move(epsA);
+    out.eps_b = std::move(epsB);
+    out.n_alpha = n_alpha;
+    out.n_beta = n_beta;
+    out.unrestricted = true;
     return out;
 }
 
+
+/// Closed-form nuclear gradient for **collinear unrestricted** SCC-DFTB2
+/// (fixed Δq, m; dual α/β densities). Spin W is geometry-independent.
+void analytic_forces_unrestricted(
+    int n_at, int n_ao, int n_alpha, int n_beta,
+    const std::vector<const DftbElementRow*>& el, const std::vector<int>& ao0,
+    const int* type, const StorageReal* x, const StorageReal* y,
+    const StorageReal* z, const cpu::Box& box, const std::vector<double>& dq,
+    const std::vector<double>& mspin, const linalg::RealMatrix& Ca,
+    const linalg::RealMatrix& Cb, const linalg::RealVector& eps_a_orb,
+    const linalg::RealVector& eps_b_orb, AccReal* fx, AccReal* fy,
+    AccReal* fz) {
+    auto dist_vec = [&](int i, int j, double& dx, double& dy, double& dz) {
+        dx = static_cast<double>(x[j] - x[i]);
+        dy = static_cast<double>(y[j] - y[i]);
+        dz = static_cast<double>(z[j] - z[i]);
+        box.min_image(dx, dy, dz);
+        return std::sqrt(dx * dx + dy * dy + dz * dz);
+    };
+
+    // Atom shifts ε^σ_A = Σ_B γ_AB Δq_B ± W_A m_A
+    std::vector<double> eps_at_a(static_cast<std::size_t>(n_at), 0.0);
+    std::vector<double> eps_at_b(static_cast<std::size_t>(n_at), 0.0);
+    for (int a = 0; a < n_at; ++a) {
+        double shift = 0;
+        for (int b = 0; b < n_at; ++b)
+            shift += gamma_pair(a, b, el, x, y, z, box)
+                     * dq[static_cast<std::size_t>(b)];
+        const double vs = el[static_cast<std::size_t>(a)]->spin_w
+                          * mspin[static_cast<std::size_t>(a)];
+        eps_at_a[static_cast<std::size_t>(a)] = shift + vs;
+        eps_at_b[static_cast<std::size_t>(a)] = shift - vs;
+    }
+
+    linalg::RealMatrix Pa = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealMatrix Pb = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealMatrix Wa = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealMatrix Wb = xt::zeros<double>({n_ao, n_ao});
+    for (int o = 0; o < n_alpha; ++o)
+        for (int mu = 0; mu < n_ao; ++mu)
+            for (int nu = 0; nu < n_ao; ++nu) {
+                Pa(mu, nu) += Ca(mu, o) * Ca(nu, o);
+                Wa(mu, nu) += eps_a_orb(o) * Ca(mu, o) * Ca(nu, o);
+            }
+    for (int o = 0; o < n_beta; ++o)
+        for (int mu = 0; mu < n_ao; ++mu)
+            for (int nu = 0; nu < n_ao; ++nu) {
+                Pb(mu, nu) += Cb(mu, o) * Cb(nu, o);
+                Wb(mu, nu) += eps_b_orb(o) * Cb(mu, o) * Cb(nu, o);
+            }
+
+    linalg::RealMatrix dH0[3] = {xt::zeros<double>({n_ao, n_ao}),
+                                 xt::zeros<double>({n_ao, n_ao}),
+                                 xt::zeros<double>({n_ao, n_ao})};
+    linalg::RealMatrix dS[3] = {xt::zeros<double>({n_ao, n_ao}),
+                                xt::zeros<double>({n_ao, n_ao}),
+                                xt::zeros<double>({n_ao, n_ao})};
+
+    for (int a = 0; a < n_at; ++a) {
+        const auto& ea = *el[static_cast<std::size_t>(a)];
+        const int ia = ao0[static_cast<std::size_t>(a)];
+        for (int b = a + 1; b < n_at; ++b) {
+            const auto& eb = *el[static_cast<std::size_t>(b)];
+            double dx, dy, dz;
+            const double r = dist_vec(a, b, dx, dy, dz);
+            if (r < 1e-12)
+                continue;
+            const int ib = ao0[static_cast<std::size_t>(b)];
+            const double dir[3] = {dx / r, dy / r, dz / r};
+            double dE_dbond[3] = {0, 0, 0};
+
+            if (r <= std::max(ea.r_cut, eb.r_cut)) {
+                const auto& sk = pair_sk(type[a], type[b]);
+                for (int k = 0; k < 3; ++k) {
+                    dH0[k] = xt::zeros<double>({n_ao, n_ao});
+                    dS[k] = xt::zeros<double>({n_ao, n_ao});
+                }
+                fill_sk_block_deriv(ea, eb, sk, dx, dy, dz, r, dH0, dS, ia, ib);
+                const double shift_a =
+                    0.5 * (eps_at_a[static_cast<std::size_t>(a)]
+                           + eps_at_a[static_cast<std::size_t>(b)]);
+                const double shift_b =
+                    0.5 * (eps_at_b[static_cast<std::size_t>(a)]
+                           + eps_at_b[static_cast<std::size_t>(b)]);
+                const int na = ea.n_ao;
+                const int nb = eb.n_ao;
+                for (int k = 0; k < 3; ++k) {
+                    double acc = 0;
+                    for (int i = 0; i < na; ++i)
+                        for (int j = 0; j < nb; ++j) {
+                            const double dh = dH0[k](ia + i, ib + j);
+                            const double ds = dS[k](ia + i, ib + j);
+                            acc += Pa(ia + i, ib + j) * (dh + shift_a * ds)
+                                   - Wa(ia + i, ib + j) * ds;
+                            acc += Pb(ia + i, ib + j) * (dh + shift_b * ds)
+                                   - Wb(ia + i, ib + j) * ds;
+                        }
+                    // Factor 2: only the A–B upper block is contracted (Hermitian).
+                    dE_dbond[k] += 2.0 * acc;
+                }
+            }
+
+            const double dgdR = dgamma_dr(r, ea.hubbard_u, eb.hubbard_u);
+            const double dqa = dq[static_cast<std::size_t>(a)];
+            const double dqb = dq[static_cast<std::size_t>(b)];
+            for (int k = 0; k < 3; ++k)
+                dE_dbond[k] += -dqa * dqb * dgdR * dir[k];
+
+            // Spin energy −½ Σ W m²: W constant, m fixed ⇒ no geometry term.
+
+            const auto& rep = pair_rep(type[a], type[b]);
+            const double dErep_dr = -rep.a * rep.b * std::exp(-rep.b * r);
+            for (int k = 0; k < 3; ++k)
+                dE_dbond[k] += dErep_dr * dir[k];
+
+            fx[a] += static_cast<AccReal>(dE_dbond[0]);
+            fy[a] += static_cast<AccReal>(dE_dbond[1]);
+            fz[a] += static_cast<AccReal>(dE_dbond[2]);
+            fx[b] -= static_cast<AccReal>(dE_dbond[0]);
+            fy[b] -= static_cast<AccReal>(dE_dbond[1]);
+            fz[b] -= static_cast<AccReal>(dE_dbond[2]);
+        }
+    }
+}
 
 /// Closed-form nuclear gradient for **restricted** SCC-DFTB2 (fixed Δq).
 void analytic_forces_restricted(
@@ -685,38 +828,17 @@ double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, bool with_forces,
     energy_meta += energy;
 
     if (with_forces) {
-        if (!occ.unrestricted && res.n_occ > 0 && res.C.shape(0) > 0) {
+        if (occ.unrestricted && res.Ca.shape(0) > 0) {
+            analytic_forces_unrestricted(
+                n_at, n_ao, res.n_alpha, res.n_beta, el, ao0, type, x, y, z,
+                f.box, res.dq, res.spin, res.Ca, res.Cb, res.eps_a, res.eps_b,
+                fx, fy, fz);
+        } else if (!occ.unrestricted && res.n_occ > 0 && res.C.shape(0) > 0) {
             analytic_forces_restricted(n_at, n_ao, res.n_occ, el, ao0, type, x,
                                        y, z, f.box, res.dq, res.C, res.eps, fx,
                                        fy, fz);
-        } else {
-            // Open-shell: re-SCC central finite difference of E.
-            constexpr double h_fd = 1.0e-4; // Å
-            for (int a = 0; a < n_at; ++a) {
-                for (int k = 0; k < 3; ++k) {
-                    StorageReal* col = (k == 0) ? x : (k == 1) ? y : z;
-                    const StorageReal saved = col[a];
-                    col[a] = saved + static_cast<StorageReal>(h_fd);
-                    const double ep =
-                        scc_total(n_at, n_ao, occ, el, ao0, type, x, y, z,
-                                  f.box, scc_tol, max_scc)
-                            .energy;
-                    col[a] = saved - static_cast<StorageReal>(h_fd);
-                    const double em =
-                        scc_total(n_at, n_ao, occ, el, ao0, type, x, y, z,
-                                  f.box, scc_tol, max_scc)
-                            .energy;
-                    col[a] = saved;
-                    const double fi = -(ep - em) / (2.0 * h_fd);
-                    if (k == 0)
-                        fx[a] += static_cast<AccReal>(fi);
-                    else if (k == 1)
-                        fy[a] += static_cast<AccReal>(fi);
-                    else
-                        fz[a] += static_cast<AccReal>(fi);
-                }
-            }
         }
+        // else: no orbitals (empty system) — leave forces unchanged
     }
     return energy;
 }

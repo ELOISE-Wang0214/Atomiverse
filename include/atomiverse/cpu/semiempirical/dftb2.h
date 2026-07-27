@@ -30,8 +30,10 @@ enum class DftbSkSet {
 /// Mulliken Δq and spin population m = Nα−Nβ.
 ///
 /// - `sk_set = MioSketch` (default): `basis_data/dftb_mio_tables.h` exponential
-///   sketch (+ spin_W). Closed shell (`multiplicity == 1`): analytic nuclear
-///   forces (HF + Pulay + SCC γ + repulsive). Open shell: re-SCC central FD.
+///   sketch (+ spin_W). **Analytic** nuclear forces for closed and open shell
+///   (HF + Pulay + SCC γ + repulsive; spin shifts on ∂S). Fixed-Δq/m
+///   Hellmann–Feynman — matches re-SCC FD at stationarity up to charge-response
+///   residual (see `reg_dftb2-analytic-forces`, `reg_dftb2-spin-analytic-forces`).
 /// - `sk_set = ThreeOb`: `basis_data/dftb_3ob_tables.h` 3ob-3-1 radial H/S +
 ///   repulsive (Gaus et al., JCTC 2013; organic CHNO). Closed-shell energy;
 ///   forces are re-SCC FD. Spin channel is MioSketch-only.
