@@ -11,7 +11,8 @@ criteria:
       (Γ RKS, Γ UKS, multi-k) both exist on frame.meta, are finite, and
       T_e matches last_electronic_ke_ev() bit-for-bit (test in
       test_gpw_cpmd.cpp).
-    status: pending
+    status: verified
+    last_checked: 2026-07-27
   - id: ac-002
     summary: CpmdConserved assembles E_cons on kConserved
     type: runtime
@@ -19,14 +20,16 @@ criteria:
       tests/cpu/dynamics/test_cpmd_conserved.cpp shows kConserved ==
       kEnergy + kKinetic + kEnergyElectronKinetic + kEnergyElectronThermostat
       after launch; default binding is md::Phase::end_of_step @ -90.
-    status: pending
+    status: verified
+    last_checked: 2026-07-27
   - id: ac-003
     summary: Missing electronic keys fail fast
     type: runtime
     pass_when: |
       CpmdConserved::launch throws a typed exception when the electronic
       keys are absent (no CPMD evaluator ran); EXPECT_THROW test present.
-    status: pending
+    status: verified
+    last_checked: 2026-07-27
   - id: ac-004
     summary: cpmd-water drift pin flows through Frame meta
     type: runtime
@@ -34,7 +37,8 @@ criteria:
       regressions/dynamics/cpmd-water wires CpmdConserved and pins the
       relative E_cons drift envelope read from frame.meta[kConserved];
       tolerance unchanged from the shipping pin.
-    status: pending
+    status: verified
+    last_checked: 2026-07-27
   - id: ac-005
     summary: Multi-writer hazard documented
     type: docs

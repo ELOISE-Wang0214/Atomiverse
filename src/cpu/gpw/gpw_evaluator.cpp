@@ -55,6 +55,28 @@ std::vector<GpwAtom> assemble_atoms(const cpu::Frame& frame,
     }
     return atoms;
 }
+
+/// Publish the two CPMD electronic energies [eV] on the frame, so Observers,
+/// Thermo and `cpu::md::CpmdConserved` see the adiabaticity signal that used
+/// to be reachable only through `last_electronic_ke_ev()`. Called from every
+/// CPMD branch (Γ RKS, Γ UKS, multi-k RKS) plus the cold seed, which
+/// publishes zeros — the electronic degrees of freedom have not moved yet.
+/// The keys are open-schema (not pre-inserted by `Frame(int)`), so the first
+/// launch inserts and later launches overwrite (the `kDipole` pattern).
+/// @param frame Frame to write.
+/// @param te_ev Fictitious electronic kinetic energy \(T_e\) [eV].
+/// @param etherm_ev Electronic Nosé–Hoover thermostat energy [eV].
+void publish_electronic_energies(cpu::Frame& frame, double te_ev,
+                                 double etherm_ev) {
+    if (!frame.meta.contains(kEnergyElectronKinetic.key))
+        frame.meta.insert(kEnergyElectronKinetic, te_ev);
+    else
+        frame.meta.set(kEnergyElectronKinetic, te_ev);
+    if (!frame.meta.contains(kEnergyElectronThermostat.key))
+        frame.meta.insert(kEnergyElectronThermostat, etherm_ev);
+    else
+        frame.meta.set(kEnergyElectronThermostat, etherm_ev);
+}
 } // namespace
 
 void GPWEvaluator::set_timestep(double dt_fs) {
@@ -346,8 +368,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // ── Car–Parrinello path ──────────────────────────────────────────────
     // Seed: one full SCF + BO analytic forces, then hand occupied C to Cpmd.
     // Later steps: fixed-density KS eval (max_iter=0) + forces at that
-    // density + electronic Verlet. Nuclear PE is E_KS only; T_e is exposed
-    // via last_electronic_ke_ev() for the CP conserved energy.
+    // density + electronic Verlet. Nuclear PE is E_KS only; T_e is published
+    // on frame.meta[kEnergyElectronKinetic] (and last_electronic_ke_ev())
+    // for cpu::md::CpmdConserved to assemble the CP conserved energy.
     // RKS Γ: one real propagator (occ=2). UKS Γ: dual α/β (occ=1 each).
     // Multi-k RKS: one CpmdCplx per sampled k (occ=2).
     const bool cpmd_multi_k =
@@ -478,6 +501,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         }
         last_te_ev_ = te_ha * ATV::units::kHartreeInEv;
         last_etherm_ev_ = 0.0;
+        publish_electronic_energies(frame, last_te_ev_, last_etherm_ev_);
         return;
     }
     if (cpmd_ready) {
@@ -580,6 +604,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             }
             last_te_ev_ = te_ha * ATV::units::kHartreeInEv;
             last_etherm_ev_ = eth_ha * ATV::units::kHartreeInEv;
+            publish_electronic_energies(frame, last_te_ev_, last_etherm_ev_);
             return;
         }
 
@@ -610,6 +635,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         last_te_ev_ = cpmd_->kinetic_ha() * ATV::units::kHartreeInEv;
         last_etherm_ev_ =
             cpmd_->thermostat_energy_ha() * ATV::units::kHartreeInEv;
+        publish_electronic_energies(frame, last_te_ev_, last_etherm_ev_);
         return;
     }
 
@@ -1261,7 +1287,12 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             ch.seed(C_occ);
             cpmd_k_.push_back(std::move(ch));
         }
+        // Seed step: the electronic coefficients have not been propagated, so
+        // both electronic energies are exactly 0 (a re-`build()` after a warm
+        // run must reset the thermostat readback too, not leave it stale).
         last_te_ev_ = 0.0;
+        last_etherm_ev_ = 0.0;
+        publish_electronic_energies(frame, last_te_ev_, last_etherm_ev_);
     } else if (cpmd_ && !cpmd_->ready()) {
         if (!last_.converged || last_.C.size() == 0)
             throw std::runtime_error(
@@ -1314,7 +1345,10 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                     C_occ(mu, i) = last_.C(mu, i);
             cpmd_->seed(C_occ);
         }
+        // Seed step: see the multi-k branch above — both terms are 0 here.
         last_te_ev_ = 0.0;
+        last_etherm_ev_ = 0.0;
+        publish_electronic_energies(frame, last_te_ev_, last_etherm_ev_);
     }
 
     if (compute_stress) {

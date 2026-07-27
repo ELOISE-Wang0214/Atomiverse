@@ -1,6 +1,6 @@
 ---
 slug: esmm-cpmd-03-observability
-status: approved
+status: code-complete
 created: 2026-07-26
 revised: 2026-07-26
 domain: electronic-propagation / cpmd
@@ -92,15 +92,25 @@ readback-arithmetic assembly it does today). Existing tolerance unchanged.
 
 ## Tasks
 
-- [ ] RED: `test_cpmd_conserved.cpp` — launch with pre-seeded meta values
+- [x] RED: `test_cpmd_conserved.cpp` — launch with pre-seeded meta values
       asserts the sum lands on kConserved; launch with the electronic keys
       absent throws; default binding is end_of_step @ -90
-- [ ] Register the two meta keys; GPW CPMD branches insert-guarded write both
+      (target test_cpu_md_cpmd_conserved; 5 tests incl. thermostat-key-alone
+      hole; name pinned "cpmd_conserved"; throw messages must name key+cpmd)
+- [x] Register the two meta keys; GPW CPMD branches insert-guarded write both
       each launch (0 on seed step)
-- [ ] Implement `CpmdConserved` (component + default_bindings + launch)
-- [ ] Rewire `cpmd-water` regression onto `CpmdConserved` + meta-key drift pin
-- [ ] Tutorial snippet: user-space `StopWhenDrift` criterion
-- [ ] Scoped build + ctest + cpmd regressions green
+      (5 publication sites via shared helper; bit-for-bit with readbacks by
+      construction; also fixed stale last_etherm_ev_ on re-build seed — named)
+- [x] Implement `CpmdConserved` (component + default_bindings + launch)
+- [x] Rewire `cpmd-water` regression onto `CpmdConserved` + meta-key drift pin
+      (pin block byte-identical; binary output identical pre/post; producer
+      test H2 fixture ULP-verified; REFERENCE μ=400→2000 doc rot fixed)
+- [x] Tutorial snippet: user-space `StopWhenDrift` criterion
+      (compile-verified -fsyntax-only; stale hand-assembly route replaced;
+      sibling regressions' readback-assembly NAMED as follow-up)
+- [x] Scoped build + ctest + cpmd regressions green
+      (full ctest 377/377 — incl. the previously-transient uhf_hessian —
+      + 5/5 cpmd regressions PASS)
 
 ## Testing strategy
 
@@ -128,3 +138,11 @@ through Frame meta.
 - Meta write pattern: `if (!f.meta.contains(kEnergyElectronKinetic)) f.meta.insert(...)` then `set` — never assume pre-insertion.
 - eV conversions single-sourced through `units::` (T_e is Hartree-native in
   the propagator).
+
+> Hygiene (/mol:simplify 2026-07-27): dead public accessor last_cp_energy_ev
+> deleted (0 call sites; taught the retired hand-assembly); stale CP comment
+> updated to the meta channel; 2 format drifts fixed; header wiring example
+> corrected to add() (on().add defaults to order 0, after Reduce). NAMED:
+> GPWEvaluator::launch 1027-line sprawl (pre-existing, route /mol:refactor);
+> 2 rule captures for /mol:note (toolchain gap 4th re-arm; open-schema meta
+> producer pattern now in 6 files).

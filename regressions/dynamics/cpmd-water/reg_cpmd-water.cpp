@@ -2,6 +2,12 @@
 /// @brief END-TO-END: Car–Parrinello MD (fictitious electronic DOF) NVE on
 ///        H₂O with GPW — CP conserved-energy drift envelope pin.
 ///
+/// \f$E_{\mathrm{cons}}\f$ is not re-added here from evaluator readbacks: the
+/// engine publishes it on `frame.meta[kConserved]` [eV] every step through
+/// `cpu::md::CpmdConserved`, and this case reads that one channel — the same
+/// number a user sees in Thermo's `Conserved` column or from a drift
+/// `Criterion`.
+///
 /// See REFERENCE.md. Public API only. Requires ATV_BUILD_GPW + MD.
 /// Exit non-zero on failure.
 
@@ -10,6 +16,7 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/dynamics/cpmd_conserved.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -78,6 +85,11 @@ int main() {
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
+    // E_cons is assembled by the engine, not by this consumer: CpmdConserved
+    // sums E_KS + T_nuc + T_e + E_therm^e onto frame.meta[kConserved] [eV] at
+    // its default slot (end_of_step @ -90 — after KineticEnergy @ -100, so the
+    // nuclear term is this step's). Owning `add()` takes that default binding.
+    sim.add(cpu::md::CpmdConserved{});
     sim.enable_timing(false);
     sim.build();
 
@@ -121,7 +133,10 @@ int main() {
     }
     const double pe0 = frame.meta.get(kEnergy);
     const double ke0 = frame.meta.get(kKinetic);
-    const double te0 = eval.last_electronic_ke_ev();
+    // T_e comes off the frame, not off the evaluator: the CPMD evaluator
+    // publishes kEnergyElectronKinetic / kEnergyElectronThermostat on every
+    // launch, and CpmdConserved has already folded both into kConserved below.
+    const double te0 = frame.meta.get(kEnergyElectronKinetic);
     if (!std::isfinite(pe0) || !std::isfinite(ke0) || !std::isfinite(te0)
         || !(ke0 >= 0.0) || !(te0 >= 0.0)) {
         std::printf("FAIL: non-finite energy after first CP step PE=%g KE=%g "
@@ -129,7 +144,11 @@ int main() {
                     pe0, ke0, te0);
         return 1;
     }
-    const double e0 = pe0 + ke0 + te0;
+    const double e0 = frame.meta.get(kConserved);
+    if (!std::isfinite(e0)) {
+        std::printf("FAIL: non-finite E_cons after first CP step: %g eV\n", e0);
+        return 1;
+    }
     const double e_scale = std::max(1.0, std::fabs(e0));
 
     double worst_drift = 0.0;
@@ -143,7 +162,7 @@ int main() {
         }
         const double pe = frame.meta.get(kEnergy);
         const double ke = frame.meta.get(kKinetic);
-        const double te = eval.last_electronic_ke_ev();
+        const double te = frame.meta.get(kEnergyElectronKinetic);
         if (!std::isfinite(pe) || !std::isfinite(ke) || !std::isfinite(te)
             || !(ke >= 0.0) || !(te >= 0.0)) {
             std::printf(
@@ -160,7 +179,12 @@ int main() {
                 last_iters);
             return 1;
         }
-        const double e_cons = pe + ke + te;
+        const double e_cons = frame.meta.get(kConserved);
+        if (!std::isfinite(e_cons)) {
+            std::printf("FAIL: non-finite E_cons at chunk %d: %g eV\n", c,
+                        e_cons);
+            return 1;
+        }
         const double drift = std::fabs(e_cons - e0) / e_scale;
         if (drift > worst_drift)
             worst_drift = drift;
@@ -196,11 +220,12 @@ int main() {
 
     const double pe_f = frame.meta.get(kEnergy);
     const double ke_f = frame.meta.get(kKinetic);
-    const double te_f = eval.last_electronic_ke_ev();
+    const double te_f = frame.meta.get(kEnergyElectronKinetic);
     std::printf(
         "CPMD H2O NVE (mu=2000 a.u.): steps=%d  E0=%.6g eV  Ef=%.6g eV  "
         "worst |dE_cons|/scale=%.3e  tol=%.2f  oh=%.3f/%.3f Å\n",
-        n_prod, e0, pe_f + ke_f + te_f, worst_drift, drift_tol, oh1, oh2);
+        n_prod, e0, frame.meta.get(kConserved), worst_drift, drift_tol, oh1,
+        oh2);
     std::printf(
         "  PE0=%.6g  KE0=%.6g  Te0=%.6g  PEf=%.6g  KEf=%.6g  Tef=%.6g eV  "
         "prod SCF iters=%d (expect 0)\n",

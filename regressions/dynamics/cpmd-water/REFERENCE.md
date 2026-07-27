@@ -7,13 +7,20 @@ degrees of freedom on closed-shell Γ-point GPW:
 
 - Outer loop: `cpu::md::MD` + NVE `VelocityVerlet` (nuclei)
 - Force slot: `cpu::gpw::GPWEvaluator` with **`cpmd = true`**,
-  **`cpmd_mu = 400` a.u.**, `compute_forces = true`; the electronic dt is
+  **`cpmd_mu = 2000` a.u.**, `compute_forces = true`; the electronic dt is
   **not** set on the evaluator — `cpu::md::MD` pushes the nuclear dt in from
   the `VelocityVerlet` integrator through the `TimestepProvider` /
   `TimestepConsumer` protocol at build, so nuclei and electrons share one clock
   by construction
 - Propagator: `cpu::electronic::Cpmd` — position Verlet on occupied MO coefficients
   \(C\) with Löwdin re-orthonormalization
+- \(E_{\mathrm{cons}}\) is **not** assembled by this case: `cpu::md::CpmdConserved`
+  (bound at its default `end_of_step @ -90`, after `KineticEnergy @ -100`) sums
+  \(E_{\mathrm{KS}} + T_{\mathrm{n}} + T_e + E_{\mathrm{therm}}^{e}\) onto
+  `frame.meta[kConserved]` [eV] each step, and the case reads that key — the
+  same channel Thermo's `Conserved` column and a user drift `Criterion` see.
+  \(T_e\) likewise comes off `frame.meta[kEnergyElectronKinetic]`, published by
+  every CPMD launch, rather than off an evaluator readback
 
 **Not BOMD** (production steps use fixed-density KS evaluation, `iters==0`).
 **Not XL-BOMD** (no auxiliary density + SCF; electronic kinetic energy is

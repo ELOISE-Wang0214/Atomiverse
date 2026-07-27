@@ -367,6 +367,11 @@ atv_add_cpp_test(test_cpu_md_plan_equivalence             cpu/dynamics/test_md_p
 # conflicting/absent/invalid publications throw at build. Local stubs only —
 # no GPW dependency, one no-op MD step to fire the component build() pass.
 atv_add_cpp_test(test_cpu_md_timestep_protocol            cpu/dynamics/test_timestep_protocol.cpp)
+# Car-Parrinello conserved-energy assembler (esmm-cpmd-03-observability):
+# kConserved = kEnergy + kKinetic + the two electronic keys, end_of_step @ -90,
+# throw when the electronic keys are absent. Pure meta arithmetic on a seeded
+# one-atom frame — no GPW, no SCF, no MD step.
+atv_add_cpp_test(test_cpu_md_cpmd_conserved               cpu/dynamics/test_cpmd_conserved.cpp)
 atv_add_cpp_test(test_cpu_minimize_evaluate_set_api       cpu/test_minimize_evaluate_set_api.cpp)
 atv_add_cpp_test(test_cpu_materialize                     cpu/test_materialize.cpp)
 atv_add_cpp_test(test_cpu_molrs_contract                  cpu/test_molrs_contract.cpp)

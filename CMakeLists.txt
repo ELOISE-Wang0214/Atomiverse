@@ -326,6 +326,7 @@ if(NOT ATV_DOCS_ONLY)
         list(APPEND ATOMIVERSE_SRCS
             src/cpu/dynamics/init.cpp
             src/cpu/dynamics/atom_sort.cpp
+            src/cpu/dynamics/cpmd_conserved.cpp
             src/cpu/dynamics/velocity_verlet.cpp
             src/cpu/dynamics/nve_limit.cpp
             src/cpu/dynamics/nose_hoover.cpp

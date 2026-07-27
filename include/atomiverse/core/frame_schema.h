@@ -234,6 +234,13 @@ inline constexpr MetaKey<double> kEnergyChargingWork{"energy_charging_work",
                                                      true};
 inline constexpr MetaKey<double> kKinetic{"kinetic", true};
 inline constexpr MetaKey<double> kConserved{"conserved", true};
+/// Fictitious CP electronic kinetic energy \(T_e\) [eV] (CPMD evaluators;
+/// adiabaticity monitor).
+inline constexpr MetaKey<double> kEnergyElectronKinetic{
+    "energy_electron_kinetic", true};
+/// Nosé–Hoover electronic thermostat energy [eV] (0 for NVE electrons).
+inline constexpr MetaKey<double> kEnergyElectronThermostat{
+    "energy_electron_thermostat", true};
 inline constexpr MetaKey<MetaF64x6> kStress{"stress", true};
 inline constexpr MetaKey<MetaF64x6> kStressKinetic{"stress_kinetic", true};
 /// Per-electrode total charge [e], first ≤3 electrodes (ElectrodeChargeObserver).

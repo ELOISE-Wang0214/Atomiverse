@@ -6,7 +6,9 @@
 /// cpu/electronic/ and are pinned by tests/cpu/electronic/test_cpmd.cpp.
 /// No multi-step MD / full water SCF trajectory here (that is the e2e
 /// regressions/dynamics/cpmd-water and cpmd-rattle-water pins). build()
-/// validation and the tiny inline H2 payload only.
+/// validation, the tiny inline H2 payload, and one direct `launch` probe on
+/// the smallest possible system (H2, no driver, no loop) for the electronic
+/// energy publication contract.
 ///
 /// **Timestep:** the nuclear dt is owned by the MD integrator and pushed in
 /// through `cpu::TimestepConsumer::set_timestep` (esmm-cpmd-02) — the
@@ -25,6 +27,9 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
@@ -293,6 +298,121 @@ TEST(GpwEvaluatorCpmd, BuildRejectsMultiKCpmdThermostat) {
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// ── Electronic energy publication (esmm-cpmd-03 ac-001) ─────────────────
+//
+// Producer side of `cpu::md::CpmdConserved` (assembler pinned in
+// tests/cpu/dynamics/test_cpmd_conserved.cpp): every CPMD `launch` must leave
+// BOTH open-schema electronic keys on the frame, holding exactly what the
+// `last_electronic_*_ev()` readbacks report. Bit-for-bit is the contract, not
+// a tolerance — meta and readback are two views of one stored double, so any
+// difference at all means a recomputation crept in between them and the
+// conserved energy the user reads is not the one the propagator advanced.
+
+namespace {
+
+/// @brief H₂ (r = 0.74 Å) centred in a 6 Å box — the cheapest frame that
+///        reaches `GPWEvaluator::launch` at all.
+///
+/// The CPMD seed needs a *converged* cold SCF with occupied MOs, so a real
+/// basis/pseudopotential pair is unavoidable; H₂ keeps it to 2 atoms / 10 AOs
+/// / 1 occupied orbital instead of water's 3 atoms / 29 AOs. This is a
+/// single-`launch` component probe, not an MD trajectory: no driver, no loop,
+/// no step budget.
+ATV::cpu::Frame h2_frame() {
+    ATV::cpu::Frame f(2);
+    const double dx = 0.37; // half the 0.74 Å bond
+    for (int i = 0; i < 2; ++i) {
+        f.span(ATV::kAtom_type)[i] = 1;
+        f.span(ATV::kAtom_x)[i] = 3.0 + (i == 0 ? -dx : dx);
+        f.span(ATV::kAtom_y)[i] = 3.0;
+        f.span(ATV::kAtom_z)[i] = 3.0;
+    }
+    f.box = ATV::cpu::Box::cubic(6.0);
+    return f;
+}
+
+/// @brief Γ-RKS CPMD evaluator for `h2_frame()` (60 Ry, non-periodic).
+///
+/// Cutoff and tolerance are the cheapest settings that still converge the cold
+/// seed — nothing here pins an energy, so grid accuracy only has to be good
+/// enough for the SCF to reach `tol` inside `max_iter` (an unconverged seed
+/// throws, so "it ran" already means "it converged"). ~0.2 s for the whole
+/// test, which keeps this file inside the seconds-scale unit budget.
+ATV::cpu::gpw::GPWEvaluator h2_cpmd_eval() {
+    const ATV::cpu::gpw::Kind H{
+        molrs::Element::H,
+        ATV::cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
+        ATV::cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
+    ATV::cpu::gpw::GPWEvaluator e(
+        {H}, /*cutoff_ry*/ 60.0, /*max_iter*/ 60, /*tol*/ 1e-5,
+        /*mix*/ 0.3, ATV::cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
+        /*compute_forces*/ true);
+    e.cpmd = true;
+    e.cpmd_mu = 2000.0; // as in regressions/dynamics/cpmd-water
+    e.set_timestep(kDtFs);
+    return e;
+}
+
+} // namespace
+
+/// ac-001: `kEnergyElectronKinetic` / `kEnergyElectronThermostat` appear on the
+/// frame at the first CPMD launch and equal the readbacks exactly.
+///
+/// Both branches that a CPMD run walks are sampled by one and the same
+/// assertion, because it is one contract: the cold **seed** launch (electrons
+/// have not moved — both terms are exactly 0, and the keys must still be
+/// published, since an absent key makes `CpmdConserved` throw rather than
+/// silently drop T_e) and the first fixed-density **production** launch, where
+/// T_e leaves zero and the equality stops being vacuous.
+TEST(GpwEvaluatorCpmd, PublishesElectronicEnergyMetaKeys) {
+    auto frame = h2_frame();
+    auto eval = h2_cpmd_eval();
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    ASSERT_NO_THROW(eval.build(bc));
+
+    // Open-schema keys: `Frame(int)` does not pre-insert them, and nothing has
+    // published them yet — so "present afterwards" below is a real observation.
+    ASSERT_FALSE(frame.meta.contains(ATV::kEnergyElectronKinetic.key));
+    ASSERT_FALSE(frame.meta.contains(ATV::kEnergyElectronThermostat.key));
+
+    auto expect_published = [&frame, &eval]() {
+        ASSERT_TRUE(frame.meta.contains(ATV::kEnergyElectronKinetic.key));
+        ASSERT_TRUE(frame.meta.contains(ATV::kEnergyElectronThermostat.key));
+        const double te = frame.meta.get(ATV::kEnergyElectronKinetic);
+        const double etherm = frame.meta.get(ATV::kEnergyElectronThermostat);
+        EXPECT_TRUE(std::isfinite(te)) << te;
+        EXPECT_TRUE(std::isfinite(etherm)) << etherm;
+        EXPECT_EQ(te, eval.last_electronic_ke_ev());
+        EXPECT_EQ(etherm, eval.last_electronic_thermostat_ev());
+    };
+
+    ATV::cpu::LaunchContext lc{rt, frame, ATV::slot_of(ATV::md::Phase::force),
+                               /*step=*/0};
+
+    eval.launch(lc); // cold SCF + CPMD seed: electrons still at rest
+    {
+        SCOPED_TRACE("seed launch");
+        expect_published();
+        EXPECT_EQ(frame.meta.get(ATV::kEnergyElectronKinetic), 0.0);
+        EXPECT_EQ(frame.meta.get(ATV::kEnergyElectronThermostat), 0.0);
+    }
+
+    // First production launch: fixed-density KS eval + one electronic
+    // velocity-Verlet step, so T_e is no longer zero (electrons NVE — no
+    // thermostat requested, hence E_therm stays 0).
+    eval.launch(lc);
+    {
+        SCOPED_TRACE("first production launch");
+        ASSERT_EQ(eval.last_result().iters, 0)
+            << "production CP launch must be a fixed-density eval, not an SCF";
+        expect_published();
+        EXPECT_GT(frame.meta.get(ATV::kEnergyElectronKinetic), 0.0)
+            << "T_e must leave zero once the electrons are propagated, "
+               "otherwise the equality above is vacuous";
+    }
 }
 
 // Multi-k fixed-density payload (tiny H2 GpwDft).

@@ -258,14 +258,6 @@ class GPWEvaluator : public cpu::GPW, public cpu::TimestepConsumer {
     /// @brief Nosé–Hoover electronic thermostat energy \(E_{\mathrm{therm}}\)
     ///        [eV] from the last CPMD advance (0 when thermostat is off).
     double last_electronic_thermostat_ev() const { return last_etherm_ev_; }
-    /// @brief Car–Parrinello conserved piece \(E_{\mathrm{KS}} + T_e\) [eV]
-    ///        (add nuclear KE from `frame.meta.get(kKinetic)` for full NVE
-    ///        \(E_{\mathrm{cons}}\); when `cpmd_thermostat`, also add
-    ///        `last_electronic_thermostat_ev()` for \(E_{\mathrm{ext}}\)).
-    double last_cp_energy_ev() const {
-        return last_.e_total * ATV::units::kHartreeInEv + last_te_ev_;
-    }
-
   private:
     /// Nuclear (and electronic) timestep [fs], pushed by the MD integrator
     /// through `set_timestep`. 0 = never pushed ⇒ `build()` refuses `cpmd`.
