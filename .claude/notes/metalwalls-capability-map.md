@@ -84,7 +84,7 @@ spine; keep ATV advantages.
 | Constant-charge electrodes (control) | ✓ | ~ | Fixed charge + `FixFreeze`; no separate “const-Q electrode” type | P1 |
 | BO matrix inverse for \(Q\) | ✓ | ✓ | Dense Cholesky path on `ConstPotBO` | **P0** |
 | CG solve for \(Q\) | ✓ | ✓ | `ConstPotCG` / `ConstPotBO::use_cg` | P1 |
-| MaZe mass-zero charge dynamics | ✓★ | ~ | `ConstPotMaZe` CG+ASPC adiabatic foothold (`reg_maze-charge-dynamics`); Coretti symplectic constrained deferred (`maze-symplectic-charge-dynamics`) | P2 |
+| MaZe mass-zero charge dynamics | ✓★ | ✓ | `ConstPotMaZe.symplectic` true SHAKE mass-zero path (wave-5, `reg_maze-symplectic-charge-dynamics`); `symplectic=false` keeps the CG+ASPC adiabatic twin (`reg_maze-charge-dynamics`) | P2 |
 | Electrode charge predictor | ✓ | ✓ | `ChargeASPC` / `predictor_order` on BO | P1 |
 | Electrode electroneutrality \(\sum Q_i=0\) | ✓ | ✓ | Augmented system on BO/CG | **P0** |
 | Global electroneutrality (incl. electrolyte) | ✓ | ✓ | `ConstPotBO::global_electroneutrality` (`reg_global-electroneutrality-bo`) | P1 |
