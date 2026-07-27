@@ -302,6 +302,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/semiempirical/rm1_evaluator.cpp
             src/cpu/semiempirical/am1_bcc_charge_assigner.cpp
             src/cpu/semiempirical/dftb2.cpp
+            src/cpu/semiempirical/dftb3.cpp
             src/cpu/semiempirical/xtb_gfn0.cpp
             src/cpu/multiscale/qmmm_mechanical.cpp
             src/cpu/multiscale/qmmm_electrostatic.cpp
