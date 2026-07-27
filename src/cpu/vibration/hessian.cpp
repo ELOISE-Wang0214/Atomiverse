@@ -47,55 +47,53 @@ void wire_zeroing(Driver& driver) {
 /// the Thermochem Observer runs; on `vib::Phase::end_of_step` the
 /// FrequencyReport (0) and NormalModeWriter (+1) Recorders run.
 ///
-/// @param driver Driver to register the components into.
-/// @param ws     Driver-owned shared workspace.
-template <class Driver>
-void wire_full_chain(Driver& driver, HessianWorkspace* ws, double temperature,
-                     double pressure, int multiplicity, int symmetry_number,
-                     const std::string& frequency_tsv,
-                     const std::string& mode_xyz_prefix) {
-    wire_zeroing(driver);
-    driver.add(ReferenceGeometry{ws});
-    driver.add(DisplaceStep{ws});
-    driver.add(HessianAccumulator{ws});
-    driver.add(Symmetrize{ws});
-    driver.add(MassWeighting{ws});
-    driver.add(HessianDiagonalizer{ws});
-    driver.add(
-        Thermochem{ws, temperature, pressure, multiplicity, symmetry_number});
-    driver.add(FrequencyReport{ws, frequency_tsv});
-    driver.add(NormalModeWriter{ws, mode_xyz_prefix});
-}
-
 } // namespace
+
+void Hessian::wire_full_chain_(HessianWorkspace* ws, double temperature,
+                               double pressure, int multiplicity,
+                               int symmetry_number,
+                               const std::string& frequency_tsv,
+                               const std::string& mode_xyz_prefix) {
+    wire_zeroing(*this);
+    // default_bindings → protected bind_defaults (no public Driver::add)
+    this->bind_defaults(ReferenceGeometry{ws});
+    this->bind_defaults(DisplaceStep{ws});
+    this->bind_defaults(HessianAccumulator{ws});
+    this->bind_defaults(Symmetrize{ws});
+    this->bind_defaults(MassWeighting{ws});
+    this->bind_defaults(HessianDiagonalizer{ws});
+    this->bind_defaults(
+        Thermochem{ws, temperature, pressure, multiplicity, symmetry_number});
+    this->bind_defaults(FrequencyReport{ws, frequency_tsv});
+    this->bind_defaults(NormalModeWriter{ws, mode_xyz_prefix});
+}
 
 Hessian::Hessian() {
     // Default thermochemistry: standard conditions, closed-shell singlet.
-    wire_full_chain(*this, workspace_.get(), 298.15, 101325.0, 1, 1,
-                    "frequencies.tsv", "mode");
+    wire_full_chain_(workspace_.get(), 298.15, 101325.0, 1, 1,
+                     "frequencies.tsv", "mode");
 }
 
 Hessian::Hessian(double temperature, double pressure, int multiplicity,
                  int symmetry_number) {
-    wire_full_chain(*this, workspace_.get(), temperature, pressure,
-                    multiplicity, symmetry_number, "frequencies.tsv", "mode");
+    wire_full_chain_(workspace_.get(), temperature, pressure, multiplicity,
+                     symmetry_number, "frequencies.tsv", "mode");
 }
 
 Hessian::Hessian(double temperature, double pressure, int multiplicity,
                  int symmetry_number, std::string frequency_tsv,
                  std::string mode_xyz_prefix) {
-    wire_full_chain(*this, workspace_.get(), temperature, pressure,
-                    multiplicity, symmetry_number, frequency_tsv,
-                    mode_xyz_prefix);
+    wire_full_chain_(workspace_.get(), temperature, pressure, multiplicity,
+                     symmetry_number, frequency_tsv, mode_xyz_prefix);
 }
 
 Hessian::Hessian(WithoutAccumulator /*tag*/) {
     // Test-only configuration: omit HessianAccumulator so the build-time
     // validation throws for the missing Capability::Hessian component.
     wire_zeroing(*this);
-    add(ReferenceGeometry{workspace_.get()});
-    add(DisplaceStep{workspace_.get()});
-    add(Symmetrize{workspace_.get()});
+    this->bind_defaults(ReferenceGeometry{workspace_.get()});
+    this->bind_defaults(DisplaceStep{workspace_.get()});
+    this->bind_defaults(Symmetrize{workspace_.get()});
 }
 
 HessianResult Hessian::run(cpu::Frame& frame) {

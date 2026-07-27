@@ -22,6 +22,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
+#include "atomiverse/cpu/electronic/car_parrinello.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 
 using namespace ATV;
@@ -64,14 +65,13 @@ int main() {
     // Cheaper than forces pin (200 Ry / tol 1e-5) so cold SCF seed stays
     // inside the ≤60 s gate. CPMD production steps are single KS evals.
     constexpr double dt = 0.1; // fs — short step for electronic stability
-    cpu::gpw::GPWEvaluator eval(
+    cpu::gpw::GPWEvaluator gpw(
         /*kinds*/ {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
         /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
         /*compute_forces*/ true);
-    eval.cpmd = true;
     // Heavier fictitious mass than plane-wave textbook 400 a.u. — AO residual
     // curvature on DZVP water is stiffer; 2000 keeps short NVE stable at 0.1 fs.
-    eval.cpmd_mu = 2000.0;
+    cpu::electronic::CarParrinello eval{std::move(gpw), /*mu=*/2000.0};
     // No electronic dt here: `MD` pushes the nuclear dt from the integrator
     // (TimestepProvider) into the evaluator at build, so `dt` has one owner.
 
@@ -84,12 +84,8 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
-    // E_cons is assembled by the engine, not by this consumer: CpmdConserved
-    // sums E_KS + T_nuc + T_e + E_therm^e onto frame.meta[kConserved] [eV] at
-    // its default slot (end_of_step @ -90 — after KineticEnergy @ -100, so the
-    // nuclear term is this step's). Owning `add()` takes that default binding.
-    sim.add(cpu::md::CpmdConserved{});
+    sim.set_evaluator_ref(eval);
+    sim.set_observer(cpu::md::CpmdConserved{});
     sim.enable_timing(false);
     sim.build();
 

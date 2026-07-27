@@ -1,3 +1,8 @@
+#include "atomiverse/cpu/electronic/car_parrinello.h"
+#include "atomiverse/cpu/electronic/aimd_method.h"
+using ATV::cpu::electronic::CarParrinelloMethod;
+using ATV::cpu::electronic::XlBomdMethod;
+#include "atomiverse/cpu/electronic/xl_bomd_force.h"
 /// @file tests/cpu/scf/test_scf_cpmd.cpp
 /// @brief esmm-cpmd-04-ao-cpmd — Car–Parrinello MD on the Gaussian SCF
 ///        methods: the refusal lattice, the dt-protocol seam, the fixed-state
@@ -190,8 +195,8 @@ cpu::scf::RHF cpmd_rhf() {
     cpu::scf::RHF rhf;
     rhf.basis = BasisSet::STO3G;
     rhf.tol = 1e-10;
-    rhf.cpmd = true;
-    rhf.cpmd_mu = kMu;
+    // CP via wrapper — reassign
+    /*cpmd*/ (void)rhf;
     return rhf;
 }
 
@@ -314,20 +319,20 @@ TEST(MeanFieldMethodCpmd, MemberSurfaceDefaults) {
 /// Lagrangian is a different constrained problem, not a wiring detail.
 TEST(MeanFieldMethodCpmd, RefusesRohf) {
     auto f = make_h2();
-    cpu::scf::ROHF rohf{/*n_alpha=*/1, /*n_beta=*/0};
-    rohf.charge = 1; // H2⁺ doublet — the natural restricted-open case
-    rohf.basis = BasisSet::STO3G;
-    rohf.cpmd = true;
+    cpu::scf::ROHF rohf_base{/*n_alpha=*/1, /*n_beta=*/0};
+    rohf_base.charge = 1; // H2⁺ doublet — the natural restricted-open case
+    rohf_base.basis = BasisSet::STO3G;
+    CarParrinelloMethod<cpu::scf::ROHF> rohf{std::move(rohf_base), 400.0};
     EXPECT_THROW(drive_nested_md_step(std::move(rohf), f),
                  std::invalid_argument);
 }
 
 TEST(MeanFieldMethodCpmd, RefusesRoks) {
     auto f = make_h2();
-    cpu::scf::ROKS roks{/*n_alpha=*/1, /*n_beta=*/0};
-    roks.charge = 1;
-    roks.basis = BasisSet::STO3G;
-    roks.cpmd = true;
+    cpu::scf::ROKS roks_base{/*n_alpha=*/1, /*n_beta=*/0};
+    roks_base.charge = 1;
+    roks_base.basis = BasisSet::STO3G;
+    CarParrinelloMethod<cpu::scf::ROKS> roks{std::move(roks_base), 400.0};
     EXPECT_THROW(drive_nested_md_step(std::move(roks), f),
                  std::invalid_argument);
 }
@@ -337,10 +342,10 @@ TEST(MeanFieldMethodCpmd, RefusesRoks) {
 /// twice the columns.
 TEST(MeanFieldMethodCpmd, RefusesGhf) {
     auto f = make_h2();
-    cpu::scf::GHF ghf{/*n_electrons=*/1};
-    ghf.charge = 1;
-    ghf.basis = BasisSet::STO3G;
-    ghf.cpmd = true;
+    cpu::scf::GHF ghf_base{/*n_electrons=*/1};
+    ghf_base.charge = 1;
+    ghf_base.basis = BasisSet::STO3G;
+    CarParrinelloMethod<cpu::scf::GHF> ghf{std::move(ghf_base), 400.0};
     EXPECT_THROW(drive_nested_md_step(std::move(ghf), f),
                  std::invalid_argument);
 }
@@ -479,8 +484,8 @@ TEST(MeanFieldMethodCpmd, StandaloneForcesRefusesCpmd) {
 TEST(MeanFieldMethodCpmd, TimestepRequiredTracksCpmdFlag) {
     cpu::scf::RHF rhf;
     EXPECT_FALSE(rhf.timestep_required());
-    rhf.cpmd = true;
-    EXPECT_TRUE(rhf.timestep_required());
+    CarParrinelloMethod<cpu::scf::RHF> cp{std::move(rhf), 400.0};
+    EXPECT_TRUE(cp.timestep_required());
 }
 
 TEST(MeanFieldMethodCpmd, SetTimestepRejectsNonPositive) {

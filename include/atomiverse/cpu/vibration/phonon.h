@@ -68,12 +68,12 @@ class Phonon : public Driver<ATV::vib::Phase> {
             throw std::invalid_argument(
                 "Phonon: supercell factors na,nb,nc must be ≥ 1");
         // Structural FD chain (no molecular TR diagonalizer / thermochem).
-        add(ReferenceGeometry{workspace_.get()});
-        add(DisplaceStep{workspace_.get()});
-        add(HessianAccumulator{workspace_.get()});
-        add(Symmetrize{workspace_.get()});
-        add(MassWeighting{workspace_.get()});
-        add(PhononDiagonalizer{workspace_.get()});
+        this->bind_defaults(ReferenceGeometry{workspace_.get()});
+        this->bind_defaults(DisplaceStep{workspace_.get()});
+        this->bind_defaults(HessianAccumulator{workspace_.get()});
+        this->bind_defaults(Symmetrize{workspace_.get()});
+        this->bind_defaults(MassWeighting{workspace_.get()});
+        this->bind_defaults(PhononDiagonalizer{workspace_.get()});
         // Clean force accumulator each displacement (classical pair styles).
         this->on(ATV::vib::Phase::force).add(cpu::ZeroForces{}, -1000);
         this->on(ATV::vib::Phase::force).add(cpu::ZeroEnergy{}, -999);

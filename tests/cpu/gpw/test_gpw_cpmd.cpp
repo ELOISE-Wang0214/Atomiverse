@@ -33,6 +33,9 @@
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/electronic/car_parrinello.h"
+#include "atomiverse/cpu/electronic/xl_bomd_force.h"
+#include "atomiverse/cpu/electronic/second_gen_cp.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -41,6 +44,12 @@
 // ── GPWEvaluator cpmd guards ────────────────────────────────────────────
 
 namespace {
+
+using ATV::cpu::electronic::CarParrinello;
+using ATV::cpu::electronic::XlBomdForce;
+using ATV::cpu::electronic::SecondGenCp;
+using ATV::cpu::electronic::XlBomdLinearized;
+using ATV::cpu::electronic::ElectronicThermostat;
 
 /// A valid nuclear timestep [fs], standing in for the MD integrator's push.
 constexpr double kDtFs = 0.1;
@@ -85,23 +94,23 @@ ATV::cpu::gpw::GPWEvaluator water_eval() {
 TEST(GpwEvaluatorCpmd, BuildAcceptsCpmdWithUks) {
     // Γ-UKS CPMD is product (dual α/β propagators); O2-like occupations.
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.cpmd = true;
-    eval.set_timestep(kDtFs);
-    eval.n_alpha = 5;
-    eval.n_beta = 3;
+    auto base = water_eval();
+    base.n_alpha = 5;
+    base.n_beta = 3;
+    ATV::cpu::electronic::CarParrinello cp{std::move(base), 400.0};
+    cp.set_timestep(kDtFs);
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_NO_THROW(eval.build(bc));
+    EXPECT_NO_THROW(cp.build(bc));
 }
 
 TEST(GpwEvaluatorCpmd, BuildRejectsUksCpmdWithZeroAlpha) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.cpmd = true;
+    auto base = water_eval();
+    base.n_alpha = 0;
+    base.n_beta = 3;
+    CarParrinello eval{std::move(base), 400.0};
     eval.set_timestep(kDtFs);
-    eval.n_alpha = 0;
-    eval.n_beta = 3;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
@@ -109,46 +118,34 @@ TEST(GpwEvaluatorCpmd, BuildRejectsUksCpmdWithZeroAlpha) {
 
 TEST(GpwEvaluatorCpmd, BuildRejectsCpmdWithOt) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.cpmd = true;
+    auto base = water_eval();
+    base.use_ot = true;
+    CarParrinello eval{std::move(base), 400.0};
     eval.set_timestep(kDtFs);
-    eval.use_ot = true;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
 }
 
-TEST(GpwEvaluatorCpmd, BuildRejectsCpmdWithXlBomd) {
-    auto frame = water_frame();
-    auto eval = water_eval();
-    eval.cpmd = true;
-    eval.set_timestep(kDtFs);
-    eval.xl_bomd = true;
-    ATV::cpu::Context rt;
-    ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+TEST(GpwEvaluatorCpmd, CpmdAndXlAreDistinctTypes) {
+    // Mutual exclusion is type-level: CarParrinello vs XlBomdForce, not flags.
+    auto base1 = water_eval();
+    auto base2 = water_eval();
+    CarParrinello cp{std::move(base1), 400.0};
+    XlBomdForce xl{std::move(base2), 5};
+    EXPECT_NE(cp.name(), xl.name());
 }
 
-TEST(GpwEvaluatorCpmd, BuildRejectsNonPositiveMu) {
-    auto frame = water_frame();
-    auto eval = water_eval();
-    eval.cpmd = true;
-    eval.set_timestep(kDtFs);
-    eval.cpmd_mu = 0.0;
-    ATV::cpu::Context rt;
-    ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+TEST(GpwEvaluatorCpmd, CtorRejectsNonPositiveMu) {
+    EXPECT_THROW((CarParrinello{water_eval(), 0.0}), std::invalid_argument);
+    EXPECT_THROW((CarParrinello{water_eval(), -1.0}), std::invalid_argument);
 }
 
-TEST(GpwEvaluatorCpmd, BuildRejectsCpmdWithoutForces) {
-    auto frame = water_frame();
-    auto eval = water_eval();
-    eval.cpmd = true;
-    eval.set_timestep(kDtFs);
-    eval.compute_forces = false;
-    ATV::cpu::Context rt;
-    ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+TEST(GpwEvaluatorCpmd, CtorForcesComputeForces) {
+    auto base = water_eval();
+    base.compute_forces = false;
+    CarParrinello eval{std::move(base), 400.0};
+    EXPECT_TRUE(eval.method().compute_forces);
 }
 
 // ── Nuclear timestep protocol (esmm-cpmd-02) ────────────────────────────
@@ -158,13 +155,15 @@ TEST(GpwEvaluatorCpmd, BuildRejectsCpmdWithoutForces) {
 // CPMD when nothing ever arrived.
 
 TEST(GpwEvaluatorCpmd, SetTimestepRejectsNonPositive) {
-    auto eval = water_eval();
+    auto base = water_eval();
+    auto eval = std::move(base);
     EXPECT_THROW(eval.set_timestep(0.0), std::invalid_argument);
     EXPECT_THROW(eval.set_timestep(-0.1), std::invalid_argument);
 }
 
 TEST(GpwEvaluatorCpmd, SetTimestepRejectsNonFinite) {
-    auto eval = water_eval();
+    auto base = water_eval();
+    auto eval = std::move(base);
     EXPECT_THROW(eval.set_timestep(std::numeric_limits<double>::quiet_NaN()),
                  std::invalid_argument);
     EXPECT_THROW(eval.set_timestep(std::numeric_limits<double>::infinity()),
@@ -176,8 +175,8 @@ TEST(GpwEvaluatorCpmd, SetTimestepRejectsNonFinite) {
 /// the message must name the missing provider path so the fix is readable.
 TEST(GpwEvaluatorCpmd, BuildWithoutTimestepThrows) {
     auto frame = water_frame();
-    auto eval = water_eval(); // valid kinds + compute_forces, NO set_timestep
-    eval.cpmd = true;
+    // CarParrinello without set_timestep: no nuclear clock.
+    CarParrinello eval{water_eval(), 400.0};
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     try {
@@ -193,10 +192,10 @@ TEST(GpwEvaluatorCpmd, BuildWithoutTimestepThrows) {
 /// stress request used to be dropped in silence. It must be refused instead.
 TEST(GpwEvaluatorCpmd, BuildRefusesCpmdWithStress) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.cpmd = true;
+    auto base = water_eval();
+    base.compute_stress = true;
+    CarParrinello eval{std::move(base), 400.0};
     eval.set_timestep(kDtFs);
-    eval.compute_stress = true;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     try {
@@ -209,48 +208,30 @@ TEST(GpwEvaluatorCpmd, BuildRefusesCpmdWithStress) {
 
 // ── Nosé–Hoover electronic thermostat guards ────────────────────────────
 
-TEST(GpwEvaluatorCpmd, BuildRejectsThermostatWithoutCpmd) {
+TEST(GpwEvaluatorCpmd, BareGpwHasNoPublicThermostatFlag) {
+    // Thermostat only exists via CarParrinello(ElectronicThermostat{...}).
+    // Bare GPWEvaluator cannot enable electronic thermostat.
     auto frame = water_frame();
     auto eval = water_eval();
-    eval.cpmd = false;
-    eval.cpmd_thermostat = true;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+    EXPECT_NO_THROW(eval.build(bc));
 }
 
-TEST(GpwEvaluatorCpmd, BuildRejectsBadThermostatParams) {
-    auto frame = water_frame();
-    {
-        auto eval = water_eval();
-        eval.cpmd = true;
-        eval.set_timestep(kDtFs);
-        eval.cpmd_thermostat = true;
-        eval.cpmd_ekin_target_ha = 0.0;
-        ATV::cpu::Context rt;
-        ATV::cpu::BuildContext bc{rt, frame};
-        EXPECT_THROW(eval.build(bc), std::invalid_argument);
-    }
-    {
-        auto eval = water_eval();
-        eval.cpmd = true;
-        eval.set_timestep(kDtFs);
-        eval.cpmd_thermostat = true;
-        eval.cpmd_tau_e = -5.0;
-        ATV::cpu::Context rt;
-        ATV::cpu::BuildContext bc{rt, frame};
-        EXPECT_THROW(eval.build(bc), std::invalid_argument);
-    }
+TEST(GpwEvaluatorCpmd, CtorRejectsBadThermostatParams) {
+    EXPECT_THROW(
+        (CarParrinello{water_eval(), 400.0, ElectronicThermostat{0.0, 50.0}}),
+        std::invalid_argument);
+    EXPECT_THROW(
+        (CarParrinello{water_eval(), 400.0, ElectronicThermostat{1e-5, -5.0}}),
+        std::invalid_argument);
 }
 
 TEST(GpwEvaluatorCpmd, BuildAcceptsCpmdWithThermostat) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.cpmd = true;
+    auto base = water_eval();
+    CarParrinello eval{std::move(base), 400.0, ElectronicThermostat{1e-5, 50.0}};
     eval.set_timestep(kDtFs);
-    eval.cpmd_thermostat = true;
-    eval.cpmd_ekin_target_ha = 1e-5;
-    eval.cpmd_tau_e = 50.0;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));
@@ -260,14 +241,14 @@ TEST(GpwEvaluatorCpmd, BuildAcceptsCpmdWithThermostat) {
 
 TEST(GpwEvaluatorCpmd, BuildAcceptsMultiKRksCpmd) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.cpmd = true;
+    auto base = water_eval();
+    CarParrinello eval{std::move(base), 400.0};
     eval.set_timestep(kDtFs);
-    eval.k_mesh[0] = 1;
-    eval.k_mesh[1] = 1;
-    eval.k_mesh[2] = 2;
-    eval.k_time_reversal = false;
-    eval.nonperiodic = false;
+    eval.method().k_mesh[0] = 1;
+    eval.method().k_mesh[1] = 1;
+    eval.method().k_mesh[2] = 2;
+    eval.method().k_time_reversal = false;
+    eval.method().nonperiodic = false;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));
@@ -275,13 +256,13 @@ TEST(GpwEvaluatorCpmd, BuildAcceptsMultiKRksCpmd) {
 
 TEST(GpwEvaluatorCpmd, BuildRejectsMultiKUksCpmd) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.cpmd = true;
+    auto base = water_eval();
+    base.n_alpha = 5;
+    base.n_beta = 3;
+    CarParrinello eval{std::move(base), 400.0};
     eval.set_timestep(kDtFs);
-    eval.n_alpha = 5;
-    eval.n_beta = 3;
-    eval.k_mesh[2] = 2;
-    eval.nonperiodic = false;
+    eval.method().k_mesh[2] = 2;
+    eval.method().nonperiodic = false;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
@@ -289,12 +270,11 @@ TEST(GpwEvaluatorCpmd, BuildRejectsMultiKUksCpmd) {
 
 TEST(GpwEvaluatorCpmd, BuildRejectsMultiKCpmdThermostat) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.cpmd = true;
+    auto base = water_eval();
+    CarParrinello eval{std::move(base), 400.0, ElectronicThermostat{1e-5, 50.0}};
     eval.set_timestep(kDtFs);
-    eval.cpmd_thermostat = true;
-    eval.k_mesh[2] = 2;
-    eval.nonperiodic = false;
+    eval.method().k_mesh[2] = 2;
+    eval.method().nonperiodic = false;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
@@ -311,6 +291,7 @@ TEST(GpwEvaluatorCpmd, BuildRejectsMultiKCpmdThermostat) {
 // conserved energy the user reads is not the one the propagator advanced.
 
 namespace {
+
 
 /// @brief H₂ (r = 0.74 Å) centred in a 6 Å box — the cheapest frame that
 ///        reaches `GPWEvaluator::launch` at all.
@@ -340,7 +321,7 @@ ATV::cpu::Frame h2_frame() {
 /// enough for the SCF to reach `tol` inside `max_iter` (an unconverged seed
 /// throws, so "it ran" already means "it converged"). ~0.2 s for the whole
 /// test, which keeps this file inside the seconds-scale unit budget.
-ATV::cpu::gpw::GPWEvaluator h2_cpmd_eval() {
+CarParrinello h2_cpmd_eval() {
     const ATV::cpu::gpw::Kind H{
         molrs::Element::H,
         ATV::cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
@@ -349,10 +330,9 @@ ATV::cpu::gpw::GPWEvaluator h2_cpmd_eval() {
         {H}, /*cutoff_ry*/ 60.0, /*max_iter*/ 60, /*tol*/ 1e-5,
         /*mix*/ 0.3, ATV::cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
         /*compute_forces*/ true);
-    e.cpmd = true;
-    e.cpmd_mu = 2000.0; // as in regressions/dynamics/cpmd-water
-    e.set_timestep(kDtFs);
-    return e;
+    CarParrinello cp{std::move(e), 2000.0}; // as in regressions/dynamics/cpmd-water
+    cp.set_timestep(kDtFs);
+    return cp;
 }
 
 } // namespace
@@ -417,6 +397,7 @@ TEST(GpwEvaluatorCpmd, PublishesElectronicEnergyMetaKeys) {
 
 // Multi-k fixed-density payload (tiny H2 GpwDft).
 namespace {
+
 
 ATV::cpu::gpw::GridBasisFunction s_basis_cp(double alpha, const double c[3]) {
     ATV::cpu::gpw::GridPrimitive p;

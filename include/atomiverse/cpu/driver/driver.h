@@ -52,7 +52,8 @@
 ///      @see LoopServices.
 ///   4. The MPI contract: a criterion's verdict is all-reduced by the driver, once, so a
 ///      criterion author never has to think about ranks disagreeing on when to stop.
-///   5. The categorical setter API (add_potential / add_potential / … / set_thermo).
+///   5. The categorical setter API (`set_evaluator` / `set_neighbor` / …
+///      `set_thermo`). Plan primitive is only `on(phase).add`.
 #pragma once
 
 #include <algorithm>
@@ -766,33 +767,26 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     // additions (set_integrator, set_optimizer, etc.) are declared in
     // the concrete class.
 
-    /// @brief Register any Potential (pair, bond, angle, dihedral, coul, …).
+    /// @brief Register an energy/force source at the driver's eval/force phase.
     ///
-    /// Plural — LJ + coul/cut + bonds are all `Potential`s. There is no
-    /// separate `add_potential` / `add_potential` (those were a false taxonomy). Style
-    /// *data* lives on `cpu::ForceField` (`def_pairstyle` / `def_bondstyle`,
-    /// molrs-aligned); this method only owns runtime Potential components.
-    ///
-    /// Bound at `Traits::eval_phase` order 0. Prefer
-    /// `on(phase).add(potential)` when you need an explicit phase/order.
-    template <typename P,
-              std::enable_if_t<!std::is_lvalue_reference_v<P>, int> = 0>
-    void add_potential(P&& p) {
-        using D = std::decay_t<P>;
-        static_assert(std::is_base_of_v<ATV::cpu::Potential, D>,
-                      "add_potential requires a cpu::Potential subclass");
-        this->on(Traits::eval_phase).add(std::forward<P>(p), /*order=*/0);
+    /// **Plural** — classical pair + bond + coul, QMMM, GPW BOMD, nested HF
+    /// methods, bias, and AIMD wrappers all use this one categorical entry.
+    /// Identity is the **type**, not the setter name. Bound at
+    /// `Traits::eval_phase` order 0 via `on().add`. Prefer
+    /// `on(phase).add(...)` when you need an explicit phase/order.
+    template <typename E,
+              std::enable_if_t<!std::is_lvalue_reference_v<E>, int> = 0>
+    void set_evaluator(E&& e) {
+        this->on(Traits::eval_phase).add(std::forward<E>(e), /*order=*/0);
     }
 
-    template <typename P>
-    void add_potential_ref(P& p) {
-        static_assert(std::is_base_of_v<ATV::cpu::Potential, P>,
-                      "add_potential_ref requires a cpu::Potential subclass");
-        this->on(Traits::eval_phase).add_ref(p, /*order=*/0);
+    template <typename E>
+    void set_evaluator_ref(E& e) {
+        this->on(Traits::eval_phase).add_ref(e, /*order=*/0);
     }
 
-    template <typename P>
-    void add_potential(P&) = delete;
+    template <typename E>
+    void set_evaluator(E&) = delete;
 
     /// @brief Configure the neighbor list (LAMMPS `neighbor` + `neigh_modify`).
     /// Bound at the driver's `neighbor_phase` @ -10: for MD that is the
@@ -819,12 +813,12 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     template <typename Obs>
         requires(!std::is_lvalue_reference_v<Obs>)
     void set_observer(Obs&& obs) {
-        this->add(std::forward<Obs>(obs));
+        this->bind_defaults(std::forward<Obs>(obs));
     }
 
     template <typename Obs>
     void set_observer_ref(Obs& obs) {
-        this->add_ref(obs);
+        this->bind_defaults_ref(obs);
     }
 
     template <typename Obs>
@@ -834,12 +828,12 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     template <typename R>
         requires(!std::is_lvalue_reference_v<R>)
     void set_record(R&& r) {
-        this->add(std::forward<R>(r));
+        this->bind_defaults(std::forward<R>(r));
     }
 
     template <typename R>
     void set_record_ref(R& r) {
-        this->add_ref(r);
+        this->bind_defaults_ref(r);
     }
 
     template <typename R>
@@ -877,7 +871,7 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
         criteria_owned_.push_back(std::move(owned));
         criteria_.push_back(raw);
         if (!raw->default_bindings().empty())
-            this->add_ref(*raw); // Plan borrows; this driver owns.
+            this->bind_defaults_ref(*raw); // Plan borrows; this driver owns.
     }
 
     /// @brief Borrow a caller-owned termination Criterion (lvalue). @see add_criterion
@@ -893,7 +887,7 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
                       "add_criterion_ref requires a cpu::Criterion subclass");
         criteria_.push_back(&c);
         if (!c.default_bindings().empty())
-            this->add_ref(c);
+            this->bind_defaults_ref(c);
     }
 
     /// Implicit lvalue owning is forbidden. Use `add_criterion_ref(c)`.
@@ -966,7 +960,7 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
                 + "', rejected re-call with '" + n + "'");
         }
         slot = n;
-        this->add(std::forward<C>(comp));
+        this->bind_defaults(std::forward<C>(comp));
     }
 
     /// @brief Borrowing counterpart of `set_singular_default_owned_`.
@@ -982,7 +976,7 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
                 + "', rejected re-call with '" + n + "'");
         }
         slot = n;
-        this->add_ref(comp);
+        this->bind_defaults_ref(comp);
     }
 
     /// @brief Singular setter at an explicit phase / order. Used for

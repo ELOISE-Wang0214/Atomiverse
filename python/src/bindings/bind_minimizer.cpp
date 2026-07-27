@@ -50,10 +50,19 @@ struct MinimizeHandle {
     template <typename Params, typename Component>
     void add(const Params& p, Component component,
              std::optional<MinimizeBinding> binding) {
-        if (binding)
+        if (binding) {
             driver.on(binding->phase).add(std::move(component), binding->order);
-        else
-            driver.add(std::move(component));
+        } else {
+            using P = std::decay_t<Params>;
+            if constexpr (std::is_same_v<P, cpu::task::PairLJCutParams>)
+                driver.set_evaluator(std::move(component));
+            else if constexpr (std::is_same_v<P, cpu::task::NeighborListParams>)
+                driver.set_neighbor(std::move(component));
+            else if constexpr (std::is_same_v<P, cpu::task::LBFGSParams>)
+                driver.set_optimizer(std::move(component));
+            else
+                driver.set_observer(std::move(component));
+        }
         mirror.push_back(MinimizeComponentEntry{p, binding});
     }
 

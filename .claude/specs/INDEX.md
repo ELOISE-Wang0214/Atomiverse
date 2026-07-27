@@ -3,6 +3,15 @@
 Live specs under `.claude/specs/`. Completed work is **deleted**; history is
 the git log. Method census: `docs/roadmap/`.
 
+## Live — driver registration + AIMD wrappers (2026-07-27)
+
+Operator design (set_evaluator, no public `add`, CPMD as types). **No BC.**
+
+| Spec | Status | One-line |
+| ---- | ------ | -------- |
+| [driver-api-01-evaluator-registration](driver-api-01-evaluator-registration/spec.md) | approved | `set_evaluator`; delete public `add` / `add_potential` |
+| [driver-api-02-aimd-wrappers](driver-api-02-aimd-wrappers/spec.md) | approved | CarParrinello / XlBomdForce / SecondGenCp; strip method flags |
+
 ## Live — esmm campaign: ES × MM connection layer (2026-07-26, 16 specs)
 
 Operator-approved three-wave campaign (plan-mode design review + Q&A 2026-07-26):

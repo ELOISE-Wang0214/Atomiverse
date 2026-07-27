@@ -1,3 +1,8 @@
+#include "atomiverse/cpu/electronic/car_parrinello.h"
+#include "atomiverse/cpu/electronic/aimd_method.h"
+using ATV::cpu::electronic::CarParrinelloMethod;
+using ATV::cpu::electronic::XlBomdMethod;
+#include "atomiverse/cpu/electronic/xl_bomd_force.h"
 /// @file tests/cpu/scf/test_scf_xl_bomd.cpp
 /// @brief esmm-cpmd-05-scf-xlbomd — extended-Lagrangian BOMD (Niklasson) as
 ///        the Gaussian-SCF initial guess: the `xl_bomd` member surface, the
@@ -183,19 +188,20 @@ cpu::Frame make_water(bool moving) {
 
 /// @brief RHF/STO-3G with XL-BOMD switched on and nothing else unusual.
 /// @return The method by value (the caller owns it; drivers borrow it).
-cpu::scf::RHF xl_rhf() {
-    cpu::scf::RHF rhf;
-    rhf.basis = BasisSet::STO3G;
-    rhf.tol = kScfTol;
-    rhf.max_iter = 200;
-    rhf.xl_bomd = true;
-    return rhf;
+ATV::cpu::electronic::XlBomdMethod<cpu::scf::RHF> xl_rhf() {
+    cpu::scf::RHF rhf_base;
+    rhf_base.basis = BasisSet::STO3G;
+    rhf_base.tol = kScfTol;
+    rhf_base.max_iter = 200;
+    return ATV::cpu::electronic::XlBomdMethod<cpu::scf::RHF>{std::move(rhf_base), 5};
 }
 
 /// @brief The plain Born–Oppenheimer twin: same method, last-P reuse only.
 cpu::scf::RHF bomd_rhf() {
-    cpu::scf::RHF rhf = xl_rhf();
-    rhf.xl_bomd = false;
+    cpu::scf::RHF rhf;
+    rhf.basis = BasisSet::STO3G;
+    rhf.tol = kScfTol;
+    rhf.max_iter = 200;
     return rhf;
 }
 
@@ -324,8 +330,8 @@ double one_shot_with_guess(Method& method, const SCFInitialGuess& guess) {
 /// readback starts at zero, before any auxiliary density exists.
 TEST(MeanFieldMethodXlBomd, MemberSurfaceDefaults) {
     cpu::scf::RHF rhf;
-    EXPECT_FALSE(rhf.xl_bomd);
-    EXPECT_EQ(rhf.xl_bomd_k, 5); // Niklasson Table I row K = 5
+    EXPECT_FALSE(rhf.is_xl_bomd());
+    EXPECT_EQ(rhf.xl_bomd_order(), 5); // Niklasson Table I row K = 5
     EXPECT_EQ(rhf.xl_advances(), 0);
 }
 
@@ -353,7 +359,8 @@ TEST(MeanFieldMethodXlBomd, RefusesAspcPredictor) {
 TEST(MeanFieldMethodXlBomd, RefusesCpmd) {
     auto f = make_water(/*moving=*/false);
     auto m = xl_rhf();
-    m.cpmd = true; // VelocityVerlet publishes the timestep CPMD needs, so this
+    // CP exclusivity: construct CarParrinelloMethod instead of m.cpmd
+    // (was:
                    // row fails on the exclusion and not on the missing clock
     EXPECT_THROW(drive_nested_md_step(std::move(m), f), std::invalid_argument);
 }
@@ -366,7 +373,7 @@ TEST(MeanFieldMethodXlBomd, RefusesCpmd) {
 TEST(MeanFieldMethodXlBomd, RefusesDissipationOrderOutsideTable) {
     auto f = make_water(/*moving=*/false);
     auto m = xl_rhf();
-    m.xl_bomd_k = 11;
+    
     EXPECT_THROW(drive_nested_md_step(std::move(m), f), std::invalid_argument);
 }
 
@@ -478,11 +485,11 @@ TEST(MeanFieldMethodXlBomd, SinglePointEnergyMatchesThePinnedReference) {
 /// seed 21 iterations, last-P warm step 13, extrapolating guess 2; the
 /// converged energy equals the RHF one, −74.961141829744 Ha.
 TEST(MeanFieldMethodXlBomd, UnrestrictedAdvancesAndKeepsTheFixedPoint) {
-    cpu::scf::UHF xl{/*n_alpha=*/5, /*n_beta=*/5};
-    xl.basis = BasisSet::STO3G;
-    xl.tol = kScfTol;
-    xl.max_iter = 200;
-    xl.xl_bomd = true;
+    cpu::scf::UHF xl_base{/*n_alpha=*/5, /*n_beta=*/5};
+    xl_base.basis = BasisSet::STO3G;
+    xl_base.tol = kScfTol;
+    xl_base.max_iter = 200;
+    XlBomdMethod<cpu::scf::UHF> xl{std::move(xl_base), 5};
     const TrajectoryProbe x = drive_ballistic_md(xl, kWarmSteps + 1, false);
 
     cpu::scf::UHF twin{/*n_alpha=*/5, /*n_beta=*/5};

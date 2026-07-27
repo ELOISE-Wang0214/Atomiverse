@@ -373,6 +373,15 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
     ///        if both set — prefer one). Public evaluator: `scf::D4`.
     bool d4 = false;
 
+
+    /// @brief True when Car–Parrinello electronic dynamics is enabled (via wrapper).
+    bool is_cpmd() const { return cpmd; }
+    /// @brief True when XL-BOMD auxiliary-density dynamics is enabled.
+    bool is_xl_bomd() const { return xl_bomd; }
+    /// @brief XL-BOMD dissipation order K (meaningful when `is_xl_bomd()`).
+    int xl_bomd_order() const { return xl_bomd_k; }
+
+protected:
     // ── Car–Parrinello molecular dynamics (esmm-cpmd-04) ──────────────
     /// @brief Propagate the occupied orbitals with a fictitious mass instead
     ///        of re-converging the SCF at every nuclear step (Car &
@@ -458,6 +467,7 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
     /// Changing it between runs re-seats the propagators (history dropped).
     int xl_bomd_k = 5;
 
+public:
     /// @brief XL-BOMD auxiliary-density propagation steps taken (one per
     ///        converged nested run). @return Count; 0 under BOMD.
     int xl_advances() const { return xl_advances_; }
