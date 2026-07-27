@@ -22,45 +22,44 @@ enum class DftbSkSet {
     ThreeOb = 1,
 };
 
-/// @brief SCC-DFTB2 energy (+ optional analytic nuclear forces) for H/C/N/O.
+/// @brief SCC-DFTB2 energy (+ optional nuclear forces) for H/C/N/O.
 ///
 /// Self-consistent-charge DFTB2 (Elstner et al., Phys. Rev. B **58**, 7260
-/// (1998), DOI 10.1103/PhysRevB.58.7260): electronic tight-binding + second-
-/// order SCC Coulomb + pair repulsive. Integrals and onsite/Hubbard data come
-/// from static tables — no runtime `.skf` parser, no public factory.
+/// (1998), DOI 10.1103/PhysRevB.58.7260) with optional **collinear** spin
+/// polarization (Köhler / DFTB+ spin channel): dual α/β Fock matrices,
+/// Mulliken Δq and spin population m = Nα−Nβ.
 ///
 /// - `sk_set = MioSketch` (default): `basis_data/dftb_mio_tables.h` exponential
-///   sketch (not bit-identical to DFTB.org mio-1-1). Analytic forces (HF +
-///   Pulay + SCC shift on ∂S + fixed-Δq ∂γ + repulsive) on this path.
-/// - `sk_set = ThreeOb`: `basis_data/dftb_3ob_tables.h` transcribed 3ob-3-1
-///   radial H/S + repulsive spline (Gaus et al., JCTC 2013; organic CHNO).
-///   Forces currently re-SCC central FD of E (energy path is oracle-pinned).
+///   sketch (+ spin_W). Closed shell (`multiplicity == 1`): analytic nuclear
+///   forces (HF + Pulay + SCC γ + repulsive). Open shell: re-SCC central FD.
+/// - `sk_set = ThreeOb`: `basis_data/dftb_3ob_tables.h` 3ob-3-1 radial H/S +
+///   repulsive (Gaus et al., JCTC 2013; organic CHNO). Closed-shell energy;
+///   forces are re-SCC FD. Spin channel is MioSketch-only.
 ///
-/// Supported Z: 1, 6, 7, 8; any other element or missing pair throws.
-///
-/// Energy is \(E=\sum_i n_i\varepsilon_i - E_{\mathrm{SCC}} + E_{\mathrm{rep}}\)
-/// with SCC Hamiltonian \(H=H_0+\tfrac12 S_{\mu\nu}(\Delta V_A+\Delta V_B)\).
-/// When @c with_forces is true on MioSketch, nuclear forces are the closed-form
-/// gradient — the DFTB+ force module boundary — not a re-SCC finite difference.
-///
-/// Units on the public surface: energy [eV], positions [Å], forces [eV/Å].
+/// Open shell uses `charge` and `multiplicity` to set nα, nβ. Units: energy
+/// [eV], positions [Å], forces [eV/Å].
 ///
 /// @code
 ///   cpu::semiempirical::DFTB2 dftb;
 ///   dftb.sk_set = cpu::semiempirical::DftbSkSet::ThreeOb;
-///   dftb.with_forces = false;
+///   dftb.multiplicity = 3;   // O2 triplet (MioSketch)
+///   dftb.with_forces = true;
 ///   eval.on(evaluate::Phase::evaluate).add(std::move(dftb));
 /// @endcode
 class DFTB2 : public cpu::Semiempirical {
   public:
-    /// @brief SCC residual tolerance on max |Δq| (dimensionless e).
+    /// @brief SCC residual tolerance on max |Δq| (and |Δm| when open shell).
     double scc_tol = 1e-8;
     /// @brief Maximum SCC iterations (dimensionless).
     int max_scc = 50;
-    /// @brief When true, write F=−∇E [eV/Å] on launch (analytic on MioSketch).
+    /// @brief When true, write F=−∇E [eV/Å] on launch.
     bool with_forces = true;
-    /// @brief Static SK parameter set (constructor/member — not a Config bag).
+    /// @brief Static SK parameter set (member — not a Config bag).
     DftbSkSet sk_set = DftbSkSet::MioSketch;
+    /// @brief Net molecular charge [e] (subtracted from valence electron count).
+    int charge = 0;
+    /// @brief Spin multiplicity 2S+1 (dimensionless). Default 1 = closed shell.
+    int multiplicity = 1;
 
     DFTB2() = default;
 
@@ -72,8 +71,16 @@ class DFTB2 : public cpu::Semiempirical {
     /// @brief Last electronic+repulsive energy [eV].
     double last_energy() const { return energy_; }
 
+    /// @brief Per-atom Mulliken charge fluctuation Δq_A [e] after last launch.
+    const std::vector<double>& last_mulliken_dq() const { return last_dq_; }
+
+    /// @brief Per-atom Mulliken spin population m_A = Nα−Nβ [e] after last launch.
+    const std::vector<double>& last_mulliken_spin() const { return last_spin_; }
+
   private:
     double energy_ = 0;
+    std::vector<double> last_dq_;
+    std::vector<double> last_spin_;
 };
 
 } // namespace semiempirical

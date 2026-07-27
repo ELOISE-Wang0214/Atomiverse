@@ -9,7 +9,7 @@
 /// DFTB.org mio-1-1 `.skf` dump; unsupported Z throws at lookup.
 ///
 /// Units in this header: energy [eV], length [Å], Hubbard U [eV],
-/// valence electron count dimensionless.
+/// spin constant W [eV], valence electron count dimensionless.
 #pragma once
 
 #include <cstddef>
@@ -19,7 +19,7 @@ namespace cpu {
 namespace semiempirical {
 namespace basis_data {
 
-/// @brief One supported element's onsite + Hubbard data.
+/// @brief One supported element's onsite + Hubbard + spin data.
 struct DftbElementRow {
     int z;            ///< atomic number
     const char* sym;  ///< element symbol
@@ -29,6 +29,7 @@ struct DftbElementRow {
     double e_p;       ///< onsite p energy [eV] (unused when n_ao==1)
     double hubbard_u; ///< Hubbard U [eV]
     double r_cut;     ///< pair cutoff [Å]
+    double spin_w;    ///< atom-averaged collinear spin constant W [eV]
 };
 
 /// @brief Slater–Koster two-center integral scale for one ordered element pair.
@@ -65,12 +66,13 @@ struct DftbPairRepRow {
 };
 
 // ── Element rows (H, C, N, O) ──────────────────────────────────────────
-// Onsite / U roughly mio order of magnitude (eV).
+// Onsite / U roughly mio order of magnitude (eV). Spin W is atom-averaged
+// sketch scale (negative → high-spin preference in the collinear channel).
 inline constexpr DftbElementRow kDftbElements[] = {
-    {1, "H", 1, 1.0, -6.492794, 0.0, 10.591, 3.5},
-    {6, "C", 4, 4.0, -12.50, -3.99, 10.0, 4.5},
-    {7, "N", 4, 5.0, -16.0, -5.5, 11.5, 4.5},
-    {8, "O", 4, 6.0, -18.5, -7.0, 13.4, 4.5},
+    {1, "H", 1, 1.0, -6.492794, 0.0, 10.591, 3.5, -0.50},
+    {6, "C", 4, 4.0, -12.50, -3.99, 10.0, 4.5, -0.80},
+    {7, "N", 4, 5.0, -16.0, -5.5, 11.5, 4.5, -0.90},
+    {8, "O", 4, 6.0, -18.5, -7.0, 13.4, 4.5, -1.00},
 };
 inline constexpr std::size_t kDftbNElements =
     sizeof(kDftbElements) / sizeof(kDftbElements[0]);
