@@ -143,6 +143,29 @@ REFERENCE / handoff (`ratio` or `perf_exempt`).
 | Multi-topology virtual sites TIP4P+TIP5P (E9) | [virtual-site-multi-topology](virtual-site-multi-topology.md) | `regressions/md/virtual-site-multi-topology` | lammps (ratio **0.084**) |
 | Coupled PIM dipoles ⊕ electrode \(Q\) (E5) | [dipole-electrode-joint](dipole-electrode-joint.md) | `regressions/md/dipole-electrode-joint` | metalwalls (`perf_exempt`) |
 
+## Index — MetalWalls capability wave 5 (2026-07-27)
+
+Electrochem production depth + polarization dynamics (map E1–E4, E7, E9).
+Wave 4 (2026-07-24) landed production depth on the existing footholds with no
+new method pages, so there is no wave-4 section. Offline pins only — see
+[metalwalls-method-handoff](../../developer/metalwalls-method-handoff.md) and
+`tools/metalwalls_oracle/`. **Oracle priority:** LAMMPS when the feature
+overlaps; MetalWalls / literature for MW-only physics. Fair walls from
+REFERENCE / handoff (`ratio` or `perf_exempt`).
+
+| Method | Page | Regression | Oracle |
+| ------ | ---- | ---------- | ------ |
+| Per-electrode Gaussian width \(\eta_e\) on `ConstPotBO` (E2) | [per-electrode-eta](per-electrode-eta.md) | `regressions/md/per-electrode-eta` | literature Reed/Scalfi/MW (`perf_exempt`) |
+| Constant-charge electrode control (conq, E1) | [const-charge-electrode](const-charge-electrode.md) | `regressions/md/const-charge-electrode` | lammps (`perf_exempt`) |
+| Post-solve ghost-charge halo refresh (MPI DD, E1) | [const-pot-charge-halo-mpi](const-pot-charge-halo-mpi.md) | `regressions/md/const-pot-charge-halo-mpi` | literature (`perf_exempt`) |
+| True mass-zero constrained MaZe charge dynamics (E1) | [maze-symplectic-charge-dynamics](maze-symplectic-charge-dynamics.md) | `regressions/md/maze-symplectic-charge-dynamics` | metalwalls (`perf_exempt`) |
+| Constant-\(D\) Zhang–Sprik polarization feedback (E3) | [constant-d-polarization-feedback](constant-d-polarization-feedback.md) | `regressions/md/constant-d-polarization-feedback` | metalwalls (`perf_exempt`) |
+| Extended-Lagrangian PIM dipole dynamics (E4) | [extended-lagrangian-dipoles](extended-lagrangian-dipoles.md) | `regressions/md/extended-lagrangian-dipoles` | metalwalls (`perf_exempt`) |
+| QEq fluctuating-charge equilibration (E4) | [qeq-fluctuating-charge](qeq-fluctuating-charge.md) | `regressions/md/qeq-fluctuating-charge` | lammps `fix qeq/point` (ratio **0.45**) |
+| Bulk polarizable IL NPT — PIM virial → barostat (E9) | [pim-npt-polarizable-il](pim-npt-polarizable-il.md) | `regressions/md/pim-npt-polarizable-il` | metalwalls offline Thole-PIM pin (`perf_exempt`) |
+| Voronoi site-volume companion for Thomas–Fermi (E7) | [voronoi-volume-tf](voronoi-volume-tf.md) | `regressions/md/voronoi-volume-tf` | metalwalls (`perf_exempt`) |
+| Const-pot ionic-liquid EDL production box (E9) | [const-pot-il-edl-box](const-pot-il-edl-box.md) | `regressions/md/const-pot-il-edl-box` | metalwalls (`perf_exempt`) |
+
 ## Index — CP2K capability wave 1 (2026-07-23)
 
 | Method | Page | Regression |
