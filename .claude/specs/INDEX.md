@@ -28,7 +28,7 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
 | W3-1 | esmm-cpmd-01-electronic-home | — | DONE 2026-07-26 (closed; see git c40acdb3) — cpu/electronic/ shared propagators + linalg orbital_tangent extraction |
 | W3-2 | esmm-cpmd-02-timestep-protocol | W3-1 | DONE 2026-07-27 (closed; see git) — TimestepProvider/Consumer; cpmd_dt deleted; cpmd×stress gate |
 | W3-3 | esmm-cpmd-03-observability | W3-2 | DONE 2026-07-27 (closed; see git) — kEnergyElectronKinetic/Thermostat + CpmdConserved → Thermo drift |
-| W3-4 | esmm-cpmd-04-ao-cpmd | W3-1..3 | Gaussian AO-CPMD on MeanFieldMethod (fixed-density eval + W=occ·C(CᵀFC)Cᵀ) |
+| W3-4 | esmm-cpmd-04-ao-cpmd | W3-1..3 | DONE 2026-07-27 (closed; see git 2de56c65) — Gaussian AO-CPMD on MeanFieldMethod |
 | W3-5 | esmm-cpmd-05-scf-xlbomd | W3-4 | XL-BOMD on the SCF methods (guess ladder) |
 | W3-6 | esmm-cpmd-06-single-eval | W3-3 | GpwDft::overlap(); CPMD single KS eval per step (~2×) |
 
