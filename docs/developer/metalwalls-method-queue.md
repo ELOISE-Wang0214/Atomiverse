@@ -49,30 +49,8 @@ reachable (MaZe + Fumi–Tosi NL footholds) but unbuilt.
 
 ## pending
 
-### E1 / E2 — const-pot residual
-
-- [ ] `per-electrode-eta` | Per-electrode Gaussian width \(\eta_e\) (v1 shares one \(\eta\)) | electrochem | multi-wall different \(\eta\) | — | \(Q\), \(A\) diag vs shared-\(\eta\) twin | **oracle=metalwalls**; map §1 multi-electrode \(V,\eta\) ~; `ConstPotBO::pair_A_(r,\eta_i,\eta_j)` internals ready, public surface still one shared `eta` (verified 2026-07-27)
-- [ ] `const-charge-electrode` | Constant-charge electrode control (fixed \(Q\), not const-\(V\)) | electrochem | parallel-plate fixed total \(Q\) | — | \(Q\) fixed, \(V\) response | **oracle=lammps** ELECTRODE / fixed charge + freeze; map §1 const-charge ~
-- [ ] `const-pot-charge-halo-mpi` | Charge halo correctness after \(Q\) update under MPI DD | electrochem | multi-rank planar walls | — | ghost \(q\) match owner after solve | **oracle=literature** / self-consistency; map §1/§6 P0 timing (schema borders ✓; no halo/MPI handling in `ConstPot*` — verified 2026-07-27)
-
-### E1 / E3 depth — wave-4 footholds ≠ closed (new 2026-07-27)
-
-- [ ] `maze-symplectic-charge-dynamics` | True mass-zero constrained (SHAKE-like) MaZe charge dynamics (Coretti et al.) | electrochem | parallel-plate vs `ConstPotMaZe` foothold | — | \(Q(t)\) continuity, constraint residual, energy conservation vs CG+ASPC twin | **oracle=metalwalls**; map §1 MaZe ~ (`ConstPotMaZe` = CG+ASPC adiabatic foothold; symplectic constrained deferred in-header)
-- [ ] `constant-d-polarization-feedback` | Self-consistent constant-\(\mathbf{D}\) ensemble: \(E = D - 4\pi P\) from itinerant polarization | electrochem | bulk electrolyte constant-\(D_z\) | — | \(P_z(t)\), \(E_z\) response vs vacuum-foothold twin | **oracle=metalwalls** / literature (Zhang–Sprik constant-D); map §1 D-field ~ (`FixDfield` = vacuum \(E\equiv D\) foothold)
-
-### E4 / E5 — polarization depth
-
-- [ ] `extended-lagrangian-dipoles` | Extended-Lagrangian / mass-zero dipole dynamics | polarizable | bulk polarizable toy | — | \(\mu(t)\), energy | **oracle=metalwalls**; map §2 XL dipoles ○ (SCF PIM ✓ is foothold)
-- [ ] `qeq-fluctuating-charge` | QEq / fluctuating-charge (≠ const-pot electrode) | polarizable | small organic / ionic toy | — | \(q_i\), \(E\) | **oracle=lammps** `fix qeq` / charge equilibration; map §2 FQ/QEq ○
-- [ ] `pim-npt-polarizable-il` | Bulk polarizable IL under NPT (PIM product twin) | polarizable | small IL box NPT | — | \(E\), \(P\), short NPT | **oracle=metalwalls**; map §9 PIM-NPT ~ (bulk SCF PIM foothold only)
-
-### E7 — metallicity residual
-
-- [ ] `voronoi-volume-tf` | Voronoi / site-volume companion for Thomas–Fermi metallicity | electrochem | TF gold capacitor toy | — | \(v_i\), \(Q\) vs fixed-density TF | **oracle=metalwalls**; map §1 Voronoi volume (TF) ○; TF `l_tf` foothold ✓
-
 ### E9 / scenarios — production EDL (beyond wave-4 aqueous staff)
 
-- [ ] `const-pot-il-edl-box` | Planar const-pot + non-polarizable IL EDL production box | electrochem | graphene-like walls + IL | — | \(Q\), \(\Psi(z)\), short NVT | **oracle=metalwalls**; map §9 planar graphene+const-pot+IL ~ (E1 Components ✓; product box open; aqueous twin landed wave-4 `const-pot-tip4p-edl`)
 - [ ] `nanoporous-carbon-const-pot` | Nanoporous carbon geometry + const-pot (product) | electrochem | slit / pore carbon + electrolyte | — | \(Q\), occupancy proxy | **oracle=metalwalls**; map §9 nanoporous ○ (after E1 production depth)
 - [ ] `maze-molten-salt-al` | Molten-salt + Al wall + MaZe MW example scenario | electrochem | Fumi–Tosi NL salt + Al const-pot walls | — | \(Q\), \(g(r)\) proxy, short NVT | **oracle=metalwalls**; map §9 molten salt ~ (MaZe + Fumi–Tosi NL footholds landed wave-4; product box unbuilt — new 2026-07-27)
 
@@ -82,7 +60,18 @@ reachable (MaZe + Fumi–Tosi NL footholds) but unbuilt.
 
 ## in_progress
 
-*(empty after manual wave-4 land 2026-07-24)*
+### Wave 5 — assigned 2026-07-27
+
+- [~] `per-electrode-eta` | Per-electrode Gaussian width \(\eta_e\) (v1 shares one \(\eta\)) | electrochem | multi-wall different \(\eta\) | — | \(Q\), \(A\) diag vs shared-\(\eta\) twin | **oracle=metalwalls**; map §1 multi-electrode \(V,\eta\) ~; `ConstPotBO::pair_A_(r,\eta_i,\eta_j)` internals ready, public surface still one shared `eta` (verified 2026-07-27)
+- [~] `const-charge-electrode` | Constant-charge electrode control (fixed \(Q\), not const-\(V\)) | electrochem | parallel-plate fixed total \(Q\) | — | \(Q\) fixed, \(V\) response | **oracle=lammps** ELECTRODE / fixed charge + freeze; map §1 const-charge ~
+- [~] `const-pot-charge-halo-mpi` | Charge halo correctness after \(Q\) update under MPI DD | electrochem | multi-rank planar walls | — | ghost \(q\) match owner after solve | **oracle=literature** / self-consistency; map §1/§6 P0 timing (schema borders ✓; no halo/MPI handling in `ConstPot*` — verified 2026-07-27)
+- [~] `maze-symplectic-charge-dynamics` | True mass-zero constrained (SHAKE-like) MaZe charge dynamics (Coretti et al.) | electrochem | parallel-plate vs `ConstPotMaZe` foothold | — | \(Q(t)\) continuity, constraint residual, energy conservation vs CG+ASPC twin | **oracle=metalwalls**; map §1 MaZe ~ (`ConstPotMaZe` = CG+ASPC adiabatic foothold; symplectic constrained deferred in-header)
+- [~] `constant-d-polarization-feedback` | Self-consistent constant-\(\mathbf{D}\) ensemble: \(E = D - 4\pi P\) from itinerant polarization | electrochem | bulk electrolyte constant-\(D_z\) | — | \(P_z(t)\), \(E_z\) response vs vacuum-foothold twin | **oracle=metalwalls** / literature (Zhang–Sprik constant-D); map §1 D-field ~ (`FixDfield` = vacuum \(E\equiv D\) foothold)
+- [~] `extended-lagrangian-dipoles` | Extended-Lagrangian / mass-zero dipole dynamics | polarizable | bulk polarizable toy | — | \(\mu(t)\), energy | **oracle=metalwalls**; map §2 XL dipoles ○ (SCF PIM ✓ is foothold)
+- [~] `qeq-fluctuating-charge` | QEq / fluctuating-charge (≠ const-pot electrode) | polarizable | small organic / ionic toy | — | \(q_i\), \(E\) | **oracle=lammps** `fix qeq` / charge equilibration; map §2 FQ/QEq ○
+- [~] `pim-npt-polarizable-il` | Bulk polarizable IL under NPT (PIM product twin) | polarizable | small IL box NPT | — | \(E\), \(P\), short NPT | **oracle=metalwalls**; map §9 PIM-NPT ~ (bulk SCF PIM foothold only)
+- [~] `voronoi-volume-tf` | Voronoi / site-volume companion for Thomas–Fermi metallicity | electrochem | TF gold capacitor toy | — | \(v_i\), \(Q\) vs fixed-density TF | **oracle=metalwalls**; map §1 Voronoi volume (TF) ○; TF `l_tf` foothold ✓
+- [~] `const-pot-il-edl-box` | Planar const-pot + non-polarizable IL EDL production box | electrochem | graphene-like walls + IL | — | \(Q\), \(\Psi(z)\), short NVT | **oracle=metalwalls**; map §9 planar graphene+const-pot+IL ~ (E1 Components ✓; product box open; aqueous twin landed wave-4 `const-pot-tip4p-edl`)
 
 ## blocked
 
