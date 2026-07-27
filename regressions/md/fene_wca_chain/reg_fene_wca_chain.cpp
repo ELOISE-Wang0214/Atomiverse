@@ -37,8 +37,8 @@ int main() {
         f.add_bond(i, i + 1, 0);
 
     cpu::md::MD sim;
-    sim.add_potential(cpu::BondFene{{K}, {R0}});
-    sim.add_potential(cpu::PairWCA{eps, sigma});
+    sim.set_evaluator(cpu::BondFene{{K}, {R0}});
+    sim.set_evaluator(cpu::PairWCA{eps, sigma});
     sim.set_integrator(cpu::md::VelocityVerlet{0.001});
     sim.build();
     sim.run(f, 200);

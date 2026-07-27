@@ -147,7 +147,7 @@ TEST(CoulEnergyBruteForce, GlobalEnergyMatchesBruteForce) {
     ASSERT_GT(std::abs(e_bf), 1e-9) << "degenerate oracle energy";
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.0}); // dt = 0 → positions frozen
+    sim.set_integrator(cpu::md::VelocityVerlet{0.0}); // dt = 0 → positions frozen
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{cutoff}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::CoulLong{alpha, cutoff});
     sim.on(ATV::md::Phase::force).add(NullReciprocal{alpha});

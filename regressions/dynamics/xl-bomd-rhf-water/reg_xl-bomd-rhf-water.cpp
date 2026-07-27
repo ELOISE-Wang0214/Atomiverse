@@ -51,6 +51,7 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/electronic/aimd_method.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
@@ -115,18 +116,16 @@ int main() {
     constexpr double oh_min = 0.70;         // Å
 
     // ── Leg A: the XL-BOMD run ────────────────────────────────────────────
-    cpu::scf::RHF xl;
-    xl.basis = cpu::scf::BasisSet::STO3G;
-    xl.tol = scf_tol;
-    xl.max_iter = 200;
-    xl.xl_bomd = true; // Niklasson auxiliary-density propagation
-    xl.xl_bomd_k = 5;  // Table I row K = 5 (κ = 1.82, α = 0.018)
+    cpu::scf::RHF xl_base;
+    xl_base.max_iter = 200;
+    // Niklasson auxiliary-density propagation, Table I row K = 5
+    cpu::electronic::XlBomdMethod<cpu::scf::RHF> xl{std::move(xl_base), 5};
 
     cpu::Frame frame = make_water();
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     // Borrow (add_ref) so the SCF diagnostics stay readable after the run.
-    sim.on(md::Phase::force).add_ref(xl, /*order=*/0);
+    sim.set_evaluator_ref(xl, /*order=*/0);
     sim.enable_timing(false);
     sim.build();
 
@@ -183,15 +182,13 @@ int main() {
 
     // ── Leg B: the plain-BOMD twin (last-density reuse) ────────────────────
     cpu::scf::RHF reuse;
-    reuse.basis = cpu::scf::BasisSet::STO3G;
-    reuse.tol = scf_tol;
     reuse.max_iter = 200;
-    reuse.xl_bomd = false; // the ONLY difference from leg A
+    // plain BOMD — the ONLY difference from leg A (no XL wrapper)
 
     cpu::Frame frame_b = make_water();
     cpu::md::MD sim_b;
     sim_b.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim_b.on(md::Phase::force).add_ref(reuse, /*order=*/0);
+    sim_b.set_evaluator_ref(reuse, /*order=*/0);
     sim_b.enable_timing(false);
     sim_b.build();
 
@@ -248,8 +245,6 @@ int main() {
                 geom[static_cast<std::size_t>(s * 9 + i * 3 + 2)];
         }
         cpu::scf::RHF cold; // no warm state: constructed, used once, destroyed
-        cold.basis = cpu::scf::BasisSet::STO3G;
-        cold.tol = scf_tol;
         cold.max_iter = 200;
         cold.run(f);
         if (!cold.converged()) {

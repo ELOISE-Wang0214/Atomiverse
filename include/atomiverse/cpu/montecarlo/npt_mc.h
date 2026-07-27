@@ -129,7 +129,7 @@ class NptMetropolis : public OutcomePolicy {
 /// Pair it with a `MoveSelector` mixing `TranslateMove` and `VolumeMove`:
 /// @code{.cpp}
 ///   cpu::mc::NptMc mc{300.0, /*P [eV/Å³]=*/1e-4, /*seed=*/7u};
-///   mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+///   mc.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
 ///   mc.set_neighbor(cpu::md::NeighborList<>{cutoff, skin, 1, 0, true});
 ///   mc.set_mover(cpu::mc::MoveSelector{rig}
 ///                    .add(cpu::mc::TranslateMove{0.2}, 0.9)

@@ -146,7 +146,7 @@ joint.rebuild_matrix_every_step = true;  // optional if geometry moves
 
 cpu::md::MD sim;
 sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/8.0, /*skin=*/0.5});
-sim.add_potential(cpu::PairCoulCut{/*cutoff=*/8.0});
+sim.set_evaluator(cpu::PairCoulCut{/*cutoff=*/8.0});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.1});
 sim.add_ref(joint);   // or add(std::move(joint)) to own
 sim.build();

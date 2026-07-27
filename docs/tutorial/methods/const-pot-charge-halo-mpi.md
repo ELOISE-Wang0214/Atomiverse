@@ -121,7 +121,7 @@ using namespace ATV;
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.1});
 sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff [Å]=*/3.0, /*skin=*/0.3});
-sim.add_potential(cpu::PairCoulCut{3.0});
+sim.set_evaluator(cpu::PairCoulCut{3.0});
 
 cpu::md::ConstPotBO conp(/*eta [1/Å]=*/2.0);
 conp.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);

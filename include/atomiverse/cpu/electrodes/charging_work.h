@@ -28,7 +28,7 @@ namespace electrodes {
 /// (`nlocal`); MPI ranks accumulate locally and the existing energy `Reduce`
 /// gathers the global total when multi-rank.
 ///
-/// Bind via `sim.add_potential(ChargingWork{types, potentials})` on
+/// Bind via `sim.set_evaluator(ChargingWork{types, potentials})` on
 /// `cpu::md::MD` or `cpu::Evaluate`. Prefer ordering **after** any const-pot
 /// charge solve so \(Q\) on the Frame is current.
 class ChargingWork : public cpu::Potential {

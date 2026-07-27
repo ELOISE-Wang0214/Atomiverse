@@ -112,7 +112,7 @@ registered as the integrator.
 
 The categorical setters on `cpu::md::MD` are the primary API:
 `set_integrator` (singular — one integrator), `set_thermostat` and
-`set_barostat` (plural — each call appends), plus the shared `add_potential`,
+`set_barostat` (plural — each call appends), plus the shared `set_evaluator`,
 `set_neighbor`, `set_thermo`.
 
 ### NVE — the baseline
@@ -127,7 +127,7 @@ auto frame = make_fcc_argon(4, /*a=*/5.32);   // 256 Ar atoms, Å
 
 cpu::md::MD sim;
 sim.add(cpu::md::InitVelocity{100.0, /*seed=*/42u});
-sim.add_potential(cpu::PairLJCut{/*eps=*/0.0104, /*sigma=*/3.4, /*cutoff=*/6.8});
+sim.set_evaluator(cpu::PairLJCut{/*eps=*/0.0104, /*sigma=*/3.4, /*cutoff=*/6.8});
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt=*/4.0});
 sim.set_thermo(100);
@@ -239,7 +239,7 @@ symplectic Trotter step. It **replaces** `VelocityVerlet` / `NoseHoover` /
 constructed with designated initializers (the idiom the test suite uses):
 
 ```cpp
-sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});
+sim.set_evaluator(cpu::PairLJCut{0.0104, 3.4, 6.8});
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 sim.set_integrator(cpu::md::NoseHooverNPT{
     /*T_target*/ 100.0,
@@ -273,7 +273,7 @@ sim.set_nvt(cpu::md::NVT{/*dt=*/4.0, /*T=*/100.0, /*tau=*/100.0,
 
 It expands into `VelocityVerlet{dt}` plus the chosen thermostat
 (`NVT::Thermostat::NoseHoover` or `CSVR`), each with its correct phase
-bindings — exactly the two explicit calls, so it composes with `add_potential` /
+bindings — exactly the two explicit calls, so it composes with `set_evaluator` /
 `set_neighbor` and even with a DFT evaluator on the force phase the same way.
 
 ## The Expected Result: Means at the Setpoint, Correct Fluctuations

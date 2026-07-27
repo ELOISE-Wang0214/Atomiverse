@@ -43,9 +43,9 @@ int main() {
     f.box = cpu::Box::cubic(L);
 
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairDpd{a, gamma, T_K, rc, dt, 7});
+    sim.set_evaluator(cpu::PairDpd{a, gamma, T_K, rc, dt, 7});
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::InitVelocity{T_K, 99u});
+    sim.set_observer(cpu::md::InitVelocity{T_K, 99u});
     sim.enable_timing(false);
     sim.build();
     sim.run(f, 50);

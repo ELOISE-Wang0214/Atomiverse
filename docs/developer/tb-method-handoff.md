@@ -1,12 +1,12 @@
 # TB / SE method loop — handoff
 
-Last harness pass: **2026-07-27 wave 2** on `dev` (`chore(harness)`).
-Last GapCensus: **2026-07-27 wave 2** on `dev` @ `77d80486` (pre-land snapshot;
-landed tips updated below).
-Merged greens (wave 2): `dftb2-dftbplus-energy-pin`, `dftb2-periodic-gamma`.
-**incomplete_remaining=3** (unmerged TB `wf/*` tips kept `[~]`, behind≈39).
-**pending=20** (wave-2 refill unchanged this harness). **blocked=9**.
-GapCensus still owns discovery — **queue not exhausted**.
+Last assign: **2026-07-27 wave 3** on parent `dev` @ `223dcd4c`.
+Last GapCensus: **2026-07-27 wave 3** (product surface still post harness wave-2
+SE land; HEAD may include concurrent esmm/driver commits).
+Last harness: **wave 2** merged `dftb2-dftbplus-energy-pin` +
+`dftb2-periodic-gamma` → done.
+**incomplete_remaining=8** (6 resume tips + 2 new staff). **pending=16**.
+**blocked=9**. GapCensus still owns discovery — **queue not exhausted**.
 
 ## Workflow order (binding)
 
@@ -14,22 +14,35 @@ Recover incomplete first → Census → Assign (`incomplete ≫ pending`) →
 Worktrees (**spec-first**) → Merge → Clearup → Harness → Tutorial. See
 `docs/developer/tb-method-loop.md` and `docs/developer/oracle-capability-loop.md`.
 
-## Wave 2 land (2026-07-27)
+## Assign wave 3 staff (2026-07-27)
 
-| Slug | Component / change | Regression | oracle | Result |
-| ---- | ------------------ | ---------- | ------ | ------ |
-| `dftb2-dftbplus-energy-pin` | mio-1-1 H–H static SK (`dftb_mio_hh_sk.h`) + H₂ total-E pin | `regressions/semiempirical/dftb2-dftbplus-energy-pin` | dftb+ 24.1 | **merged → done** |
-| `dftb2-periodic-gamma` | Γ-point lattice-sum H⁰/S, screened γ, repulsive (MioSketch) | `regressions/semiempirical/dftb2-periodic-gamma` | literature (+ family dftb+) | **merged → done** |
+| Slug | is_resume | Tip / note | oracle |
+| ---- | --------- | ---------- | ------ |
+| `dftb0-h2` | true | `wf/dftb0-h2` @ `bcff8c4a` ahead=1 behind=45 | dftb+ |
+| `dftb3-water-mio` | true | `wf/dftb3-water-mio` @ `f26ba40b` ahead=1 behind=45 | dftb+ |
+| `dftb2-dispersion-d3` | true | `wf/dftb2-dispersion-d3` @ `edabfa64` ahead=2 behind=45 | dftb+\|literature |
+| `dftb2-analytic-forces-threeob` | true | `wf/dftb2-analytic-forces-threeob` @ `211dc386` ahead=1 behind=29 | dftb+\|literature |
+| `dftb2-spin-analytic-forces` | true | `wf/dftb2-spin-analytic-forces` @ `1e8cac93` ahead=1 behind=29 | dftb+\|literature |
+| `dftb2-analytic-stress` | true | `wf/dftb2-analytic-stress` @ `d2da3fe9` ahead=1 behind=29 | dftb+\|literature |
+| `dftb2-periodic-forces` | false | **new** — lattice-image F under Γ-PBC | dftb+\|literature |
+| `dftb2-kpoints` | false | **new** — k-mesh beyond Γ | dftb+ |
 
-**Specs closed (deleted):** `dftb2-dftbplus-energy-pin`, `dftb2-periodic-gamma`
-under `.claude/specs/` (history = git log).
+**Skipped:** `dftb3-analytic-forces` (dep on `dftb3-water-mio`); `td-dftb-h2`;
+Phase B OpenMOPAC NDDO; Phase C GFN-xTB; blocked (9).
 
-**Roadmap ○→✓:** Periodic DFTB (Γ-point foothold). H–H absolute energy pin is
-hygiene prose (not a separate roadmap row). k-mesh / stress / DFTB0/3/D3 remain
-○ or incomplete tips. **No claim** that Phase A is closed.
+Workers must: isolation worktree on nobackup; `wf/<slug>`; **rebase resume
+tips onto current `dev` first**; open `.claude/specs/<slug>/` before code;
+SE-only cmake; offline pins only (`tools/tb_oracle/`); no push.
 
-**Perf:** both wave-2 regs `perf_exempt` / literature twin where host lacked
-fair DFTB+ wall (documented in REFERENCE).
+## Wave 2 land (2026-07-27) — historical
+
+| Slug | Result |
+| ---- | ------ |
+| `dftb2-dftbplus-energy-pin` | **merged → done** (mio-1-1 H–H absolute E) |
+| `dftb2-periodic-gamma` | **merged → done** (Γ lattice-sum energy) |
+
+Roadmap ○→✓: Periodic DFTB (Γ-point foothold). k-mesh / PBC forces / stress /
+DFTB0/3/D3 remain ○ or incomplete.
 
 ## Wave 1 land (2026-07-27) — historical
 
@@ -38,18 +51,6 @@ fair DFTB+ wall (documented in REFERENCE).
 | `dftb2-3ob-organic` | **merged → done** |
 | `dftb2-analytic-forces` | **merged → done** |
 | `spin-dftb2-o2` | **merged → done** |
-
-## Incomplete retained `[~]` (do not demote)
-
-| Slug | Branch tip | Notes |
-| ---- | ---------- | ----- |
-| `dftb0-h2` | `wf/dftb0-h2` @ `bcff8c4a` | Non-SCC foothold; ahead=1 behind≈39 |
-| `dftb3-water-mio` | `wf/dftb3-water-mio` @ `f26ba40b` | DFTB3 energy foothold; ahead=1 behind≈39 |
-| `dftb2-dispersion-d3` | `wf/dftb2-dispersion-d3` @ `edabfa64` | D3(BJ) water-dimer tip; ahead=2 behind≈39 |
-
-Clearup already wiped isolation worktrees; branch tips remain until merge or
-explicit drop. **Next wave Recover** must prefer these over new pending staff
-(`incomplete ≫ pending`). Rebase onto current `dev` first.
 
 ## Oracle / build (binding)
 
@@ -62,21 +63,9 @@ explicit drop. **Next wave Recover** must prefer these over new pending staff
 | Domain suite (merge gate) | `ctest -R '^test_cpu_(am1\|rm1\|dftb2\|xtb_gfn0\|nddo_)'` |
 | Worker build | scoped `--target atomiverse <test_*> reg_<slug>` only |
 
-## Public surface landed (through wave 2)
-
-```cpp
-cpu::semiempirical::DFTB2 dftb;
-dftb.sk_set = cpu::semiempirical::DftbSkSet::ThreeOb;  // or MioSketch
-dftb.multiplicity = 3;   // collinear open shell (MioSketch)
-dftb.with_forces = true; // analytic F when restricted MioSketch (molecular)
-// Γ-point PBC: lattice sums active under finite box (MioSketch)
-// Frame I/O via Evaluate + Semiempirical; no *Config; no make_*/build_*
-// H2 mio-1-1 absolute E: reg_dftb2-dftbplus-energy-pin
-```
-
 ## Next
 
-1. **Recover** the three `[~]` tips (**rebase onto `dev` first** — behind≈39).
-2. Prefer incomplete ≫ new Phase A pending on Assign.
-3. Ladder remaining: DFTB0/3 → D3/k/stress/TD force deepen → NDDO PM → GFN late.
-4. GapCensus owns further discovery — **never claim queue exhausted**.
+1. **Worktrees** for the 8 staff (parallelism ≤ staff_count).
+2. Resumes: **rebase** `wf/*` onto `dev`, re-open/repair spec if missing, dual gate.
+3. New: spec → offline pin → impl → dual gate → commit on `wf/<slug>`.
+4. Merge greens → Clearup (same wave) → Harness → GapCensus wave 4.

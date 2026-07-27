@@ -99,7 +99,7 @@ int main() {
     cpu::Evaluate eval;
     eval.set_neighbor(
         cpu::md::NeighborList<>{tip4p.neighbor_cutoff(), 0.3, 1, 0, true});
-    eval.add_potential(std::move(tip4p));
+    eval.set_evaluator(std::move(tip4p));
     eval.enable_timing(false);
     eval.build();
     eval.run(f);

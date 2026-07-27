@@ -105,7 +105,7 @@ int main() {
         frame.box = ATV::cpu::Box::cubic(box_len);
 
         cpu::mc::Gcmc mc{temperature, mu, mass, /*seed=*/97u + p};
-        mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+        mc.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
         mc.set_neighbor(
             cpu::md::NeighborList<>{cutoff, /*skin=*/1.0, 1, 0, true});
         mc.set_mover(cpu::mc::MoveSelector{}

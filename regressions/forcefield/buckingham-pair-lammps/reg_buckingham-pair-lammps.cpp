@@ -45,7 +45,7 @@ int main() {
     f.box = cpu::Box::cubic(40.0);
 
     cpu::Evaluate eval;
-    eval.add_potential(cpu::PairBuck{A, rho, C, rc});
+    eval.set_evaluator(cpu::PairBuck{A, rho, C, rc});
     eval.build();
     eval.run(f);
 

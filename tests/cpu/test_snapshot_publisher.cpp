@@ -56,7 +56,7 @@ cpu::Frame make_small_frame(int n) {
 /// @brief Capture target — records the last snapshot received.
 ///
 /// Inherits `cpu::md::AsyncObserver` to get the MD-flavoured default
-/// binding (`md::Phase::end_of_step @ +20`), so `sim.add_ref(cap)` works
+/// binding (`md::Phase::end_of_step @ +20`), so `sim.set_observer_ref(cap)` works
 /// without explicit `on()` wiring.
 class PositionCapture : public cpu::md::AsyncObserver {
   public:
@@ -194,9 +194,9 @@ TEST(Publish, SnapshotCopiesPositions) {
     PositionCapture cap;
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{1e-6});
-    sim.add(NoOpForce{});
-    sim.add_ref(cap);
+    sim.set_integrator(cpu::md::VelocityVerlet{1e-6});
+    sim.set_evaluator(NoOpForce{});
+    sim.set_observer_ref(cap);
     sim.build();
     sim.run(frame,
             5); // give the publisher a step where async fires (step >= 1)
@@ -220,9 +220,9 @@ TEST(Publish, SnapshotCopiesBoxAndStep) {
     PositionCapture cap;
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{1e-6});
-    sim.add(NoOpForce{});
-    sim.add_ref(cap);
+    sim.set_integrator(cpu::md::VelocityVerlet{1e-6});
+    sim.set_evaluator(NoOpForce{});
+    sim.set_observer_ref(cap);
     sim.build();
     sim.run(frame, 5);
 
@@ -244,9 +244,9 @@ TEST(Publish, CaptureMaskRespected) {
     PositionCapture cap;
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{1e-6});
-    sim.add(NoOpForce{});
-    sim.add_ref(cap);
+    sim.set_integrator(cpu::md::VelocityVerlet{1e-6});
+    sim.set_evaluator(NoOpForce{});
+    sim.set_observer_ref(cap);
     sim.build();
     sim.run(frame, 5);
 
@@ -286,10 +286,10 @@ TEST(Publish, StaticMaskUnionAllSubscribers) {
     VelocityLowFreq vel; // velocities, freq 1000 (won't fire in 5 steps)
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{1e-6});
-    sim.add(NoOpForce{});
-    sim.add_ref(cap);
-    sim.add_ref(vel);
+    sim.set_integrator(cpu::md::VelocityVerlet{1e-6});
+    sim.set_evaluator(NoOpForce{});
+    sim.set_observer_ref(cap);
+    sim.set_observer_ref(vel);
     sim.build();
     sim.run(frame, 5);
 
@@ -325,9 +325,9 @@ TEST(Publish, FreezeDispatchConsistencyUnderLag) {
     ConsistencyCheck cap;
 
     cpu::md::MD sim;
-    sim.add(StepStamper{}); // sets x_i = tag_i + step each step
-    sim.add(NoOpForce{});
-    sim.add_ref(cap);
+    sim.set_observer(StepStamper{}); // sets x_i = tag_i + step each step
+    sim.set_evaluator(NoOpForce{});
+    sim.set_observer_ref(cap);
     sim.build();
     sim.run(frame, 40); // hot loop races ahead of the 5 ms/frame worker
 

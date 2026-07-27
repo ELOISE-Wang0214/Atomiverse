@@ -47,7 +47,7 @@ TEST(OrbitalInfoObserverTest, WritesHeaderAndRowsForH2) {
     auto handle = scf.result_handle();
 
     cpu::minimizer::Minimize opt;
-    opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
+    opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});
     opt.add_criterion(cpu::ForceConverged{/*ftol=*/0.5});
     opt.on(minimizer::Phase::force).add(std::move(scf));
     opt.on(minimizer::Phase::end_of_step)

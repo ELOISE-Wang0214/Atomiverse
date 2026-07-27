@@ -96,14 +96,14 @@ TEST(NptMultiRank, BarostatRelaxesOverPressure) {
     const double dt = 0.5;
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{dt});
+    sim.set_integrator(cpu::md::VelocityVerlet{dt});
     sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{lj_cut}, -20);
     sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
         .add(cpu::PairLJCut{lj_eps, lj_sig, lj_cut});
-    sim.add(cpu::md::Virial{});
-    sim.add(cpu::md::Barostat{0.0, /*tau_P=*/200.0, dt}); // P_target = 0
+    sim.set_observer(cpu::md::Virial{});
+    sim.set_barostat(cpu::md::Barostat{0.0, /*tau_P=*/200.0, dt}); // P_target = 0
     sim.build();
 
     sim.run(frame, 1);

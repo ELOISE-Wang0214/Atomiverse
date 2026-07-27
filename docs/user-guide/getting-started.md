@@ -89,7 +89,7 @@ attach **components**, `build` + `run`:
 
 ```cpp
 cpu::md::MD sim;
-sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});
+sim.set_evaluator(cpu::PairLJCut{0.0104, 3.4, 6.8});
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{0.01});
 sim.build();

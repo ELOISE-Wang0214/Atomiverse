@@ -48,7 +48,7 @@
 ///      **Stop > Converged > Continue**. @see cuda/driver/criterion.cuh
 ///
 /// Unlike `cpu::Driver`, this layer deliberately provides **no** categorical-setter
-/// API (`add_potential`, `add_potential`, …) — `cuda::md::MD` carries its own — and no MPI. The
+/// API (`set_evaluator`, `set_evaluator`, …) — `cuda::md::MD` carries its own — and no MPI. The
 /// CPU driver all-reduces the handler verdict across ranks (`MPI_MAX` over the
 /// severity); the CUDA driver loop is single-rank, so `poll_handlers_` reduces nothing.
 /// When a multi-GPU driver loop lands, the reduction goes in `poll_handlers_` and no

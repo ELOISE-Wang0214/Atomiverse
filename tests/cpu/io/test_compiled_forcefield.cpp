@@ -66,13 +66,13 @@ cpu::Frame two_water() {
 template <typename Driver, typename Phase>
 void install_tip3p(Driver& d, Phase force_phase) {
     d.set_neighbor(cpu::md::NeighborList<>{8.0, 0.3});
-    d.add_potential(
+    d.set_evaluator(
         cpu::PairLJCut{0.0067, 3.15, 8.0}.set_special_bonds(0.0, 0.0, 0.0));
     d.on(force_phase)
         .add(cpu::PairCoulCut{8.0}.set_special_bonds(0.0, 0.0, 0.0));
-    d.add_potential(cpu::BondHarmonic{std::vector<double>{25.0},
+    d.set_evaluator(cpu::BondHarmonic{std::vector<double>{25.0},
                                       std::vector<double>{0.9572}});
-    d.add_potential(cpu::AngleHarmonic{std::vector<double>{5.0},
+    d.set_evaluator(cpu::AngleHarmonic{std::vector<double>{5.0},
                                        std::vector<double>{1.824218}});
 }
 

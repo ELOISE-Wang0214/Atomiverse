@@ -95,9 +95,9 @@ TEST(CudaAsyncHotPathNoSync, ZeroSyncOver100Steps) {
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{2.5}, -10)
         .add(cuda::PairLJCut{1.0, 1.0, 2.5});
-    sim.add(cuda::md::VelocityVerlet{0.001});
-    sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
-    sim.add_ref(rec);
+    sim.set_integrator(cuda::md::VelocityVerlet{0.001});
+    sim.set_observer(cuda::md::InitVelocity{1.0, 12345ULL});
+    sim.set_observer_ref(rec);
     sim.build();
 
     // Reset once at the very start; AsyncRecordBase never calls the wrapper,
@@ -121,9 +121,9 @@ TEST(CudaAsyncHotPathNoSync, ZeroSyncOverNPTLoop) {
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{2.5}, -10)
         .add(cuda::PairLJCut{1.0, 1.0, 2.5});
-    sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
+    sim.set_observer(cuda::md::InitVelocity{1.0, 12345ULL});
     sim.set_integrator(cuda::md::NoseHooverNPT{1.0, 100.0, 0.0, 1000.0, 0.001});
-    sim.add_ref(rec);
+    sim.set_observer_ref(rec);
     sim.build();
 
     cuda::detail::reset_sync_count();
@@ -143,9 +143,9 @@ TEST(CudaAsyncHotPathNoSync, LifecycleRoundTrip) {
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{2.5}, -10)
             .add(cuda::PairLJCut{1.0, 1.0, 2.5});
-        sim.add(cuda::md::VelocityVerlet{0.001});
-        sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
-        sim.add_ref(rec);
+        sim.set_integrator(cuda::md::VelocityVerlet{0.001});
+        sim.set_observer(cuda::md::InitVelocity{1.0, 12345ULL});
+        sim.set_observer_ref(rec);
         sim.build();
         sim.run(frame, 5);
         // After sim destruction at scope exit, AsyncRecordBase::destroy()

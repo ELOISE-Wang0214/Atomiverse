@@ -30,7 +30,7 @@ int main() {
     opt.add_criterion(cpu::PressureConverged{0.0, 1e-3});
     auto lj = cpu::PairLJCut{0.0104, 3.4, 8.5};
     lj.set_compute_stress(true);
-    opt.add_potential(std::move(lj));
+    opt.set_evaluator(std::move(lj));
     opt.set_neighbor(cpu::md::NeighborList<>{8.5, 0.3});
     opt.enable_timing(false);
     opt.build();

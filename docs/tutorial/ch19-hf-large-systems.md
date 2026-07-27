@@ -91,7 +91,7 @@ uses B-spline charge assignment + FFT → \(O(N\log N)\).
 ```cpp
 const double alpha = 0.3;  // 1/Å — same on both halves
 const double cutoff = 8.0; // Å
-sim.add_potential(cpu::CoulLong{alpha, cutoff});
+sim.set_evaluator(cpu::CoulLong{alpha, cutoff});
 sim.add(cpu::KSpacePME{alpha, /*grid_spacing=*/1.0, /*order=*/6});
 ```
 

@@ -120,7 +120,7 @@ TEST(MDTaxonomy, ThrowsOnMissingIntegrator) {
 /// rejected by `MD::validate_components()` at build().
 TEST(MDTaxonomy, ThrowsOnMissingForceWriter) {
     cuda::md::MD sim;
-    sim.add(cuda::md::VelocityVerlet{double(0.001)});
+    sim.set_integrator(cuda::md::VelocityVerlet{double(0.001)});
     EXPECT_THROW(sim.build(), std::runtime_error);
 }
 
@@ -132,7 +132,7 @@ TEST(MD, NVEEnergyConservation) {
     cpu::Frame frame1 = frame;
     {
         cuda::md::MD sim;
-        sim.add(cuda::md::VelocityVerlet{double(0.001)});
+        sim.set_integrator(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
             .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -145,7 +145,7 @@ TEST(MD, NVEEnergyConservation) {
     cpu::Frame frame2 = frame;
     {
         cuda::md::MD sim;
-        sim.add(cuda::md::VelocityVerlet{double(0.001)});
+        sim.set_integrator(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
             .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -169,7 +169,7 @@ TEST(MD, ThermoOutput) {
     double cutoff = double(3.0);
 
     cuda::md::MD sim;
-    sim.add(cuda::md::VelocityVerlet{double(0.001)});
+    sim.set_integrator(cuda::md::VelocityVerlet{double(0.001)});
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -194,7 +194,7 @@ TEST(MD, RecorderXYZ) {
 
     {
         cuda::md::MD sim;
-        sim.add(cuda::md::VelocityVerlet{double(0.001)});
+        sim.set_integrator(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
             .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -229,7 +229,7 @@ TEST(MD, RDFOutput) {
 
     {
         cuda::md::MD sim;
-        sim.add(cuda::md::VelocityVerlet{double(0.001)});
+        sim.set_integrator(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
             .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -285,8 +285,8 @@ TEST(MD, InitVelocity) {
     // Run 1 step with InitVelocity — velocities should be set
     {
         cuda::md::MD sim;
-        sim.add(cuda::md::InitVelocity{target_temp, 42});
-        sim.add(cuda::md::VelocityVerlet{double(0.001)});
+        sim.set_observer(cuda::md::InitVelocity{target_temp, 42});
+        sim.set_integrator(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
             .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});

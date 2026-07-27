@@ -105,9 +105,9 @@ int main() {
 
     // Concrete RHF method as the force component (ASPC density warm-start).
     cpu::md::MD sim;
-    sim.add(cpu::md::InitVelocity{T_target, /*seed=*/42u});
-    sim.add(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::NoseHoover{T_target, tau, dt});
+    sim.set_observer(cpu::md::InitVelocity{T_target, /*seed=*/42u});
+    sim.set_integrator(cpu::md::VelocityVerlet{dt});
+    sim.set_thermostat(cpu::md::NoseHoover{T_target, tau, dt});
     sim.on(md::Phase::force).add(cpu::scf::RHF{}.predictor(/*order=*/3));
     sim.build();
 

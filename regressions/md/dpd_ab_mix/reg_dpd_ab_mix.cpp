@@ -22,7 +22,7 @@ int main() {
     // a_AA=a_BB=25, a_AB=40
     std::vector<std::vector<double>> a{{25, 40}, {40, 25}};
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairDpd{a, 4.5, 300.0, 1.0, 0.01, 3});
+    sim.set_evaluator(cpu::PairDpd{a, 4.5, 300.0, 1.0, 0.01, 3});
     sim.set_integrator(cpu::md::VelocityVerlet{0.01});
     sim.enable_timing(false);
     sim.build();

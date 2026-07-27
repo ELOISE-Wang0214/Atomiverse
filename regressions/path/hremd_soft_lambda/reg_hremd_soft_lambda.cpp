@@ -33,7 +33,7 @@ int main() {
         [](cpu::md::MD& md, double lambda, void*) {
             cpu::PairLJSoft soft(0.0104, 3.4, 8.5);
             soft.lambda = lambda;
-            md.add_potential(std::move(soft));
+            md.set_evaluator(std::move(soft));
             md.set_neighbor(cpu::md::NeighborList<>{8.5, 0.3});
         },
         nullptr);
@@ -43,7 +43,7 @@ int main() {
             cpu::Evaluate eval;
             cpu::PairLJSoft soft(0.0104, 3.4, 8.5);
             soft.lambda = lambda;
-            eval.add_potential(std::move(soft));
+            eval.set_evaluator(std::move(soft));
             eval.set_neighbor(cpu::md::NeighborList<>{8.5, 0.3});
             eval.build();
             eval.run(copy);

@@ -178,7 +178,7 @@ conp.predictor_order = 2;
 
 cpu::md::MD sim;
 sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/12.0, /*skin=*/0.5});
-sim.add_potential(cpu::PairCoulCut{/*cutoff=*/12.0});
+sim.set_evaluator(cpu::PairCoulCut{/*cutoff=*/12.0});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.5});
 sim.add_ref(conp);   // or add(std::move(conp)) to own
 sim.build();

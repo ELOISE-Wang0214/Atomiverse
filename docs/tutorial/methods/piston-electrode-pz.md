@@ -113,7 +113,7 @@ cpu::md::PistonElectrode probe(/*type=*/3, /*P=*/0.0,
                                cpu::md::PistonElectrode::Side::Upper);
 {
     cpu::md::MD probe_sim;
-    probe_sim.add_potential(cpu::PairLJCut{/*eps=*/0.10, /*sigma=*/3.0, /*rc=*/6.0});
+    probe_sim.set_evaluator(cpu::PairLJCut{/*eps=*/0.10, /*sigma=*/3.0, /*rc=*/6.0});
     probe_sim.set_neighbor(cpu::md::NeighborList<>{6.0, 0.5});
     probe_sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.5});
     probe_sim.add_ref(probe);
@@ -128,7 +128,7 @@ cpu::md::PistonElectrode piston(/*type=*/3, /*P [eV/Å³]=*/P_pin,
 piston.tau_damp = 20.0;  // [fs], optional
 
 cpu::md::MD sim;
-sim.add_potential(cpu::PairLJCut{0.10, 3.0, 6.0});
+sim.set_evaluator(cpu::PairLJCut{0.10, 3.0, 6.0});
 sim.set_neighbor(cpu::md::NeighborList<>{6.0, 0.5});
 sim.set_integrator(cpu::md::VelocityVerlet{0.5});
 sim.set_thermostat(cpu::md::NoseHoover{/*T [K]=*/300.0, /*tau_T=*/50.0, /*dt=*/0.5});

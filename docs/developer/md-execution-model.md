@@ -121,7 +121,7 @@ end_of_step       :  zero_kinetic(-1000), kinetic_energy(-100), reduce(-50),
                      observers(+20), rebalance(+1000)
 ```
 
-The categorical setters (`add_potential`, `set_neighbor`, `set_integrator`,
+The categorical setters (`set_evaluator`, `set_neighbor`, `set_integrator`,
 `set_thermostat`, `set_barostat`, …) are thin wrappers that call
 `on(phase).add(...)` at the documented phase/order, so a plan built with the
 setters is identical to one built with raw `add()` calls. `set_neighbor` binds

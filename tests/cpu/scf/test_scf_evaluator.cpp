@@ -59,7 +59,7 @@ class SCFTest : public ::testing::Test {
 TEST_F(SCFTest, SinglePointRHF) {
     auto frame = make_h2(0.74);
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{double(0.5)});
+    sim.set_integrator(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 1);
@@ -73,7 +73,7 @@ TEST_F(SCFTest, SinglePointRHF) {
 TEST_F(SCFTest, SinglePointUHF) {
     auto frame = make_h2(0.74);
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{double(0.5)});
+    sim.set_integrator(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 1);
@@ -85,7 +85,7 @@ TEST_F(SCFTest, SinglePointUHF) {
 TEST_F(SCFTest, SinglePointKSLSDA) {
     auto frame = make_h2(0.74);
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{double(0.5)});
+    sim.set_integrator(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 1);
@@ -99,7 +99,7 @@ TEST_F(SCFTest, SinglePointKSLSDA) {
 TEST_F(SCFTest, SinglePointKSPBE) {
     auto frame = make_h2(0.74);
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{double(0.5)});
+    sim.set_integrator(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 1);
@@ -115,7 +115,7 @@ class BOMDTest : public SCFTest {};
 TEST_F(BOMDTest, RHFEnergyConservation) {
     auto frame = make_h2(0.74, 0.001);
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{double(0.5)});
+    sim.set_integrator(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 5);
@@ -127,7 +127,7 @@ TEST_F(BOMDTest, RHFEnergyConservation) {
 TEST_F(BOMDTest, RHFBondOscillation) {
     auto frame = make_h2(0.80, 0.0);
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{double(0.5)});
+    sim.set_integrator(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 5);
@@ -145,7 +145,7 @@ TEST_F(BOMDTest, MomentumConservation) {
         + frame.span(ATV::kAtom_mass)[1] * frame.span(ATV::kAtom_vx)[1];
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{double(0.5)});
+    sim.set_integrator(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 5);
@@ -162,7 +162,7 @@ TEST_F(BOMDTest, RHFWithASPC) {
     evaluator.predictor(3, 2, double(1e-4), true);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{double(0.5)});
+    sim.set_integrator(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(std::move(evaluator));
     sim.build();
     sim.run(frame, 5);
@@ -183,9 +183,9 @@ TEST_F(BOMDTest, RHFNoseHooverNVT) {
     const double tau = 50.0;       // fs (tight coupling for short test)
 
     cpu::md::MD sim;
-    sim.add(cpu::md::InitVelocity{T_target, /*seed=*/42u});
-    sim.add(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::NoseHoover{T_target, tau, dt});
+    sim.set_observer(cpu::md::InitVelocity{T_target, /*seed=*/42u});
+    sim.set_integrator(cpu::md::VelocityVerlet{dt});
+    sim.set_thermostat(cpu::md::NoseHoover{T_target, tau, dt});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 30);
@@ -210,9 +210,9 @@ TEST_F(BOMDTest, RHFLangevinNVT) {
     // cpu::md::MD must accept this (multiple Force-capable components
     // on the force / post_force phases).
     cpu::md::MD sim;
-    sim.add(cpu::md::InitVelocity{T_target, /*seed=*/7u});
-    sim.add(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::FixLangevin{T_target, /*T_stop=*/T_target, damp, dt,
+    sim.set_observer(cpu::md::InitVelocity{T_target, /*seed=*/7u});
+    sim.set_integrator(cpu::md::VelocityVerlet{dt});
+    sim.set_thermostat(cpu::md::FixLangevin{T_target, /*T_stop=*/T_target, damp, dt,
                                  /*seed=*/13u});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
@@ -237,10 +237,10 @@ TEST_F(BOMDTest, RHFBerendsenNPT) {
     Mat3 box_initial = frame.box.cell();
 
     cpu::md::MD sim;
-    sim.add(cpu::md::InitVelocity{T_target, /*seed=*/3u});
-    sim.add(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::NoseHoover{T_target, tau_T, dt});
-    sim.add(cpu::md::Barostat{P_target, tau_P, dt});
+    sim.set_observer(cpu::md::InitVelocity{T_target, /*seed=*/3u});
+    sim.set_integrator(cpu::md::VelocityVerlet{dt});
+    sim.set_thermostat(cpu::md::NoseHoover{T_target, tau_T, dt});
+    sim.set_barostat(cpu::md::Barostat{P_target, tau_P, dt});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 20);
@@ -272,7 +272,7 @@ TEST_F(BOMDTest, RHFBerendsenNPT) {
 TEST_F(BOMDTest, ChainedBuilderOnTemporaryDoesNotSEGV) {
     auto frame = make_h2(0.74, 0.001);
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{double(0.5)});
+    sim.set_integrator(cpu::md::VelocityVerlet{double(0.5)});
     // The whole point of this test: chained builder call on a temporary.
     // Pre-fix, this stored a non-owning pointer to a dangling temporary
     // and segfaulted on the first launch.
@@ -288,7 +288,7 @@ TEST_F(BOMDTest, ChainedBuilderOnTemporaryDoesNotSEGV) {
 TEST_F(BOMDTest, ChainedBuilderWithGradientToggleOnTemporary) {
     auto frame = make_h2(0.74, 0.001);
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{double(0.5)});
+    sim.set_integrator(cpu::md::VelocityVerlet{double(0.5)});
     // Two consecutive builder calls on the same temporary chain.
     sim.on(md::Phase::force)
         .add(cpu::scf::RHF{}.with_gradient(true).predictor(2));
@@ -347,7 +347,7 @@ TEST_F(BOMDTest, BoundaryAtomsRecoverAfterWrap) {
     frame.box = ATV::cpu::Box::cubic(100.0);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{double(0.5)});
+    sim.set_integrator(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 5);

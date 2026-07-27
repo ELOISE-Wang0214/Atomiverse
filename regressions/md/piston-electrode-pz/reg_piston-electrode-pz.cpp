@@ -104,7 +104,7 @@ int main() {
                                    cpu::md::PistonElectrode::Side::Upper);
     {
         cpu::md::MD probe_sim;
-        probe_sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+        probe_sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
         probe_sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
         probe_sim.set_integrator(cpu::md::VelocityVerlet{dt});
         probe_sim.add_ref(probe);
@@ -148,13 +148,13 @@ int main() {
     piston.tau_damp = 20.0; // [fs] textbook equilibration
 
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     sim.set_thermostat(cpu::md::NoseHoover{T, tau_T, dt});
-    sim.add(cpu::md::InitVelocity{T, /*seed=*/42u});
-    sim.add(cpu::md::FixFreeze{lower_type});
-    sim.add_ref(piston);
+    sim.set_observer(cpu::md::InitVelocity{T, /*seed=*/42u});
+    sim.set_observer(cpu::md::FixFreeze{lower_type});
+    sim.set_observer_ref(piston);
     sim.enable_timing(false);
     sim.build();
 

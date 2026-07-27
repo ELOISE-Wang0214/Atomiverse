@@ -39,7 +39,7 @@
 ///
 /// `MD` exposes the same 11-method categorical surface as
 /// `cpu::md::MD` (chain link `msu-pe-cuda-components-02`, Phase G.4):
-/// `add_potential / add_potential / set_angle / set_dihedral / set_neighbor`
+/// `set_evaluator / set_evaluator / set_angle / set_dihedral / set_neighbor`
 /// (singular, idempotent on same-class re-call, throw on
 /// different-class re-call), `set_integrator` (singular via the
 /// component's own `default_bindings()`), `set_thermostat /
@@ -70,7 +70,7 @@
 /// Multi-GPU halo exchange auto-injection is **out of scope** for the
 /// CUDA arm per `msu-pe-validation.md` fixed-scope decision #1.
 ///
-/// The raw `add()` / `on(phase).add()` API remains public — it is the
+/// Plan registration primitive is only `on(phase).add` — it is the
 /// documented escape hatch for components without a categorical slot,
 /// and the additive setter surface must not break the existing
 /// `tests/cuda/md/test_md.cu` paths that use it directly.
@@ -78,7 +78,7 @@
 /// Usage:
 /// @code{.cpp}
 /// cuda::md::MD sim;
-/// sim.add_potential(cuda::PairLJCut{1.0, 1.0, 3.0});
+/// sim.set_evaluator(cuda::PairLJCut{1.0, 1.0, 3.0});
 /// sim.set_neighbor(cuda::NeighborList{3.0});
 /// sim.set_integrator(cuda::md::VelocityVerlet{0.001});
 /// sim.set_thermo(5);
@@ -193,10 +193,10 @@ class MD : public cuda::Driver<ATV::md::Phase> {
     ///        `pair_style`). Bound at `md::Phase::force @ 0`.
     /// @tparam P Pair evaluator type (e.g. `cuda::PairLJCut`).
     /// @param p Pair evaluator (passed by forwarding reference).
+    /// @brief Register an energy/force source at force @ 0 (plural).
     template <typename P>
-    MD& add_potential(P&& p) {
-        set_singular_at_(std::forward<P>(p), pair_set_, "add_potential",
-                         ATV::md::Phase::force, 0);
+    MD& set_evaluator(P&& p) {
+        this->on(ATV::md::Phase::force).add(std::forward<P>(p), /*order=*/0);
         return *this;
     }
 
@@ -252,7 +252,7 @@ class MD : public cuda::Driver<ATV::md::Phase> {
     /// Plural: each call appends; insertion order preserved.
     template <typename T>
     MD& set_thermostat(T&& t) {
-        this->add(std::forward<T>(t));
+        this->bind_defaults(std::forward<T>(t));
         return *this;
     }
 
@@ -262,21 +262,21 @@ class MD : public cuda::Driver<ATV::md::Phase> {
     /// already registered.
     template <typename Bs>
     MD& set_barostat(Bs&& b) {
-        this->add(std::forward<Bs>(b));
+        this->bind_defaults(std::forward<Bs>(b));
         return *this;
     }
 
     /// @brief Add a derived-quantity observer (LAMMPS `compute`). Plural.
     template <typename Obs>
     MD& set_observer(Obs&& obs) {
-        this->add(std::forward<Obs>(obs));
+        this->bind_defaults(std::forward<Obs>(obs));
         return *this;
     }
 
     /// @brief Add a recorder / I/O sink (LAMMPS `dump`). Plural.
     template <typename R>
     MD& set_record(R&& r) {
-        this->add(std::forward<R>(r));
+        this->bind_defaults(std::forward<R>(r));
         return *this;
     }
 
@@ -425,7 +425,7 @@ class MD : public cuda::Driver<ATV::md::Phase> {
                 + "', rejected re-call with '" + n + "'");
         }
         slot = n;
-        this->add(std::forward<C>(comp));
+        this->bind_defaults(std::forward<C>(comp));
     }
 
   private:

@@ -14,7 +14,7 @@
 ///            eight legacy halo virtuals are gone from the base vtable;
 ///        (e) `HaloSend`/`HaloRecv` expose `Endpoint::send`/`Endpoint::recv`
 ///            through the protocol, and a manually registered pair +
-///            `add_potential` builds to exactly ONE endpoint pair (no double
+///            `set_evaluator` builds to exactly ONE endpoint pair (no double
 ///            injection);
 ///        (f) a pure field participant (`Endpoint::none`) is not treated as
 ///            an endpoint and does not suppress the automatic injection.
@@ -259,10 +259,10 @@ TEST(HaloParticipantProtocol, ManualHaloPairIsNotDoubleInjected) {
     ATV::cpu::md::MD sim;
     StubIntegrator integ;
     sim.on(ATV::md::Phase::initial_integrate).add_ref(integ);
-    sim.add_potential(ATV::cpu::PairLJCut{0.0104, 3.4, 6.0});
+    sim.set_evaluator(ATV::cpu::PairLJCut{0.0104, 3.4, 6.0});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{6.0});
-    sim.add(ATV::cpu::comm::HaloSend{6.6});
-    sim.add(ATV::cpu::comm::HaloRecv{});
+    sim.set_observer(ATV::cpu::comm::HaloSend{6.6});
+    sim.set_observer(ATV::cpu::comm::HaloRecv{});
     sim.build();
 
     const auto [sends, recvs] = count_halo_endpoints(sim.plan());
@@ -287,13 +287,13 @@ TEST(HaloParticipantProtocol, FieldParticipantIsNotAnEndpoint) {
 TEST(HaloParticipantProtocol, FieldParticipantDoesNotSuppressAutoInjection) {
     // A pure field participant is registered, but NO halo endpoints are.
     // Under an MPI build, install_defaults() must still auto-inject the
-    // HaloSend/HaloRecv pair for the add_potential cutoff: Endpoint::none must
+    // HaloSend/HaloRecv pair for the set_evaluator cutoff: Endpoint::none must
     // not trip the has_halo_send/has_halo_recv scan booleans.
     ATV::cpu::md::MD sim;
     StubIntegrator integ;
     PureFieldParticipant fp;
     sim.on(ATV::md::Phase::initial_integrate).add_ref(integ);
-    sim.add_potential(ATV::cpu::PairLJCut{0.0104, 3.4, 6.0});
+    sim.set_evaluator(ATV::cpu::PairLJCut{0.0104, 3.4, 6.0});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{6.0});
     sim.on(ATV::md::Phase::force).add_ref(fp, +100);
     sim.build();

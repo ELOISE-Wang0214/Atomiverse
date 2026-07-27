@@ -40,9 +40,9 @@ TEST(NoseHoover, TemperatureControl) {
 
     double dt = 0.001;
     cuda::md::MD sim;
-    sim.add(cuda::md::VelocityVerlet{dt});
-    sim.add(cuda::md::NoseHoover{100.0, 100.0, dt});
-    sim.add(cuda::md::InitVelocity{50.0, 42});
+    sim.set_integrator(cuda::md::VelocityVerlet{dt});
+    sim.set_thermostat(cuda::md::NoseHoover{100.0, 100.0, dt});
+    sim.set_observer(cuda::md::InitVelocity{50.0, 42});
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{8.0}, -10)
         .add(cuda::PairLJCut{0.01, 3.4, 8.0});
@@ -64,8 +64,8 @@ TEST(Deform, BoxGrows) {
     int n_steps = 100;
 
     cuda::md::MD sim;
-    sim.add(cuda::md::VelocityVerlet{dt});
-    sim.add(cuda::md::Deform{0, rate, dt});
+    sim.set_integrator(cuda::md::VelocityVerlet{dt});
+    sim.set_observer(cuda::md::Deform{0, rate, dt});
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{10.0}, -10)
         .add(cuda::PairLJCut{0.01, 3.4, 10.0});
@@ -81,8 +81,8 @@ TEST(Virial, FiniteStress) {
     auto frame = make_cubic(2, 5.0);
 
     cuda::md::MD sim;
-    sim.add(cuda::md::VelocityVerlet{0.001});
-    sim.add(cuda::md::InitVelocity{50.0, 42});
+    sim.set_integrator(cuda::md::VelocityVerlet{0.001});
+    sim.set_observer(cuda::md::InitVelocity{50.0, 42});
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{8.0}, -10)
         .add(cuda::PairLJCut{0.01, 3.4, 8.0});
@@ -102,10 +102,10 @@ TEST(Barostat, FiniteResults) {
     double dt = 0.001;
 
     cuda::md::MD sim;
-    sim.add(cuda::md::VelocityVerlet{dt});
-    sim.add(cuda::md::NoseHoover{100.0, 100.0, dt});
-    sim.add(cuda::md::InitVelocity{50.0, 42});
-    sim.add(cuda::md::Barostat{0.0, 500.0, dt});
+    sim.set_integrator(cuda::md::VelocityVerlet{dt});
+    sim.set_thermostat(cuda::md::NoseHoover{100.0, 100.0, dt});
+    sim.set_observer(cuda::md::InitVelocity{50.0, 42});
+    sim.set_barostat(cuda::md::Barostat{0.0, 500.0, dt});
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{8.0}, -10)
         .add(cuda::PairLJCut{0.01, 3.4, 8.0});

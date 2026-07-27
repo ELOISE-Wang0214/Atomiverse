@@ -206,7 +206,7 @@ int run_child(const char* out_path) {
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{kDt});
     sim.set_neighbor(cpu::md::NeighborList<>{kCut, kSkin});
-    sim.add_potential(cpu::PairCoulCut{kCut});
+    sim.set_evaluator(cpu::PairCoulCut{kCut});
 
     cpu::md::ConstPotBO conp(kEta);
     conp.add_electrode(kTypeBot, kPsiBot);
@@ -214,7 +214,7 @@ int run_child(const char* out_path) {
     conp.electroneutrality = true;
     conp.xy_image_range = 0; // primary-cell min-image solve
     conp.rebuild_matrix_every_step = true;
-    sim.add_ref(conp); // default binding: pre_force @ -50
+    sim.set_observer_ref(conp); // default binding: pre_force @ -50
 
     GhostChargeChecker checker;
     sim.on(ATV::md::Phase::force).add_ref(checker, +500);

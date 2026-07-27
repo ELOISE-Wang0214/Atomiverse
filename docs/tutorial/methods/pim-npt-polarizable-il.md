@@ -128,9 +128,9 @@ cpu::Frame f2 = /* same lattice stretched to d = 2.9 Å */;
 cpu::PimInducedDipole pim2(4.0, {0.0, 3.0}, 0.39,
                            /*pol_tol=*/1e-10, /*max_iter=*/500);
 cpu::md::MD sim;
-sim.add_potential(cpu::PairLJCut{0.01, 3.0, 4.0});
-sim.add_potential(cpu::PairCoulCut{4.0});
-sim.add_potential_ref(pim2);
+sim.set_evaluator(cpu::PairLJCut{0.01, 3.0, 4.0});
+sim.set_evaluator(cpu::PairCoulCut{4.0});
+sim.set_evaluator_ref(pim2);
 sim.set_neighbor(cpu::md::NeighborList<>{4.0, 0.3});
 sim.set_integrator(cpu::md::NoseHooverNPT{
     /*T_target [K]=*/800.0, /*tau_T [fs]=*/100.0,

@@ -101,18 +101,18 @@ int main() {
     cpu::md::MD sim;
     // TIP3P: the Lennard-Jones site is on OXYGEN only. Hydrogen has none, so the
     // (H,H) and (O,H) pairs mix to eps = 0 and do not interact at all.
-    sim.add_potential(cpu::PairLJCut{{{8, 8, 0.1521 * 0.04336, 3.1507}}, cutoff}
+    sim.set_evaluator(cpu::PairLJCut{{{8, 8, 0.1521 * 0.04336, 3.1507}}, cutoff}
                           // O-O
                           .set_special_bonds(0.0, 0.0, 0.0));
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     sim.set_thermostat(cpu::md::FixCSVR{t_target, 100.0, dt, 7777u});
-    sim.add(cpu::md::InitVelocity{t_target, 4242u});
+    sim.set_observer(cpu::md::InitVelocity{t_target, 4242u});
 
     cpu::md::FixRattle rattle{dt};
     rattle.constrain_bond(0, r_oh);  // the two O-H bonds
     rattle.constrain_angle(0, d_hh); // the H-H distance IS the angle
-    sim.add_ref(rattle);
+    sim.set_observer_ref(rattle);
 
     sim.enable_timing(false);
     sim.build();

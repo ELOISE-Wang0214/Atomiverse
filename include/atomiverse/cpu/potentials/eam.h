@@ -20,7 +20,7 @@ namespace cpu {
 /// Component / Neighbor / Comm layers.
 ///
 /// **Why it is not a `Pair`.** `cpu::Pair` models `fpair(r^2)` — one scalar per
-/// separation — and marks `launch()`/`role()` `final`; `add_potential` is a singular
+/// separation — and marks `launch()`/`role()` `final`; `set_evaluator` is a singular
 /// slot. EAM's force on `i` depends on the *density* at `i` **and at every
 /// neighbour `j`**, so it is not expressible in that shape. It therefore follows
 /// the `CoulLong` precedent instead: a plain `Component + NeighborConsumer`,

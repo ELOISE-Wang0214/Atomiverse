@@ -102,7 +102,7 @@ using namespace ATV;
 // reg_surface-tension-coupling.cpp
 
 cpu::md::MD sim;
-sim.add_potential(cpu::PairLJCut{/*eps=*/0.0104, /*sigma=*/3.4, /*rc=*/8.5});
+sim.set_evaluator(cpu::PairLJCut{/*eps=*/0.0104, /*sigma=*/3.4, /*rc=*/8.5});
 sim.set_neighbor(cpu::md::NeighborList<>{8.5, 0.5});
 sim.set_integrator(cpu::md::SurfaceTensionNPT{
     /*T [K]=*/100.0,

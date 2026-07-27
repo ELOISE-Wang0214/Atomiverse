@@ -32,6 +32,7 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/electronic/aimd_method.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/cpmd_conserved.h"
 #include "atomiverse/cpu/dynamics/md.h"
@@ -70,10 +71,10 @@ int main() {
     // (TimestepConsumer) at build — there is deliberately no `cpmd_dt` member.
     constexpr double dt = 0.05; // fs
 
-    cpu::scf::RHF rhf;
-    rhf.basis = cpu::scf::BasisSet::STO3G;
-    rhf.tol = 1e-10;
-    rhf.cpmd = true;
+    cpu::scf::RHF rhf_base;
+    rhf_base.basis = cpu::scf::BasisSet::STO3G;
+    rhf_base.tol = 1e-10;
+    cpu::electronic::CarParrinelloMethod<cpu::scf::RHF> rhf{std::move(rhf_base), 400.0};
     // Family-wide fictitious mass: the AO residual is stiffer than a
     // plane-wave one, and the textbook μ = 400 a.u. blows the sibling cases up
     // (see REFERENCE.md for the μ × dt scan). On H2 the drift is *identical*
@@ -96,12 +97,12 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.on(md::Phase::force).add_ref(rhf, /*order=*/0);
+    sim.set_evaluator_ref(rhf, /*order=*/0);
     // E_cons is assembled by the engine: CpmdConserved sums
     // E_SCF + T_nuc + T_e + E_therm^e onto frame.meta[kConserved] [eV] at its
     // default slot (end_of_step @ -90 — after KineticEnergy @ -100, so the
     // nuclear term is this step's). Owning add() takes that default binding.
-    sim.add(cpu::md::CpmdConserved{});
+    sim.set_observer(cpu::md::CpmdConserved{});
     sim.enable_timing(false);
     sim.build();
 

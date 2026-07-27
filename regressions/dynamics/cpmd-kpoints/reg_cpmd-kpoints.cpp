@@ -9,6 +9,7 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/electronic/car_parrinello.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
@@ -52,17 +53,15 @@ int main() {
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
     constexpr double dt = 0.1; // fs — short step for electronic stability
-    cpu::gpw::GPWEvaluator eval(
+    cpu::gpw::GPWEvaluator gpw(
         /*kinds*/ {H}, /*cutoff_ry*/ 100.0, /*max_iter*/ 60, /*tol*/ 1e-5,
         /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
         /*compute_forces*/ true);
-    eval.k_mesh[0] = 1;
-    eval.k_mesh[1] = 1;
-    eval.k_mesh[2] = 2;
-    eval.k_time_reversal = false;
-    eval.cpmd = true;
-    eval.cpmd_mu = 400.0;
-    // dt is pushed in from `VelocityVerlet` by MD at build (TimestepProvider).
+    gpw.k_mesh[0] = 1;
+    gpw.k_mesh[1] = 1;
+    gpw.k_mesh[2] = 2;
+    gpw.k_time_reversal = false;
+    cpu::electronic::CarParrinello eval{std::move(gpw), 400.0};
 
     constexpr int n_prod = 4;
     constexpr int n_chunks = 2;
@@ -73,7 +72,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
+    sim.set_evaluator_ref(eval, /*order=*/0);
     sim.enable_timing(false);
     sim.build();
 

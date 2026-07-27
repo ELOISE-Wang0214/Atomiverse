@@ -118,7 +118,7 @@ maze.maze_tol = 1e-10;          // ‖σ‖∞ constraint tolerance [V]
 
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{0.25});
-sim.add_potential(cpu::PairGaussianCoul{6.0, {0.0, 2.0, 2.0, 0.0}});
+sim.set_evaluator(cpu::PairGaussianCoul{6.0, {0.0, 2.0, 2.0, 0.0}});
 sim.set_neighbor(cpu::md::NeighborList<>{6.0, 0.5}); // cutoff < L/2
 sim.add_ref(maze);              // pre_force −50 default binding
 sim.add(cpu::md::FixFreeze{1});

@@ -100,7 +100,7 @@ int main() {
     // δV ≈ σ_V = ⟨V⟩/√N keeps volume moves near 50% acceptance.
     const double dv_max = v_pred / std::sqrt(static_cast<double>(n_atoms));
     cpu::mc::NptMc mc{temperature, pressure, /*seed=*/1337u};
-    mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    mc.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     mc.set_neighbor(cpu::md::NeighborList<>{cutoff, /*skin=*/1.0, 1, 0, true});
     mc.set_mover(cpu::mc::MoveSelector{}
                      .add(cpu::mc::TranslateMove{0.4 * sigma}, 0.8)

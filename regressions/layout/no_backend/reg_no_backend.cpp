@@ -52,10 +52,10 @@ int main() {
     // names any engine/backend type.
     const double eps = 0.0104, sigma = 3.4, cutoff = 8.0, skin = 0.3, dt = 2.0;
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::InitVelocity{/*T[K]=*/60.0, /*seed=*/12345u});
+    sim.set_observer(cpu::md::InitVelocity{/*T[K]=*/60.0, /*seed=*/12345u});
     sim.build();
     sim.run(frame, 20);
 

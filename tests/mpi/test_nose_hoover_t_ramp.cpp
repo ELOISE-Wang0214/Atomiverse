@@ -138,9 +138,9 @@ TEST(NoseHooverTRamp, SetTargetTracksAcrossSegmentsAtTwoRanks) {
     cpu::md::NoseHoover nh{T0, tau_T, dt};
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::InitVelocity{T0, /*seed=*/4242});
-    sim.add_ref(nh);
+    sim.set_integrator(cpu::md::VelocityVerlet{dt});
+    sim.set_observer(cpu::md::InitVelocity{T0, /*seed=*/4242});
+    sim.set_observer_ref(nh);
     sim.on(ATV::md::Phase::force)
         .add(cpu::BondHarmonic{{bond_K_eV()}, {kBondR0}})
         .add(cpu::AngleHarmonic{{angle_K_eV()}, {kAngleTheta0}})

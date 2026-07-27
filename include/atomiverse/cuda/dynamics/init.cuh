@@ -195,7 +195,7 @@ class ZeroMomentum : public Component {
 ///
 /// @par Usage
 /// @code{.cpp}
-/// sim.add(md::InitVelocity{300.0, 42});  // 300 K, seed 42
+/// sim.set_observer(md::InitVelocity{300.0, 42});  // 300 K, seed 42
 /// @endcode
 ///
 /// @see LAMMPS velocity create: https://docs.lammps.org/velocity.html

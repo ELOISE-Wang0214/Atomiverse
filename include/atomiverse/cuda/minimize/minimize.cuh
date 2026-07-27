@@ -14,7 +14,7 @@
 ///
 /// @code{.cpp}
 ///   cuda::minimizer::Minimize min;
-///   min.add(cuda::minimizer::LBFGS{});
+///   min.set_optimizer(cuda::minimizer::LBFGS{});
 ///   min.add_criterion(cuda::ForceConverged{/*ftol=*/1e-3});   // replaces the default
 ///   min.add_criterion(cuda::StopOnNaN{});                     // …and composes with it
 /// @endcode
@@ -60,7 +60,7 @@ namespace minimizer {
 /// Usage:
 /// @code{.cpp}
 /// cuda::minimizer::Minimize min;
-/// min.add(cuda::minimizer::SteepestDescent{0.01});
+/// min.set_optimizer(cuda::minimizer::SteepestDescent{0.01});
 /// min.on(minimizer::Phase::force)
 ///    .add(cuda::NeighborList{3.0}, -10)
 ///    .add(cuda::PairLJCut{1.0, 1.0, 3.0});

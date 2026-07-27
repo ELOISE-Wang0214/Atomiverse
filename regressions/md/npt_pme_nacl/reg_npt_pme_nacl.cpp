@@ -118,12 +118,12 @@ int main() {
     const int n_steps = 400;
 
     cpu::md::MD sim;
-    sim.add(cpu::md::InitVelocity{T, /*seed=*/42u});
+    sim.set_observer(cpu::md::InitVelocity{T, /*seed=*/42u});
     sim.set_integrator(cpu::md::NoseHooverNPT{T, tau_T, 0.0, tau_P, dt});
-    sim.add_potential(cpu::PairLJCut{lj_eps, lj_sigma, lj_cut});
+    sim.set_evaluator(cpu::PairLJCut{lj_eps, lj_sigma, lj_cut});
     sim.set_neighbor(cpu::md::NeighborList<>{neigh_cut, /*skin=*/0.5});
     sim.on(md::Phase::force).add(cpu::CoulLong{alpha, cutoff});
-    sim.add(cpu::KSpacePME{alpha, spacing, order});
+    sim.set_evaluator(cpu::KSpacePME{alpha, spacing, order});
     sim.enable_timing(false);
     sim.build();
 

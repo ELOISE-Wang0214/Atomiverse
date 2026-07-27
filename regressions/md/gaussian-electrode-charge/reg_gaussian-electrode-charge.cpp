@@ -67,7 +67,7 @@ int main() {
 
     cpu::Evaluate eval;
     // type 0 = point (η≤0), type 1 = Gaussian η=1
-    eval.add_potential(cpu::PairGaussianCoul{40.0, {0.0, eta}, true});
+    eval.set_evaluator(cpu::PairGaussianCoul{40.0, {0.0, eta}, true});
     eval.build();
     eval.run(f);
 

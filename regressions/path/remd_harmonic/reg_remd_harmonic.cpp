@@ -21,7 +21,7 @@
 using namespace ATV;
 
 static void build_lj(cpu::md::MD& md, double, void*) {
-    md.add_potential(cpu::PairLJCut{0.0104, 3.4, 8.5});
+    md.set_evaluator(cpu::PairLJCut{0.0104, 3.4, 8.5});
     md.set_neighbor(cpu::md::NeighborList<>{8.5, 0.3});
 }
 

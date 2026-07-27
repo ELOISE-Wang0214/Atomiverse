@@ -4,7 +4,7 @@ One Driver, different force-phase component.
 
 ```cpp
 // Classical
-sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
 // AM1
 // sim.on(md::Phase::force).add(cpu::semiempirical::AM1Evaluator{}.with_gradient(true));
 // AIMD
@@ -124,7 +124,7 @@ categorical setters (a pair potential needs a neighbor list):
 
 ```cpp
 cpu::Evaluate eval;
-eval.add_potential(make_classical());
+eval.set_evaluator(make_classical());
 eval.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 eval.build();
 eval.run(frame);                          // frame.meta.get(kEnergy) (eV)
@@ -161,7 +161,7 @@ sim.set_integrator(cpu::md::VelocityVerlet{/*dt=*/0.5});
 sim.set_thermostat(cpu::md::NoseHoover{300.0, 100.0, 0.5});   // NVT
 
 // Classical MD:
-sim.add_potential(make_classical());
+sim.set_evaluator(make_classical());
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 //   ── OR ── AIMD (swap the force provider):
 sim.on(md::Phase::force).add(make_quantum(ints).predictor(3));

@@ -67,7 +67,7 @@ Units on the public surface: **eV**, **Å** (LAMMPS **metal** twin).
 | \(D\) | 20.0 eV·Å⁸ |
 | \(r_c\) | 8.0 Å |
 | Shift | yes (hard-coded in `PairBorn`) |
-| Driver | `cpu::Evaluate` + `add_potential(PairBorn{…})` |
+| Driver | `cpu::Evaluate` + `set_evaluator(PairBorn{…})` |
 
 **Key exclusions (non-goals of this slug)**
 
@@ -117,7 +117,7 @@ for (int i = 0; i < 2; ++i) {
 f.box = cpu::Box::cubic(40.0);
 
 cpu::Evaluate eval;
-eval.add_potential(cpu::PairBorn{A, rho, sigma, C, D, rc});
+eval.set_evaluator(cpu::PairBorn{A, rho, sigma, C, D, rc});
 eval.build();
 eval.run(f);
 
@@ -142,7 +142,7 @@ MD binding (categorical potential API):
 
 ```cpp
 cpu::md::MD sim;
-sim.add_potential(cpu::PairBorn{A, rho, sigma, C, D, rc});
+sim.set_evaluator(cpu::PairBorn{A, rho, sigma, C, D, rc});
 // NeighborList optional for this O(N²) foothold; production NL path deferred
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/1.0});
 sim.build();

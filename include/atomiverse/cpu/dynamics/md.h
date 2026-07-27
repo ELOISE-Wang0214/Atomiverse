@@ -48,7 +48,7 @@ namespace md {
 ///
 /// Convenience class that auto-adds always-on infrastructure components
 /// in the constructor, exposes a LAMMPS-shaped categorical setter API
-/// (add_potential, add_potential, set_neighbor, set_integrator, set_thermostat,
+/// (set_evaluator, set_evaluator, set_neighbor, set_integrator, set_thermostat,
 /// set_barostat, set_observer, set_record, set_thermo — the first six
 /// are inherited from Driver), and runs `install_defaults()` at `build()`
 /// time to derive opt-in infrastructure from declared component requirements:
@@ -65,8 +65,8 @@ namespace md {
 /// Inheritance: MD → Driver<md::Phase> → Driver<md::Phase, cpu::device_tag>.
 /// There is no `DynamicsDriver` category in between any more: "run a step budget" is a
 /// loop bound, not a taxonomy.
-/// Driver provides the shared categorical setter API (add_potential,
-/// add_potential, set_angle, set_dihedral, set_neighbor, set_observer,
+/// Driver provides the shared categorical setter API (set_evaluator,
+/// set_evaluator, set_angle, set_dihedral, set_neighbor, set_observer,
 /// set_record, set_thermo) and the slot variables. MD adds
 /// driver-specific setters (set_integrator, set_thermostat, set_barostat).
 ///
@@ -93,7 +93,7 @@ namespace md {
 /// Usage (LAMMPS-shaped):
 /// @code{.cpp}
 /// cpu::md::MD sim;
-/// sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});
+/// sim.set_evaluator(cpu::PairLJCut{0.0104, 3.4, 6.8});
 /// sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 /// sim.set_integrator(cpu::md::VelocityVerlet{0.001});
 /// sim.set_thermo(100);
@@ -246,7 +246,7 @@ class MD : public Driver<ATV::md::Phase> {
     /// plus the chosen thermostat, each registered with its own validated phase
     /// bindings (Nose-Hoover half-steps on initial/final integrate; CSVR rescale
     /// on end_of_step). Equivalent to the explicit two-call form, so it composes
-    /// with `add_potential`/`set_neighbor`/`on(force).add(<DFT evaluator>)` exactly as
+    /// with `set_evaluator`/`set_neighbor`/`on(force).add(<DFT evaluator>)` exactly as
     /// before.
     ///
     /// @param cfg NVT configuration (dt, T, tau, thermostat kind, seed, ramp).

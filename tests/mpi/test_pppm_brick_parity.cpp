@@ -72,7 +72,7 @@ void build_static_pppm(cpu::md::MD& sim) {
     sim.set_integrator(cpu::md::VelocityVerlet{0.0});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
     sim.on(md::Phase::force).add(cpu::CoulLong{kAlpha, kCutoff});
-    sim.add(cpu::KSpacePPPM{kAlpha, kSpacing, kOrder});
+    sim.set_evaluator(cpu::KSpacePPPM{kAlpha, kSpacing, kOrder});
 }
 
 } // namespace

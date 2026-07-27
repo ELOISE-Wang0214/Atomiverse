@@ -87,7 +87,7 @@ void build_static_electrostatics(cpu::md::MD& sim) {
     sim.set_integrator(cpu::md::VelocityVerlet{0.0});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
     sim.on(md::Phase::force).add(cpu::CoulLong{kAlpha, kCutoff});
-    sim.add(cpu::KSpacePME{kAlpha, kSpacing, kOrder});
+    sim.set_evaluator(cpu::KSpacePME{kAlpha, kSpacing, kOrder});
 }
 
 } // namespace
@@ -195,12 +195,12 @@ TEST(PmeNaclParity, ShortNptConservedAndCellOn1And2Ranks) {
     const double neigh_cut = std::max(kCutoff, lj_cut);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::InitVelocity{T, /*seed=*/42u});
+    sim.set_observer(cpu::md::InitVelocity{T, /*seed=*/42u});
     sim.set_integrator(cpu::md::NoseHooverNPT{T, 50.0, 0.0, 500.0, dt});
-    sim.add_potential(cpu::PairLJCut{lj_eps, lj_sigma, lj_cut});
+    sim.set_evaluator(cpu::PairLJCut{lj_eps, lj_sigma, lj_cut});
     sim.set_neighbor(cpu::md::NeighborList<>{neigh_cut, /*skin=*/0.5});
     sim.on(md::Phase::force).add(cpu::CoulLong{kAlpha, kCutoff});
-    sim.add(cpu::KSpacePME{kAlpha, kSpacing, kOrder});
+    sim.set_evaluator(cpu::KSpacePME{kAlpha, kSpacing, kOrder});
     sim.build();
 
     sim.run(frame, 1);

@@ -55,7 +55,7 @@ cpu::Frame make_chain(int n, double box_len) {
 }
 
 void configure_sim(cpu::md::MD& sim) {
-    sim.add(cpu::md::VelocityVerlet{0.5});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::force)
         .add(cpu::BondHarmonic{{268.0 * kKcalToEv}, {1.53}})
         .add(

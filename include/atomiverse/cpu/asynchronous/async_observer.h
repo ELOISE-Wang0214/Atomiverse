@@ -5,7 +5,7 @@
 /// Inherits the full async-dispatch machinery from `AsyncComponentBase` and
 /// adds a sole behaviour: a default binding at
 /// `md::Phase::end_of_step @ +20`. Users writing MD observers should inherit
-/// from this class so `sim.add_ref(obs)` just works; users wanting the same
+/// from this class so `sim.set_observer_ref(obs)` just works; users wanting the same
 /// observer logic reusable across minimizer/SCF should inherit directly
 /// from `cpu::AsyncComponentBase` and bind explicitly per driver.
 #pragma once

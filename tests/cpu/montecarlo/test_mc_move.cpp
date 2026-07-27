@@ -122,7 +122,7 @@ TEST(MCBuildUnit, RejectsNonPositiveTemperature) {
 
 TEST(MCBuildUnit, ThrowsWithoutMover) {
     cpu::mc::MC mc{300.0, 1u};
-    mc.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
+    mc.set_evaluator(cpu::PairLJCut{kEps, kSigma, kCut});
     mc.set_neighbor(cpu::md::NeighborList<>{kCut, kSkin, 1, 0, true});
     EXPECT_THROW(mc.build(), std::runtime_error);
 }
@@ -135,14 +135,14 @@ TEST(MCBuildUnit, ThrowsWithoutEnergyEvaluator) {
 
 TEST(MCBuildUnit, ThrowsWithPairButNoNeighborList) {
     cpu::mc::MC mc{300.0, 1u};
-    mc.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
+    mc.set_evaluator(cpu::PairLJCut{kEps, kSigma, kCut});
     mc.set_mover(cpu::mc::TranslateMove{0.2});
     EXPECT_THROW(mc.build(), std::runtime_error);
 }
 
 TEST(MCBuildUnit, SucceedsWhenFullyAssembled) {
     cpu::mc::MC mc{300.0, 1u};
-    mc.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
+    mc.set_evaluator(cpu::PairLJCut{kEps, kSigma, kCut});
     mc.set_neighbor(cpu::md::NeighborList<>{kCut, kSkin, 1, 0, true});
     mc.set_mover(cpu::mc::TranslateMove{0.2});
     EXPECT_NO_THROW(mc.build());

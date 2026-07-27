@@ -65,7 +65,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::InitVelocity{T0, /*seed=*/7u});
+    sim.set_observer(cpu::md::InitVelocity{T0, /*seed=*/7u});
     sim.on(md::Phase::force)
         .add(cpu::semiempirical::AM1Evaluator{std::move(cfg)}.with_gradient(
             true));

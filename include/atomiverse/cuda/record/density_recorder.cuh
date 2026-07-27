@@ -35,7 +35,7 @@ namespace cuda {
 /// @code{.cpp}
 /// cuda::scf::SCF scf{integrals, tol, max_iter};
 /// cuda::Evaluate eval;
-/// eval.add(scf);                          // lvalue -> borrowed
+/// eval.set_observer(scf);                          // lvalue -> borrowed
 /// eval.on(evaluate::Phase::finalize).add(
 ///     DensityRecorder{"density.zarr", scf, 20, 20, 20});
 /// @endcode

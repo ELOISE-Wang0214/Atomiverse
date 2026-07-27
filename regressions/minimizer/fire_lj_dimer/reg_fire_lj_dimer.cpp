@@ -52,7 +52,7 @@ int main() {
     fire.dt_max = 20.0;
     opt.set_optimizer_ref(fire);
     opt.add_criterion(cpu::ForceConverged{1e-3, 5e-4, 0.05, 0.02, 1e-6});
-    opt.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    opt.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     opt.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3});
     opt.build();
     opt.run(frame, 2000);

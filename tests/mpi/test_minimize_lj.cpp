@@ -93,7 +93,7 @@ cpu::Frame make_fcc_argon(double perturb_amp) {
 double reference_energy() {
     cpu::Frame frame = make_fcc_argon(/*perturb_amp=*/0.0);
     cpu::minimizer::Minimize opt;
-    opt.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
+    opt.set_evaluator(cpu::PairLJCut{kEps, kSigma, kCut});
     opt.set_neighbor(cpu::md::NeighborList<>{kCut, 0.3});
     opt.set_optimizer(cpu::minimizer::LBFGS{});
     opt.build();
@@ -110,7 +110,7 @@ TEST(MinimizeLj, LbfgsRelaxesPerturbedLatticeAnyRankCount) {
     cpu::Frame frame = make_fcc_argon(/*perturb_amp=*/0.08);
 
     cpu::minimizer::Minimize opt;
-    opt.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
+    opt.set_evaluator(cpu::PairLJCut{kEps, kSigma, kCut});
     opt.set_neighbor(cpu::md::NeighborList<>{kCut, 0.3});
     cpu::minimizer::LBFGS lbfgs{}; // lvalue: post-run trace stays readable
     opt.set_optimizer_ref(lbfgs);
@@ -143,7 +143,7 @@ TEST(MinimizeLj, CgRelaxesPerturbedLatticeAnyRankCount) {
     cpu::Frame frame = make_fcc_argon(/*perturb_amp=*/0.05);
 
     cpu::minimizer::Minimize opt;
-    opt.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
+    opt.set_evaluator(cpu::PairLJCut{kEps, kSigma, kCut});
     opt.set_neighbor(cpu::md::NeighborList<>{kCut, 0.3});
     cpu::minimizer::CG cg{};
     opt.set_optimizer_ref(cg);
@@ -171,7 +171,7 @@ TEST(MinimizeLj, FireRelaxesPerturbedLatticeAnyRankCount) {
     cpu::Frame frame = make_fcc_argon(/*perturb_amp=*/0.05);
 
     cpu::minimizer::Minimize opt;
-    opt.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
+    opt.set_evaluator(cpu::PairLJCut{kEps, kSigma, kCut});
     opt.set_neighbor(cpu::md::NeighborList<>{kCut, 0.3});
     cpu::minimizer::FIRE fire{};
     // Soft LJ crystal needs a larger pseudo-time scale than ASE metal defaults.

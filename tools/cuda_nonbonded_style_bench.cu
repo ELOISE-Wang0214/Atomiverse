@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
 
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff, skin});
-    sim.add_potential(cuda::PairLJCut{1.0, 1.0, cutoff});
+    sim.set_evaluator(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.set_integrator(cuda::md::VelocityVerlet{0.005});
     sim.build();
     sim.run(frame, warm);

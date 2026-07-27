@@ -47,7 +47,7 @@ hero:
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{0.5});   // fs
 
-sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8}); // classical MD
+sim.set_evaluator(cpu::PairLJCut{0.0104, 3.4, 6.8}); // classical MD
 // or:
 // sim.on(md::Phase::force).add(cpu::scf::RHF{}); // ab-initio MD
 

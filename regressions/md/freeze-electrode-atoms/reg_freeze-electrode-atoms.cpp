@@ -74,12 +74,12 @@ int main() {
     frame.box = cpu::Box::cubic(10.0);
 
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     // Seed fluid (and briefly wall); FixFreeze.build re-zeros wall v.
-    sim.add(cpu::md::InitVelocity{/*T=*/200.0, /*seed=*/99u});
-    sim.add(cpu::md::FixFreeze{wall_type});
+    sim.set_observer(cpu::md::InitVelocity{/*T=*/200.0, /*seed=*/99u});
+    sim.set_observer(cpu::md::FixFreeze{wall_type});
     sim.enable_timing(false);
     sim.build();
 

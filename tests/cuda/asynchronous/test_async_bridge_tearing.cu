@@ -204,10 +204,10 @@ TEST(CudaAsyncBridgeTearing, DeliveredSnapshotsAreSingleStep) {
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{2.5}, -10)
             .add(cuda::PairLJCut{1.0, 1.0, 2.5});
-        sim.add(cuda::md::VelocityVerlet{0.001});
-        sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
-        sim.add(StampPositions{});
-        sim.add_ref(bridge);
+        sim.set_integrator(cuda::md::VelocityVerlet{0.001});
+        sim.set_observer(cuda::md::InitVelocity{1.0, 12345ULL});
+        sim.set_observer(StampPositions{});
+        sim.set_observer_ref(bridge);
         sim.build();
         sim.run(frame, 60); // hot loop races ahead of the 3 ms/frame worker
         // sim destructor drains the defer stream (AsyncBridge::destroy), so
@@ -285,9 +285,9 @@ TEST(CudaAsyncRecordRing, NoInFlightOverwrite) {
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{2.5}, -10)
             .add(cuda::PairLJCut{1.0, 1.0, 2.5});
-        sim.add(cuda::md::VelocityVerlet{0.001});
-        sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
-        sim.add_ref(rec);
+        sim.set_integrator(cuda::md::VelocityVerlet{0.001});
+        sim.set_observer(cuda::md::InitVelocity{1.0, 12345ULL});
+        sim.set_observer_ref(rec);
         sim.build();
         sim.run(frame, 60);
     }

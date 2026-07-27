@@ -176,10 +176,10 @@ TEST(PeThermoSchema, PerTermEnergiesSumToTotalPotentialEnergy) {
         .add_ref(ze, -999)
         .add_ref(zs, -998);
     eval.set_neighbor_ref(nl);
-    eval.add_potential_ref(lj);
-    eval.add_potential_ref(hb);
-    eval.add_potential_ref(ha);
-    eval.add_potential_ref(hd);
+    eval.set_evaluator_ref(lj);
+    eval.set_evaluator_ref(hb);
+    eval.set_evaluator_ref(ha);
+    eval.set_evaluator_ref(hd);
     eval.build();
     eval.run(frame);
 

@@ -8,8 +8,8 @@
 /// judges them converged or `max_iter` is reached.
 ///
 /// Exposes the same LAMMPS-shaped categorical setter API as
-/// `cpu::md::MD` (minus the time-evolution setters): add_potential,
-/// add_potential, set_angle, set_dihedral, set_neighbor, set_optimizer,
+/// `cpu::md::MD` (minus the time-evolution setters): set_evaluator,
+/// set_evaluator, set_angle, set_dihedral, set_neighbor, set_optimizer,
 /// set_observer, set_record, set_thermo — all except set_optimizer
 /// are inherited from Driver.
 ///
@@ -147,7 +147,7 @@ class Minimize : public Driver<ATV::minimizer::Phase> {
 
     // ─── Minimizer-specific categorical setters ─────────────────────
     //
-    // add_potential, add_potential, set_angle, set_dihedral, set_neighbor,
+    // set_evaluator, set_evaluator, set_angle, set_dihedral, set_neighbor,
     // set_observer, set_record, set_thermo are inherited from Driver.
 
     /// @brief Configure the optimization algorithm (LAMMPS `min_style`).

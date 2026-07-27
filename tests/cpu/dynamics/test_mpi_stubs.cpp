@@ -132,12 +132,12 @@ TEST(MpiStubBindings, SingleRankLaunchNoOp) {
         cpu::md::MD sim;
         const double zero_force_cut = 3.0;
         sim.set_integrator(cpu::md::VelocityVerlet{1e-6}); // negligible dt
-        sim.add_potential(cpu::PairLJCut{1e-12, 3.4, zero_force_cut});
+        sim.set_evaluator(cpu::PairLJCut{1e-12, 3.4, zero_force_cut});
         sim.set_neighbor(cpu::md::NeighborList<>{zero_force_cut, /*skin=*/0.1});
-        sim.add(cpu::comm::HaloSend{});
-        sim.add(cpu::comm::HaloRecv{});
-        sim.add(cpu::comm::Migrate{});
-        sim.add(cpu::md::mpi::Reduce{});
+        sim.set_observer(cpu::comm::HaloSend{});
+        sim.set_observer(cpu::comm::HaloRecv{});
+        sim.set_observer(cpu::comm::Migrate{});
+        sim.set_observer(cpu::md::mpi::Reduce{});
         sim.build();
         sim.run(frame, 10);
     }

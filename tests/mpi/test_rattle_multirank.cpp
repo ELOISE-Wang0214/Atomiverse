@@ -104,7 +104,7 @@ TEST(RattleMultiRank, GeometryStaysRigidAcrossRanks) {
     cpu::Frame frame = water_box(n_side, spacing);
 
     cpu::md::MD sim;
-    sim.add_potential(
+    sim.set_evaluator(
         cpu::PairLJCut{0.0067, 3.15, cutoff}.set_special_bonds(0, 0, 0));
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
@@ -112,7 +112,7 @@ TEST(RattleMultiRank, GeometryStaysRigidAcrossRanks) {
     cpu::md::FixRattle rattle{dt};
     rattle.constrain_bond(0, kROH);
     rattle.constrain_angle(0, kDHH);
-    sim.add_ref(rattle);
+    sim.set_observer_ref(rattle);
 
     // NOTE: no HaloRefresh is registered here. The driver auto-injects the two the
     // constraint needs (ghost positions after the drift, ghost velocities after the

@@ -145,7 +145,7 @@ is already available each step:
 auto frame = make_fcc_argon(4, /*a=*/5.32);        // 256 Ar atoms, Å
 
 cpu::md::MD sim;
-sim.add_potential(cpu::PairLJCut{/*eps=*/0.0104, /*sigma=*/3.4, /*cutoff=*/6.8});
+sim.set_evaluator(cpu::PairLJCut{/*eps=*/0.0104, /*sigma=*/3.4, /*cutoff=*/6.8});
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt=*/4.0});   // NVE — no thermostat
 sim.set_thermo(1000);   // print step, T, PE, KE, E_total every 1000 steps

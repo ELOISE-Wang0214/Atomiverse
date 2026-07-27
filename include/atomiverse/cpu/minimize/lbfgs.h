@@ -20,7 +20,7 @@
 /// Usage:
 /// @code
 ///   cpu::minimizer::Minimize opt;
-///   opt.add(cpu::minimizer::LBFGS{memory, alpha, max_ls});
+///   opt.set_optimizer(cpu::minimizer::LBFGS{memory, alpha, max_ls});
 ///   opt.add_criterion(cpu::ForceConverged{});   // the convergence policy
 ///   opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{config});
 ///   opt.on(ATV::minimizer::Phase::end_of_step).add(Thermo{1});

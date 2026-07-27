@@ -140,7 +140,7 @@ int main() {
         sim.set_integrator(cpu::md::VelocityVerlet{dt});
         cpu::md::FixDfield dfield(0.0, 0.0, 0.0);
         dfield.polarization_feedback = true;
-        sim.add_ref(dfield);
+        sim.set_observer_ref(dfield);
         sim.enable_timing(false);
         sim.build();
 
@@ -196,7 +196,7 @@ int main() {
         sim.set_threads(1); // 2 atoms: fork/join on a fat node dwarfs physics
         sim.set_integrator(cpu::md::VelocityVerlet{dt});
         cpu::md::FixDfield dfield(0.0, 0.0, 0.0); // foothold: E ≡ D = 0
-        sim.add_ref(dfield);
+        sim.set_observer_ref(dfield);
         sim.enable_timing(false);
         sim.build();
         sim.run(f, 532);

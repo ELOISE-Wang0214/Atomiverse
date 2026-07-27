@@ -404,7 +404,7 @@ TEST(LongRangePlanContract, ActualMismatchedAlphaFailsBeforePlanBuild) {
     sim.set_integrator(cpu::md::VelocityVerlet{1.0});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3});
     sim.on(md::Phase::force).add(cpu::CoulLong{0.3, cutoff});
-    sim.add(cpu::KSpacePME{0.31, 1.0, 6});
+    sim.set_evaluator(cpu::KSpacePME{0.31, 1.0, 6});
     EXPECT_THROW(sim.build(), std::runtime_error);
 }
 
@@ -415,7 +415,7 @@ TEST(LongRangePlanContract, NptAcceptsPmeWithReciprocalStress) {
     sim.set_integrator(cpu::md::NoseHooverNPT{300.0, 100.0, 0.0, 1000.0, 1.0});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3});
     sim.on(md::Phase::force).add(cpu::CoulLong{alpha, cutoff});
-    sim.add(cpu::KSpacePME{alpha, 1.0, 6});
+    sim.set_evaluator(cpu::KSpacePME{alpha, 1.0, 6});
     EXPECT_NO_THROW(sim.build());
 }
 

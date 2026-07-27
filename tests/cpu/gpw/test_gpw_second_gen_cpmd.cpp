@@ -8,12 +8,18 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/electronic/second_gen_cp.h"
+#include "atomiverse/cpu/electronic/xl_bomd_force.h"
+#include "atomiverse/cpu/electronic/car_parrinello.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 
 namespace {
+using ATV::cpu::electronic::SecondGenCp;
+using ATV::cpu::electronic::CarParrinello;
+using ATV::cpu::electronic::XlBomdForce;
 
 ATV::cpu::Frame water_frame() {
     ATV::cpu::Frame f(3);
@@ -51,10 +57,10 @@ ATV::cpu::gpw::GPWEvaluator water_eval() {
 TEST(GpwEvaluatorSecondGenCp, BuildAcceptsWithUks) {
     // Γ-UKS dual ASPC (product path, wave-7 second-gen-cpmd-uks).
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.second_gen_cp = true;
-    eval.n_alpha = 5;
-    eval.n_beta = 3;
+    auto base = water_eval();
+    base.n_alpha = 5;
+    base.n_beta = 3;
+    SecondGenCp eval{std::move(base), 3, 5};
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));
@@ -63,11 +69,11 @@ TEST(GpwEvaluatorSecondGenCp, BuildAcceptsWithUks) {
 TEST(GpwEvaluatorSecondGenCp, BuildAcceptsUksWithOt) {
     // Γ-UKS OT + dual ASPC corrector (product path, second-gen-cpmd-uks-ot).
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.second_gen_cp = true;
-    eval.n_alpha = 5;
-    eval.n_beta = 3;
-    eval.use_ot = true;
+    auto base = water_eval();
+    base.n_alpha = 5;
+    base.n_beta = 3;
+    base.use_ot = true;
+    SecondGenCp eval{std::move(base), 3, 5};
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));
@@ -76,70 +82,38 @@ TEST(GpwEvaluatorSecondGenCp, BuildAcceptsUksWithOt) {
 TEST(GpwEvaluatorSecondGenCp, BuildAcceptsWithOt) {
     // RKS OT partial-SCF corrector is product (second-gen-cpmd-ot).
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.second_gen_cp = true;
-    eval.use_ot = true;
+    auto base = water_eval();
+    base.use_ot = true;
+    SecondGenCp eval{std::move(base), 3, 5};
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));
 }
 
-TEST(GpwEvaluatorSecondGenCp, BuildRejectsWithCpmd) {
-    auto frame = water_frame();
-    auto eval = water_eval();
-    eval.second_gen_cp = true;
-    eval.cpmd = true;
-    ATV::cpu::Context rt;
-    ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+TEST(GpwEvaluatorSecondGenCp, DistinctFromCarParrinelloAndXl) {
+    SecondGenCp sg{water_eval(), 3, 5};
+    CarParrinello cp{water_eval(), 400.0};
+    XlBomdForce xl{water_eval(), 5};
+    EXPECT_NE(sg.name(), cp.name());
+    EXPECT_NE(sg.name(), xl.name());
 }
 
-TEST(GpwEvaluatorSecondGenCp, BuildRejectsWithXlBomd) {
-    auto frame = water_frame();
-    auto eval = water_eval();
-    eval.second_gen_cp = true;
-    eval.xl_bomd = true;
-    ATV::cpu::Context rt;
-    ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+TEST(GpwEvaluatorSecondGenCp, CtorEnablesForces) {
+    auto base = water_eval();
+    base.compute_forces = false;
+    SecondGenCp eval{std::move(base), 3, 5};
+    EXPECT_TRUE(eval.method().compute_forces);
 }
 
-TEST(GpwEvaluatorSecondGenCp, BuildRejectsWithoutForces) {
-    auto frame = water_frame();
-    auto eval = water_eval();
-    eval.second_gen_cp = true;
-    eval.compute_forces = false;
-    ATV::cpu::Context rt;
-    ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
-}
-
-TEST(GpwEvaluatorSecondGenCp, BuildRejectsBadOrderOrBudget) {
-    auto frame = water_frame();
-    {
-        auto eval = water_eval();
-        eval.second_gen_cp = true;
-        eval.second_gen_cp_k = -1;
-        ATV::cpu::Context rt;
-        ATV::cpu::BuildContext bc{rt, frame};
-        EXPECT_THROW(eval.build(bc), std::invalid_argument);
-    }
-    {
-        auto eval = water_eval();
-        eval.second_gen_cp = true;
-        eval.second_gen_cp_max_iter = 0;
-        ATV::cpu::Context rt;
-        ATV::cpu::BuildContext bc{rt, frame};
-        EXPECT_THROW(eval.build(bc), std::invalid_argument);
-    }
+TEST(GpwEvaluatorSecondGenCp, CtorRejectsBadOrderOrBudget) {
+    EXPECT_THROW((SecondGenCp{water_eval(), -1, 5}), std::invalid_argument);
+    EXPECT_THROW((SecondGenCp{water_eval(), 3, 0}), std::invalid_argument);
 }
 
 TEST(GpwEvaluatorSecondGenCp, BuildAcceptsDefaultMembers) {
     auto frame = water_frame();
-    auto eval = water_eval();
-    eval.second_gen_cp = true;
-    eval.second_gen_cp_k = 3;
-    eval.second_gen_cp_max_iter = 5;
+    auto base = water_eval();
+    SecondGenCp eval{std::move(base), 3, 5};
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));
@@ -150,13 +124,13 @@ TEST(GpwEvaluatorSecondGenCp, BuildAcceptsMultiK) {
     auto frame = water_frame();
     // Periodic cell required for a k-mesh.
     frame.box = ATV::cpu::Box::cubic(10.0);
-    auto eval = water_eval();
-    eval.nonperiodic = false;
-    eval.second_gen_cp = true;
-    eval.k_mesh[0] = 1;
-    eval.k_mesh[1] = 1;
-    eval.k_mesh[2] = 2;
-    eval.k_time_reversal = false;
+    auto base = water_eval();
+    base.nonperiodic = false;
+    SecondGenCp eval{std::move(base), 3, 5};
+    eval.method().k_mesh[0] = 1;
+    eval.method().k_mesh[1] = 1;
+    eval.method().k_mesh[2] = 2;
+    eval.method().k_time_reversal = false;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));
@@ -165,13 +139,13 @@ TEST(GpwEvaluatorSecondGenCp, BuildAcceptsMultiK) {
 TEST(GpwEvaluatorSecondGenCp, BuildRejectsMultiKWithOt) {
     auto frame = water_frame();
     frame.box = ATV::cpu::Box::cubic(10.0);
-    auto eval = water_eval();
-    eval.nonperiodic = false;
-    eval.second_gen_cp = true;
-    eval.use_ot = true;
-    eval.k_mesh[0] = 1;
-    eval.k_mesh[1] = 1;
-    eval.k_mesh[2] = 2;
+    auto base = water_eval();
+    base.nonperiodic = false;
+    base.use_ot = true;
+    SecondGenCp eval{std::move(base), 3, 5};
+    eval.method().k_mesh[0] = 1;
+    eval.method().k_mesh[1] = 1;
+    eval.method().k_mesh[2] = 2;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
@@ -180,15 +154,15 @@ TEST(GpwEvaluatorSecondGenCp, BuildRejectsMultiKWithOt) {
 TEST(GpwEvaluatorSecondGenCp, BuildAcceptsMultiKUks) {
     auto frame = water_frame();
     frame.box = ATV::cpu::Box::cubic(10.0);
-    auto eval = water_eval();
-    eval.nonperiodic = false;
-    eval.second_gen_cp = true;
-    eval.n_alpha = 5;
-    eval.n_beta = 3;
-    eval.k_mesh[0] = 1;
-    eval.k_mesh[1] = 1;
-    eval.k_mesh[2] = 2;
-    eval.k_time_reversal = false;
+    auto base = water_eval();
+    base.nonperiodic = false;
+    base.n_alpha = 5;
+    base.n_beta = 3;
+    SecondGenCp eval{std::move(base), 3, 5};
+    eval.method().k_mesh[0] = 1;
+    eval.method().k_mesh[1] = 1;
+    eval.method().k_mesh[2] = 2;
+    eval.method().k_time_reversal = false;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));

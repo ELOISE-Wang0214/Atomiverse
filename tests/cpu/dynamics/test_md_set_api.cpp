@@ -8,7 +8,7 @@
 ///     (arch-refactor-03-neighbor): PairLJCut and CoulLong are consumers
 ///     reporting their ctor cutoff [Å]; NeighborList is the provider;
 ///     NoseHooverNPT is no consumer; PairMorse opts out (O(N²) demo)
-///   - singular setters (add_potential, set_neighbor, set_integrator) reject
+///   - singular setters (set_evaluator, set_neighbor, set_integrator) reject
 ///     re-call with a different component
 ///   - append setters (set_thermostat, set_observer, set_record) accept
 ///     repeated calls
@@ -203,7 +203,7 @@ TEST(MDSetApi, CoulLongPublishesRealSpaceLongRangeContract) {
 TEST(MDSetApi, LongRangeRealHalfRequiresExactlyOneReciprocalHalf) {
     ATV::cpu::md::MD sim;
     add_test_integrator(sim);
-    sim.add(
+    sim.set_evaluator(
         LongRangeStub{"real-half", ATV::cpu::LongRangeRole::RealSpace, 0.3});
     const std::string error = build_error(sim);
     EXPECT_NE(error.find("real-half"), std::string::npos);
@@ -214,7 +214,7 @@ TEST(MDSetApi, LongRangeRealHalfRequiresExactlyOneReciprocalHalf) {
 TEST(MDSetApi, LongRangeReciprocalHalfRequiresExactlyOneRealHalf) {
     ATV::cpu::md::MD sim;
     add_test_integrator(sim);
-    sim.add(LongRangeStub{"reciprocal-half",
+    sim.set_evaluator(LongRangeStub{"reciprocal-half",
                           ATV::cpu::LongRangeRole::ReciprocalSpace, 0.3});
     const std::string error = build_error(sim);
     EXPECT_NE(error.find("reciprocal-half"), std::string::npos);
@@ -224,9 +224,9 @@ TEST(MDSetApi, LongRangeReciprocalHalfRequiresExactlyOneRealHalf) {
 TEST(MDSetApi, LongRangeDuplicateRoleIsRejectedByIdentityIndependentName) {
     ATV::cpu::md::MD sim;
     add_test_integrator(sim);
-    sim.add(LongRangeStub{"real-a", ATV::cpu::LongRangeRole::RealSpace, 0.3});
-    sim.add(LongRangeStub{"real-b", ATV::cpu::LongRangeRole::RealSpace, 0.3});
-    sim.add(LongRangeStub{"reciprocal",
+    sim.set_evaluator(LongRangeStub{"real-a", ATV::cpu::LongRangeRole::RealSpace, 0.3});
+    sim.set_evaluator(LongRangeStub{"real-b", ATV::cpu::LongRangeRole::RealSpace, 0.3});
+    sim.set_evaluator(LongRangeStub{"reciprocal",
                           ATV::cpu::LongRangeRole::ReciprocalSpace, 0.3});
     const std::string error = build_error(sim);
     EXPECT_NE(error.find("duplicate real-space"), std::string::npos);
@@ -237,8 +237,8 @@ TEST(MDSetApi, LongRangeDuplicateRoleIsRejectedByIdentityIndependentName) {
 TEST(MDSetApi, LongRangeAlphaMismatchIsRejectedBeforePlanBuild) {
     ATV::cpu::md::MD sim;
     add_test_integrator(sim);
-    sim.add(LongRangeStub{"real", ATV::cpu::LongRangeRole::RealSpace, 0.3});
-    sim.add(LongRangeStub{"reciprocal",
+    sim.set_evaluator(LongRangeStub{"real", ATV::cpu::LongRangeRole::RealSpace, 0.3});
+    sim.set_evaluator(LongRangeStub{"reciprocal",
                           ATV::cpu::LongRangeRole::ReciprocalSpace, 0.31});
     const std::string error = build_error(sim);
     EXPECT_NE(error.find("alpha mismatch"), std::string::npos);
@@ -249,8 +249,8 @@ TEST(MDSetApi, LongRangeAlphaMismatchIsRejectedBeforePlanBuild) {
 TEST(MDSetApi, MatchingLongRangePairBuildsAsOrdinaryComponents) {
     ATV::cpu::md::MD sim;
     add_test_integrator(sim);
-    sim.add(LongRangeStub{"real", ATV::cpu::LongRangeRole::RealSpace, 0.3});
-    sim.add(LongRangeStub{"reciprocal",
+    sim.set_evaluator(LongRangeStub{"real", ATV::cpu::LongRangeRole::RealSpace, 0.3});
+    sim.set_evaluator(LongRangeStub{"reciprocal",
                           ATV::cpu::LongRangeRole::ReciprocalSpace, 0.3});
     EXPECT_NO_THROW(sim.build());
 }
@@ -258,7 +258,7 @@ TEST(MDSetApi, MatchingLongRangePairBuildsAsOrdinaryComponents) {
 TEST(MDSetApi, MultiPhaseBindingDoesNotDuplicateLongRangeParticipant) {
     ATV::cpu::md::MD sim;
     add_test_integrator(sim);
-    sim.add(LongRangeStub{"real", ATV::cpu::LongRangeRole::RealSpace, 0.3});
+    sim.set_evaluator(LongRangeStub{"real", ATV::cpu::LongRangeRole::RealSpace, 0.3});
     LongRangeStub reciprocal{"reciprocal",
                              ATV::cpu::LongRangeRole::ReciprocalSpace, 0.3};
     sim.on(ATV::md::Phase::force).add_ref(reciprocal);
@@ -271,11 +271,11 @@ TEST(MDSetApi, StressConsumerWithMatchedLongRangePairBuilds) {
     // provides_system_stress provider). Long-range halves only need alpha match.
     ATV::cpu::md::MD sim;
     add_test_integrator(sim);
-    sim.add(LongRangeStub{"real", ATV::cpu::LongRangeRole::RealSpace, 0.3});
-    sim.add(LongRangeStub{"reciprocal",
+    sim.set_evaluator(LongRangeStub{"real", ATV::cpu::LongRangeRole::RealSpace, 0.3});
+    sim.set_evaluator(LongRangeStub{"reciprocal",
                           ATV::cpu::LongRangeRole::ReciprocalSpace, 0.3,
                           /*provides_stress=*/false});
-    sim.add(StressConsumerStub{});
+    sim.set_observer(StressConsumerStub{});
     EXPECT_NO_THROW(sim.build());
 }
 
@@ -284,10 +284,10 @@ TEST(MDSetApi, StressConsumerWithMatchedLongRangePairBuilds) {
 TEST(MDSetApi, SetPairTwiceWithSameTypeIsIdempotent) {
     ATV::cpu::md::MD sim;
     EXPECT_NO_THROW(
-        sim.add_potential(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff}));
+        sim.set_evaluator(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff}));
     // Same component class — idempotent (no second registration).
     EXPECT_NO_THROW(
-        sim.add_potential(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff}));
+        sim.set_evaluator(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff}));
 }
 
 // (Different-name re-call test deferred until a second pair evaluator
@@ -320,7 +320,7 @@ TEST(MDSetApi, SetIntegratorRejectsDifferentTypeAfterFirst) {
 
 TEST(MDSetApi, NPTAutoInjectsVirialStress) {
     IntrospectMD sim;
-    sim.add_potential(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
+    sim.set_evaluator(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{kCutoff, kSkin});
     sim.set_integrator(ATV::cpu::md::NoseHooverNPT{kT, 100.0, kP, 1000.0, kDt});
     EXPECT_NO_THROW(sim.build());
@@ -330,7 +330,7 @@ TEST(MDSetApi, NPTAutoInjectsVirialStress) {
 
 TEST(MDSetApi, ExplicitVirialStressSuppressesAutoInject) {
     IntrospectMD sim;
-    sim.add_potential(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
+    sim.set_evaluator(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{kCutoff, kSkin});
     sim.set_integrator(ATV::cpu::md::NoseHooverNPT{kT, 100.0, kP, 1000.0, kDt});
     sim.set_observer(ATV::cpu::md::Virial{});
@@ -341,7 +341,7 @@ TEST(MDSetApi, ExplicitVirialStressSuppressesAutoInject) {
 
 TEST(MDSetApi, NoStressReadsLeavesVirialStressOut) {
     IntrospectMD sim;
-    sim.add_potential(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
+    sim.set_evaluator(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{kCutoff, kSkin});
     sim.set_integrator(
         ATV::cpu::md::VelocityVerlet{kDt}); // NVE — no stress dep
@@ -354,7 +354,7 @@ TEST(MDSetApi, NoStressReadsLeavesVirialStressOut) {
 
 TEST(MDSetApi, PairWithoutNeighborListThrowsAtBuild) {
     ATV::cpu::md::MD sim;
-    sim.add_potential(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
+    sim.set_evaluator(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{kDt});
     // No set_neighbor → install_infra throws naming the offending evaluator.
     try {
@@ -370,7 +370,7 @@ TEST(MDSetApi, PairWithoutNeighborListThrowsAtBuild) {
 
 TEST(MDSetApi, PairWithNeighborListBuildsClean) {
     ATV::cpu::md::MD sim;
-    sim.add_potential(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
+    sim.set_evaluator(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{kCutoff, kSkin});
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{kDt});
     EXPECT_NO_THROW(sim.build());

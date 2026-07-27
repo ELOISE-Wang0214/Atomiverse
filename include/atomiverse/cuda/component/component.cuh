@@ -7,7 +7,7 @@
 ///   destroy() -- resource cleanup
 ///
 /// Two registration paths:
-/// - `sim.add(comp)` -- uses default_bindings().
+/// - `sim.set_observer(comp)` -- uses default_bindings().
 /// - `sim.on(phase).add(comp)` -- explicit phase override.
 ///
 /// CUDA-free header.
@@ -84,7 +84,7 @@ struct DestroyContext {
 ///
 /// Two registration paths:
 /// @code{.cpp}
-/// sim.add(comp);                  // uses default_bindings()
+/// sim.set_observer(comp);                  // uses default_bindings()
 /// sim.on(phase).add(comp, order); // explicit phase override
 /// @endcode
 ///

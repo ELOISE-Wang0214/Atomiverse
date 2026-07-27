@@ -65,7 +65,7 @@ cpu::Frame make_displaced_system(int n_side, double density,
 double initial_energy(const cpu::Frame& frame, double cutoff) {
     cpu::Frame f = frame;
     cuda::minimizer::Minimize min;
-    min.add(cuda::minimizer::LBFGS{});
+    min.set_optimizer(cuda::minimizer::LBFGS{});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -103,7 +103,7 @@ TEST(MinimizerLBFGS, EnergyDecreases) {
     cuda::minimizer::Minimize min;
     // Tight tolerances: exercise the two-loop direction over the full
     // budget (history fills past the default memory of 5 pairs).
-    min.add(cuda::minimizer::LBFGS{5, double(0.01), 10});
+    min.set_optimizer(cuda::minimizer::LBFGS{5, double(0.01), 10});
     min.add_criterion(cuda::ForceConverged{/*ftol=*/1e-8, /*rms_ftol=*/1e-8,
                                            /*max_dtol=*/1e-10,
                                            /*rms_dtol=*/1e-10,
@@ -128,7 +128,7 @@ TEST(MinimizerLBFGS, ConvergesAndStopsEarly) {
     // (`min.converged()`) — `LBFGS::converged()` is deleted, because an optimizer that
     // only publishes metrics does not know the verdict.
     cuda::minimizer::LBFGS lbfgs{5, double(0.01), 10};
-    min.add_ref(lbfgs);
+    min.set_observer_ref(lbfgs);
     min.add_criterion(cuda::ForceConverged{/*ftol=*/10.0, /*rms_ftol=*/10.0,
                                            /*max_dtol=*/1.0, /*rms_dtol=*/1.0,
                                            /*etol=*/10.0});
@@ -154,7 +154,7 @@ TEST(MinimizerLBFGS, ArmijoLineSearchEnergyDecreases) {
     step.line_search(); // Armijo default constants.
 
     cuda::minimizer::Minimize min;
-    min.add(std::move(step));
+    min.set_observer(std::move(step));
     min.add_criterion(cuda::ForceConverged{/*ftol=*/1e-8, /*rms_ftol=*/1e-8,
                                            /*max_dtol=*/1e-10,
                                            /*rms_dtol=*/1e-10,

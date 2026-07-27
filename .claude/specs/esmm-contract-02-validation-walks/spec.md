@@ -1,6 +1,6 @@
 ---
 slug: esmm-contract-02-validation-walks
-status: approved
+status: in-progress
 created: 2026-07-26
 revised: 2026-07-26
 domain: driver / pipeline-contract

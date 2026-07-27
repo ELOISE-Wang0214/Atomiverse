@@ -68,20 +68,20 @@ int main() {
 
     cpu::Evaluate eval;
     eval.set_neighbor(cpu::md::NeighborList<>{10.0, 0.5});
-    eval.add_potential(cpu::PairLJCut{
+    eval.set_evaluator(cpu::PairLJCut{
         {{0, 0, eps_c3, sig_c3}, {1, 1, eps_oh, sig_oh}, {2, 2, eps_h, sig_h}},
         10.0}
                            .set_special_bonds(0.0, 0.0, 0.5));
     eval.on(evaluate::Phase::evaluate)
         .add(cpu::PairCoulCut{10.0}.set_special_bonds(0.0, 0.0, 0.5));
-    eval.add_potential(cpu::BondHarmonic{{kcal_per_mol_to_ev(228.89),
+    eval.set_evaluator(cpu::BondHarmonic{{kcal_per_mol_to_ev(228.89),
                                           kcal_per_mol_to_ev(285.15),
                                           kcal_per_mol_to_ev(340.0)},
                                          {1.5354, 1.4242, 1.09}});
-    eval.add_potential(cpu::AngleHarmonic{
+    eval.set_evaluator(cpu::AngleHarmonic{
         {kcal_per_mol_to_ev(76.79), kcal_per_mol_to_ev(88.33)},
         {degree_to_rad(109.66), degree_to_rad(113.6)}});
-    eval.add_potential(
+    eval.set_evaluator(
         cpu::DihedralCharmm({kcal_per_mol_to_ev(0.166667)}, {3}, {0.0}));
     eval.build();
     eval.run(f);

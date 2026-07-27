@@ -109,7 +109,7 @@ TEST(PeChainDrifting, MigrationKeepsChainIntact) {
     const int n_atoms_global = frame.nlocal();
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{5.0}, -20);
     sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)

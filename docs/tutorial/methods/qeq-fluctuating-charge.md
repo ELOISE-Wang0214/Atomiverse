@@ -143,7 +143,7 @@ sim.on(md::Phase::pre_force).add(cpu::md::QEq(10.0)
                                      .set_type(1, 5.343, 10.126)
                                      .set_type(2, 8.741, 13.364)
                                      .set_type(3, 4.528, 13.8904));
-sim.add_potential(cpu::PairCoulCut{/*cutoff [Å]=*/10.0});  // sees equilibrated q
+sim.set_evaluator(cpu::PairCoulCut{/*cutoff [Å]=*/10.0});  // sees equilibrated q
 sim.set_neighbor(cpu::md::NeighborList<>{10.0, 0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{0.5});
 sim.build();

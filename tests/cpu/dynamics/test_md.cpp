@@ -560,8 +560,8 @@ TEST_F(CpuMdTest, FixLangevinReachesEquipartition) {
         frame.span(ATV::kAtom_mass)[i] = mass;
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::FixLangevin{T_target, /*T_stop=*/T_target, damp, dt,
+    sim.set_integrator(cpu::md::VelocityVerlet{dt});
+    sim.set_thermostat(cpu::md::FixLangevin{T_target, /*T_stop=*/T_target, damp, dt,
                                  /*seed=*/12345});
     sim.build();
 
@@ -601,12 +601,12 @@ TEST_F(CpuMdTest, NoseHooverNptRelaxesPressure) {
     const double tau_P = 1000.0;
 
     cpu::md::MD sim;
-    sim.add(cpu::md::InitVelocity{T_tgt, /*seed=*/777});
-    sim.add(cpu::md::NoseHooverNPT{T_tgt, tau_T, /*P_target=*/0.0, tau_P, dt});
+    sim.set_observer(cpu::md::InitVelocity{T_tgt, /*seed=*/777});
+    sim.set_integrator(cpu::md::NoseHooverNPT{T_tgt, tau_T, /*P_target=*/0.0, tau_P, dt});
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{kCutoff}, -10);
     sim.on(ATV::md::Phase::force)
         .add(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
-    sim.add(cpu::md::Virial{});
+    sim.set_observer(cpu::md::Virial{});
     sim.build();
 
     const double V0 = frame.box.cell()(0, 0) * frame.box.cell()(1, 1)

@@ -101,9 +101,9 @@ TEST(NoseHooverNptMultiRank, KineticEnergyNonZero) {
     cpu::md::MD sim;
     sim.set_integrator(
         cpu::md::NoseHooverNPT{T_target, tau_T, 0.0, tau_P, dt, 2.0});
-    sim.add(cpu::md::InitVelocity{T_target, /*seed=*/12345});
+    sim.set_observer(cpu::md::InitVelocity{T_target, /*seed=*/12345});
     sim.set_neighbor(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.3});
-    sim.add_potential(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
+    sim.set_evaluator(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
         0.0, 0.0, 0.0));
     sim.build();
 
@@ -244,11 +244,11 @@ TEST(NoseHooverNptMultiRank, BondsOnlyKineticNonZero) {
     cpu::md::MD sim;
     sim.set_integrator(
         cpu::md::NoseHooverNPT{T_target, 100.0, 0.0, 1000.0, dt, 2.0});
-    sim.add(cpu::md::InitVelocity{T_target, /*seed=*/42});
+    sim.set_observer(cpu::md::InitVelocity{T_target, /*seed=*/42});
     sim.set_neighbor(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.3});
-    sim.add_potential(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
+    sim.set_evaluator(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
         0.0, 0.0, 0.0));
-    sim.add_potential(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
+    sim.set_evaluator(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
     // NO angle, NO dihedral — bonds only.
     sim.build();
 
@@ -311,12 +311,12 @@ TEST(NoseHooverNptMultiRank, BondedKineticNonZero) {
     cpu::md::MD sim;
     sim.set_integrator(
         cpu::md::NoseHooverNPT{T_target, 100.0, 0.0, 1000.0, dt, 2.0});
-    sim.add(cpu::md::InitVelocity{T_target, /*seed=*/42});
+    sim.set_observer(cpu::md::InitVelocity{T_target, /*seed=*/42});
     sim.set_neighbor(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.3});
-    sim.add_potential(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
+    sim.set_evaluator(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
         0.0, 0.0, 0.0));
-    sim.add_potential(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
-    sim.add_potential(cpu::AngleHarmonic{{angle_K_eV}, {angle_theta0}});
+    sim.set_evaluator(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
+    sim.set_evaluator(cpu::AngleHarmonic{{angle_K_eV}, {angle_theta0}});
     sim.build();
 
     // NOTE: this test was originally a *collapse* repro (T → 0 mode). It
@@ -453,9 +453,9 @@ TEST(NoseHooverNptMultiRank, MigrationKeepsSpecialBondsExclusion) {
     // special_bonds(0,0,0): 1-2/1-3/1-4 bonded pairs MUST be excluded from
     // LJ. The migration-staleness bug dropped this exclusion for migrated
     // atoms, feeding the LJ kernel a 1.53 Å pair (E_pair → 1e5+ eV).
-    sim.add_potential(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
+    sim.set_evaluator(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
         0.0, 0.0, 0.0));
-    sim.add_potential(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
+    sim.set_evaluator(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
     sim.build();
 
     // E_pair for these sparse, lane-separated chains is tiny: only intra-

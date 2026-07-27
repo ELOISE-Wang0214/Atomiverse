@@ -26,6 +26,7 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/electronic/aimd_method.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/cpmd_conserved.h"
 #include "atomiverse/cpu/dynamics/md.h"
@@ -65,10 +66,10 @@ int main() {
     // (TimestepProvider → TimestepConsumer); there is no `cpmd_dt` member.
     constexpr double dt = 0.05; // fs
 
-    cpu::scf::RKS rks{cpu::scf::XCType::LSDA};
-    rks.basis = cpu::scf::BasisSet::STO3G;
-    rks.tol = 1e-9;
-    rks.cpmd = true;
+    cpu::scf::RKS rks_base{cpu::scf::XCType::LSDA};
+    rks_base.basis = cpu::scf::BasisSet::STO3G;
+    rks_base.tol = 1e-9;
+    cpu::electronic::CarParrinelloMethod<cpu::scf::RKS> rks{std::move(rks_base), 400.0};
     // Scanned μ ∈ {400, 1000, 2000} a.u. × dt ∈ {0.05, 0.1} fs (REFERENCE.md):
     // the plane-wave textbook μ = 400 a.u. loses adiabaticity on the stiffer AO
     // residual and diverges inside 120 steps; μ = 1000 at dt = 0.05 fs is the
@@ -87,11 +88,11 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.on(md::Phase::force).add_ref(rks, /*order=*/0);
+    sim.set_evaluator_ref(rks, /*order=*/0);
     // CpmdConserved sums E_KS + T_nuc + T_e + E_therm^e onto
     // frame.meta[kConserved] [eV] at end_of_step @ -90 (after KineticEnergy
     // @ -100, so the nuclear term is this step's).
-    sim.add(cpu::md::CpmdConserved{});
+    sim.set_observer(cpu::md::CpmdConserved{});
     sim.enable_timing(false);
     sim.build();
 

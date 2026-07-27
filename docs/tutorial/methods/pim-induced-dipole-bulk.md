@@ -140,8 +140,8 @@ potentials):
 
 ```cpp
 cpu::md::MD sim;
-sim.add_potential(cpu::PimInducedDipole{20.0, {0.0, 1.0, 1.5}, 0.39});
-sim.add_potential(cpu::PairCoulCut{/*cutoff=*/20.0});  // permanent q–q
+sim.set_evaluator(cpu::PimInducedDipole{20.0, {0.0, 1.0, 1.5}, 0.39});
+sim.set_evaluator(cpu::PairCoulCut{/*cutoff=*/20.0});  // permanent q–q
 sim.set_neighbor(cpu::md::NeighborList<>{20.0, 0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/1.0});
 sim.build();

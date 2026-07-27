@@ -34,7 +34,7 @@ static cpu::Frame h2() {
 TEST(MethodDriverNoAlloc, MultiStepNestedRuns) {
     auto frame = h2();
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.5});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 3);

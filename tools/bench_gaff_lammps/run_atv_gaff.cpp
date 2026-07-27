@@ -175,19 +175,19 @@ int main(int argc, char** argv) {
             .set_atom_sort({.nfreq = 1000, .binsize = 0.0, .enabled = true}));
     // NVT: skip bonded virial (barostat-only). Pair still needs energy;
     // stress off saves ~3 outer products per torsion and pair virial.
-    sim.add_potential(
+    sim.set_evaluator(
         cpu::PairLJCutCoulLong{peo_lj(args.cutoff), alpha, args.cutoff}
             .set_special_bonds_amber()
             .set_compute_stress(false));
-    sim.add(
+    sim.set_evaluator(
         cpu::KSpacePPPM::from_accuracy(args.accuracy, args.cutoff, grid_sp));
-    sim.add_potential(cpu::BondHarmonic{Kbond, r0});
-    sim.add_potential(cpu::AngleHarmonic{Kang, th0});
-    sim.add_potential(
+    sim.set_evaluator(cpu::BondHarmonic{Kbond, r0});
+    sim.set_evaluator(cpu::AngleHarmonic{Kang, th0});
+    sim.set_evaluator(
         cpu::DihedralCharmm(Kd, nper, dphase).set_compute_stress(false));
     sim.set_integrator(cpu::md::VelocityVerlet{1.0});
     sim.set_thermostat(cpu::md::NoseHoover{args.T, args.tau_T, 1.0});
-    sim.add(cpu::md::InitVelocity{args.T, static_cast<unsigned>(args.seed)});
+    sim.set_observer(cpu::md::InitVelocity{args.T, static_cast<unsigned>(args.seed)});
     sim.build();
 
     // Warmup (not timed in our wall clock; still contributes to driver summary)

@@ -15,7 +15,7 @@ namespace {
 void build_soft(cpu::md::MD& md, double lambda, void*) {
     cpu::PairLJSoft soft(0.0104, 3.4, 8.5);
     soft.lambda = lambda;
-    md.add_potential(std::move(soft));
+    md.set_evaluator(std::move(soft));
     // No neighbor for soft all-pairs path? PairLJSoft may need neighbor —
     // check: if it requires pair_list, set neighbor.
 }
@@ -25,7 +25,7 @@ double energy_soft(const cpu::Frame& frame, double lambda, void*) {
     cpu::Evaluate eval;
     cpu::PairLJSoft soft(0.0104, 3.4, 8.5);
     soft.lambda = lambda;
-    eval.add_potential(std::move(soft));
+    eval.set_evaluator(std::move(soft));
     eval.build();
     eval.run(f);
     return f.meta.get(kEnergy);
@@ -56,7 +56,7 @@ TEST(HRemd, ConstructsAndRunsTwoLambda) {
         [](cpu::md::MD& md, double lambda, void*) {
             cpu::PairLJSoft soft(0.0104, 3.4, 8.5);
             soft.lambda = lambda;
-            md.add_potential(std::move(soft));
+            md.set_evaluator(std::move(soft));
             md.set_neighbor(cpu::md::NeighborList<>{8.5, 0.3});
         },
         nullptr);
@@ -66,7 +66,7 @@ TEST(HRemd, ConstructsAndRunsTwoLambda) {
             cpu::Evaluate eval;
             cpu::PairLJSoft soft(0.0104, 3.4, 8.5);
             soft.lambda = lambda;
-            eval.add_potential(std::move(soft));
+            eval.set_evaluator(std::move(soft));
             eval.set_neighbor(cpu::md::NeighborList<>{8.5, 0.3});
             eval.build();
             eval.run(copy);

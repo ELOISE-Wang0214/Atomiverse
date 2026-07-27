@@ -84,7 +84,7 @@ cpu::PairGaussianCoul pot(/*cutoff [Å]=*/40.0,
                           /*eta_by_type=*/{0.0, 1.0}, // type0 point, type1 Gaussian
                           /*include_self=*/true);
 cpu::Evaluate eval;
-eval.add_potential(std::move(pot));
+eval.set_evaluator(std::move(pot));
 eval.build();
 eval.run(frame); // E on frame.meta[kEnergy] [eV]
 ```

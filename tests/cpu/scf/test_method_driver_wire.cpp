@@ -74,7 +74,7 @@ TEST(MethodDriverWire, EvaluateAcceptsNestedRhf) {
 TEST(MethodDriverWire, MdAcceptsNestedRhfForce) {
     auto frame = make_h2();
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.5});
     sim.on(md::Phase::force).add(cpu::scf::RHF{});
     EXPECT_NO_THROW(sim.build());
     sim.run(frame, 1);
@@ -130,7 +130,7 @@ TEST(MethodDriverWire, NestedMultiStepAimd) {
     frame.span(kAtom_vx)[0] = 0.001;
     frame.span(kAtom_vx)[1] = -0.001;
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.5});
     sim.on(md::Phase::force).add(cpu::scf::RHF{}.predictor(3));
     sim.build();
     sim.run(frame, 3);

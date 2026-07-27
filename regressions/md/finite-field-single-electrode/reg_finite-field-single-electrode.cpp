@@ -146,12 +146,12 @@ int main() {
         cpu::md::MD sim;
         // Inert LJ: cutoff ≪ any self-distance; only electrode self.
         sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/2.0, /*skin=*/0.3});
-        sim.add_potential(cpu::PairLJCut{/*eps=*/0.0, /*sigma=*/1.0,
+        sim.set_evaluator(cpu::PairLJCut{/*eps=*/0.0, /*sigma=*/1.0,
                                          /*cutoff=*/2.0});
         sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.1});
-        sim.add_ref(conp);
-        sim.add_ref(field);
-        sim.add_ref(pol);
+        sim.set_observer_ref(conp);
+        sim.set_observer_ref(field);
+        sim.set_observer_ref(pol);
         sim.build();
         sim.run(frame, 1);
 

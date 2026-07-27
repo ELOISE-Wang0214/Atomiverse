@@ -33,7 +33,7 @@ int main() {
     const double vz = 0.01;
     const double dt = 0.001;
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{0.01, 3.4, 6.0});
+    sim.set_evaluator(cpu::PairLJCut{0.01, 3.4, 6.0});
     sim.set_neighbor(cpu::md::NeighborList<>{6.0, 0.3});
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     cpu::md::FixMove move(0, 0, vz, 1, dt);

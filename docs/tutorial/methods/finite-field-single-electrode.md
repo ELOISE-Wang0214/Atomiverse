@@ -176,7 +176,7 @@ cpu::md::FixEfield field(0.0, 0.0, 0.1);
 
 cpu::md::MD sim;
 sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/2.0, /*skin=*/0.3});
-sim.add_potential(cpu::PairLJCut{/*eps=*/0.0, /*sigma=*/1.0, /*cutoff=*/2.0});
+sim.set_evaluator(cpu::PairLJCut{/*eps=*/0.0, /*sigma=*/1.0, /*cutoff=*/2.0});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.1});
 sim.add_ref(conp);    // pre_force −50
 sim.add_ref(field);   // post_force +100

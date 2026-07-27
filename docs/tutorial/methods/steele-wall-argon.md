@@ -109,7 +109,7 @@ kspace):
 
 ```cpp
 cpu::md::MD sim;
-// ... set_neighbor, add_potential, set_integrator as needed ...
+// ... set_neighbor, set_evaluator, set_integrator as needed ...
 sim.add(cpu::md::FixWallLJ1043{2, -1, 0.0, 0.010338, 3.40, 12.0});
 // or: sim.add_ref(wall);  // borrow
 sim.build();

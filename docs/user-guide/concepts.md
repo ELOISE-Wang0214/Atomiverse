@@ -43,7 +43,7 @@ No allocation in `launch()`.
 Registration is ownership-explicit:
 
 ```cpp
-sim.add_potential(cpu::PairLJCut{eps, sigma, rcut});  // owns a copy
+sim.set_evaluator(cpu::PairLJCut{eps, sigma, rcut});  // owns a copy
 sim.on(md::Phase::force).add(cpu::scf::RHF{});     // owns a copy
 sim.on(md::Phase::force).add_ref(my_component);       // borrows
 ```
@@ -65,7 +65,7 @@ You do not subclass `Driver<>` for ordinary work. You construct a **preset**
 ```cpp
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});
+sim.set_evaluator(cpu::PairLJCut{0.0104, 3.4, 6.8});
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 sim.build();
 sim.run(frame, 1000);
@@ -77,7 +77,7 @@ stage. Same MD loop, different physics:
 
 ```cpp
 // classical
-sim.add_potential(cpu::PairLJCut{…});
+sim.set_evaluator(cpu::PairLJCut{…});
 // ab initio
 sim.on(md::Phase::force).add(cpu::scf::RHF{});
 ```

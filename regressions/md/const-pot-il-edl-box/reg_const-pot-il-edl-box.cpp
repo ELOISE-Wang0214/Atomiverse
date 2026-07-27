@@ -226,10 +226,10 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_threads(4); // tiny box; immune to oversubscribed runner nodes
-    sim.add(cpu::md::InitVelocity{/*T=*/400.0, /*seed=*/11u});
+    sim.set_observer(cpu::md::InitVelocity{/*T=*/400.0, /*seed=*/11u});
     sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/1.0});
     sim.set_thermostat(cpu::md::NoseHoover{400.0, /*tau=*/100.0, 1.0});
-    sim.add_potential(cpu::PairLJCut{{{0, 0, kEpsCat, kSigCat},
+    sim.set_evaluator(cpu::PairLJCut{{{0, 0, kEpsCat, kSigCat},
                                       {1, 1, kEpsAn, kSigAn},
                                       {0, 2, eps_cw, sig_cw},
                                       {0, 3, eps_cw, sig_cw},
@@ -238,13 +238,13 @@ int main() {
                                      /*cutoff=*/10.0});
     sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/10.0, /*skin=*/0.5});
     sim.on(md::Phase::force).add(cpu::CoulLong{/*alpha=*/0.3, /*cutoff=*/8.0});
-    sim.add(cpu::KSpacePME{/*alpha=*/0.3, /*spacing=*/0.5, /*order=*/5});
-    sim.add(std::move(cpot));
-    sim.add(cpu::md::FixFreeze{2});
-    sim.add(cpu::md::FixFreeze{3});
-    sim.add_ref(qobs);
-    sim.add_ref(psi);
-    sim.add_ref(rho);
+    sim.set_evaluator(cpu::KSpacePME{/*alpha=*/0.3, /*spacing=*/0.5, /*order=*/5});
+    sim.set_observer(std::move(cpot));
+    sim.set_observer(cpu::md::FixFreeze{2});
+    sim.set_observer(cpu::md::FixFreeze{3});
+    sim.set_observer_ref(qobs);
+    sim.set_observer_ref(psi);
+    sim.set_observer_ref(rho);
     sim.enable_timing(false);
     sim.build();
 

@@ -284,7 +284,7 @@ TEST(BondedEnergyBruteForce, PerTermEnergyMatchesBruteForce) {
     ASSERT_GT(std::abs(bf.dihedral), 1e-9) << "degenerate dihedral oracle";
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.0}); // dt = 0 → positions frozen
+    sim.set_integrator(cpu::md::VelocityVerlet{0.0}); // dt = 0 → positions frozen
     sim.on(ATV::md::Phase::force)
         .add(cpu::BondHarmonic{{bond_K_eV()}, {kBondR0}})
         .add(cpu::AngleHarmonic{{angle_K_eV()}, {kAngleTheta0}})

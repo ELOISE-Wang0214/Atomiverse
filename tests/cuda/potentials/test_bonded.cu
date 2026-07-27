@@ -274,7 +274,7 @@ TEST(Bonded, ChainWithLJ) {
     frame.add_bond(2, 3, 0);
 
     cuda::md::MD sim;
-    sim.add(cuda::md::VelocityVerlet{0.1});
+    sim.set_integrator(cuda::md::VelocityVerlet{0.1});
     sim.on(md::Phase::force).add(cuda::BondHarmonic{{350.0}, {1.53}});
     sim.build();
     sim.run(frame, 10);

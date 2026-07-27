@@ -24,7 +24,7 @@ static cpu::Frame h2_stretched() {
 TEST(CG, RHFMinimizerRuns) {
     auto frame = h2_stretched();
     cpu::minimizer::Minimize opt;
-    opt.add(cpu::minimizer::CG{});
+    opt.set_optimizer(cpu::minimizer::CG{});
     opt.on(minimizer::Phase::force).add(cpu::scf::RHF{});
     opt.add_criterion(cpu::ForceConverged{0.5, 0.3, 0.5, 0.3, 1e-3});
     opt.build();

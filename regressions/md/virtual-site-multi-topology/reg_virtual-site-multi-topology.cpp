@@ -125,8 +125,8 @@ int main() {
     cpu::Evaluate eval;
     eval.on(evaluate::Phase::prepare).add_ref(place, +100);
     eval.set_neighbor(cpu::md::NeighborList<>{cut, 0.3, 1, 0, true});
-    eval.add_potential(std::move(lj));
-    eval.add_potential(std::move(coul));
+    eval.set_evaluator(std::move(lj));
+    eval.set_evaluator(std::move(coul));
     eval.on(evaluate::Phase::finalize).add_ref(redist, -100);
     eval.enable_timing(false);
     eval.build();

@@ -415,7 +415,7 @@ TEST(Materialize, MaterializedFrameIsRunnable) {
 
     ATV::cpu::md::MD sim;
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{6.8, /*skin=*/0.5});
-    sim.add_potential(ATV::cpu::PairLJCut{0.0104, 3.4, 6.8});
+    sim.set_evaluator(ATV::cpu::PairLJCut{0.0104, 3.4, 6.8});
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{/*dt=*/0.5});
     sim.build();
     sim.run(cf, 10);

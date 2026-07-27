@@ -63,11 +63,11 @@ TEST(PairLJCutCoulLong, FiniteEnergyWithAmberSpecials) {
     const double eps = cpu::kcal_per_mol_to_ev(0.1);
     cpu::md::MD sim;
     sim.set_neighbor(cpu::md::NeighborList<>{cut, 2.0, 1, 0, true});
-    sim.add_potential(
+    sim.set_evaluator(
         cpu::PairLJCutCoulLong{{{0, 0, eps, 3.4}, {1, 1, eps, 2.5}}, alpha, cut}
             .set_special_bonds_amber()
             .set_compute_stress(true));
-    sim.add(cpu::KSpaceEwald{alpha, /*accuracy=*/1e-5});
+    sim.set_evaluator(cpu::KSpaceEwald{alpha, /*accuracy=*/1e-5});
     sim.set_integrator(cpu::md::VelocityVerlet{1.0});
     sim.build();
     sim.run(f, 1);

@@ -52,7 +52,7 @@ TEST(PairLjTileStep0, TwoAtomEnergyMatchesOracle) {
 
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{rc, 0.5});
-    sim.add_potential(cuda::PairLJCut{eps, sig, rc});
+    sim.set_evaluator(cuda::PairLJCut{eps, sig, rc});
     sim.build();
     sim.run(frame, 1);
 

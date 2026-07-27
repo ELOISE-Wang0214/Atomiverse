@@ -9,6 +9,7 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/electronic/xl_bomd_force.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
@@ -56,13 +57,11 @@ int main() {
     // Same envelope family as gpw-bomd-water (200 Ry / tol 1e-5 keeps the
     // multi-step run inside the ≤60 s gate; absolute E/F parity is the
     // gpw-forces-water pin's job). XL-BOMD K=5 (Niklasson 2009 Table I).
-    cpu::gpw::GPWEvaluator eval(
+    cpu::gpw::GPWEvaluator gpw_base(
         /*kinds*/ {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
         /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
         /*compute_forces*/ true);
-    eval.xl_bomd = true;
-    eval.xl_bomd_k = 5;
-
+    cpu::electronic::XlBomdForce eval{std::move(gpw_base), 5};
     constexpr double dt = 0.5; // fs
     constexpr int n_prod = 4;
     constexpr int n_chunks = 2;
@@ -76,7 +75,7 @@ int main() {
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     // Borrow (add_ref) so SCF diagnostics stay readable after the run.
-    sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
+    sim.set_evaluator_ref(eval, /*order=*/0);
     sim.enable_timing(false);
     sim.build();
 

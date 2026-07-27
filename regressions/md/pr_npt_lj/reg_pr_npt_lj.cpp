@@ -55,12 +55,12 @@ int main() {
     const double V0 = frame.box.volume();
 
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
     sim.set_integrator(
         cpu::md::ParrinelloRahmanNPT{T, P_target, tau_T, tau_P, dt});
-    sim.add(cpu::md::InitVelocity{T, 42u});
-    sim.add(cpu::md::Virial{});
+    sim.set_observer(cpu::md::InitVelocity{T, 42u});
+    sim.set_observer(cpu::md::Virial{});
     sim.enable_timing(false);
     sim.build();
 

@@ -145,7 +145,7 @@ MD composition (optional product use; Component default binding is
 ```cpp
 cpu::md::MD sim;
 sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/2.0, /*skin=*/0.3});
-sim.add_potential(cpu::PairLJCut{/*eps=*/0.0, /*sigma=*/1.0, /*cutoff=*/2.0});
+sim.set_evaluator(cpu::PairLJCut{/*eps=*/0.0, /*sigma=*/1.0, /*cutoff=*/2.0});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/1.0});
 sim.add(cpu::md::FixOscillatingEfield{0.0, 0.0, 0.2, 1000.0, 1.0});
 sim.build();

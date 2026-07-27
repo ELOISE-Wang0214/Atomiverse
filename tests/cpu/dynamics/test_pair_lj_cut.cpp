@@ -38,7 +38,7 @@ TEST(PairLJCutPort, EnergyMatchesAnalyticFormula) {
 
     ATV::cpu::md::MD sim;
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{rcut, /*skin=*/0.5});
-    sim.add_potential(ATV::cpu::PairLJCut{eps, sigma, rcut});
+    sim.set_evaluator(ATV::cpu::PairLJCut{eps, sigma, rcut});
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{/*dt=*/0.001});
     sim.build();
     // 1 integration step at dt=0.001 fs with zero initial velocities ≈

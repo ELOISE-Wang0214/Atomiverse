@@ -1114,7 +1114,7 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
 
     /// @brief Shared missing-NL check. `setter_help` is the
     /// driver-specific instruction printed in the throw message
-    /// (`add_potential` is the same, but the variable name differs:
+    /// (`set_evaluator` is the same, but the variable name differs:
     /// `sim` / `opt` / `eval`).
     void throw_if_missing_neighbor_list_(const InfraScan& s,
                                          const char* driver_name,

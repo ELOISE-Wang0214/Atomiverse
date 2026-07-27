@@ -9,6 +9,7 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/electronic/second_gen_cp.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
@@ -55,11 +56,11 @@ int main() {
 
     constexpr double dt = 0.5; // fs — BOMD-class step (vs classical CP ~0.1)
     constexpr int corrector_budget = 5;
-    cpu::gpw::GPWEvaluator eval(
+    cpu::gpw::GPWEvaluator gpw_base(
         /*kinds*/ {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
         /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
         /*compute_forces*/ true);
-    eval.second_gen_cp = true;
+    cpu::electronic::SecondGenCp eval{std::move(gpw_base), 3, 5};
     eval.second_gen_cp_k = 1; // Kolafa ASPC order (K+1=2 seed densities)
     eval.second_gen_cp_max_iter = corrector_budget;
 
@@ -74,7 +75,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
+    sim.set_evaluator_ref(eval, /*order=*/0);
     sim.enable_timing(false);
     sim.build();
 

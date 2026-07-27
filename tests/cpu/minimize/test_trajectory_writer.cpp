@@ -24,7 +24,7 @@ static cpu::Frame h2() {
 TEST(TrajectoryWriter, MinimizeWithRHFRuns) {
     auto frame = h2();
     cpu::minimizer::Minimize opt;
-    opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
+    opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});
     opt.on(minimizer::Phase::force).add(cpu::scf::RHF{});
     opt.add_criterion(cpu::ForceConverged{0.5, 0.3, 0.5, 0.3, 1e-3});
     opt.build();

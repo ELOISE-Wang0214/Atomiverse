@@ -87,7 +87,7 @@ TEST(CudaNVELimit, CapClampsSingleAtom) {
     auto frame = make_single_atom(5.0);
     const double x0 = frame.span(kAtom_x)[0];
     cuda::md::MD sim;
-    sim.add(cuda::md::NVELimit{1.0, 0.05});
+    sim.set_integrator(cuda::md::NVELimit{1.0, 0.05});
     // Need a Force-capable component to satisfy cuda::md::MD. Use a
     // disposable LJ + NeighborList that won't trigger meaningful force
     // on the single isolated atom.
@@ -108,7 +108,7 @@ TEST(CudaNVELimit, SurvivesHugeForcesNoNaN) {
     auto frame = make_overlap_frame(2); // 8 atoms in a tight cube
     const double cutoff = 3.0;
     cuda::md::MD sim;
-    sim.add(cuda::md::NVELimit{1.0, 0.05});
+    sim.set_integrator(cuda::md::NVELimit{1.0, 0.05});
     sim.on(ATV::md::Phase::force).add(cuda::NeighborList{cutoff}, -10);
     sim.on(ATV::md::Phase::force).add(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.build();

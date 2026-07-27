@@ -10,6 +10,7 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/electronic/xl_bomd_force.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
@@ -54,14 +55,13 @@ int main() {
     // Envelope run: 200 Ry / tol 1e-5 keeps multi-step UKS inside ≤60 s.
     // Absolute E/F parity is gpw-uks-forces / gpw-uks-o2-gamma's job.
     // XL-BOMD K=5 (Niklasson 2009 Table I); dual α/β propagators.
-    cpu::gpw::GPWEvaluator eval(
+    cpu::gpw::GPWEvaluator gpw(
         /*kinds*/ {O}, /*cutoff_ry*/ 200.0, /*max_iter*/ 80, /*tol*/ 1e-5,
         /*mix*/ 0.4, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ true,
         /*compute_forces*/ true);
-    eval.n_alpha = 7; // multiplicity 3, 12 valence e⁻
-    eval.n_beta = 5;
-    eval.xl_bomd = true;
-    eval.xl_bomd_k = 5;
+    gpw.n_alpha = 7; // multiplicity 3, 12 valence e⁻
+    gpw.n_beta = 5;
+    cpu::electronic::XlBomdForce eval{std::move(gpw), 5};
 
     constexpr double dt = 0.5; // fs
     constexpr int n_prod = 4;
@@ -76,7 +76,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
+    sim.set_evaluator_ref(eval, /*order=*/0);
     sim.enable_timing(false);
     sim.build();
 

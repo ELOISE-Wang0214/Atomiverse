@@ -161,22 +161,28 @@ class McBase : public Driver<ATV::sampling::Phase> {
     }
 
     /// @brief A Mover to propose with, and something that can score the
-    ///        proposal.
+    ///        proposal. Nested method-drivers count as HF energy sources via
+    ///        cross-cast.
     void validate_components() const override {
         bool has_mover = false;
         bool has_energy = false;
-        for_each_pending([&](const cpu::Component& c) {
-            if (dynamic_cast<const Mover*>(&c))
-                has_mover = true;
-            if (dynamic_cast<const Potential*>(&c)
-                || dynamic_cast<const Bias*>(&c)
-                || dynamic_cast<const PathCoupling*>(&c)
-                || dynamic_cast<const HF*>(&c)
-                || dynamic_cast<const Semiempirical*>(&c)
-                || dynamic_cast<const PlaneWave*>(&c)
-                || dynamic_cast<const GPW*>(&c))
-                has_energy = true;
-        });
+        for_each_pending_kind(
+            [&](const cpu::Component& c) {
+                if (dynamic_cast<const Mover*>(&c))
+                    has_mover = true;
+                if (dynamic_cast<const Potential*>(&c)
+                    || dynamic_cast<const Bias*>(&c)
+                    || dynamic_cast<const PathCoupling*>(&c)
+                    || dynamic_cast<const HF*>(&c)
+                    || dynamic_cast<const Semiempirical*>(&c)
+                    || dynamic_cast<const PlaneWave*>(&c)
+                    || dynamic_cast<const GPW*>(&c))
+                    has_energy = true;
+            },
+            [&](const cpu::DriverNode* d) {
+                if (dynamic_cast<const HF*>(d))
+                    has_energy = true;
+            });
         if (!has_mover)
             throw_missing("Mover");
         if (!has_energy)

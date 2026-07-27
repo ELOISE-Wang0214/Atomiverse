@@ -151,12 +151,12 @@ TEST(FixRattle, RejectsAnUnrepresentableTolerance) {
 TEST(FixRattle, ConstraintDoesNotSatisfyTheIntegratorRequirement) {
     cpu::Frame f = water_box(2, 6.0);
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{0.1, 3.0, 8.0});
+    sim.set_evaluator(cpu::PairLJCut{0.1, 3.0, 8.0});
     sim.set_neighbor(cpu::md::NeighborList<>{8.0, 0.3});
     cpu::md::FixRattle rattle{1.0};
     rattle.constrain_bond(0, kROH);
     rattle.constrain_angle(0, kDHH);
-    sim.add_ref(rattle);
+    sim.set_observer_ref(rattle);
     // No integrator was registered.
     EXPECT_THROW(sim.build(), std::runtime_error);
 }
@@ -171,13 +171,13 @@ TEST(FixRattle, ThrowsOnUnresolvableConstraint) {
     f.rebuild_tag_index(0, f.nlocal());
 
     cpu::md::MD sim;
-    sim.add_potential(
+    sim.set_evaluator(
         cpu::PairLJCut{0.0067, 3.15, 6.0}.set_special_bonds(0.0, 0.0, 0.0));
     sim.set_neighbor(cpu::md::NeighborList<>{6.0, 0.5});
     sim.set_integrator(cpu::md::VelocityVerlet{1.0});
     cpu::md::FixRattle rattle{1.0};
     rattle.constrain_bond(0, kROH);
-    sim.add_ref(rattle);
+    sim.set_observer_ref(rattle);
     sim.set_threads(2); // 24 atoms: OpenMP fork/join would dwarf the physics
     sim.enable_timing(false);
     sim.build();
@@ -192,14 +192,14 @@ TEST(FixRattle, GeometryStaysRigidOverATrajectory) {
     const double dt = 2.0; // fs — larger than a flexible water could survive
 
     cpu::md::MD sim;
-    sim.add_potential(
+    sim.set_evaluator(
         cpu::PairLJCut{0.0067, 3.15, 6.0}.set_special_bonds(0.0, 0.0, 0.0));
     sim.set_neighbor(cpu::md::NeighborList<>{6.0, 0.5});
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     cpu::md::FixRattle rattle{dt};
     rattle.constrain_bond(0, kROH);
     rattle.constrain_angle(0, kDHH);
-    sim.add_ref(rattle);
+    sim.set_observer_ref(rattle);
     sim.set_threads(2); // 24 atoms: OpenMP fork/join would dwarf the physics
     sim.enable_timing(false);
     sim.build();
@@ -231,14 +231,14 @@ TEST(FixRattle, RelativeVelocityAlongBondsVanishes) {
     const double dt = 2.0;
 
     cpu::md::MD sim;
-    sim.add_potential(
+    sim.set_evaluator(
         cpu::PairLJCut{0.0067, 3.15, 6.0}.set_special_bonds(0.0, 0.0, 0.0));
     sim.set_neighbor(cpu::md::NeighborList<>{6.0, 0.5});
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     cpu::md::FixRattle rattle{dt};
     rattle.constrain_bond(0, kROH);
     rattle.constrain_angle(0, kDHH);
-    sim.add_ref(rattle);
+    sim.set_observer_ref(rattle);
     sim.set_threads(2); // 24 atoms: OpenMP fork/join would dwarf the physics
     sim.enable_timing(false);
     sim.build();

@@ -9,6 +9,7 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/electronic/car_parrinello.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
@@ -53,19 +54,13 @@ int main() {
     // Envelope run: 200 Ry / tol 1e-5 keeps multi-step UKS inside ≤60 s.
     // Absolute E/F parity is gpw-uks-forces / gpw-uks-o2-gamma's job.
     constexpr double dt = 0.1; // fs — short step for electronic stability
-    cpu::gpw::GPWEvaluator eval(
+    cpu::gpw::GPWEvaluator gpw(
         /*kinds*/ {O}, /*cutoff_ry*/ 200.0, /*max_iter*/ 80, /*tol*/ 1e-5,
         /*mix*/ 0.4, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ true,
         /*compute_forces*/ true);
-    eval.n_alpha = 7; // multiplicity 3, 12 valence e⁻
-    eval.n_beta = 5;
-    eval.cpmd = true;
-    // Heavier fictitious mass than PW textbook 400 a.u. — AO residual
-    // curvature on DZVP O₂ is stiffer; 2000 keeps short NVE stable at 0.1 fs.
-    eval.cpmd_mu = 2000.0;
-    // dt is pushed in from `VelocityVerlet` by MD at build (TimestepProvider).
-
-    // Drift production after the baseline CP step that engages Te.
+    gpw.n_alpha = 7; // multiplicity 3, 12 valence e⁻
+    gpw.n_beta = 5;
+    cpu::electronic::CarParrinello eval{std::move(gpw), 2000.0};
     constexpr int n_prod = 4;
     constexpr int n_chunks = 2;
     // CP conserved-energy envelope (same class as closed-shell CPMD).
@@ -75,7 +70,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
+    sim.set_evaluator_ref(eval, /*order=*/0);
     sim.enable_timing(false);
     sim.build();
 

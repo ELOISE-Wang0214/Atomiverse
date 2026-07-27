@@ -83,7 +83,7 @@ TEST(CudaClusterContract, PairLjRunsOnClusterPath) {
 
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff, 0.9});
-    sim.add_potential(cuda::PairLJCut{1.0, 1.0, cutoff});
+    sim.set_evaluator(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.build();
     sim.run(frame, 1);
 

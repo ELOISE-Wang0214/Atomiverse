@@ -183,7 +183,7 @@ conq.rebuild_matrix_every_step = true;   // electrodes move / small twin
 
 cpu::md::MD sim;
 sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/12.0, /*skin=*/0.5});
-sim.add_potential(cpu::PairCoulCut{/*cutoff=*/12.0});
+sim.set_evaluator(cpu::PairCoulCut{/*cutoff=*/12.0});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.1});
 sim.add_ref(conq);   // or add(std::move(conq)) to own; pre_force @ -50
 sim.build();

@@ -2,7 +2,7 @@
 /// @brief Tests for `RDF` async observer (molrs-backed g(r)).
 ///
 /// Verifies:
-///   - registration via `sim.add_ref(rdf)` (explicit borrowed component)
+///   - registration via `sim.set_observer_ref(rdf)` (explicit borrowed component)
 ///   - snapshots stage into the molrs trajectory (n_samples accrues)
 ///   - finalize() computes a nonzero g(r) via molrs and writes the output file
 ///   - first g(r) peak position matches FCC nearest-neighbor distance
@@ -74,9 +74,9 @@ TEST(RDFObserverAsync, AccumulatesAcrossSnapshots) {
     RDF rdf{6.0, 200, /*freq=*/0, out.path};
     {
         cpu::md::MD sim;
-        sim.add(cpu::md::VelocityVerlet{1e-6});
-        sim.add(NoOpForce{});
-        sim.add_ref(rdf);
+        sim.set_integrator(cpu::md::VelocityVerlet{1e-6});
+        sim.set_evaluator(NoOpForce{});
+        sim.set_observer_ref(rdf);
         sim.build();
         sim.run(
             frame,
@@ -101,9 +101,9 @@ TEST(RDFObserverAsync, FinalizeWritesOutputFile) {
     RDF rdf{6.0, 100, /*freq=*/0, out.path};
     {
         cpu::md::MD sim;
-        sim.add(cpu::md::VelocityVerlet{1e-6});
-        sim.add(NoOpForce{});
-        sim.add_ref(rdf);
+        sim.set_integrator(cpu::md::VelocityVerlet{1e-6});
+        sim.set_evaluator(NoOpForce{});
+        sim.set_observer_ref(rdf);
         sim.build();
         sim.run(frame, 5);
     }
@@ -140,9 +140,9 @@ TEST(RDFObserverAsync, FirstPeakNearFCCNearestNeighbor) {
     RDF rdf{r_max, n_bins, /*freq=*/0, out.path};
     {
         cpu::md::MD sim;
-        sim.add(cpu::md::VelocityVerlet{1e-6});
-        sim.add(NoOpForce{});
-        sim.add_ref(rdf);
+        sim.set_integrator(cpu::md::VelocityVerlet{1e-6});
+        sim.set_evaluator(NoOpForce{});
+        sim.set_observer_ref(rdf);
         sim.build();
         sim.run(frame, 3); // 2 firing snapshots
     }
@@ -178,9 +178,9 @@ TEST(RDFObserverAsync, FrequencyRespected) {
     RDF rdf{6.0, 100, /*freq=*/3, out.path};
     {
         cpu::md::MD sim;
-        sim.add(cpu::md::VelocityVerlet{1e-6});
-        sim.add(NoOpForce{});
-        sim.add_ref(rdf);
+        sim.set_integrator(cpu::md::VelocityVerlet{1e-6});
+        sim.set_evaluator(NoOpForce{});
+        sim.set_observer_ref(rdf);
         sim.build();
         sim.run(frame, 11); // step > 0 && step % 3 == 0 → 3, 6, 9 → 3 samples
     }

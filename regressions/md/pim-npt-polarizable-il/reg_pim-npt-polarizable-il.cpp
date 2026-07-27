@@ -160,8 +160,8 @@ int main() {
     {
         auto f = make_start_frame(kDPin);
         cpu::Evaluate eval;
-        eval.add_potential(cpu::PairLJCut{0.01, 3.0, pim_cut});
-        eval.add_potential(cpu::PairCoulCut{pim_cut});
+        eval.set_evaluator(cpu::PairLJCut{0.01, 3.0, pim_cut});
+        eval.set_evaluator(cpu::PairCoulCut{pim_cut});
         eval.set_neighbor(cpu::md::NeighborList<>{pim_cut, 0.3});
         eval.build();
         eval.run(f);
@@ -173,9 +173,9 @@ int main() {
     {
         auto f = make_start_frame(kDPin);
         cpu::Evaluate eval;
-        eval.add_potential(cpu::PairLJCut{0.01, 3.0, pim_cut});
-        eval.add_potential(cpu::PairCoulCut{pim_cut});
-        eval.add_potential(cpu::PimInducedDipole{pim_cut, {0.0, alpha_anion},
+        eval.set_evaluator(cpu::PairLJCut{0.01, 3.0, pim_cut});
+        eval.set_evaluator(cpu::PairCoulCut{pim_cut});
+        eval.set_evaluator(cpu::PimInducedDipole{pim_cut, {0.0, alpha_anion},
                                                  thole_a, 1e-13, 1000});
         eval.set_neighbor(cpu::md::NeighborList<>{pim_cut, 0.3});
         eval.build();
@@ -207,15 +207,15 @@ int main() {
                                   /*pol_tol=*/1e-10, /*max_iter=*/500);
         TrackVolume vol;
         cpu::md::MD sim;
-        sim.add_potential(cpu::PairLJCut{0.01, 3.0, pim_cut});
-        sim.add_potential(cpu::PairCoulCut{pim_cut});
-        sim.add_potential_ref(pim);
+        sim.set_evaluator(cpu::PairLJCut{0.01, 3.0, pim_cut});
+        sim.set_evaluator(cpu::PairCoulCut{pim_cut});
+        sim.set_evaluator_ref(pim);
         sim.set_neighbor(cpu::md::NeighborList<>{pim_cut, 0.3});
         sim.set_integrator(cpu::md::NoseHooverNPT{
             /*T_target=*/T, /*tau_T=*/100.0, /*P_target=*/0.0,
             /*tau_P=*/500.0, /*dt=*/1.0});
-        sim.add(cpu::md::InitVelocity{T, 20260727u});
-        sim.add(cpu::md::Virial{});
+        sim.set_observer(cpu::md::InitVelocity{T, 20260727u});
+        sim.set_observer(cpu::md::Virial{});
         sim.add_criterion_ref(vol);
         sim.enable_timing(false);
         sim.build();

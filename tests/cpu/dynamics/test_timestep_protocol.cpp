@@ -172,7 +172,7 @@ TEST(TimestepProtocol, ConflictingProvidersThrowNamingBoth) {
 
     sim.on(ATV::md::Phase::initial_integrate).add_ref(fast, 0);
     sim.on(ATV::md::Phase::initial_integrate).add_ref(slow, 10);
-    sim.add_ref(force);
+    sim.set_observer_ref(force);
 
     try {
         sim.build();
@@ -194,8 +194,8 @@ TEST(TimestepProtocol, AgreeingProvidersPushTheSharedTimestep) {
 
     sim.on(ATV::md::Phase::initial_integrate).add_ref(one, 0);
     sim.on(ATV::md::Phase::initial_integrate).add_ref(two, 10);
-    sim.add_ref(force);
-    sim.add_ref(consumer);
+    sim.set_observer_ref(force);
+    sim.set_observer_ref(consumer);
 
     ASSERT_NO_THROW(sim.build());
     EXPECT_DOUBLE_EQ(consumer.received_dt_fs, kDt);
@@ -212,8 +212,8 @@ TEST(TimestepProtocol, RequiredConsumerWithoutProviderThrows) {
     ATV::cpu::md::MD sim;
 
     sim.on(ATV::md::Phase::initial_integrate).add_ref(integrator);
-    sim.add_ref(force);
-    sim.add_ref(consumer);
+    sim.set_observer_ref(force);
+    sim.set_observer_ref(consumer);
 
     try {
         sim.build();
@@ -235,8 +235,8 @@ TEST(TimestepProtocol, ConsumerReceivesPushBeforeBuild) {
     ATV::cpu::md::MD sim;
 
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{kDt});
-    sim.add_ref(force);
-    sim.add_ref(consumer);
+    sim.set_observer_ref(force);
+    sim.set_observer_ref(consumer);
     sim.build();
 
     EXPECT_EQ(consumer.set_calls, 1);
@@ -263,8 +263,8 @@ TEST(TimestepProtocol, NonRequiredConsumerWithoutProviderIsFine) {
     ATV::cpu::md::MD sim;
 
     sim.on(ATV::md::Phase::initial_integrate).add_ref(integrator);
-    sim.add_ref(force);
-    sim.add_ref(consumer);
+    sim.set_observer_ref(force);
+    sim.set_observer_ref(consumer);
 
     EXPECT_NO_THROW(sim.build());
     EXPECT_EQ(consumer.set_calls, 0);
@@ -285,9 +285,9 @@ TEST(TimestepProtocol, NonPositiveProviderTimestepSurfacesAtBuild) {
     TimestepConsumerStub consumer{"stub_dt_consumer", /*required=*/true};
     ATV::cpu::md::MD sim;
 
-    sim.add_ref(zero);
-    sim.add_ref(force);
-    sim.add_ref(consumer);
+    sim.set_observer_ref(zero);
+    sim.set_observer_ref(force);
+    sim.set_observer_ref(consumer);
 
     try {
         sim.build();
@@ -305,9 +305,9 @@ TEST(TimestepProtocol, NonFiniteProviderTimestepSurfacesAtBuild) {
     TimestepConsumerStub consumer{"stub_dt_consumer", /*required=*/true};
     ATV::cpu::md::MD sim;
 
-    sim.add_ref(inf);
-    sim.add_ref(force);
-    sim.add_ref(consumer);
+    sim.set_observer_ref(inf);
+    sim.set_observer_ref(force);
+    sim.set_observer_ref(consumer);
 
     try {
         sim.build();

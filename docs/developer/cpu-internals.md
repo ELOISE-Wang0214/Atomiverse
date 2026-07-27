@@ -86,7 +86,7 @@ provides:
    the node, borrowed by the Context (see below).
 4. The two policy slots: `add_criterion(...)` (plural, termination) and
    `set_outcome(...)` (singular, commit/rollback).
-5. The categorical setter API (`add_potential`, `add_potential`, …, `set_thermo`).
+5. The categorical setter API (`set_evaluator`, `set_evaluator`, …, `set_thermo`).
 
 The presets are thin: their constructors auto-add infrastructure
 components (zeroing, kinetic accumulator, snapshot publisher) and

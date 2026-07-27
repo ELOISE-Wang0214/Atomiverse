@@ -98,7 +98,7 @@ TEST(Minimizer, SDEnergyDecreases) {
     cpu::Frame frame_init = frame;
     {
         cuda::minimizer::Minimize min;
-        min.add(cuda::minimizer::SteepestDescent{double(0.01)});
+        min.set_optimizer(cuda::minimizer::SteepestDescent{double(0.01)});
         min.on(minimizer::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
             .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -113,7 +113,7 @@ TEST(Minimizer, SDEnergyDecreases) {
     cpu::Frame frame_min = frame;
     {
         cuda::minimizer::Minimize min;
-        min.add(cuda::minimizer::SteepestDescent{double(0.01)});
+        min.set_optimizer(cuda::minimizer::SteepestDescent{double(0.01)});
         min.on(minimizer::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
             .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -131,7 +131,7 @@ TEST(Minimizer, SDWithThermo) {
     double cutoff = double(3.0);
 
     cuda::minimizer::Minimize min;
-    min.add(cuda::minimizer::SteepestDescent{double(0.01)});
+    min.set_optimizer(cuda::minimizer::SteepestDescent{double(0.01)});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});

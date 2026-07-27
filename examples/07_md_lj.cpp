@@ -4,7 +4,7 @@
 /// One concept: how a classical-MD run is assembled from the same
 /// Driver/Component vocabulary as every other method, using the
 /// user-facing categorical setters. The `cpu::md::MD` driver owns the
-/// loop; `add_potential` / `set_neighbor` / `set_integrator` install the
+/// loop; `set_evaluator` / `set_neighbor` / `set_integrator` install the
 /// force field, neighbor list, and integrator; `set_thermo` prints
 /// LAMMPS-style rows. No quantum chemistry — the force provider is a
 /// classical pair potential instead of an SCF.
@@ -96,7 +96,7 @@ int main() {
 
     // Build the driver from components via the categorical setters.
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     sim.set_thermo(200); // print a thermo line every 200 steps

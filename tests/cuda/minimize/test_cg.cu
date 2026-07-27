@@ -75,7 +75,7 @@ constexpr double kStableAlpha = 0.001;
 double initial_energy(const cpu::Frame& frame, double cutoff) {
     cpu::Frame f = frame;
     cuda::minimizer::Minimize min;
-    min.add(cuda::minimizer::CG{kStableAlpha});
+    min.set_optimizer(cuda::minimizer::CG{kStableAlpha});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -112,7 +112,7 @@ TEST(MinimizerCG, EnergyDecreases) {
 
     cuda::minimizer::Minimize min;
     // Tight tolerances: exercise the full 50-iteration budget.
-    min.add(cuda::minimizer::CG{kStableAlpha});
+    min.set_optimizer(cuda::minimizer::CG{kStableAlpha});
     min.add_criterion(cuda::ForceConverged{/*ftol=*/1e-8, /*rms_ftol=*/1e-8,
                                            /*max_dtol=*/1e-10,
                                            /*rms_dtol=*/1e-10,
@@ -140,7 +140,7 @@ TEST(MinimizerCG, ConvergesAndStopsEarly) {
     // it. Lvalue registration stores a reference, so the component remains inspectable
     // after run() (the documented add() lvalue contract).
     cuda::minimizer::CG cg{kStableAlpha};
-    min.add_ref(cg);
+    min.set_observer_ref(cg);
     min.add_criterion(cuda::ForceConverged{/*ftol=*/10.0, /*rms_ftol=*/10.0,
                                            /*max_dtol=*/1.0, /*rms_dtol=*/1.0,
                                            /*etol=*/10.0});
@@ -169,7 +169,7 @@ TEST(MinimizerCG, SwapOptimizerCGvsLBFGS) {
     cpu::Frame f_cg = frame;
     {
         cuda::minimizer::Minimize min;
-        min.add(cuda::minimizer::CG{kStableAlpha});
+        min.set_optimizer(cuda::minimizer::CG{kStableAlpha});
         min.on(minimizer::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
             .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -180,7 +180,7 @@ TEST(MinimizerCG, SwapOptimizerCGvsLBFGS) {
     cpu::Frame f_lbfgs = frame;
     {
         cuda::minimizer::Minimize min;
-        min.add(cuda::minimizer::LBFGS{});
+        min.set_optimizer(cuda::minimizer::LBFGS{});
         min.on(minimizer::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
             .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});

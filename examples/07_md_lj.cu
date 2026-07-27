@@ -81,7 +81,7 @@ int main() {
     cpu::Frame probe = frame;
     {
         cuda::md::MD sim;
-        sim.add(cuda::md::VelocityVerlet{dt});
+        sim.set_integrator(cuda::md::VelocityVerlet{dt});
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
             .add(cuda::PairLJCut{eps, sigma, cutoff});
@@ -92,7 +92,7 @@ int main() {
 
     // Production run with thermo output every 100 steps.
     cuda::md::MD sim;
-    sim.add(cuda::md::VelocityVerlet{dt});
+    sim.set_integrator(cuda::md::VelocityVerlet{dt});
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{eps, sigma, cutoff});

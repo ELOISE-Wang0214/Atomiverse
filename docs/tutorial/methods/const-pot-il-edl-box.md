@@ -148,7 +148,7 @@ cpu::md::MD sim;
 sim.add(cpu::md::InitVelocity{/*T=*/400.0, /*seed=*/11u});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/1.0});
 sim.set_thermostat(cpu::md::NoseHoover{400.0, /*tau=*/100.0, 1.0});
-sim.add_potential(cpu::PairLJCut{{{0, 0, 0.026532, 4.38},   // cation
+sim.set_evaluator(cpu::PairLJCut{{{0, 0, 0.026532, 4.38},   // cation
                                   {1, 1, 0.048815, 5.06},   // anion
                                   {0, 2, eps_cw, sig_cw},   // explicit LB
                                   {0, 3, eps_cw, sig_cw},   // ion–wall rows;

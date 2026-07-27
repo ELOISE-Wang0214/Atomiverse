@@ -66,7 +66,7 @@ with LAMMPS-shaped categorical setters.
 
 ```cpp
 cpu::md::MD sim;
-sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});          // eps (eV), sigma (Å), rcut (Å)
+sim.set_evaluator(cpu::PairLJCut{0.0104, 3.4, 6.8});          // eps (eV), sigma (Å), rcut (Å)
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{0.01});       // dt (fs)
 sim.set_thermostat(cpu::md::NoseHoover{300.0, 100.0});   // T (K), tau (fs)
@@ -172,7 +172,7 @@ add a **Mover**.
 
 ```cpp
 cpu::mc::MC mc{/*T (K)=*/300.0, /*seed=*/12345u};
-mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+mc.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
 mc.set_neighbor(cpu::md::NeighborList<>{cutoff, skin, 1, 0, true});
 mc.set_mover(cpu::mc::TranslateMove{/*delta (Å)=*/0.2});
 mc.build();

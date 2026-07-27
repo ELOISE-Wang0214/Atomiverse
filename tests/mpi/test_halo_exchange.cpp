@@ -584,10 +584,10 @@ class FieldParticipant : public cpu::Component, public cpu::HaloParticipant {
 void run_field_participant_md(cpu::Frame& frame, NullForce& force,
                               FieldParticipant& part) {
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{1.0});
+    sim.set_integrator(cpu::md::VelocityVerlet{1.0});
     sim.on(ATV::md::Phase::force).add_ref(force);
-    sim.add(cpu::comm::HaloSend{2.0});
-    sim.add(cpu::comm::HaloRecv{});
+    sim.set_observer(cpu::comm::HaloSend{2.0});
+    sim.set_observer(cpu::comm::HaloRecv{});
     sim.on(ATV::md::Phase::force).add_ref(part, +100);
     sim.build();
     sim.run(frame, 2);

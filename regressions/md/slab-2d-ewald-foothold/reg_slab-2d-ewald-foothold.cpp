@@ -57,13 +57,13 @@ int main() {
     frame.box = cpu::Box::orthorhombic(Lx, Ly, Lz);
 
     // ── Slab path ──────────────────────────────────────────────────────
-    // add_potential binds at Evaluate's eval_phase (not KSpace default MD force).
+    // set_evaluator binds at Evaluate's eval_phase (not KSpace default MD force).
     cpu::Evaluate eval;
-    eval.add_potential(cpu::CoulLong{alpha, cutoff});
+    eval.set_evaluator(cpu::CoulLong{alpha, cutoff});
     {
         cpu::KSpaceEwald recip(alpha, accuracy);
         recip.slab_factor = slab_factor;
-        eval.add_potential(std::move(recip));
+        eval.set_evaluator(std::move(recip));
     }
     eval.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
     eval.enable_timing(false);
@@ -107,8 +107,8 @@ int main() {
     frame.meta.get(kEnergy) = 0;
 
     cpu::Evaluate eval3d;
-    eval3d.add_potential(cpu::CoulLong{alpha, cutoff});
-    eval3d.add_potential(cpu::KSpaceEwald{alpha, accuracy}); // slab_factor=0
+    eval3d.set_evaluator(cpu::CoulLong{alpha, cutoff});
+    eval3d.set_evaluator(cpu::KSpaceEwald{alpha, accuracy}); // slab_factor=0
     eval3d.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
     eval3d.enable_timing(false);
     eval3d.build();

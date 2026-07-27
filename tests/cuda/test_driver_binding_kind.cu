@@ -38,7 +38,7 @@ bool message_mentions(const std::runtime_error& e, const std::string& needle) {
 
 // ─── Violating evaluator: cuda SCF loses default_bindings() ────
 //
-// Regression target: pre-refactor, `md.add(SCF{...})` silently
+// Regression target: pre-refactor, `md.set_evaluator(SCF{...})` silently
 // landed the evaluator on `md::Phase::post_integrate` (the erased int `1`
 // of `evaluate::Phase::evaluate`). Post-refactor the override is deleted,
 // so `add()` takes the existing "has no default bindings" rejection path.
@@ -47,7 +47,7 @@ TEST(CudaDriverBindingKind, MdAddScfEvaluatorThrows) {
     ATV::cuda::md::MD md;
     // Synthetic-path constructor (n_occ, alpha, tol, max_iter) — available
     // with or without ATV_HAS_HF.
-    EXPECT_THROW(md.add(ATV::cuda::scf::SCF{2, 0.1, 1e-6, 100}),
+    EXPECT_THROW(md.set_evaluator(ATV::cuda::scf::SCF{2, 0.1, 1e-6, 100}),
                  std::runtime_error);
 }
 

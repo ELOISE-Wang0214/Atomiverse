@@ -155,7 +155,7 @@ TEST(PeChains8Rank, BondedNveConservation) {
     auto frame = make_8chain_box(48.0, 18, 1.0);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::force)
         .add(cpu::BondHarmonic{{bond_K_eV()}, {kBondR0}})
         .add(cpu::AngleHarmonic{{angle_K_eV()}, {kAngleTheta0}})

@@ -253,6 +253,31 @@ GapCensus owns discovery — **queue not exhausted**.
 **Next:** **Recover/rebase** the six `[~]` tips onto `dev` before staffing
 remaining Phase A pending; mopac twins still empty for Phase B.
 
+## Assign — 2026-07-27 wave 3 (parent `dev` @ `223dcd4c`)
+
+**Priority:** incomplete `[~]` ≫ open SE specs (none) ≫ pending Phase A.
+**Staff = 8** (cap). Ladder: DFTB0 / DFTB2 depth / DFTB3 energy before NDDO/GFN.
+
+| # | Slug | Kind | Action |
+| - | ---- | ---- | ------ |
+| 1 | `dftb0-h2` | resume | Rebase `wf/dftb0-h2` (ahead=1 behind=45) → dual gate |
+| 2 | `dftb3-water-mio` | resume | Rebase `wf/dftb3-water-mio` (ahead=1 behind=45) → dual gate |
+| 3 | `dftb2-dispersion-d3` | resume | Rebase `wf/dftb2-dispersion-d3` (ahead=2 behind=45) → dual gate |
+| 4 | `dftb2-analytic-forces-threeob` | resume | Rebase `wf/dftb2-analytic-forces-threeob` (ahead=1 behind=29) → dual gate |
+| 5 | `dftb2-spin-analytic-forces` | resume | Rebase `wf/dftb2-spin-analytic-forces` (ahead=1 behind=29) → dual gate |
+| 6 | `dftb2-analytic-stress` | resume | Rebase `wf/dftb2-analytic-stress` (ahead=1 behind=29) → dual gate |
+| 7 | `dftb2-periodic-forces` | **new** | Promote from pending; lattice-image F under Γ-PBC |
+| 8 | `dftb2-kpoints` | **new** | Promote from pending; k-mesh beyond Γ |
+
+**Skipped this wave:** `dftb3-analytic-forces` (needs `dftb3-water-mio` land);
+`td-dftb-h2` (ground-state depth first); all Phase B NDDO / Phase C GFN
+(ladder); blocked (9).
+
+**After staff:** incomplete `[~]` = **8**; pending = **16**; blocked = **9**.
+Workers: isolation worktree on nobackup; branch `wf/<slug>`; **spec-first**
+`.claude/specs/<slug>/`; rebase resumes onto current `dev` before impl;
+SE-only cmake; offline DFTB+ pins only. **No push.**
+
 ## pending
 
 ### Phase A — DFTB ladder (oracle = DFTB+)
@@ -261,8 +286,6 @@ Staff these before NDDO product depth and before GFN-xTB.
 **Prefer Recover of `## in_progress` over new pending.**
 
 - [ ] `dftb3-analytic-forces` | Analytic DFTB3 nuclear forces after energy foothold | dftb3 | H2O off-eq | F | **oracle=dftb+**; after `dftb3-water-mio` lands
-- [ ] `dftb2-kpoints` | Periodic DFTB k-mesh beyond Γ | dftb2 | small cell | E (and optional F) | **oracle=dftb+**; after `dftb2-periodic-gamma`
-- [ ] `dftb2-periodic-forces` | Lattice-image-consistent nuclear F under Γ-PBC (match H⁰/S/γ energy lattice sums; not min_image-only) | dftb2 | C-chain / dense cell | F vs FD | **oracle=dftb+|literature**; deepen `dftb2-periodic-gamma` (**new wave-3**)
 - [ ] `td-dftb-h2` | Linear-response TD-DFTB foothold | td-dftb | H2/H2O | excitation [eV] | **oracle=dftb+|literature**; after ground-state SCC solid
 
 ### Phase B — NDDO product depth (oracle = OpenMOPAC)
@@ -293,17 +316,19 @@ or operator forces `theme=gfn|xtb`.
 
 ## in_progress
 
-Unmerged TB tips with commits ahead of `dev` (Clearup removed worktrees; keep
-`[~]` until merge or drop decision). **Do not demote to pending.** Recover
-must **rebase** before merge attempt (older tips behind≈41; force/stress tips
-behind≈25).
+Staffed assign wave 3 (2026-07-27). Unmerged TB tips with commits ahead of
+`dev` (Clearup removed worktrees; keep `[~]` until merge or drop). **Do not
+demote to pending.** Resumes must **rebase** onto current `dev` before merge
+(older tips behind≈45; force/stress tips behind≈29). New staff have no tip yet.
 
-- [~] `dftb0-h2` | Non-SCC DFTB / DFTB0 energy + force skeleton | dftb0 | H2 | E, F | **oracle=dftb+**; tip `wf/dftb0-h2` @ `bcff8c4a` ahead=1 behind=41
-- [~] `dftb3-water-mio` | SCC-DFTB3 energy (third-order) | dftb3 | H2O | E [eV] | **oracle=dftb+**; tip `wf/dftb3-water-mio` @ `f26ba40b` ahead=1 behind=41
-- [~] `dftb2-dispersion-d3` | Dispersion-corrected DFTB (D3(BJ) water dimer) | dftb2 | water dimer | E_disp / E_tot | **oracle=dftb+|literature**; tip `wf/dftb2-dispersion-d3` @ `edabfa64` ahead=2 behind=41
-- [~] `dftb2-analytic-forces-threeob` | Closed-form nuclear F on `DftbSkSet::ThreeOb` (replace re-SCC FD) | dftb2 | CH4/H2O | F vs FD | **oracle=dftb+|literature**; tip `wf/dftb2-analytic-forces-threeob` @ `211dc386` ahead=1 behind=25 (**promoted from pending wave-3**)
-- [~] `dftb2-spin-analytic-forces` | Closed-form collinear open-shell nuclear F (replace re-SCC FD) | dftb2/spin | O2 off-eq | F vs FD | **oracle=dftb+|literature**; tip `wf/dftb2-spin-analytic-forces` @ `1e8cac93` ahead=1 behind=25 (**promoted from pending wave-3**)
-- [~] `dftb2-analytic-stress` | Analytic cell stress | dftb2 | mol or Γ cell | stress vs FD | **oracle=dftb+|literature**; tip `wf/dftb2-analytic-stress` @ `d2da3fe9` ahead=1 behind=25 (**promoted from pending wave-3**)
+- [~] `dftb0-h2` | Non-SCC DFTB / DFTB0 energy + force skeleton | dftb0 | H2 | E, F | **oracle=dftb+**; tip `wf/dftb0-h2` @ `bcff8c4a` ahead=1 behind=45; **resume assign-w3**
+- [~] `dftb3-water-mio` | SCC-DFTB3 energy (third-order) | dftb3 | H2O | E [eV] | **oracle=dftb+**; tip `wf/dftb3-water-mio` @ `f26ba40b` ahead=1 behind=45; **resume assign-w3**
+- [~] `dftb2-dispersion-d3` | Dispersion-corrected DFTB (D3(BJ) water dimer) | dftb2 | water dimer | E_disp / E_tot | **oracle=dftb+|literature**; tip `wf/dftb2-dispersion-d3` @ `edabfa64` ahead=2 behind=45; **resume assign-w3**
+- [~] `dftb2-analytic-forces-threeob` | Closed-form nuclear F on `DftbSkSet::ThreeOb` (replace re-SCC FD) | dftb2 | CH4/H2O | F vs FD | **oracle=dftb+|literature**; tip `wf/dftb2-analytic-forces-threeob` @ `211dc386` ahead=1 behind=29; **resume assign-w3**
+- [~] `dftb2-spin-analytic-forces` | Closed-form collinear open-shell nuclear F (replace re-SCC FD) | dftb2/spin | O2 off-eq | F vs FD | **oracle=dftb+|literature**; tip `wf/dftb2-spin-analytic-forces` @ `1e8cac93` ahead=1 behind=29; **resume assign-w3**
+- [~] `dftb2-analytic-stress` | Analytic cell stress | dftb2 | mol or Γ cell | stress vs FD | **oracle=dftb+|literature**; tip `wf/dftb2-analytic-stress` @ `d2da3fe9` ahead=1 behind=29; **resume assign-w3**
+- [~] `dftb2-periodic-forces` | Lattice-image-consistent nuclear F under Γ-PBC (match H⁰/S/γ energy lattice sums; not min_image-only) | dftb2 | C-chain / dense cell | F vs FD | **oracle=dftb+|literature**; **new assign-w3** (no tip yet)
+- [~] `dftb2-kpoints` | Periodic DFTB k-mesh beyond Γ | dftb2 | small cell | E (and optional F) | **oracle=dftb+**; **new assign-w3** (no tip yet)
 
 ## blocked
 

@@ -103,7 +103,7 @@ TEST(LjNve, EnergyConservationSingleRank) {
         make_fcc_argon(5, 5.3); // 500 atoms, box 26.5 Å, slab 13.25 Å @ 8 ranks
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{1.0}); // dt = 1 fs
+    sim.set_integrator(cpu::md::VelocityVerlet{1.0}); // dt = 1 fs
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{6.0}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{0.0104, 3.4, 6.0});
     sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{6.0}, -20);
@@ -139,7 +139,7 @@ TEST(LjNve, EnergyConservationMultiRank) {
     auto frame = make_fcc_argon(5, 5.3);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{1.0});
+    sim.set_integrator(cpu::md::VelocityVerlet{1.0});
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{6.0}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{0.0104, 3.4, 6.0});
     sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{6.0}, -20);

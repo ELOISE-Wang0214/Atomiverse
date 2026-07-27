@@ -91,7 +91,7 @@ double brute_force_energy(const cpu::Frame& frame, double cutoff) {
 /// Build the standard LJ MD pipeline and run one frozen step.
 void run_one_frozen_step(cpu::Frame& frame, double cutoff) {
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.0}); // dt = 0: positions frozen
+    sim.set_integrator(cpu::md::VelocityVerlet{0.0}); // dt = 0: positions frozen
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{cutoff}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{kEps, kSigma, cutoff});
     sim.build();

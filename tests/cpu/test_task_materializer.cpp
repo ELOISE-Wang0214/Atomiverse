@@ -158,8 +158,8 @@ TEST(TaskMaterializer, MdLjRunMatchesHandBuiltDriverBitwise) {
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
-    sim.add(cpu::md::VelocityVerlet{kDt});
-    sim.add(cpu::md::InitVelocity{kTinit, kSeed});
+    sim.set_integrator(cpu::md::VelocityVerlet{kDt});
+    sim.set_observer(cpu::md::InitVelocity{kTinit, kSeed});
     sim.build();
     sim.run(direct_frame, kNSteps);
 
@@ -197,9 +197,9 @@ TEST(TaskMaterializer, MdBondedThermostattedRunMatchesHandBuiltDriverBitwise) {
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
     sim.on(ATV::md::Phase::force).add(cpu::BondHarmonic{{2.0}, {kSpacing}}, 1);
-    sim.add(cpu::md::VelocityVerlet{kDt});
-    sim.add(cpu::md::InitVelocity{kTinit, kSeed});
-    sim.add(cpu::md::NoseHoover{kTinit, 100.0, kDt});
+    sim.set_integrator(cpu::md::VelocityVerlet{kDt});
+    sim.set_observer(cpu::md::InitVelocity{kTinit, kSeed});
+    sim.set_thermostat(cpu::md::NoseHoover{kTinit, 100.0, kDt});
     sim.build();
     sim.run(direct_frame, kNSteps);
 

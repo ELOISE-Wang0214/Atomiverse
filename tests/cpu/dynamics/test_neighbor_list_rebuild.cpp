@@ -78,7 +78,7 @@ TEST(NeighborListRebuild, DelayGateHonoured) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.add_potential(cpu::PairLJCut{0.0104, 3.4, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{0.0104, 3.4, cutoff});
     sim.set_neighbor_ref(nl);
     sim.build();
 
@@ -114,7 +114,7 @@ TEST(NeighborListRebuild, EveryGateReducesChecks) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.add_potential(cpu::PairLJCut{0.0104, 3.4, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{0.0104, 3.4, cutoff});
     sim.set_neighbor_ref(nl);
     sim.build();
 
@@ -147,7 +147,7 @@ TEST(NeighborListRebuild, DelayZeroAllowsImmediateRebuild) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.add_potential(cpu::PairLJCut{0.0104, 3.4, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{0.0104, 3.4, cutoff});
     sim.set_neighbor_ref(nl);
     sim.build();
 

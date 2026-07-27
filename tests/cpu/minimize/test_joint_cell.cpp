@@ -42,7 +42,7 @@ TEST(JointIsotropicRelax, LJdimerTowardRmin) {
     opt.add_criterion(cpu::ForceConverged{0.05, 0.05, 1.0, 1.0, 1e-3});
     auto lj = cpu::PairLJCut{eps, sigma, rc};
     lj.set_compute_stress(true);
-    opt.add_potential(std::move(lj));
+    opt.set_evaluator(std::move(lj));
     opt.set_neighbor(cpu::md::NeighborList<>{rc, 0.3});
     opt.build();
     opt.run(f, 400);

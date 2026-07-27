@@ -106,7 +106,7 @@ TEST(PeFullMultiRank, ChainCrossingWithLjExclusions) {
     const double lj_cut = 10.5;
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{lj_cut}, -20);
     sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)

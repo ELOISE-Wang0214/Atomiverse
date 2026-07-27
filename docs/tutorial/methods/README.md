@@ -76,12 +76,14 @@ docs/tutorial/methods/<slug>.md
 
 Offline family-locked pins only — see
 [tb-method-handoff](../../developer/tb-method-handoff.md) and
-`tools/tb_oracle/`. Oracle = **DFTB+** for DFTB rows. Fair walls from
-REFERENCE (`ratio` or `perf_exempt`).
+`tools/tb_oracle/`. Oracle = **DFTB+** for DFTB family rows (`oracle: dftb+`
+or `family_oracle: dftb+` with `oracle: literature` when absolute SK digits
+are ATV-mio-style). Fair walls from REFERENCE (`ratio` or `perf_exempt`).
 
 | Method | Page | Regression | Oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
 | ------ | ---- | ---------- | ------ | --------------------------------------------- |
 | SCC-DFTB2 H₂ total \(E\) vs mio-1-1 | [dftb2-dftbplus-energy-pin](dftb2-dftbplus-energy-pin.md) | `regressions/semiempirical/dftb2-dftbplus-energy-pin` | dftb+ 24.1 | **≈ 0.4** |
+| Γ-point periodic SCC-DFTB2 (1-D C chain) | [dftb2-periodic-gamma](dftb2-periodic-gamma.md) | `regressions/semiempirical/dftb2-periodic-gamma` | literature (+ family dftb+) | **perf_exempt** |
 
 ## Index — MetalWalls capability wave 1 (2026-07-23)
 

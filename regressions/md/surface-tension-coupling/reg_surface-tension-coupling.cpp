@@ -78,12 +78,12 @@ int main() {
     const double Plat0 = P_n - static_cast<double>(n_surf) * gamma / L0;
 
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
     sim.set_integrator(
         cpu::md::SurfaceTensionNPT{T, tau_T, P_n, gamma, tau_P, dt, n_surf});
-    sim.add(cpu::md::InitVelocity{T, 777u});
-    sim.add(cpu::md::Virial{});
+    sim.set_observer(cpu::md::InitVelocity{T, 777u});
+    sim.set_observer(cpu::md::Virial{});
     sim.enable_timing(false);
     sim.build();
     sim.run(frame, n_steps);

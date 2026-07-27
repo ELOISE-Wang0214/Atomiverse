@@ -76,12 +76,12 @@ TEST(SurfaceTensionNPT, CoupleXyKeepsLxEqualsLy) {
     const double L0 = frame.box.length(0);
 
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.5});
     sim.set_integrator(cpu::md::SurfaceTensionNPT{
         /*T=*/100.0, /*tau_T=*/50.0, /*P_n=*/0.0, /*gamma=*/0.001,
         /*tau_P=*/500.0, /*dt=*/1.0, /*n_surfaces=*/2});
-    sim.add(cpu::md::InitVelocity{100.0, 777u});
+    sim.set_observer(cpu::md::InitVelocity{100.0, 777u});
     sim.enable_timing(false);
     sim.build();
     sim.run(frame, 80);

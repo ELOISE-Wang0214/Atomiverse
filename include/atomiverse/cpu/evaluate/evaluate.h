@@ -8,8 +8,8 @@
 ///
 /// Single-point energy / force / property workflows go here. Exposes
 /// the same LAMMPS-shaped categorical setter API as `cpu::md::MD`
-/// (minus the time-evolution and optimizer setters): add_potential,
-/// add_potential, set_angle, set_dihedral, set_neighbor, set_observer,
+/// (minus the time-evolution and optimizer setters): set_evaluator,
+/// set_evaluator, set_angle, set_dihedral, set_neighbor, set_observer,
 /// set_record — all inherited from Driver.
 ///
 /// Auto-adds ZeroForces and ZeroEnergy at `evaluate::Phase::prepare`
@@ -36,7 +36,7 @@
 ///
 ///   // Force-field force evaluation (LAMMPS-shaped)
 ///   cpu::Evaluate eval2;
-///   eval2.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+///   eval2.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
 ///   eval2.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
 ///   eval2.build();
 ///   eval2.run(frame);
@@ -63,8 +63,8 @@ namespace cpu {
 
 /// @brief One-pass evaluator preset — "compute these quantities at this geometry".
 ///
-/// Single-point energy, force, density, dipole, charge. Categorical setters (add_potential,
-/// add_potential, set_angle, set_dihedral, set_neighbor, set_observer, set_record) come from
+/// Single-point energy, force, density, dipole, charge. Categorical setters (set_evaluator,
+/// set_evaluator, set_angle, set_dihedral, set_neighbor, set_observer, set_record) come from
 /// Driver.
 ///
 /// **No criterion.** One pass is not a termination policy — there is no loop to terminate.

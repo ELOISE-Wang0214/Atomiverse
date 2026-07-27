@@ -62,7 +62,7 @@ TEST(IsotropicCellRelax, ExpandsCompressedBox) {
     opt.add_criterion(cpu::PressureConverged{0.0, 1e-3});
     auto lj = cpu::PairLJCut{eps, sigma, rc};
     lj.set_compute_stress(true);
-    opt.add_potential(std::move(lj));
+    opt.set_evaluator(std::move(lj));
     opt.set_neighbor(cpu::md::NeighborList<>{rc, 0.3});
     opt.build();
     opt.run(frame, 80);

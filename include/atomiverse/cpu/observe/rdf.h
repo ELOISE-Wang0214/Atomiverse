@@ -34,12 +34,12 @@ namespace ATV {
 /// Usage:
 /// @code{.cpp}
 /// cpu::md::MD sim;
-/// sim.add(cpu::md::VelocityVerlet{0.001});
+/// sim.set_integrator(cpu::md::VelocityVerlet{0.001});
 /// sim.on(md::Phase::force).add(cpu::md::NeighborList{6.0}, -10);
 /// sim.on(md::Phase::force).add(cpu::PairLJCut{0.0104, 3.4, 6.8});
 ///
 /// RDF rdf{5.5, 200, 100, "rdf.dat"};  // r_max, bins, freq, file
-/// sim.add_ref(rdf);                    // explicit borrow; read gr() after
+/// sim.set_observer_ref(rdf);                    // explicit borrow; read gr() after
 /// sim.build();
 /// sim.run(frame, 1'000'000);
 /// @endcode

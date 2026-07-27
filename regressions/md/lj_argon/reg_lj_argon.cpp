@@ -68,10 +68,10 @@ int main() {
     // NVE: no thermostat. InitVelocity draws a Maxwell distribution at T once,
     // at build; from then on the total energy is the engine's to conserve.
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::InitVelocity{temperature, /*seed=*/12345u});
+    sim.set_observer(cpu::md::InitVelocity{temperature, /*seed=*/12345u});
     sim.enable_timing(false); // this is a correctness check, not a benchmark
     sim.build();
 

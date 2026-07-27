@@ -66,12 +66,12 @@ TEST(ParrinelloRahmanNPT, ShortRunVolumePositiveFinite) {
     ASSERT_GT(V0, 0.0);
 
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.5});
     sim.set_integrator(cpu::md::ParrinelloRahmanNPT{T, /*P=*/0.0,
                                                     /*tau_T=*/50.0,
                                                     /*tau_P=*/200.0, dt});
-    sim.add(cpu::md::InitVelocity{T, 7u});
+    sim.set_observer(cpu::md::InitVelocity{T, 7u});
     sim.enable_timing(false);
     sim.build();
     sim.run(frame, 20);
@@ -103,10 +103,10 @@ TEST(ParrinelloRahmanNPT, CubicIsotropicOffDiagonalBounded) {
 
     cpu::md::ParrinelloRahmanNPT pr{T, 0.0, 50.0, 200.0, dt};
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.5});
     sim.set_integrator_ref(pr);
-    sim.add(cpu::md::InitVelocity{T, 11u});
+    sim.set_observer(cpu::md::InitVelocity{T, 11u});
     sim.enable_timing(false);
     sim.build();
     sim.run(frame, 40);

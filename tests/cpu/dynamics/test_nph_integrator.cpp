@@ -69,10 +69,10 @@ TEST(NphIntegrator, EnthalpyDefinitionSelfConsistent) {
     const double V0 = frame.box.volume();
 
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.5});
     sim.set_integrator(cpu::md::NphIntegrator{P, /*tau_P=*/200.0, dt});
-    sim.add(cpu::md::InitVelocity{T_init, 13u});
+    sim.set_observer(cpu::md::InitVelocity{T_init, 13u});
     sim.enable_timing(false);
     sim.build();
     sim.run(frame, 1);
@@ -101,10 +101,10 @@ TEST(NphIntegrator, VolumeStaysPositive) {
     const double V0 = frame.box.volume();
 
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.5});
     sim.set_integrator(cpu::md::NphIntegrator{0.0, 200.0, 2.0});
-    sim.add(cpu::md::InitVelocity{94.4, 17u});
+    sim.set_observer(cpu::md::InitVelocity{94.4, 17u});
     sim.enable_timing(false);
     sim.build();
     sim.run(frame, 30);

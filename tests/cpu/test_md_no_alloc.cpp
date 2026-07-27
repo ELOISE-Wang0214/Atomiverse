@@ -127,9 +127,9 @@ TEST(MdNoAlloc, InnerLoopAfterWarmupAllocatesNothing) {
 
     auto frame = make_small_chain(/*n_carbons=*/20, /*box_len=*/40.0);
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});
-    sim.add(cpu::md::InitVelocity{300.0, /*seed=*/4242});
-    sim.add(cpu::md::NoseHoover{300.0, 100.0, 0.5});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.5});
+    sim.set_observer(cpu::md::InitVelocity{300.0, /*seed=*/4242});
+    sim.set_thermostat(cpu::md::NoseHoover{300.0, 100.0, 0.5});
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{5.0}, -10);
     sim.on(ATV::md::Phase::force)
         .add(cpu::BondHarmonic{{kBondK_kcal * kKcalPerMolToEv}, {kBondR0}});

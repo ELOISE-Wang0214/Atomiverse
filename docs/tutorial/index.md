@@ -110,6 +110,19 @@ Narrative: [Ch. 17 Semiempirical AM1](ch17-semiempirical-am1.md).
 | SCC-DFTB2 analytic nuclear forces H₂O | [dftb2-analytic-forces](methods/dftb2-analytic-forces.md) | `regressions/semiempirical/dftb2-analytic-forces` | dftb+ formula (`perf_exempt`) |
 | Collinear spin-DFTB2 O₂ triplet | [spin-dftb2-o2](methods/spin-dftb2-o2.md) | `regressions/semiempirical/spin-dftb2-o2` | literature + family dftb+ (`perf_exempt`) |
 
+### TB / SE capability wave 2 (semiempirical + tight-binding)
+
+Offline OpenMOPAC / DFTB+ / xtb pins only — see
+[tb-method-handoff](../developer/tb-method-handoff.md) and `tools/tb_oracle/`.
+Family-locked oracles: NDDO → OpenMOPAC; DFTB* → DFTB+; GFN-xTB → xtb.
+Full index: [methods/README](methods/README.md). Narrative:
+[Ch. 17 Semiempirical AM1](ch17-semiempirical-am1.md).
+
+| Method | Page | Regression | Oracle |
+|--------|------|------------|--------|
+| SCC-DFTB2 H₂ total \(E\) vs mio-1-1 | [dftb2-dftbplus-energy-pin](methods/dftb2-dftbplus-energy-pin.md) | `regressions/semiempirical/dftb2-dftbplus-energy-pin` | dftb+ 24.1 (ratio **≈ 0.4**) |
+| Γ-point periodic SCC-DFTB2 (1-D C chain) | [dftb2-periodic-gamma](methods/dftb2-periodic-gamma.md) | `regressions/semiempirical/dftb2-periodic-gamma` | literature + family dftb+ (`perf_exempt`) |
+
 ### MetalWalls capability wave 1 (classical electrochem + LAMMPS-overlap MD)
 
 Offline LAMMPS / MetalWalls / literature pins only — see

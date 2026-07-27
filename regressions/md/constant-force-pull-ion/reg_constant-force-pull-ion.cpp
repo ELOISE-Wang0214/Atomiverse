@@ -146,7 +146,7 @@ int main() {
         }
         cpu::md::MD sim;
         sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/1.0});
-        sim.add(cpu::md::FixAddForce{0.0, 0.0, Fz, ion_type});
+        sim.set_evaluator(cpu::md::FixAddForce{0.0, 0.0, Fz, ion_type});
         sim.enable_timing(false);
         sim.build();
         sim.run(frame, /*n_steps=*/100);

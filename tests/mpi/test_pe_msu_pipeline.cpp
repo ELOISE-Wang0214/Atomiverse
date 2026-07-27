@@ -138,9 +138,9 @@ TEST(PeMsuPipeline, NvtPlusNptPlusDeform) {
     const double lj_cut = 10.5;
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::InitVelocity{T_target, /*seed=*/12345});
-    sim.add(cpu::md::NoseHoover{T_target, tau_T, dt});
+    sim.set_integrator(cpu::md::VelocityVerlet{dt});
+    sim.set_observer(cpu::md::InitVelocity{T_target, /*seed=*/12345});
+    sim.set_thermostat(cpu::md::NoseHoover{T_target, tau_T, dt});
     sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{lj_cut}, -20);
     sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
@@ -150,9 +150,9 @@ TEST(PeMsuPipeline, NvtPlusNptPlusDeform) {
         .add(cpu::BondHarmonic{{bond_K_eV()}, {kBondR0}})
         .add(cpu::AngleHarmonic{{angle_K_eV()}, {kAngleTheta0}})
         .add(cpu::DihedralMultiHarmonic{{dihedral_Cn_eV()}});
-    sim.add(cpu::md::Virial{});
-    sim.add(cpu::md::Barostat{P_target, tau_P, dt});
-    sim.add(cpu::md::Deform{cpu::md::Deform::Mode::erate, strain_rate, dt,
+    sim.set_observer(cpu::md::Virial{});
+    sim.set_barostat(cpu::md::Barostat{P_target, tau_P, dt});
+    sim.set_observer(cpu::md::Deform{cpu::md::Deform::Mode::erate, strain_rate, dt,
                             /*axis=*/0});
     sim.build();
 

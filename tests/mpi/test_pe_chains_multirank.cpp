@@ -135,7 +135,7 @@ TEST(PeChainsMultiRank, BondedOnlyNveStable) {
     auto frame = make_two_chain_box(40.0, 30.0);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::force)
         .add(cpu::BondHarmonic{{bond_K_eV()}, {kBondR0}})
         .add(cpu::AngleHarmonic{{angle_K_eV()}, {kAngleTheta0}})

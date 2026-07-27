@@ -107,7 +107,7 @@ void run_eval(cpu::Frame& f, cpu::PairLJCutTip4pCut pair) {
     cpu::Evaluate eval;
     eval.set_neighbor(
         cpu::md::NeighborList<>{pair.neighbor_cutoff(), 0.3, 1, 0, true});
-    eval.add_potential(std::move(pair));
+    eval.set_evaluator(std::move(pair));
     eval.enable_timing(false);
     eval.build();
     eval.run(f);

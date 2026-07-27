@@ -39,7 +39,7 @@ namespace mc {
 /// Usage:
 /// @code{.cpp}
 ///   cpu::mc::MC mc{/*T [K]=*/300.0, /*seed=*/12345u};
-///   mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+///   mc.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
 ///   mc.set_neighbor(cpu::md::NeighborList<>{cutoff, skin, 1, 0, true});
 ///   mc.set_mover(cpu::mc::TranslateMove{/*delta [Å]=*/0.2});
 ///   mc.set_thermo(100);

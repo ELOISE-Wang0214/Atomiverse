@@ -53,7 +53,7 @@ namespace md {
 /// cpu::md::PistonElectrode piston(/*type=*/3, /*P [eV/Å³]=*/1e-4,
 ///                                 cpu::md::PistonElectrode::Side::Upper);
 /// piston.tau_damp = 50.0; // optional COM friction [fs]
-/// sim.add(std::move(piston));
+/// sim.set_observer(std::move(piston));
 /// @endcode
 class PistonElectrode : public cpu::Component {
   public:

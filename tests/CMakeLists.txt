@@ -354,6 +354,9 @@ atv_add_cpp_test(test_cpu_path_rpmd_est   cpu/path/test_rpmd_estimator.cpp)
 # esmm-contract-01-zeroing: PathDriver must zero kAtom_f* / kEnergy before each
 # per-replica force pass, or an accumulating source grows with the iteration.
 atv_add_cpp_test(test_cpu_path_zeroing    cpu/path/test_path_zeroing.cpp)
+# esmm-contract-02-validation-walks: PathDriver::validate_components must see a
+# nested `Driver<scf::Phase> + HF` method node as the band's force source.
+atv_add_cpp_test(test_cpu_path_validation cpu/path/test_path_validation.cpp)
 atv_add_cpp_test(test_cpu_minimizer_joint_cell cpu/minimize/test_joint_cell.cpp)
 atv_add_cpp_test(test_cpu_criterion       cpu/driver/test_criterion.cpp)
 atv_add_cpp_test(test_cpu_driver_nesting  cpu/driver/test_driver_nesting.cpp)

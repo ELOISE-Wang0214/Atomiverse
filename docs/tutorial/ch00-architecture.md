@@ -16,7 +16,7 @@ the method without rewriting the loop.
 // Same MD loop — different physics by swapping the force component
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});       // classical
+sim.set_evaluator(cpu::PairLJCut{0.0104, 3.4, 6.8});       // classical
 // sim.on(md::Phase::force).add(cpu::scf::RHF{});       // AIMD
 sim.build();
 sim.run(frame, 1000);

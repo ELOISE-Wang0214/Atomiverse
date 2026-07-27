@@ -4,7 +4,7 @@
 ///
 /// T10 is the load-bearing acceptance test: build the same MD
 /// simulation two ways — once via the categorical setter API
-/// (`add_potential`, `set_neighbor`, `set_integrator`, …) and once via
+/// (`set_evaluator`, `set_neighbor`, `set_integrator`, …) and once via
 /// the raw `add()` / `on(phase).add(c, order)` escape hatch —
 /// and assert the two compiled component graphs (sorted by
 /// phase / order / component name) are byte-equivalent. This
@@ -71,7 +71,7 @@ std::string render(const PlanSig& s) {
 TEST(MDPlanEquivalence, NVELJSetApiMatchesRawAddPath) {
     using namespace ATV;
     cpu::md::MD via_setters;
-    via_setters.add_potential(cpu::PairLJCut{kEps, kSigma, kCutoff});
+    via_setters.set_evaluator(cpu::PairLJCut{kEps, kSigma, kCutoff});
     via_setters.set_neighbor(cpu::md::NeighborList<>{kCutoff, kSkin});
     via_setters.set_integrator(cpu::md::VelocityVerlet{kDt});
     via_setters.build();
@@ -101,7 +101,7 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
     // Virial because NoseHooverNPT::reads()==Stress and no
     // explicit Virial was registered.
     cpu::md::MD via_setters;
-    via_setters.add_potential(cpu::PairLJCut{kEps, kSigma, kCutoff});
+    via_setters.set_evaluator(cpu::PairLJCut{kEps, kSigma, kCutoff});
     via_setters.set_neighbor(cpu::md::NeighborList<>{kCutoff, kSkin});
     via_setters.set_integrator(
         cpu::md::NoseHooverNPT{300.0, 100.0, 0.0, 1000.0, kDt});
@@ -143,7 +143,7 @@ class CustomEndOfStepHook : public ATV::cpu::Component {
 TEST(MDPlanEquivalence, CustomHookViaOnAddCoexistsWithSetters) {
     using namespace ATV;
     cpu::md::MD sim;
-    sim.add_potential(cpu::PairLJCut{kEps, kSigma, kCutoff});
+    sim.set_evaluator(cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, kSkin});
     sim.set_integrator(cpu::md::VelocityVerlet{kDt});
     // User-defined hook through the public escape hatch:

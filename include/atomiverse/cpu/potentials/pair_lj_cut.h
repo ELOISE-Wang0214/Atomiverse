@@ -67,10 +67,10 @@ class PairLJCut : public Pair {
     ///
     /// @code
     ///   // TIP3P: the LJ site is on oxygen only.
-    ///   sim.add_potential(cpu::PairLJCut{{{8, 8, eps_OO, sigma_OO}}, cutoff});
+    ///   sim.set_evaluator(cpu::PairLJCut{{{8, 8, eps_OO, sigma_OO}}, cutoff});
     ///
     ///   // Cu-Ni alloy: give the like-pairs, let Lorentz-Berthelot mix the rest.
-    ///   sim.add_potential(cpu::PairLJCut{{{29, 29, eps_Cu, sig_Cu},
+    ///   sim.set_evaluator(cpu::PairLJCut{{{29, 29, eps_Cu, sig_Cu},
     ///                               {28, 28, eps_Ni, sig_Ni}}, cutoff});
     /// @endcode
     ///

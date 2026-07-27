@@ -112,7 +112,7 @@ TEST(PeChainCrossing, BondedNveHandlesChainAcrossBoundary) {
     // so a future regression in the auto-extension cannot silently mask a
     // cross-rank bonded miss through this test.
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{5.0}, -20);
     sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
@@ -161,7 +161,7 @@ TEST(PeChainCrossing, BondedSkinAutoExtendsWithSmallPairCutoff) {
 
     const double tiny_pair_cutoff = 0.1; // << bond length 1.529 Å
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::pre_force)
         .add(cpu::comm::HaloSend{tiny_pair_cutoff}, -20);
     sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);

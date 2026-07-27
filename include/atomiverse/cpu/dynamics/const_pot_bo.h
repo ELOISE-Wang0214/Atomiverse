@@ -63,7 +63,7 @@ struct ElectrodeGroup {
 /// cpu::md::ConstPotBO conq(2.0);
 /// conq.add_electrode_charge(/*type=*/1, /*Q [e]=*/-0.5);
 /// conq.add_electrode_charge(/*type=*/2, /*Q [e]=*/+0.5);
-/// sim.add(std::move(conq));
+/// sim.set_observer(std::move(conq));
 /// // after a step: conq.electrode_potential(1) − conq.electrode_potential(0)
 /// @endcode
 ///

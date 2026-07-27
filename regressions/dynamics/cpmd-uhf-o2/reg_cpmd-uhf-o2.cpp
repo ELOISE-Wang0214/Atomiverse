@@ -23,6 +23,7 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/electronic/aimd_method.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/cpmd_conserved.h"
 #include "atomiverse/cpu/dynamics/md.h"
@@ -63,10 +64,10 @@ int main() {
     constexpr double dt = 0.05; // fs
 
     // 16 electrons, high-spin triplet: 1σg²1σu²2σg²2σu²3σg²1πu⁴1πg²(↑↑).
-    cpu::scf::UHF uhf{/*n_alpha=*/9, /*n_beta=*/7};
-    uhf.basis = cpu::scf::BasisSet::STO3G;
-    uhf.tol = 1e-9;
-    uhf.cpmd = true;
+    cpu::scf::UHF uhf_base{/*n_alpha=*/9, /*n_beta=*/7};
+    uhf_base.basis = cpu::scf::BasisSet::STO3G;
+    uhf_base.tol = 1e-9;
+    cpu::electronic::CarParrinelloMethod<cpu::scf::UHF> uhf{std::move(uhf_base), 400.0};
     // Scanned μ ∈ {400, 1000, 2000} a.u. × dt ∈ {0.05, 0.1} fs (REFERENCE.md):
     // the plane-wave textbook μ = 400 a.u. loses adiabaticity on the stiffer AO
     // residual (T_e → 25 eV inside 120 steps); μ = 1000 at dt = 0.05 fs is the
@@ -88,10 +89,10 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.on(md::Phase::force).add_ref(uhf, /*order=*/0);
+    sim.set_evaluator_ref(uhf, /*order=*/0);
     // CpmdConserved sums E_UHF + T_nuc + T_e(α)+T_e(β) + E_therm^e onto
     // frame.meta[kConserved] [eV] at end_of_step @ -90.
-    sim.add(cpu::md::CpmdConserved{});
+    sim.set_observer(cpu::md::CpmdConserved{});
     sim.enable_timing(false);
     sim.build();
 

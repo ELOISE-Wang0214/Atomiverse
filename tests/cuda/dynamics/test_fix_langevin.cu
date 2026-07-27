@@ -74,8 +74,8 @@ TEST(CudaFixLangevin, TemperatureRampHonouredAtMidpoint) {
     cuda::md::FixLangevin lang{200.0, 500.0, 100.0, 1.0, 42u};
     lang.set_run_span(0, 100);
     cuda::md::MD sim;
-    sim.add(cuda::md::NVELimit{1.0, 0.05}); // Integrator + Force-cap
-    sim.add_ref(lang);
+    sim.set_integrator(cuda::md::NVELimit{1.0, 0.05}); // Integrator + Force-cap
+    sim.set_observer_ref(lang);
     sim.build();
     sim.run(frame,
             50); // step 0..49 ⇒ T_live at step 49 = 200 + 49/100·300 ≈ 347
@@ -103,8 +103,8 @@ TEST(CudaFixLangevin, PureLangevinDriverBuildsAndRuns) {
     // pass.
     auto frame = make_thermal_box(4);
     cuda::md::MD sim;
-    sim.add(cuda::md::NVELimit{1.0, 0.05});
-    sim.add(cuda::md::FixLangevin{300.0, -1.0, 100.0, 1.0, 42u});
+    sim.set_integrator(cuda::md::NVELimit{1.0, 0.05});
+    sim.set_thermostat(cuda::md::FixLangevin{300.0, -1.0, 100.0, 1.0, 42u});
     EXPECT_NO_THROW(sim.build());
     EXPECT_NO_THROW(sim.run(frame, 10));
     for (int i = 0; i < frame.nlocal(); ++i) {
@@ -124,8 +124,8 @@ TEST(CudaFixLangevin, RandomForceVarianceMatchesFDT) {
     const double damp = 1e6; // ← drag negligible per step
     const double dt = 1.0;
     cuda::md::MD sim;
-    sim.add(cuda::md::VelocityVerlet{dt});
-    sim.add(cuda::md::FixLangevin{T_target, -1.0, damp, dt, 42u});
+    sim.set_integrator(cuda::md::VelocityVerlet{dt});
+    sim.set_thermostat(cuda::md::FixLangevin{T_target, -1.0, damp, dt, 42u});
     sim.build();
     sim.run(frame, 1);
     const int n = frame.nlocal();
@@ -168,8 +168,8 @@ TEST(CudaFixLangevin, RandomForceVarianceMatchesFDT) {
 TEST(CudaFixLangevin, ThermalisesToTargetTemperature) {
     auto frame = make_thermal_box(6); // 216 atoms
     cuda::md::MD sim;
-    sim.add(cuda::md::VelocityVerlet{1.0});                       // no cap
-    sim.add(cuda::md::FixLangevin{300.0, -1.0, 100.0, 1.0, 42u}); // damp=100
+    sim.set_integrator(cuda::md::VelocityVerlet{1.0});                       // no cap
+    sim.set_thermostat(cuda::md::FixLangevin{300.0, -1.0, 100.0, 1.0, 42u}); // damp=100
     sim.build();
 
     const int warmup = 2000;

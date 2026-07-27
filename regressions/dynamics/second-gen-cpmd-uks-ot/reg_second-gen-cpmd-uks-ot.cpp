@@ -10,6 +10,7 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/electronic/second_gen_cp.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
@@ -52,16 +53,15 @@ int main() {
 
     constexpr double dt = 0.5; // fs — BOMD-class step
     constexpr int corrector_budget = 5;
-    cpu::gpw::GPWEvaluator eval(
+    cpu::gpw::GPWEvaluator gpw(
         /*kinds*/ {O}, /*cutoff_ry*/ 200.0, /*max_iter*/ 80, /*tol*/ 1e-5,
         /*mix*/ 0.4, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ true,
         /*compute_forces*/ true);
-    eval.n_alpha = 7; // multiplicity 3, 12 valence e⁻
-    eval.n_beta = 5;
-    eval.second_gen_cp = true;
-    eval.second_gen_cp_k = 1; // Kolafa ASPC order (K+1=2 seed densities)
-    eval.second_gen_cp_max_iter = corrector_budget;
-    eval.use_ot = true; // OT partial-SCF corrector (this slug)
+    gpw.n_alpha = 7; // multiplicity 3, 12 valence e⁻
+    gpw.n_beta = 5;
+    gpw.use_ot = true; // OT partial-SCF corrector (this slug)
+    cpu::electronic::SecondGenCp eval{std::move(gpw), /*aspc_k=*/1,
+                                      corrector_budget};
 
     constexpr int n_seed = 2; // warm ASPC history (order K=1 needs K+1)
     constexpr int n_prod = 2;
@@ -73,7 +73,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
+    sim.set_evaluator_ref(eval);
     sim.enable_timing(false);
     sim.build();
 

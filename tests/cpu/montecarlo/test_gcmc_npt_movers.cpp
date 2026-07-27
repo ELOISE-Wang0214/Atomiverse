@@ -234,7 +234,7 @@ TEST(MoveSelector, TemporaryChainIsOwnedByTheDriver) {
     // keep the chain an rvalue, forcing the owning branch. This test drives
     // exactly that temporary-chain path through build().
     cpu::mc::Gcmc mc{120.0, -0.1, 39.948, 1u};
-    mc.add_potential(cpu::PairLJCut{0.0104, 3.4, 8.5});
+    mc.set_evaluator(cpu::PairLJCut{0.0104, 3.4, 8.5});
     mc.set_neighbor(cpu::md::NeighborList<>{8.5, 1.0, 1, 0, true});
     mc.set_mover(cpu::mc::MoveSelector{}
                      .add(cpu::mc::TranslateMove{0.2}, 0.5)

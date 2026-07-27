@@ -143,7 +143,7 @@ class GcmcMetropolis : public OutcomePolicy {
 /// @code{.cpp}
 ///   cpu::mc::Gcmc mc{/*T=*/120.0, /*mu [eV]=*/-0.1, /*mass [amu]=*/39.948,
 ///                    /*seed=*/7u};
-///   mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+///   mc.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
 ///   mc.set_neighbor(cpu::md::NeighborList<>{cutoff, skin, 1, 0, true});
 ///   mc.set_mover(cpu::mc::MoveSelector{}
 ///                    .add(cpu::mc::TranslateMove{0.2}, 0.5)

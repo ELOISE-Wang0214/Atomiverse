@@ -53,12 +53,12 @@ void install_ff(Driver& d, Phase force_phase) {
     const double eps0 = kcal_per_mol_to_ev(0.1);
     const double eps1 = kcal_per_mol_to_ev(0.09);
     d.set_neighbor(cpu::md::NeighborList<>{8.0, 0.5});
-    d.add_potential(cpu::PairLJCut{{{0, 0, eps0, 3.4}, {1, 1, eps1, 3.2}}, 8.0}
+    d.set_evaluator(cpu::PairLJCut{{{0, 0, eps0, 3.4}, {1, 1, eps1, 3.2}}, 8.0}
                         .set_special_bonds(0.0, 0.0, 0.5));
     d.on(force_phase)
         .add(cpu::PairCoulCut{8.0}.set_special_bonds(0.0, 0.0, 0.5));
-    d.add_potential(cpu::BondHarmonic{{kcal_per_mol_to_ev(200.0)}, {1.5}});
-    d.add_potential(cpu::AngleHarmonic{{kcal_per_mol_to_ev(50.0)}, {1.9}});
+    d.set_evaluator(cpu::BondHarmonic{{kcal_per_mol_to_ev(200.0)}, {1.5}});
+    d.set_evaluator(cpu::AngleHarmonic{{kcal_per_mol_to_ev(50.0)}, {1.9}});
 }
 
 } // namespace
@@ -83,7 +83,7 @@ int main() {
         install_ff(sim, md::Phase::force);
         sim.set_integrator(cpu::md::VelocityVerlet{1.0});
         sim.set_thermostat(cpu::md::NoseHoover{400.0, 100.0, 1.0});
-        sim.add(cpu::md::InitVelocity{400.0, 1});
+        sim.set_observer(cpu::md::InitVelocity{400.0, 1});
         sim.build();
         sim.run(f, 50);
     }

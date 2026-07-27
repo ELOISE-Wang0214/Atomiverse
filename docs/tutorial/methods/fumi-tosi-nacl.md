@@ -139,8 +139,8 @@ cpu::PairBorn born(
     rc);
 
 cpu::Evaluate eval;
-eval.add_potential(std::move(born));
-eval.add_potential(cpu::PairCoulCut{rc});
+eval.set_evaluator(std::move(born));
+eval.set_evaluator(cpu::PairCoulCut{rc});
 eval.set_neighbor(cpu::md::NeighborList<>{rc, /*skin=*/0.3});
 eval.build();
 eval.run(f);

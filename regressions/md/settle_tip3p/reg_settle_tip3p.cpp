@@ -55,11 +55,11 @@ int main() {
     // Soft LJ on O only to add mild forces without blowing geometry.
     auto lj = cpu::PairLJCut{0.0067, 3.1507, 8.0};
     // Single type — hydrogens share O LJ; dilute box OK for geometry pin.
-    sim.add_potential(std::move(lj));
+    sim.set_evaluator(std::move(lj));
     sim.set_neighbor(cpu::md::NeighborList<>{8.0, 0.5});
     cpu::md::FixSettle settle(dt, d_oh, d_hh);
     settle.add_water(1, 2, 3);
-    sim.add(std::move(settle));
+    sim.set_observer(std::move(settle));
     sim.build();
     sim.run(f, 500); // 1 ps at 2 fs
 

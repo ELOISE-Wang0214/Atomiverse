@@ -42,7 +42,7 @@ cpu::Frame dimer(int ta, int tb, double r) {
 double energy_of(cpu::Frame& f, cpu::PairLJCut pair, double cutoff) {
     cpu::Evaluate eval;
     eval.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3, 1, 0, true});
-    eval.add_potential(std::move(pair));
+    eval.set_evaluator(std::move(pair));
     eval.enable_timing(false);
     eval.build();
     eval.run(f);

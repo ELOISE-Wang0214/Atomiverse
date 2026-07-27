@@ -81,7 +81,7 @@ TEST(TestFIRE, ShortDescentImprovesForceAndLeavesVelocitiesZero) {
     fire.dt_max = 20.0;
     opt.set_optimizer_ref(fire);
     opt.add_criterion(cpu::ForceConverged{1e-3, 5e-4, 0.2, 0.1, 1e-6});
-    opt.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    opt.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     opt.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3});
     opt.build();
     opt.run(frame, 500);
@@ -119,7 +119,7 @@ TEST(TestFIRE, MaxStepClamp) {
     opt.set_optimizer_ref(fire);
     // One outer iteration is enough to exercise the clamp.
     opt.add_criterion(cpu::ForceConverged{1e-30, 1e-30, 1e-30, 1e-30, 1e-30});
-    opt.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+    opt.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
     opt.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3});
     opt.build();
     opt.run(frame, 2);

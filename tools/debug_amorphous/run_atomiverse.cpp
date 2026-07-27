@@ -294,9 +294,9 @@ int main(int argc, char** argv) {
         const double xmax = 0.05;     // LAMMPS-equivalent cap
 
         cpu::md::MD sim;
-        sim.add(cpu::md::NVELimit{dt, xmax});
-        sim.add(cpu::md::InitVelocity{T_tgt, /*seed=*/1231});
-        sim.add(cpu::md::FixLangevin{T_tgt, /*T_stop=*/T_tgt, tau_lang, dt,
+        sim.set_integrator(cpu::md::NVELimit{dt, xmax});
+        sim.set_observer(cpu::md::InitVelocity{T_tgt, /*seed=*/1231});
+        sim.set_thermostat(cpu::md::FixLangevin{T_tgt, /*T_stop=*/T_tgt, tau_lang, dt,
                                      /*seed=*/904297});
         sim.on(ATV::md::Phase::pre_force)
             .add(cpu::comm::HaloSend{lj_cut + 0.4}, -20);
@@ -309,18 +309,18 @@ int main(int argc, char** argv) {
             .add(cpu::BondHarmonic{{bond_K_ev}, {bond_r0}})
             .add(cpu::AngleHarmonic{{angle_K_ev}, {angle_theta0}})
             .add(cpu::DihedralMultiHarmonic{{dihedral_ev}});
-        sim.add(cpu::md::Virial{});
+        sim.set_observer(cpu::md::Virial{});
 
         ThermoPrinter thermo{100, rank == 0 ? log_stream : std::cout,
                              n_atoms_global, total_mass_amu};
-        sim.add_ref(thermo);
+        sim.set_observer_ref(thermo);
 
         // Stash this rank's final n_local so we can gather the frame
         // back to every rank between stages (Stage 2's driver scans the
         // whole array on first partition; without a gather it'd see
         // stale ghost rows).
         debug_amorphous::CaptureNLocal capture{&stage1_n_local};
-        sim.add_ref(capture);
+        sim.set_observer_ref(capture);
 
         sim.build();
 
@@ -374,10 +374,10 @@ int main(int argc, char** argv) {
         const double tau_P = 1000.0; // LAMMPS Pdamp
 
         cpu::md::MD sim;
-        sim.add(cpu::md::NoseHooverNPT{*/ T_tgt, */ tau_T, */ P_tgt, */ tau_P,
+        sim.set_integrator(cpu::md::NoseHooverNPT{*/ T_tgt, */ tau_T, */ P_tgt, */ tau_P,
                                        */ dt, */ 2.0, */ 3, */ 3});
         // LAMMPS `fix momentum 1 linear 1 1 1` equivalent.
-        sim.add(cpu::md::ZeroMomentum{1});
+        sim.set_observer(cpu::md::ZeroMomentum{1});
         sim.on(ATV::md::Phase::pre_force)
             .add(cpu::comm::HaloSend{lj_cut + 0.4}, -20);
         sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
@@ -389,12 +389,12 @@ int main(int argc, char** argv) {
             .add(cpu::BondHarmonic{{bond_K_ev}, {bond_r0}})
             .add(cpu::AngleHarmonic{{angle_K_ev}, {angle_theta0}})
             .add(cpu::DihedralMultiHarmonic{{dihedral_ev}});
-        sim.add(cpu::md::Virial{});
+        sim.set_observer(cpu::md::Virial{});
 
         ThermoPrinter thermo{100, rank == 0 ? log_stream : std::cout,
                              n_atoms_global, total_mass_amu};
         thermo.reset_step();
-        sim.add_ref(thermo);
+        sim.set_observer_ref(thermo);
 
         sim.build();
 

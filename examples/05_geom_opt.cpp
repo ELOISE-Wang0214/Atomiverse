@@ -107,7 +107,7 @@ int main() {
     rhf.max_iter = 200;
 
     cpu::minimizer::Minimize opt;
-    opt.add(cpu::minimizer::LBFGS{
+    opt.set_optimizer(cpu::minimizer::LBFGS{
         5,            // memory
         double(0.01), // alpha0 [Å²/eV] (only the Fixed-mode / step-0 fallback)
         20            // max_ls (line-search trial cap)

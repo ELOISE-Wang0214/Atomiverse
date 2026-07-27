@@ -32,7 +32,7 @@ int main() {
     f.box = cpu::Box::cubic(40.0);
 
     cpu::Evaluate eval;
-    eval.add_potential(cpu::PairYukawa{A, kappa, rc});
+    eval.set_evaluator(cpu::PairYukawa{A, kappa, rc});
     eval.build();
     eval.run(f);
 
