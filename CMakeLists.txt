@@ -229,6 +229,12 @@ if(NOT ATV_DOCS_ONLY)
         # used by the GPW OT minimizer and by the electronic-state propagators,
         # so they are never gated on a method flag.
         src/cpu/linalg/orbital_tangent.cpp
+        # Niklasson dissipative XL recursion (cpu/electronic/xl_bomd.cpp):
+        # depends only on cpu/linalg header types. Consumed by Gaussian SCF /
+        # GPW (ATV_BUILD_HF) *and* by the classical extended-Lagrangian PIM
+        # dipoles (cpu/potentials/pim_xl_dipole.*, MD-only builds), so it is
+        # never method-gated.
+        src/cpu/electronic/xl_bomd.cpp
         src/cpu/io/frame_writer.cpp
         src/cpu/io/lammps_data.cpp
         src/cpu/io/extxyz.cpp
@@ -583,13 +589,14 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/nevpt2.cpp
             src/cpu/scf/orbital_info_observer.cpp
             # Electronic-state propagators (cpu/electronic/): Kolafa ASPC
-            # extrapolation, Car–Parrinello fictitious-mass dynamics, and the
-            # Niklasson dissipative XL-BOMD recursion. They depend only on
-            # cpu/linalg, and every consumer (Gaussian SCF here, GPW below —
-            # GPW requires HF) is behind this flag, so they build once here.
+            # extrapolation and Car–Parrinello fictitious-mass dynamics. They
+            # depend only on cpu/linalg, and every consumer (Gaussian SCF
+            # here, GPW below — GPW requires HF) is behind this flag, so they
+            # build once here. The Niklasson XL recursion (xl_bomd.cpp) moved
+            # to the always-on set: classical PIM XL dipoles consume it in
+            # MD-only builds.
             src/cpu/electronic/aspc_predictor.cpp
             src/cpu/electronic/cpmd.cpp
-            src/cpu/electronic/xl_bomd.cpp
             # Molecular DFT-D3 (BJ) + shared Grimme tables (also used by GPW
             # zero-damping when ATV_BUILD_GPW=ON — sources live once under HF
             # because GPW requires HF).
@@ -654,9 +661,9 @@ if(NOT ATV_DOCS_ONLY)
             # a dedicated ATV_BUILD_XC flag exists.
             src/cpu/xc/pade.cpp
             src/cpu/gpw/internal/one_electron.cpp
-            # The electronic-state propagators GPWEvaluator drives (XL-BOMD,
-            # CPMD, ASPC) live in src/cpu/electronic/ and are compiled under
-            # ATV_BUILD_HF, which GPW requires.
+            # The electronic-state propagators GPWEvaluator drives live in
+            # src/cpu/electronic/: CPMD + ASPC compile under ATV_BUILD_HF
+            # (which GPW requires); the XL recursion is in the always-on set.
             # DFT-D3 engine sources are compiled under ATV_BUILD_HF (shared
             # with molecular D3BJ); GPW zero-damping calls the same symbols.
         )

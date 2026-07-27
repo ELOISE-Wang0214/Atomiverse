@@ -567,6 +567,7 @@ if(ATV_BUILD_KSPACE AND ATV_BUILD_MD)
     atv_add_regression(md charge-charge-autocorr)
     atv_add_regression(md elastance-condition-observer)
     atv_add_regression(md constant-velocity-smd)
+    atv_add_regression(md extended-lagrangian-dipoles)
 endif()
 # FMM operator math is always-on (facade longrange/); no product-module gate.
 atv_add_regression(longrange fmm_point_charges)

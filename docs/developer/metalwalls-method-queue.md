@@ -67,7 +67,6 @@ reachable (MaZe + Fumi–Tosi NL footholds) but unbuilt.
 - [~] `const-pot-charge-halo-mpi` | Charge halo correctness after \(Q\) update under MPI DD | electrochem | multi-rank planar walls | — | ghost \(q\) match owner after solve | **oracle=literature** / self-consistency; map §1/§6 P0 timing (schema borders ✓; no halo/MPI handling in `ConstPot*` — verified 2026-07-27)
 - [x] `maze-symplectic-charge-dynamics` | True mass-zero constrained (SHAKE-like) MaZe charge dynamics (Coretti et al.) | electrochem | parallel-plate vs `ConstPotMaZe` foothold | — | \(Q(t)\) continuity, constraint residual, energy conservation vs CG+ASPC twin | **oracle=metalwalls** literature pin (Coretti 2020, perf_exempt); landed wave-5: `ConstPotMaZe.symplectic` default path (SHAKE CG on \(A^2\gamma=-\sigma\), Verlet guess, χ-shift neutrality), `reg_maze-symplectic-charge-dynamics` (reversible palindrome + grand-energy conservation vs loose CG+ASPC twin)
 - [~] `constant-d-polarization-feedback` | Self-consistent constant-\(\mathbf{D}\) ensemble: \(E = D - 4\pi P\) from itinerant polarization | electrochem | bulk electrolyte constant-\(D_z\) | — | \(P_z(t)\), \(E_z\) response vs vacuum-foothold twin | **oracle=metalwalls** / literature (Zhang–Sprik constant-D); map §1 D-field ~ (`FixDfield` = vacuum \(E\equiv D\) foothold)
-- [~] `extended-lagrangian-dipoles` | Extended-Lagrangian / mass-zero dipole dynamics | polarizable | bulk polarizable toy | — | \(\mu(t)\), energy | **oracle=metalwalls**; map §2 XL dipoles ○ (SCF PIM ✓ is foothold)
 - [~] `qeq-fluctuating-charge` | QEq / fluctuating-charge (≠ const-pot electrode) | polarizable | small organic / ionic toy | — | \(q_i\), \(E\) | **oracle=lammps** `fix qeq` / charge equilibration; map §2 FQ/QEq ○
 - [~] `pim-npt-polarizable-il` | Bulk polarizable IL under NPT (PIM product twin) | polarizable | small IL box NPT | — | \(E\), \(P\), short NPT | **oracle=metalwalls**; map §9 PIM-NPT ~ (bulk SCF PIM foothold only)
 - [~] `voronoi-volume-tf` | Voronoi / site-volume companion for Thomas–Fermi metallicity | electrochem | TF gold capacitor toy | — | \(v_i\), \(Q\) vs fixed-density TF | **oracle=metalwalls**; map §1 Voronoi volume (TF) ○; TF `l_tf` foothold ✓
@@ -137,3 +136,9 @@ reachable (MaZe + Fumi–Tosi NL footholds) but unbuilt.
 | [x] `charge-charge-autocorr` | `regressions/md/charge-charge-autocorr` | literature | perf_exempt |
 | [x] `elastance-condition-observer` | `regressions/md/elastance-condition-observer` | literature | perf_exempt |
 | [x] `constant-velocity-smd` | `regressions/md/constant-velocity-smd` | lammps fix move | perf_exempt |
+
+### Wave 5 — 2026-07-27 (worker `wf/extended-lagrangian-dipoles`)
+
+| slug | Regression | oracle | ratio |
+| ---- | ---------- | ------ | ----- |
+| [x] `extended-lagrangian-dipoles` | `regressions/md/extended-lagrangian-dipoles` | metalwalls (iEL/SCF literature pins — Albaugh/Niklasson; MW MaZe route cited) | perf_exempt (no MW binary; no LAMMPS iEL/SCF twin) |
