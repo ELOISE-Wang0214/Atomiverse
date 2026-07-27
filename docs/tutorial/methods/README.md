@@ -12,6 +12,8 @@ wave:
 - `cp2k-method-loop` — GPW / PW / periodic DFT vs offline CP2K pins
 - `metalwalls-method-loop` — classical electrochemical MD + LAMMPS-overlap MD
   (arg `write_tutorials`; LAMMPS oracle when feature overlaps; MW for MW-only)
+- `tb-method-loop` — NDDO / DFTB / GFN-xTB vs offline OpenMOPAC | DFTB+ | xtb
+  pins (family-locked; arg `write_tutorials`)
 
 ## Required sections
 
@@ -20,7 +22,7 @@ wave:
 | Summary | What / when / API / regression path |
 | Method | Equations, assumptions, exclusions |
 | Implementation | Minimal public C++; how to run `reg_<slug>` |
-| Validation | Hard-coded pins from `REFERENCE.md` (PySCF, CP2K, or LAMMPS/MetalWalls) |
+| Validation | Hard-coded pins from `REFERENCE.md` (PySCF, CP2K, LAMMPS/MetalWalls, or OpenMOPAC/DFTB+/xtb) |
 | Performance | Fair wall \(T_{\mathrm{ATV}}/T_{\mathrm{oracle}}\) (or `perf_exempt`) |
 | Limitations | Scope + known debt |
 | References | Paths + literature |
@@ -59,6 +61,27 @@ docs/tutorial/methods/<slug>.md
 - Queue / design: `docs/developer/metalwalls-method-queue.md`, `metalwalls-method-loop.md`
 - **Oracle priority:** if the feature also exists in LAMMPS, pin and fair-bench
   vs **LAMMPS**. MetalWalls only for MW-only physics.
+
+**TB / SE (NDDO / DFTB / GFN-xTB):**
+
+- Accuracy: `regressions/semiempirical/<slug>/REFERENCE.md`
+  (`oracle: mopac|dftb+|xtb|literature` + `oracle_version`)
+- Speed / ratios: `docs/developer/tb-method-handoff.md` (fair wall or `perf_exempt`)
+- Oracle twins: `tools/tb_oracle/README.md` (offline only; never live in ctest)
+- Queue / design: `docs/developer/tb-method-queue.md`, `tb-method-loop.md`
+- **Family lock:** NDDO → OpenMOPAC; DFTB* → DFTB+; GFN-xTB → xtb. Forbidden:
+  cross-family energy pins; treating GFN as DFTB3 successor.
+
+## Index — TB / SE capability wave 2 (2026-07-27)
+
+Offline family-locked pins only — see
+[tb-method-handoff](../../developer/tb-method-handoff.md) and
+`tools/tb_oracle/`. Oracle = **DFTB+** for DFTB rows. Fair walls from
+REFERENCE (`ratio` or `perf_exempt`).
+
+| Method | Page | Regression | Oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
+| ------ | ---- | ---------- | ------ | --------------------------------------------- |
+| SCC-DFTB2 H₂ total \(E\) vs mio-1-1 | [dftb2-dftbplus-energy-pin](dftb2-dftbplus-energy-pin.md) | `regressions/semiempirical/dftb2-dftbplus-energy-pin` | dftb+ 24.1 | **≈ 0.4** |
 
 ## Index — MetalWalls capability wave 1 (2026-07-23)
 

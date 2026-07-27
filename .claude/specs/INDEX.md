@@ -15,7 +15,7 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
 
 | # | Spec | Deps | One-line |
 | - | ---- | ---- | -------- |
-| W1-1 | esmm-contract-01-zeroing | — | Zero* unification (Hessian/Path/MC/Minimize/Evaluate) + k/2 oracle fix |
+| W1-1 | esmm-contract-01-zeroing | — | DONE 2026-07-27 (closed; see git 66664744) — Zero* unification + k/2 oracle fix |
 | W1-2 | esmm-contract-02-validation-walks | — | McBase + PathDriver node-aware energy-source validation |
 | W1-3 | esmm-contract-03-runslot-nested | — | run_slot_ dispatches nested drivers (line-search zero-force fix) + R2 |
 | W1-4 | esmm-contract-04-forces-requested | W1-2 | phase_wants_forces plumbing + ASPC-under-MC guard + R3 |

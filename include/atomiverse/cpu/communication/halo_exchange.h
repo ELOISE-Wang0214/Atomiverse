@@ -19,7 +19,7 @@
 ///
 /// The default-constructed `HaloSend{}` (`cutoff = 0`) is a
 /// no-op sentinel. Under `ATV_BUILD_MPI`, `cpu::md::MD` auto-injects the
-/// `HaloSend{1.1 * pair_cutoff}` + `HaloRecv{}` pair when `add_potential` is
+/// `HaloSend{1.1 * pair_cutoff}` + `HaloRecv{}` pair when `set_evaluator` is
 /// called; a manually registered pair suppresses the injection (detected
 /// through the `halo_participant()` protocol probe — reverse exchange
 /// must run exactly once).

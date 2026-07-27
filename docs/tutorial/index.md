@@ -97,6 +97,19 @@ Suggested paths:
 Campaign handbook pages (technical-report style, one per regression slug).
 Full index and template: [methods/README](methods/README.md).
 
+### TB / SE capability wave 1 (semiempirical + tight-binding)
+
+Offline OpenMOPAC / DFTB+ / xtb pins only — see
+[tb-method-handoff](../developer/tb-method-handoff.md) and `tools/tb_oracle/`.
+Family-locked oracles: NDDO → OpenMOPAC; DFTB* → DFTB+; GFN-xTB → xtb.
+Narrative: [Ch. 17 Semiempirical AM1](ch17-semiempirical-am1.md).
+
+| Method | Page | Regression | Oracle |
+|--------|------|------------|--------|
+| SCC-DFTB2 CH₄ 3ob-3-1 organic SK | [dftb2-3ob-organic](methods/dftb2-3ob-organic.md) | `regressions/semiempirical/dftb2-3ob-organic` | dftb+ 24.1 (`perf_exempt`) |
+| SCC-DFTB2 analytic nuclear forces H₂O | [dftb2-analytic-forces](methods/dftb2-analytic-forces.md) | `regressions/semiempirical/dftb2-analytic-forces` | dftb+ formula (`perf_exempt`) |
+| Collinear spin-DFTB2 O₂ triplet | [spin-dftb2-o2](methods/spin-dftb2-o2.md) | `regressions/semiempirical/spin-dftb2-o2` | literature + family dftb+ (`perf_exempt`) |
+
 ### MetalWalls capability wave 1 (classical electrochem + LAMMPS-overlap MD)
 
 Offline LAMMPS / MetalWalls / literature pins only — see
