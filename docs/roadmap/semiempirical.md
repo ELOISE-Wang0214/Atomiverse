@@ -71,7 +71,7 @@ multipole derivatives stay ○. Analytic Hessian remains finite-difference via
 | Spin-orbit DFTB           |  ○  |   ○  |   ○  |
 | Periodic DFTB             |  ○  |   ○  |   ○  |
 | DFTB analytic gradient    |  ✓  |   ○  |   ○  |
-| DFTB analytic stress      |  ○  |   ○  |   ○  |
+| DFTB analytic stress      |  ✓  |   ○  |   ○  |
 | TD-DFTB                   |  ○  |   ○  |   ○  |
 
 DFTB2 is multi-element H/C/N/O with static SK tables (`dftb_mio_tables.h` sketch
@@ -79,8 +79,7 @@ DFTB2 is multi-element H/C/N/O with static SK tables (`dftb_mio_tables.h` sketch
 **restricted** analytic nuclear forces (HF+Pulay+γ+rep) ship on MioSketch;
 open-shell and ThreeOb forces remain re-SCC FD. Offline **DFTB+** absolute
 energy identity on mio H–H is an incomplete tip (`dftb2-dftbplus-energy-pin`);
-3ob CH4 has a DFTB+ pin under pure SCC-DFTB2. Analytic **stress**, **k-mesh**
-beyond Γ, **DFTB3** forces, and **TD-DFTB** remain ○. Oracle for all DFTB
+3ob CH4 has a DFTB+ pin under pure SCC-DFTB2. **Restricted MioSketch analytic stress** ships (`reg_dftb2-analytic-stress`); **k-mesh** beyond Γ, **DFTB3** forces, and **TD-DFTB** remain ○. Oracle for all DFTB
 rows: **DFTB+** (never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 →
 spin product depth → …
 

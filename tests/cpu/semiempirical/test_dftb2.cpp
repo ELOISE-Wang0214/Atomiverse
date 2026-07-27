@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/semiempirical/dftb2.h"
@@ -225,4 +226,90 @@ TEST(DFTB2, RejectsBadMultiplicity) {
     dftb.with_forces = false;
     dftb.build({ctx, f});
     EXPECT_THROW(dftb.launch({ctx, f, 0, 0}), std::runtime_error);
+}
+
+/// Affine strain helper for multi-SCC stress FD (matches product strain FD).
+void apply_strain_voigt(cpu::Frame& frame, int voigt, double h) {
+    Mat3 F = Mat3::identity();
+    if (voigt == 0)
+        F(0, 0) += static_cast<AccReal>(h);
+    else if (voigt == 1)
+        F(1, 1) += static_cast<AccReal>(h);
+    else if (voigt == 2)
+        F(2, 2) += static_cast<AccReal>(h);
+    else if (voigt == 3) {
+        F(0, 1) += static_cast<AccReal>(h);
+        F(1, 0) += static_cast<AccReal>(h);
+    } else if (voigt == 4) {
+        F(0, 2) += static_cast<AccReal>(h);
+        F(2, 0) += static_cast<AccReal>(h);
+    } else if (voigt == 5) {
+        F(1, 2) += static_cast<AccReal>(h);
+        F(2, 1) += static_cast<AccReal>(h);
+    }
+    Mat3 cell = frame.box.cell();
+    Mat3 cell_new;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) {
+            AccReal s = 0;
+            for (int k = 0; k < 3; ++k)
+                s += F(i, k) * cell(k, j);
+            cell_new(i, j) = s;
+        }
+    frame.box.set_cell(cell_new);
+    auto x = frame.span(kAtom_x);
+    auto y = frame.span(kAtom_y);
+    auto z = frame.span(kAtom_z);
+    const int n = frame.nlocal();
+    for (int a = 0; a < n; ++a) {
+        const AccReal rx = static_cast<AccReal>(x[a]);
+        const AccReal ry = static_cast<AccReal>(y[a]);
+        const AccReal rz = static_cast<AccReal>(z[a]);
+        x[a] = static_cast<StorageReal>(F(0, 0) * rx + F(0, 1) * ry
+                                        + F(0, 2) * rz);
+        y[a] = static_cast<StorageReal>(F(1, 0) * rx + F(1, 1) * ry
+                                        + F(1, 2) * rz);
+        z[a] = static_cast<StorageReal>(F(2, 0) * rx + F(2, 1) * ry
+                                        + F(2, 2) * rz);
+    }
+}
+
+TEST(DFTB2, AnalyticStressMatchesStrainFdH2) {
+    // Stretched H2 so |virial| is finite; large box → near-isolated molecule.
+    auto f = make_h2(0.90);
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 dftb;
+    dftb.with_forces = false;
+    dftb.with_stress = true;
+    dftb.scc_tol = 1e-12;
+    dftb.max_scc = 80;
+    dftb.build({ctx, f});
+    dftb.launch({ctx, f, 0, 0});
+
+    const auto& san = dftb.last_stress();
+    for (int v = 0; v < 6; ++v)
+        EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(v)])) << v;
+
+    // Bond along x → σ_xx is the leading component; gate xx and yy.
+    constexpr double h = 2.0e-4;
+    const double vol = f.box.volume();
+    ASSERT_GT(vol, 0.0);
+
+    auto strain_fd = [&](int voigt) {
+        auto fp = make_h2(0.90);
+        auto fm = make_h2(0.90);
+        apply_strain_voigt(fp, voigt, h);
+        apply_strain_voigt(fm, voigt, -h);
+        const double dE = (energy_only(fp) - energy_only(fm)) / (2.0 * h);
+        return -dE / vol;
+    };
+
+    // Fixed-Δq analytic vs re-SCC strain-FD: H2 is tight (no multi-element
+    // charge-response residual of the H2O force gate class).
+    EXPECT_NEAR(san[0], strain_fd(0), 5e-4); // xx
+    EXPECT_NEAR(san[1], strain_fd(1), 5e-4); // yy (~0 for axial H2)
+
+    // Frame meta accumulation
+    const auto& st = f.meta.get(kStress);
+    EXPECT_NEAR(st[0], san[0], 1e-14);
 }
