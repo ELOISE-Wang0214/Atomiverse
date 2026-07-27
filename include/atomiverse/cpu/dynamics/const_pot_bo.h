@@ -226,6 +226,15 @@ class ConstPotBO : public cpu::Component {
     /// \(A_{ii}\mathrel{+}= 4\pi k_e l_{\mathrm{TF}}^{2} d\). Au FCC with
     /// \(a_0=4.07\) Å gives \(d = 4/a_0^3 \approx 0.0593\).
     double site_density = 0.0;
+    /// Per-site Voronoi / atomic volumes \(v_i\) [Å³] **indexed by frame
+    /// row** — the MetalWalls `voronoi_volume` companion (Scalfi et al.
+    /// 2020; typically from `cpu::VoronoiVolume` on the bulk electrode
+    /// crystal). When non-empty the TF hardness is per-site,
+    /// \(A_{ii}\mathrel{+}= 4\pi k_e l_{\mathrm{TF}}^{2}/v_i\); size must
+    /// equal the frame's `nlocal` and every electrode row needs \(v_i>0\)
+    /// (non-electrode rows are ignored). Exactly one of `site_density` /
+    /// `site_volume` may be set when `l_tf > 0`.
+    std::vector<double> site_volume;
 
   private:
     /// `ConstPotMaZe` (mass-zero constrained dynamics) reuses the elastance

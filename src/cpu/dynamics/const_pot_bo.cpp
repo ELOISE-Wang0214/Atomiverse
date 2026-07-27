@@ -197,9 +197,10 @@ void ConstPotBO::build(const BuildContext& ctx) {
         throw std::invalid_argument("ConstPotBO: eta must be > 0 [1/Å]");
     if (l_tf < 0.0)
         throw std::invalid_argument("ConstPotBO: l_tf must be >= 0 [Å]");
-    if (l_tf > 0.0 && !(site_density > 0.0))
+    if (l_tf > 0.0 && (site_density > 0.0) == !site_volume.empty())
         throw std::invalid_argument(
-            "ConstPotBO: site_density [1/Å³] must be > 0 when l_tf > 0");
+            "ConstPotBO: exactly one of site_density [1/Å³] or per-site "
+            "site_volume [Å³] must be set when l_tf > 0");
     collect_electrodes_(ctx.frame);
     if (elec_atoms_.empty())
         throw std::runtime_error(
@@ -372,14 +373,33 @@ void ConstPotBO::build_matrix_(const cpu::Frame& frame) {
     }
 
     // Thomas–Fermi metallicity (Scalfi et al. JCP 153, 174704 (2020)):
-    // U_TF^(2) = (l_TF² d / (2 ε0)) Σ Q_i²  ⇒  A_ii += l_TF² d / ε0
-    // with 1/ε0 = 4π k_e and k_e = units::coulomb [eV·Å/e²].
+    // U_TF^(2) = Σ_i (l_TF² / (2 ε0 v_i)) Q_i²  ⇒  A_ii += l_TF² / (ε0 v_i)
+    // with 1/ε0 = 4π k_e and k_e = units::coulomb [eV·Å/e²]. The fixed-
+    // density foothold uses v_i = 1/site_density for every site; the
+    // MetalWalls `voronoi_volume` companion supplies per-site v_i.
     if (l_tf > 0.0) {
         constexpr double kPi = 3.14159265358979323846;
-        const double hardness =
-            4.0 * kPi * units::coulomb * l_tf * l_tf * site_density;
-        for (int a = 0; a < m; ++a)
-            A_[static_cast<std::size_t>(a) * m + a] += hardness;
+        const double pref = 4.0 * kPi * units::coulomb * l_tf * l_tf;
+        if (!site_volume.empty()) {
+            if (site_volume.size()
+                != static_cast<std::size_t>(frame.nlocal()))
+                throw std::invalid_argument(
+                    "ConstPotBO: site_volume size must equal the frame's "
+                    "nlocal (per-site volumes are indexed by frame row)");
+            for (int a = 0; a < m; ++a) {
+                const double v = site_volume[static_cast<std::size_t>(
+                    elec_atoms_[static_cast<std::size_t>(a)])];
+                if (!(v > 0.0))
+                    throw std::invalid_argument(
+                        "ConstPotBO: site_volume must be > 0 [Å³] on every "
+                        "electrode row");
+                A_[static_cast<std::size_t>(a) * m + a] += pref / v;
+            }
+        } else {
+            const double hardness = pref * site_density;
+            for (int a = 0; a < m; ++a)
+                A_[static_cast<std::size_t>(a) * m + a] += hardness;
+        }
     }
 }
 
