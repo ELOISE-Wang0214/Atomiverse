@@ -129,6 +129,33 @@ ConstPotBO ConstPotBO::add_electrode(int type, double psi) && {
     return std::move(*this);
 }
 
+ConstPotBO& ConstPotBO::add_electrode_charge(int type, double q_total) & {
+    groups_.push_back(
+        ElectrodeGroup{type, /*psi=*/0.0, /*const_charge=*/true, q_total});
+    return *this;
+}
+
+ConstPotBO ConstPotBO::add_electrode_charge(int type, double q_total) && {
+    groups_.push_back(
+        ElectrodeGroup{type, /*psi=*/0.0, /*const_charge=*/true, q_total});
+    return std::move(*this);
+}
+
+bool ConstPotBO::has_const_charge_() const {
+    for (const auto& g : groups_)
+        if (g.const_charge)
+            return true;
+    return false;
+}
+
+double ConstPotBO::electrode_potential(std::size_t ie) const {
+    if (ie >= groups_.size())
+        throw std::out_of_range("ConstPotBO::electrode_potential");
+    if (ie < solved_psi_.size())
+        return solved_psi_[ie];
+    return groups_[ie].psi;
+}
+
 void ConstPotBO::ensure_aspc_() {
     if (predictor_order <= 0) {
         aspc_.reset();
@@ -148,8 +175,9 @@ void ConstPotBO::record_aspc_() {
 
 void ConstPotBO::build(const BuildContext& ctx) {
     if (groups_.empty())
-        throw std::runtime_error("ConstPotBO: add at least one electrode via "
-                                 "add_electrode(type, Psi)");
+        throw std::runtime_error(
+            "ConstPotBO: add at least one electrode via add_electrode(type, "
+            "Psi) or add_electrode_charge(type, Q)");
     if (l_tf < 0.0)
         throw std::invalid_argument("ConstPotBO: l_tf must be >= 0 [Å]");
     if (l_tf > 0.0 && !(site_density > 0.0))
@@ -187,6 +215,7 @@ void ConstPotBO::destroy(const DestroyContext&) {
     elec_atoms_.clear();
     A_.clear();
     Q_.clear();
+    solved_psi_.clear();
     if (aspc_)
         aspc_->reset();
     last_iters_ = 0;
@@ -202,7 +231,7 @@ double ConstPotBO::total_charge(std::size_t ie) const {
 double ConstPotBO::delta_psi() const {
     if (groups_.size() < 2)
         return 0.0;
-    return groups_.back().psi - groups_.front().psi;
+    return electrode_potential(groups_.size() - 1) - electrode_potential(0);
 }
 
 double ConstPotBO::neutrality_residual() const {
@@ -223,7 +252,8 @@ void ConstPotBO::collect_electrodes_(const cpu::Frame& frame) {
             if (static_cast<int>(type[i]) == groups_[g].type) {
                 elec_atoms_.push_back(i);
                 elec_group_.push_back(static_cast<int>(g));
-                psi_vec_.push_back(groups_[g].psi);
+                psi_vec_.push_back(groups_[g].const_charge ? 0.0
+                                                           : groups_[g].psi);
                 break;
             }
         }
@@ -332,6 +362,13 @@ void ConstPotBO::build_matrix_(const cpu::Frame& frame) {
 
 void ConstPotBO::build_rhs_(const cpu::Frame& frame) {
     const int m = static_cast<int>(elec_atoms_.size());
+    // Reset per-atom base potentials every launch: const-Q entries were
+    // overwritten with the solved response after the previous solve.
+    for (int a = 0; a < m; ++a) {
+        const auto& g =
+            groups_[static_cast<std::size_t>(elec_group_[static_cast<std::size_t>(a)])];
+        psi_vec_[static_cast<std::size_t>(a)] = g.const_charge ? 0.0 : g.psi;
+    }
     const int n = frame.nlocal();
     auto x = frame.span(kAtom_x);
     auto y = frame.span(kAtom_y);
@@ -452,6 +489,79 @@ int ConstPotBO::cg_solve_(const std::vector<double>& A, int n,
         "ConstPotBO: CG failed to converge within max_cg_iters");
 }
 
+void ConstPotBO::apply_inverse_(const std::vector<double>& v,
+                                std::vector<double>& y) {
+    const int m = static_cast<int>(elec_atoms_.size());
+    if (use_cg) {
+        y.assign(static_cast<std::size_t>(m), 0.0);
+        (void)cg_solve_(A_, m, v, y);
+    } else {
+        A_work_ = A_;
+        y = v;
+        cholesky_solve(m, A_work_, y);
+    }
+}
+
+void ConstPotBO::constrain_const_q_(std::vector<double>& Q0) {
+    // LAMMPS `electrode/conq`: unknown uniform group potentials ψ_e so that
+    // d_e·Q = Q_e with Q = Q0 + Σ_e ψ_e u_e,  u_e = A^{-1} d_e.
+    const int m = static_cast<int>(elec_atoms_.size());
+    std::vector<int> cq_groups;
+    for (std::size_t g = 0; g < groups_.size(); ++g)
+        if (groups_[g].const_charge)
+            cq_groups.push_back(static_cast<int>(g));
+    const int nq = static_cast<int>(cq_groups.size());
+    if (nq == 0)
+        return;
+
+    // u_e = A^{-1} d_e per const-Q group.
+    std::vector<std::vector<double>> u(static_cast<std::size_t>(nq));
+    std::vector<double> d(static_cast<std::size_t>(m));
+    for (int e = 0; e < nq; ++e) {
+        std::fill(d.begin(), d.end(), 0.0);
+        for (int a = 0; a < m; ++a)
+            if (elec_group_[static_cast<std::size_t>(a)]
+                == cq_groups[static_cast<std::size_t>(e)])
+                d[static_cast<std::size_t>(a)] = 1.0;
+        apply_inverse_(d, u[static_cast<std::size_t>(e)]);
+    }
+
+    // Small SPD system M ψ = r:  M_ef = d_e·u_f,  r_e = Q_e − d_e·Q0.
+    std::vector<double> M(static_cast<std::size_t>(nq) * nq, 0.0);
+    std::vector<double> psi(static_cast<std::size_t>(nq), 0.0);
+    for (int e = 0; e < nq; ++e) {
+        const int ge = cq_groups[static_cast<std::size_t>(e)];
+        double dQ0 = 0.0;
+        for (int a = 0; a < m; ++a)
+            if (elec_group_[static_cast<std::size_t>(a)] == ge)
+                dQ0 += Q0[static_cast<std::size_t>(a)];
+        psi[static_cast<std::size_t>(e)] =
+            groups_[static_cast<std::size_t>(ge)].q_target - dQ0;
+        for (int f = 0; f < nq; ++f) {
+            double s = 0.0;
+            for (int a = 0; a < m; ++a)
+                if (elec_group_[static_cast<std::size_t>(a)] == ge)
+                    s += u[static_cast<std::size_t>(f)]
+                          [static_cast<std::size_t>(a)];
+            M[static_cast<std::size_t>(e) * nq + f] = s;
+        }
+    }
+    cholesky_solve(nq, M, psi); // M is a Gram matrix of A^{-1} — SPD
+
+    // Q = Q0 + Σ ψ_e u_e; record solved potentials for readout + residual.
+    for (int e = 0; e < nq; ++e) {
+        const int ge = cq_groups[static_cast<std::size_t>(e)];
+        const double pe = psi[static_cast<std::size_t>(e)];
+        for (int a = 0; a < m; ++a)
+            Q0[static_cast<std::size_t>(a)] +=
+                pe * u[static_cast<std::size_t>(e)][static_cast<std::size_t>(a)];
+        solved_psi_[static_cast<std::size_t>(ge)] = pe;
+        for (int a = 0; a < m; ++a)
+            if (elec_group_[static_cast<std::size_t>(a)] == ge)
+                psi_vec_[static_cast<std::size_t>(a)] = pe;
+    }
+}
+
 void ConstPotBO::solve_dense_() {
     const int m = static_cast<int>(elec_atoms_.size());
     // RHS: Ψ - b  with b = Φ_elyt − E·r  (field folded in build_rhs_)
@@ -465,6 +575,16 @@ void ConstPotBO::solve_dense_() {
     std::vector<double> Q_unconst = rhs;
     cholesky_solve(m, A_work_, Q_unconst);
     aspc_record_ = Q_unconst;
+
+    if (has_const_charge_()) {
+        // Constant-charge control: group totals are prescribed; the
+        // electroneutrality projection is superseded by the constraints.
+        constrain_const_q_(Q_unconst);
+        Q_ = Q_unconst;
+        last_iters_ = 0;
+        last_used_predictor_ = false;
+        return;
+    }
 
     if (electroneutrality && m >= 1) {
         // Q = Q_unconst − λ A^{-1} e so that e·Q = target
@@ -519,6 +639,13 @@ void ConstPotBO::solve_cg_() {
     const int iters_main = cg_solve_(A_, m, rhs, Q0);
     aspc_record_ = Q0; // unconstrained solution for next ASPC record
 
+    if (has_const_charge_()) {
+        constrain_const_q_(Q0);
+        Q_ = Q0;
+        last_iters_ = iters_main;
+        return;
+    }
+
     if (electroneutrality && m >= 1) {
         // A u = 1,  λ = (1·Q0 − target)/(1·u),  Q = Q0 − λ u
         std::vector<double> ones(static_cast<std::size_t>(m), 1.0);
@@ -547,6 +674,12 @@ void ConstPotBO::solve_() {
     const int m = static_cast<int>(elec_atoms_.size());
     if (m == 0)
         return;
+
+    // Per-group potential readout: applied for const-Ψ; const-Q entries are
+    // overwritten with the solved response inside constrain_const_q_.
+    solved_psi_.assign(groups_.size(), 0.0);
+    for (std::size_t g = 0; g < groups_.size(); ++g)
+        solved_psi_[g] = groups_[g].const_charge ? 0.0 : groups_[g].psi;
 
     // neutrality_target_ set in build_rhs_ (0 or −Q_elyt).
 

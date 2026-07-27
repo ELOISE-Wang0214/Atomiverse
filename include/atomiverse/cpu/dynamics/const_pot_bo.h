@@ -23,10 +23,14 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
-/// @brief One electrode group: all atoms of a given type at fixed \(\Psi\) [V].
+/// @brief One electrode group: all atoms of a given type, controlled either
+///        at fixed applied potential \(\Psi\) [V] (const-Ψ, default) or at
+///        fixed total charge \(Q\) [e] (const-Q, LAMMPS `electrode/conq`).
 struct ElectrodeGroup {
     int type = 0;     ///< Atom type (matches `kAtom_type`).
-    double psi = 0.0; ///< Applied electrostatic potential [V].
+    double psi = 0.0; ///< Applied electrostatic potential [V] (const-Ψ).
+    bool const_charge = false; ///< True: control total charge, \(\Psi\) floats.
+    double q_target = 0.0;     ///< Prescribed total charge [e] (const-Q only).
 };
 
 /// @brief Constant-potential BO charge solver (dense inverse or CG + ASPC).
@@ -47,6 +51,18 @@ struct ElectrodeGroup {
 /// conp.l_tf = 2.0;            // [Å]; 0 = perfect metal
 /// conp.site_density = 0.0593; // [1/Å³] Au FCC
 /// sim.on(md::Phase::pre_force).add(std::move(conp));
+/// @endcode
+///
+/// Constant-charge control (LAMMPS ELECTRODE `fix electrode/conq` twin):
+/// prescribe each electrode's **total charge** instead of its potential; the
+/// per-site distribution is solved self-consistently and the uniform group
+/// potential \(\Psi_e\) is the response:
+/// @code
+/// cpu::md::ConstPotBO conq(2.0);
+/// conq.add_electrode_charge(/*type=*/1, /*Q [e]=*/-0.5);
+/// conq.add_electrode_charge(/*type=*/2, /*Q [e]=*/+0.5);
+/// sim.add(std::move(conq));
+/// // after a step: conq.electrode_potential(1) − conq.electrode_potential(0)
 /// @endcode
 ///
 /// Finite-field + single electrode (E3, Dufils-style): one wall, free total
@@ -72,6 +88,20 @@ class ConstPotBO : public cpu::Component {
     ConstPotBO& add_electrode(int type, double psi) &;
     ConstPotBO add_electrode(int type, double psi) &&;
 
+    /// @brief Register one **constant-charge** electrode group (LAMMPS
+    ///        ELECTRODE `fix electrode/conq` twin): the group's total charge
+    ///        is constrained to `q_total` and distributed self-consistently
+    ///        over the sites; the uniform group potential \(\Psi_e\) is the
+    ///        response (read via `electrode_potential`). When any const-Q
+    ///        group is registered the `electroneutrality` projection is
+    ///        skipped — the prescribed totals are the charge control (choose
+    ///        targets summing to \(-q_{\mathrm{elyt}}\) for global
+    ///        neutrality).
+    /// @param type Atom type of electrode sites.
+    /// @param q_total Prescribed total charge on the group [e].
+    ConstPotBO& add_electrode_charge(int type, double q_total) &;
+    ConstPotBO add_electrode_charge(int type, double q_total) &&;
+
     std::string name() const override { return "const_pot_bo"; }
 
     std::vector<DefaultBinding> default_bindings() const override {
@@ -87,8 +117,16 @@ class ConstPotBO : public cpu::Component {
     /// @param ie Electrode index in registration order.
     double total_charge(std::size_t ie) const;
 
-    /// @brief \(\Psi_{\mathrm{last}}-\Psi_{\mathrm{first}}\) [V] (two-electrode convenience).
+    /// @brief \(\Psi_{\mathrm{last}}-\Psi_{\mathrm{first}}\) [V]
+    ///        (two-electrode convenience). Uses `electrode_potential`, so
+    ///        const-Q groups report their **solved** potential after launch.
     double delta_psi() const;
+
+    /// @brief Electrode potential \(\Psi_e\) [V] of group `ie`: the applied
+    ///        value for const-Ψ groups, the **solved** response for const-Q
+    ///        groups after the last launch (applied/zero before any solve).
+    /// @param ie Electrode index in registration order.
+    double electrode_potential(std::size_t ie) const;
 
     /// @brief Integral capacitance \(|Q_{\mathrm{last}}| / |\Delta\Psi|\) [e/V]
     ///        for a two-electrode capacitor (uses first/last electrode groups).
@@ -177,6 +215,9 @@ class ConstPotBO : public cpu::Component {
     std::vector<int> elec_atoms_;
     std::vector<int> elec_group_;
     std::vector<double> psi_vec_; ///< \(\Psi_i\) per electrode atom [V].
+    /// Per-group potentials after the last solve [V]: applied for const-Ψ,
+    /// solved response for const-Q. Empty before the first solve.
+    std::vector<double> solved_psi_;
     std::vector<double> Q_;       ///< Solved charges [e].
     std::vector<double> b_;       ///< Electrolyte potential [V].
     std::vector<double> A_;       ///< Row-major elastance [V/e].
@@ -198,6 +239,15 @@ class ConstPotBO : public cpu::Component {
     void solve_();
     void solve_dense_();
     void solve_cg_();
+    /// @brief True if any registered group is constant-charge (conq).
+    bool has_const_charge_() const;
+    /// @brief One \(y = A^{-1} v\) application on the active path
+    ///        (dense Cholesky when `use_cg` is false, CG otherwise).
+    void apply_inverse_(const std::vector<double>& v, std::vector<double>& y);
+    /// @brief Enforce \(\sum_{i\in e} Q_i = Q_e\) for const-Q groups on the
+    ///        unconstrained solution `Q0` (in/out); records the solved group
+    ///        potentials into `solved_psi_` and updates `psi_vec_`.
+    void constrain_const_q_(std::vector<double>& Q0);
     /// @brief CG solve \(A x = b\) (row-major SPD \(A\)), starting from \(x\).
     /// @return Iteration count.
     int cg_solve_(const std::vector<double>& A, int n,
