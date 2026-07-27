@@ -133,13 +133,25 @@ void Runtime::step(int step_idx) {
             auto& op = slot.ops[o];
             if (op.frequency > 0 && step_idx % op.frequency != 0)
                 continue;
-            LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
+            LaunchContext ctx{context_, *frame_, slot.phase, step_idx,
+                              /*forces_requested=*/slot.forces_requested
+                                  && context_.exec.forces_requested};
             if (op.is_driver()) {
                 auto* nested = static_cast<cpu::DriverNode*>(op.nested_driver);
                 const auto t0 = timing && have_handles
                                     ? std::chrono::steady_clock::now()
                                     : std::chrono::steady_clock::time_point{};
+                // The nested node runs its OWN slots, stamped by ITS
+                // phase_wants_forces — so an energy-only outer phase has to hand
+                // the veto down the Context. AND (never assign): the same node
+                // under MD's force phase must still assemble its gradient.
+                // Restored after the dispatch, so a later phase of this step is
+                // unaffected.
+                const bool saved_forces = context_.exec.forces_requested;
+                context_.exec.forces_requested =
+                    saved_forces && slot.forces_requested;
                 nested->run_nested_erased(context_, *frame_, op.nested_budget);
+                context_.exec.forces_requested = saved_forces;
                 if (timing && have_handles) {
                     const auto t1 = std::chrono::steady_clock::now();
                     timing_reg.record(
@@ -233,15 +245,24 @@ void Runtime::step_plan(const Plan<cpu::Component>& plan, int step_idx) {
                 continue;
             if (op.is_driver()) {
                 // Step-level state for the node (no active window), caller's
-                // window back untouched — see the section note above.
+                // window back untouched — see the section note above. Same
+                // save/AND/restore for the force-request veto: `step_plan` reads
+                // the NESTED plan's slots, so ANDing the outer flag into the
+                // Context here is what carries one veto through arbitrary depth.
                 const auto saved = frame_->resolution_window();
+                const bool saved_forces = context_.exec.forces_requested;
                 frame_->restore_resolution_window(ResolutionWindow{});
+                context_.exec.forces_requested =
+                    saved_forces && slot.forces_requested;
                 static_cast<cpu::DriverNode*>(op.nested_driver)
                     ->run_nested_erased(context_, *frame_, op.nested_budget);
+                context_.exec.forces_requested = saved_forces;
                 frame_->restore_resolution_window(saved);
                 continue;
             }
-            LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
+            LaunchContext ctx{context_, *frame_, slot.phase, step_idx,
+                              /*forces_requested=*/slot.forces_requested
+                                  && context_.exec.forces_requested};
             const auto saved = frame_->resolution_window();
             frame_->begin_resolution_window(kResolveBudgetPerLaunch);
             op.component->launch(ctx);
@@ -274,26 +295,35 @@ void Runtime::run_slot_(int slot_index, int step_idx) {
     // registry (op_handle_ indices belong to the outer step) and must not
     // recurse. Frequency gating is bypassed: a trial is not a simulation step.
     // Nested driver ops dispatch exactly the way step_plan does, resolution
-    // windows included: this replay runs INSIDE the calling component's window
-    // (an Optimizer's, via ctx.opt.reeval_forces), so the node is handed the
-    // step-level state and the caller's window is put back afterwards — see
-    // the section note above step_plan. Nested ops are deliberately untimed on
-    // both replay paths (here and step_plan): op_handle_ indices belong to the
-    // bound outer plan — extending TimerRegistry to sparse nested handles is
-    // a separate decision (deferred by esmm-contract-03-runslot-nested).
+    // window and force-request veto included: this replay runs INSIDE the
+    // calling component's window (an Optimizer's, via ctx.opt.reeval_forces),
+    // so the node is handed the step-level state and the caller's window is put
+    // back afterwards — see the section note above step_plan. A line-search
+    // trial inherits the enclosing phase's force policy, which for Minimize's
+    // `force` phase is "yes": the search direction IS the gradient.
+    // Nested ops are deliberately untimed on both replay paths (here and
+    // step_plan): op_handle_ indices belong to the bound outer plan — extending
+    // TimerRegistry to sparse nested handles is a separate decision (deferred
+    // by esmm-contract-03-runslot-nested).
     for (auto& slot : plan_->slots) {
         if (slot.phase != slot_index)
             continue;
         for (auto& op : slot.ops) {
             if (op.is_driver()) {
                 const auto saved = frame_->resolution_window();
+                const bool saved_forces = context_.exec.forces_requested;
                 frame_->restore_resolution_window(ResolutionWindow{});
+                context_.exec.forces_requested =
+                    saved_forces && slot.forces_requested;
                 static_cast<cpu::DriverNode*>(op.nested_driver)
                     ->run_nested_erased(context_, *frame_, op.nested_budget);
+                context_.exec.forces_requested = saved_forces;
                 frame_->restore_resolution_window(saved);
                 continue;
             }
-            LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
+            LaunchContext ctx{context_, *frame_, slot.phase, step_idx,
+                              /*forces_requested=*/slot.forces_requested
+                                  && context_.exec.forces_requested};
             const auto saved = frame_->resolution_window();
             frame_->begin_resolution_window(kResolveBudgetPerLaunch);
             op.component->launch(ctx);

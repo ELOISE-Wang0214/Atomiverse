@@ -343,7 +343,23 @@ void MeanFieldMethod<D>::destroy_on(cpu::Runtime& rt) {
 template <typename D>
 int MeanFieldMethod<D>::run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
                                           int budget) {
-    (void)ctx;
+    // The ASPC predictor is MD-only, and this is the only place that can see
+    // otherwise. `mc::Transaction::rollback` restores a rejected trial's
+    // geometry bitwise but cannot notify an evaluator, so the rejected density
+    // stays in the history — and the predictor then extrapolates a
+    // time-continuous history across an accept/reject jump and corrects it at
+    // the loosened `corrector_tol_`. The returned energy becomes a function of
+    // configurations the chain never visited, so Metropolis is applied to
+    // history-dependent energies and detailed balance breaks silently. (Plain
+    // last-density reuse is fine: a guess does not survive convergence.)
+    //
+    // FIRST, before any SCF work — including the CPMD cold seed and XL-BOMD's
+    // engagement below — so a refused configuration costs no solve.
+    if (use_predictor_ && ctx.mc.proposal != nullptr)
+        throw std::runtime_error(
+            "MeanFieldMethod: the ASPC predictor is MD-only — rejected MC "
+            "moves poison the density history and break detailed balance; "
+            "disable predictor() for sampling");
     // XL-BOMD engages here and nowhere else: the auxiliary density lives on
     // the nuclear clock, so the nested entry is both the only place it may
     // propagate and the natural place to refuse a second guess owner (and a
@@ -387,7 +403,10 @@ int MeanFieldMethod<D>::run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
     DriveOpts opts;
     opts.unwrap = true;
     opts.nested = true;
-    opts.forces = compute_force;
+    // The outer loop's per-phase force policy, ANDed down the Context by the
+    // Runtime: an energy-only phase (MC's trial `energy`) skips the whole
+    // gradient — for a QM method the dominant cost of the sweep.
+    opts.forces = compute_force && ctx.exec.forces_requested;
     opts.write_energy = true;
     if (budget > 0)
         opts.max_iter = budget;

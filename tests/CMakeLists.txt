@@ -370,6 +370,11 @@ atv_add_cpp_test(test_cpu_driver_nesting  cpu/driver/test_driver_nesting.cpp)
 # no consumer yet.
 atv_add_cpp_test(test_cpu_scf_phase_plumbing cpu/driver/test_scf_phase_plumbing.cpp)
 atv_add_cpp_test(test_cpu_component_ownership cpu/driver/test_component_ownership.cpp)
+# esmm-contract-04-forces-requested: `forces_requested` as a compiled Plan-slot
+# property — MC's energy phase is energy-only, MD/Minimize/Evaluate still ask for
+# forces, and the veto ANDs through a nested driver's own slots. Stubs only, no
+# physics, microseconds; the QM-in-MC e2e is regressions/mc/mc_bias_es.
+atv_add_cpp_test(test_cpu_forces_requested cpu/driver/test_forces_requested.cpp)
 # test_cpu_md_pe_nvt relocated to benchmarks/md/pe/validation/ (val_md_pe_nvt) —
 # a full NVT equilibration of the bonded PE melt, not a ms unit test.
 atv_add_cpp_test(test_cpu_md_frame_tag_image      cpu/dynamics/test_frame_tag_image.cpp)
@@ -733,6 +738,12 @@ if(ATV_BUILD_HF)
     # ballistic nested-MD trajectory, ~1 s; the warm-step iteration margin and
     # the drift envelope are regressions/dynamics/xl-bomd-rhf-water.
     atv_add_cpp_test(test_cpu_scf_xl_bomd         cpu/scf/test_scf_xl_bomd.cpp)
+    # esmm-contract-04-forces-requested: the ASPC-predictor-under-MC guard on
+    # MeanFieldMethod::run_nested_erased — extrapolated density histories are
+    # MD-only (rejected trials break the continuity the extrapolation assumes),
+    # while plain last-P reuse under MC stays legal. H2/STO-3G, one sweep.
+    atv_add_cpp_test(test_cpu_scf_mc_predictor_guard
+                     cpu/scf/test_scf_mc_predictor_guard.cpp)
     # hf-capability-gaps-08-stability: MO orbital-Hessian A/B kernel +
     # Seeger-Pople stability analysis. NO SCF loop: the converged H2/STO-3G
     # determinant is symmetry-exact in closed form (one Fock build, no

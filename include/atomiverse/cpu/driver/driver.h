@@ -213,6 +213,13 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
             }
         });
         Base::build();
+        // Compile the per-phase force policy into the Plan. One stamp at build,
+        // so the hot loop never asks the question: the Runtime reads
+        // `slot.forces_requested` and ANDs it with the Context's nesting
+        // channel when it constructs each LaunchContext.
+        for (auto& s : this->plan_.slots)
+            s.forces_requested =
+                phase_wants_forces(static_cast<PhaseEnum>(s.phase));
     }
 
     /// @brief Enable/disable opt-in per-component timing for this run.
@@ -286,6 +293,24 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     /// so `this->pending_` still carries the registered components
     /// (including any auto-injected by `install_defaults()`).
     virtual void validate_components() const = 0;
+
+    /// @brief Subclass hook — does this phase need forces at all?
+    ///
+    /// Consulted once per phase at the end of `build()` and compiled into
+    /// `StageSlot::forces_requested`, so a component never pays a branch for it.
+    /// The default is `true` for every phase of every loop: force-writing
+    /// components keep writing forces unless a preset says otherwise. `McBase`
+    /// is the one override — its trial `energy` phase scores an energy the
+    /// Metropolis test may discard, so every gradient assembled there is wasted
+    /// work (and for a nested QM method, the whole cost of the sweep).
+    ///
+    /// The veto is per SLOT, not per driver, and it ANDs into a nested driver's
+    /// own slots through `ExecServices::forces_requested` — a method loop bound
+    /// at MC's energy phase runs its own stages energy-only, while the same node
+    /// under MD's `force` phase still assembles the gradient.
+    /// @param phase The phase whose slot is being stamped.
+    /// @return False to launch every op of that phase energy-only.
+    virtual bool phase_wants_forces(PhaseEnum /*phase*/) const { return true; }
 
     /// @brief Walk every **component** pending binding (driver-nodes skipped).
     /// Components with multiple `default_bindings()` entries appear once

@@ -160,6 +160,24 @@ class McBase : public Driver<ATV::sampling::Phase> {
             "true})`.");
     }
 
+    /// @brief The trial `energy` phase runs energy-only; every other phase
+    ///        still asks for forces.
+    ///
+    /// A trial move is scored, then kept or discarded — the Metropolis test
+    /// reads an energy and never a gradient, so every force assembled at
+    /// `energy` is wasted work. For a nested QM method it is the *dominant* cost
+    /// of the sweep, and the veto ANDs down into that method's own stages
+    /// (`ExecServices::forces_requested`), so it skips its whole gradient.
+    ///
+    /// Per SLOT, not per driver: `propose` stays force-capable (a Mover may bias
+    /// its displacement on the current force) and so does `end_of_step`, where
+    /// MD-shaped observers and recorders live.
+    /// @param p Phase whose slot is being stamped.
+    /// @return False for `sampling::Phase::energy`, true otherwise.
+    bool phase_wants_forces(ATV::sampling::Phase p) const override {
+        return p != ATV::sampling::Phase::energy;
+    }
+
     /// @brief A Mover to propose with, and something that can score the
     ///        proposal. Nested method-drivers count as HF energy sources via
     ///        cross-cast.

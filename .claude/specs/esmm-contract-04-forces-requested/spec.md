@@ -1,6 +1,6 @@
 ---
 slug: esmm-contract-04-forces-requested
-status: approved
+status: in-progress
 created: 2026-07-26
 revised: 2026-07-26
 domain: driver / pipeline-contract
@@ -101,16 +101,28 @@ skip negative steps. GCMC insert/delete resizes `nlocal`; ZeroForces reads
 
 ## Tasks
 
-- [ ] RED (U4): stub observer bound at `sampling::Phase::energy` records
+- [x] RED (U4): stub observer bound at `sampling::Phase::energy` records
   `ctx.forces_requested == false`; the same stub at `md::Phase::force`
   records `true` (fails today: both true)
-- [ ] RED (U6): `MeanFieldMethod` with `predictor()` invoked via
+  (8 cases: 2 RED incl. nested-AND propagation + restore-after-dispatch pin;
+  6 controls; 2 ms binary; survived two 529 crashes via resume)
+- [x] RED (U6): `MeanFieldMethod` with `predictor()` invoked via
   `run_nested_erased` under a Context whose `mc.proposal` is non-null throws
   the typed error (fails today: silently proceeds)
-- [ ] Implement plan.h / driver.h / context.h / runtime.cpp plumbing
-- [ ] McBase override; MFM consult + guard
-- [ ] GREEN both units + full ctest (MD/Minimize/Evaluate slots must all still
+  (real MC scaffold publishes ctx.mc.proposal; asserts message names
+  predictor+sampling AND iterations()==0 pre-refusal; warm-start-legal +
+  predictor-under-MD controls green)
+- [x] Implement plan.h / driver.h / context.h / runtime.cpp plumbing
+  (stamp loop at build() end; 3 LaunchContext sites aggregate-init; 3 nested
+  dispatches save/AND/restore, flag nested inside the contract-03 window
+  brackets)
+- [x] McBase override; MFM consult + guard
+  (guard atop run_nested_erased — fires before XL engage and CPMD seed, so
+  iterations()==0 at refusal; CPMD cold-seed forces=true kept as physics)
+- [x] GREEN both units + full ctest (MD/Minimize/Evaluate slots must all still
   report true — assert in U4)
+  (8/8 + 3/3; 30/30 mc/driver/minimize/evaluate; 17/17 scrubs; full isolated
+  rebuild clean)
 - [ ] R3: `regressions/mc/mc_bias_es` — MC Metropolis at T with a nested RHF
   H₂ energy + `HarmonicBias` umbrella on the bond CV; sample the bond-length
   distribution; pin ⟨(r−r₀)²⟩ against the analytic stiff-spring limit

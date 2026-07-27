@@ -45,6 +45,19 @@ struct StageSlot {
     int phase; ///< Phase index within the driver's Phase enum.
     std::vector<Operation<Component>>
         ops; ///< Operations sorted by registration order.
+
+    /// @brief Compiled per-phase force policy — the phase runs energy-only
+    /// when false.
+    ///
+    /// Stamped once by `cpu::Driver::build()` from its
+    /// `phase_wants_forces(PhaseEnum)` hook, so the decision costs a build-time
+    /// pass and never a per-step branch. The Runtime ANDs it with the Context's
+    /// nesting channel (`ExecServices::forces_requested`) into every
+    /// `LaunchContext` this slot launches, and a force-writing component skips
+    /// its gradient when the result is false (MC's trial `energy` phase — the
+    /// Metropolis test scores an energy and discards the move).
+    /// Default true: every other phase asks for forces.
+    bool forces_requested = true;
 };
 
 /// @brief Compiled execution plan -- the schedule between Facade and Backend.

@@ -191,6 +191,22 @@ struct LoopServices {
 struct ExecServices {
     /// @brief The Backend running this node tree. Null outside a run.
     Runtime* runtime = nullptr;
+
+    /// @brief The force-request veto channel — how an energy-only phase reaches
+    ///        the slots of the drivers nested inside it.
+    ///
+    /// A slot flag alone (`StageSlot::forces_requested`) stops at the node
+    /// boundary: a nested driver runs its OWN Plan, whose slots were stamped by
+    /// ITS `phase_wants_forces` — and a method loop asks for forces at every SCF
+    /// stage. So the Runtime ANDs the outer slot's flag into this field around a
+    /// nested dispatch (saving and restoring it, so a later phase of the same
+    /// step is unaffected), and every `LaunchContext` it builds carries
+    /// `slot.forces_requested && exec.forces_requested`. The AND is what
+    /// propagates one outer veto through arbitrary nesting depth — and what
+    /// keeps the same node under MD's `force` phase assembling its gradient.
+    ///
+    /// True outside any veto, which is every loop but MC's trial `energy` phase.
+    bool forces_requested = true;
 };
 
 /// @brief Async-analysis services (publisher: `AnalysisExecutor::install`).
