@@ -1,0 +1,12 @@
+# Offline pin note — dftb0-h2
+
+- Date: 2026-07-27
+- Method: non-SCC DFTB / DFTB0
+- System: H2, R = 0.74 Å
+- Intended oracle binary: DFTB+ (non-SCC / DFTB0)
+- Status: DFTB+ not installed on Arrhenius login/build host for this wave.
+- ATV Hamiltonian twin (static `dftb_mio_tables.h` H–H):
+  E = -18.1376035790 eV
+- Tables are mio-style sketch, not DFTB.org mio-1-1 bit-identical → do not
+  claim numerical identity with a stock mio-1-1 DFTB+ run until SK fidelity
+  work (`dftb2-3ob-organic` / `dftb2-dftbplus-energy-pin`).

@@ -214,6 +214,7 @@ atv_add_cpp_test(test_cpu_nddo_api_surface       cpu/semiempirical/test_nddo_api
 atv_add_cpp_test(test_cpu_am1_scaffold            cpu/semiempirical/test_am1_scaffold.cpp)
 atv_add_cpp_test(test_cpu_rm1                     cpu/semiempirical/test_rm1.cpp)
 atv_add_cpp_test(test_cpu_dftb2                   cpu/semiempirical/test_dftb2.cpp)
+atv_add_cpp_test(test_cpu_dftb0                   cpu/semiempirical/test_dftb0.cpp)
 atv_add_cpp_test(test_cpu_dftb2_sk                cpu/semiempirical/test_dftb2_sk.cpp)
 
 # GPW module tests. All of them run unconditionally on the in-tree GTH + MOLOPT +
