@@ -170,7 +170,8 @@ TEST(HessianZeroing, BothConstructorsBindZeroForcesAndZeroEnergyOnForcePhase) {
         ATV::cpu::vib::HessianWorkspace ws;
         ATV::cpu::vib::Hessian hess{
             ATV::cpu::vib::Hessian::WithoutAccumulator{}};
-        hess.add(ATV::cpu::vib::HessianAccumulator{&ws});
+        hess.on(ATV::vib::Phase::accumulate)
+            .add(ATV::cpu::vib::HessianAccumulator{&ws}, 0);
         atv_test::StubForceEvaluator force;
         hess.on(ATV::vib::Phase::force).add_ref(force);
         hess.build();
