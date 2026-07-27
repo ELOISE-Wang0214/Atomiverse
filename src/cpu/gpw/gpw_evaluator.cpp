@@ -443,7 +443,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             throw std::runtime_error(
                 "GPWEvaluator: multi-k CPMD fixed-density missing H_ks_k");
 
-        frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
+        frame.meta.get(kEnergy) += last_.e_total * ATV::units::kHartreeInEv;
+        frame.meta.get(kEnergyElectronic) +=
+            last_.e_total * ATV::units::kHartreeInEv;
 
         if (compute_forces) {
             // Populate C_occ_k + eps_k = diag(C† H C) for k-summed forces.
@@ -483,12 +485,12 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             AccReal* __restrict sp_fy = frame.span(kAtom_fy);
             AccReal* __restrict sp_fz = frame.span(kAtom_fz);
             for (int i = 0; i < n; ++i) {
-                sp_fx[i] = F[static_cast<std::size_t>(i)][0]
-                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
-                sp_fy[i] = F[static_cast<std::size_t>(i)][1]
-                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
-                sp_fz[i] = F[static_cast<std::size_t>(i)][2]
-                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fx[i] += F[static_cast<std::size_t>(i)][0]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fy[i] += F[static_cast<std::size_t>(i)][1]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fz[i] += F[static_cast<std::size_t>(i)][2]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
             }
         }
 
@@ -572,7 +574,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                                                     : empty_c;
             fixed_density_eval_uks(Ca2, Cb2);
 
-            frame.meta.get(kEnergy) =
+            frame.meta.get(kEnergy) +=
+                last_.e_total * ATV::units::kHartreeInEv;
+            frame.meta.get(kEnergyElectronic) +=
                 last_.e_total * ATV::units::kHartreeInEv;
 
             if (compute_forces) {
@@ -587,12 +591,12 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 AccReal* __restrict sp_fy = frame.span(kAtom_fy);
                 AccReal* __restrict sp_fz = frame.span(kAtom_fz);
                 for (int i = 0; i < n; ++i) {
-                    sp_fx[i] = F[static_cast<std::size_t>(i)][0]
-                               * ATV::units::kHartreePerBohrInEvPerAngstrom;
-                    sp_fy[i] = F[static_cast<std::size_t>(i)][1]
-                               * ATV::units::kHartreePerBohrInEvPerAngstrom;
-                    sp_fz[i] = F[static_cast<std::size_t>(i)][2]
-                               * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                    sp_fx[i] += F[static_cast<std::size_t>(i)][0]
+                                * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                    sp_fy[i] += F[static_cast<std::size_t>(i)][1]
+                                * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                    sp_fz[i] += F[static_cast<std::size_t>(i)][2]
+                                * ATV::units::kHartreePerBohrInEvPerAngstrom;
                 }
             }
 
@@ -618,7 +622,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         cpmd_->align_to_overlap(S);
         fixed_density_eval_rks(cpmd_->C());
 
-        frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
+        frame.meta.get(kEnergy) += last_.e_total * ATV::units::kHartreeInEv;
+        frame.meta.get(kEnergyElectronic) +=
+            last_.e_total * ATV::units::kHartreeInEv;
 
         if (compute_forces) {
             const auto F = gpw_forces_at_density(atoms, *solver_, last_.P,
@@ -627,12 +633,12 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             AccReal* __restrict sp_fy = frame.span(kAtom_fy);
             AccReal* __restrict sp_fz = frame.span(kAtom_fz);
             for (int i = 0; i < n; ++i) {
-                sp_fx[i] = F[static_cast<std::size_t>(i)][0]
-                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
-                sp_fy[i] = F[static_cast<std::size_t>(i)][1]
-                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
-                sp_fz[i] = F[static_cast<std::size_t>(i)][2]
-                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fx[i] += F[static_cast<std::size_t>(i)][0]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fy[i] += F[static_cast<std::size_t>(i)][1]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fz[i] += F[static_cast<std::size_t>(i)][2]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
             }
         }
 
@@ -775,7 +781,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                     a.reset();
             }
 
-            frame.meta.get(kEnergy) =
+            frame.meta.get(kEnergy) +=
+                last_.e_total * ATV::units::kHartreeInEv;
+            frame.meta.get(kEnergyElectronic) +=
                 last_.e_total * ATV::units::kHartreeInEv;
 
             if (compute_forces) {
@@ -807,12 +815,12 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 AccReal* __restrict sp_fy = frame.span(kAtom_fy);
                 AccReal* __restrict sp_fz = frame.span(kAtom_fz);
                 for (int i = 0; i < n; ++i) {
-                    sp_fx[i] = F[static_cast<std::size_t>(i)][0]
-                               * ATV::units::kHartreePerBohrInEvPerAngstrom;
-                    sp_fy[i] = F[static_cast<std::size_t>(i)][1]
-                               * ATV::units::kHartreePerBohrInEvPerAngstrom;
-                    sp_fz[i] = F[static_cast<std::size_t>(i)][2]
-                               * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                    sp_fx[i] += F[static_cast<std::size_t>(i)][0]
+                                * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                    sp_fy[i] += F[static_cast<std::size_t>(i)][1]
+                                * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                    sp_fz[i] += F[static_cast<std::size_t>(i)][2]
+                                * ATV::units::kHartreePerBohrInEvPerAngstrom;
                 }
             }
             return;
@@ -922,7 +930,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 sgcp_aspc_beta_->reset();
         }
 
-        frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
+        frame.meta.get(kEnergy) += last_.e_total * ATV::units::kHartreeInEv;
+        frame.meta.get(kEnergyElectronic) +=
+            last_.e_total * ATV::units::kHartreeInEv;
 
         if (compute_forces) {
             std::vector<std::array<double, 3>> F;
@@ -986,12 +996,12 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             AccReal* __restrict sp_fy = frame.span(kAtom_fy);
             AccReal* __restrict sp_fz = frame.span(kAtom_fz);
             for (int i = 0; i < n; ++i) {
-                sp_fx[i] = F[static_cast<std::size_t>(i)][0]
-                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
-                sp_fy[i] = F[static_cast<std::size_t>(i)][1]
-                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
-                sp_fz[i] = F[static_cast<std::size_t>(i)][2]
-                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fx[i] += F[static_cast<std::size_t>(i)][0]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fy[i] += F[static_cast<std::size_t>(i)][1]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fz[i] += F[static_cast<std::size_t>(i)][2]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
             }
         }
         return;
@@ -1058,7 +1068,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
 
         xl_->advance(D);
 
-        frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
+        frame.meta.get(kEnergy) += last_.e_total * ATV::units::kHartreeInEv;
+        frame.meta.get(kEnergyElectronic) +=
+            last_.e_total * ATV::units::kHartreeInEv;
 
         if (compute_forces) {
             linalg::RealMatrix C_occ = xt::zeros<double>(
@@ -1077,12 +1089,12 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             AccReal* __restrict sp_fy = frame.span(kAtom_fy);
             AccReal* __restrict sp_fz = frame.span(kAtom_fz);
             for (int i = 0; i < n; ++i) {
-                sp_fx[i] = F[static_cast<std::size_t>(i)][0]
-                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
-                sp_fy[i] = F[static_cast<std::size_t>(i)][1]
-                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
-                sp_fz[i] = F[static_cast<std::size_t>(i)][2]
-                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fx[i] += F[static_cast<std::size_t>(i)][0]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fy[i] += F[static_cast<std::size_t>(i)][1]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fz[i] += F[static_cast<std::size_t>(i)][2]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
             }
         }
         return;
@@ -1193,7 +1205,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 xl.reset();
         }
     }
-    frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
+    frame.meta.get(kEnergy) += last_.e_total * ATV::units::kHartreeInEv;
+    frame.meta.get(kEnergyElectronic) +=
+        last_.e_total * ATV::units::kHartreeInEv;
 
     if (compute_forces) {
         // Prefer forces at the density just converged (no second SCF). UKS has
@@ -1223,12 +1237,12 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         AccReal* __restrict sp_fy = frame.span(kAtom_fy);
         AccReal* __restrict sp_fz = frame.span(kAtom_fz);
         for (int i = 0; i < n; ++i) {
-            sp_fx[i] = F[static_cast<std::size_t>(i)][0]
-                       * ATV::units::kHartreePerBohrInEvPerAngstrom;
-            sp_fy[i] = F[static_cast<std::size_t>(i)][1]
-                       * ATV::units::kHartreePerBohrInEvPerAngstrom;
-            sp_fz[i] = F[static_cast<std::size_t>(i)][2]
-                       * ATV::units::kHartreePerBohrInEvPerAngstrom;
+            sp_fx[i] += F[static_cast<std::size_t>(i)][0]
+                        * ATV::units::kHartreePerBohrInEvPerAngstrom;
+            sp_fy[i] += F[static_cast<std::size_t>(i)][1]
+                        * ATV::units::kHartreePerBohrInEvPerAngstrom;
+            sp_fz[i] += F[static_cast<std::size_t>(i)][2]
+                        * ATV::units::kHartreePerBohrInEvPerAngstrom;
         }
     }
 
@@ -1375,7 +1389,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                * ATV::units::kBohrInAngstrom);
         auto& st = frame.meta.get(kStress);
         for (int k = 0; k < 6; ++k)
-            st[static_cast<std::size_t>(k)] =
+            st[static_cast<std::size_t>(k)] +=
                 last_stress_ha_[static_cast<std::size_t>(k)]
                 * ha_bohr3_to_ev_a3;
     }

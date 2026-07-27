@@ -1,6 +1,6 @@
 ---
 slug: esmm-contract-05-accumulate-switch
-status: approved
+status: in-progress
 created: 2026-07-26
 revised: 2026-07-26
 domain: driver / pipeline-contract
@@ -89,18 +89,36 @@ The table above, plus:
 
 ## Tasks
 
-- [ ] RED (U7): Evaluate with a `+=` stub potential AND a nested RHF stub-able
+- [x] RED (U7): Evaluate with a `+=` stub potential AND a nested RHF stub-able
   source — after run, `kEnergy == E_stub + E_RHF` and
   `kEnergyElectronic == E_RHF` (fails today: RHF overwrote the stub)
-- [ ] RED (U8): `ZeroEnergy` clears `kEnergyElectronic`
-- [ ] Register the meta key + pre-insert + ZeroEnergy clear + honest comment
-- [ ] Flip MFM (accumulate flag), GPW (7+7+1 sites), PW, AM1, RM1; add the
+  (test_source_cobinding.cpp: 2 RED incl. order-independence pin, 3 controls
+  green incl. CCCBDB −1.117506 Ha sole-source witness; clobber signature
+  −30.4089 ≈ E_RHF alone reproduced)
+- [x] RED (U8): `ZeroEnergy` clears `kEnergyElectronic`
+  (test_zero_energy_electronic.cpp: compile-RED, 'kEnergyElectronic' not
+  declared ×5 — signature pin; U7b share-cases co-located)
+- [x] Register the meta key + pre-insert + ZeroEnergy clear + honest comment
+  (frame_schema.h after kEnergyChargingWork; Frame(int) pre-insert; zero.cpp
+  clear + honest invariant naming Bias debt)
+- [x] Flip MFM (accumulate flag), GPW (7+7+1 sites), PW, AM1, RM1; add the
   per-term writes; DFTB2 key only
-- [ ] Grep sweep review (the anti-miss checklist): `grep -n "meta.get(kEnergy)
+  (DriveOpts::accumulate on both nested entries; epilogue dual-branch; GPW
+  token-flips only; PW both stress blocks; DFTB2 both mio/3ob sites; PLUS
+  implementer-found latent 2x double-count on the ASPC corrector-miss
+  fallback path fixed via accumulator snapshot/restore around the re-solve
+  — no RED covers that path yet, pin routed to tester)
+- [x] Grep sweep review (the anti-miss checklist): `grep -n "meta.get(kEnergy)
   *=" src/cpu/{gpw,planewave,semiempirical,scf}` and force-span `=` writes —
   every remaining `=` must be a standalone entry or a state channel, each
   justified in the PR text
-- [ ] Test audit: double-launch evaluator unit tests fixed
+  (run independently by caller: 5 kEnergy survivors = guard-restore :604 +
+  standalone !accumulate :1271/:1280 + mp2 :1736 + ccsd :1957; force
+  survivors = same sites + xc_builder grad-scratch false positive; zero
+  kStress `=` left)
+- [x] Test audit: double-launch evaluator unit tests fixed
+  (empty by evidence: full ctest 401/401 green post-flip x3 with GPW+PW ON —
+  no double-launch-without-zero test exists that asserts energy)
 - [ ] GREEN + full ctest + the AIMD/BOMD regression subset (sole-source
   equivalence proof)
 - [ ] R1: `regressions/architecture/lj_rhf_coupled` — one `Evaluate`, two Ar

@@ -381,6 +381,7 @@ int MeanFieldMethod<D>::run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
         opts.nested = true;
         opts.forces = true; // CP nuclei need Born-Oppenheimer forces at t = 0
         opts.write_energy = true;
+        opts.accumulate = true; // in-plan: the driver zeroed; we are a co-author
         if (budget > 0)
             opts.max_iter = budget;
         drive_scf_(f, nullptr, opts);
@@ -408,6 +409,12 @@ int MeanFieldMethod<D>::run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
     // gradient — for a QM method the dominant cost of the sweep.
     opts.forces = compute_force && ctx.exec.forces_requested;
     opts.write_energy = true;
+    // THE in-plan entry: the hosting driver owns zeroing (ZeroForces @ -1000,
+    // ZeroEnergy @ -999), so every write below is `+=` and a classical
+    // potential co-bound in the same phase keeps its contribution. Overwriting
+    // here is what made "electronic structure x molecular mechanics" silently
+    // drop whichever source ran first.
+    opts.accumulate = true;
     if (budget > 0)
         opts.max_iter = budget;
     drive_scf_(f, nullptr, opts);
@@ -554,8 +561,60 @@ void MeanFieldMethod<D>::drive_scf_(Frame& frame, const SCFInitialGuess* guess,
         copts.max_iter = corrector_steps_;
         copts.tol_override = corrector_tol_;
         copts.apply_aspc = false;
+        // THE ONE path that runs two epilogues per entry. Under `accumulate`
+        // (the in-plan entry) the corrector's contribution is *discarded* when
+        // the fallback re-solves, and discarding an accumulation means undoing
+        // it: leaving it in place would add this method twice to the
+        // driver-owned accumulators (~2x the electronic energy and forces on
+        // every ASPC step whose corrector misses tol). Snapshot the channels
+        // the epilogue writes and restore them before the re-solve, so exactly
+        // one contribution ever lands — and restore rather than subtract, so
+        // the result is bit-identical to the plain full solve. The overwrite
+        // entries need no guard: the second `=` erases the first.
+        const bool guard_accumulators = opts.accumulate && fallback_full_scf_;
+        int natm = 0;
+        double e_before = 0.0;
+        double e_electronic_before = 0.0;
+        std::vector<AccReal> f_before;
+        if (guard_accumulators) {
+            // Park the resolution window: this guard's lookups are bookkeeping
+            // and must not spend the hosting component's per-launch budget
+            // (same pattern as the SCF loop below and PWEvaluator).
+            const auto saved_window = frame.resolution_window();
+            natm = static_cast<int>(frame.nlocal());
+            e_before = frame.meta.get(kEnergy);
+            e_electronic_before = frame.meta.get(kEnergyElectronic);
+            if (opts.forces) {
+                const AccReal* __restrict fx = frame.span(kAtom_fx);
+                const AccReal* __restrict fy = frame.span(kAtom_fy);
+                const AccReal* __restrict fz = frame.span(kAtom_fz);
+                f_before.resize(static_cast<std::size_t>(3 * natm));
+                for (int A = 0; A < natm; ++A) {
+                    f_before[static_cast<std::size_t>(3 * A) + 0] = fx[A];
+                    f_before[static_cast<std::size_t>(3 * A) + 1] = fy[A];
+                    f_before[static_cast<std::size_t>(3 * A) + 2] = fz[A];
+                }
+            }
+            frame.restore_resolution_window(saved_window);
+        }
         drive_scf_core_(frame, effective_guess, copts);
         if (!this->converged() && fallback_full_scf_) {
+            if (guard_accumulators) {
+                const auto saved_window = frame.resolution_window();
+                frame.meta.get(kEnergy) = e_before;
+                frame.meta.get(kEnergyElectronic) = e_electronic_before;
+                if (opts.forces) {
+                    AccReal* __restrict fx = frame.span(kAtom_fx);
+                    AccReal* __restrict fy = frame.span(kAtom_fy);
+                    AccReal* __restrict fz = frame.span(kAtom_fz);
+                    for (int A = 0; A < natm; ++A) {
+                        fx[A] = f_before[static_cast<std::size_t>(3 * A) + 0];
+                        fy[A] = f_before[static_cast<std::size_t>(3 * A) + 1];
+                        fz[A] = f_before[static_cast<std::size_t>(3 * A) + 2];
+                    }
+                }
+                frame.restore_resolution_window(saved_window);
+            }
             DriveOpts full = opts;
             full.apply_aspc = false;
             drive_scf_core_(frame, effective_guess, full);
@@ -1191,14 +1250,36 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         AccReal* __restrict fx = frame.span(kAtom_fx);
         AccReal* __restrict fy = frame.span(kAtom_fy);
         AccReal* __restrict fz = frame.span(kAtom_fz);
-        for (int A = 0; A < natm; ++A) {
-            fx[A] = last_grad_.forces(A, 0);
-            fy[A] = last_grad_.forces(A, 1);
-            fz[A] = last_grad_.forces(A, 2);
+        // `accumulate` (the in-plan entry) vs overwrite (the standalone
+        // entries) — see DriveOpts::accumulate. `kEnergyElectronic` carries
+        // this method's own share and is written with the SAME operator as
+        // `kEnergy`, so the per-term key never drifts from the total.
+        if (opts.accumulate) {
+            for (int A = 0; A < natm; ++A) {
+                fx[A] += last_grad_.forces(A, 0);
+                fy[A] += last_grad_.forces(A, 1);
+                fz[A] += last_grad_.forces(A, 2);
+            }
+            frame.meta.get(kEnergy) += last_grad_.energy;
+            frame.meta.get(kEnergyElectronic) += last_grad_.energy;
+        } else {
+            for (int A = 0; A < natm; ++A) {
+                fx[A] = last_grad_.forces(A, 0);
+                fy[A] = last_grad_.forces(A, 1);
+                fz[A] = last_grad_.forces(A, 2);
+            }
+            frame.meta.get(kEnergy) = last_grad_.energy;
+            frame.meta.get(kEnergyElectronic) = last_grad_.energy;
         }
-        frame.meta.get(kEnergy) = last_grad_.energy;
     } else if (opts.write_energy) {
-        frame.meta.get(kEnergy) = e_total_ * units::kHartreeInEv;
+        const double e_ev = e_total_ * units::kHartreeInEv;
+        if (opts.accumulate) {
+            frame.meta.get(kEnergy) += e_ev;
+            frame.meta.get(kEnergyElectronic) += e_ev;
+        } else {
+            frame.meta.get(kEnergy) = e_ev;
+            frame.meta.get(kEnergyElectronic) = e_ev;
+        }
     }
 }
 
@@ -1488,6 +1569,9 @@ void MeanFieldMethod<D>::cpmd_step_(Frame& frame) {
         fz[A] += last_grad_.forces(A, 2);
     }
     frame.meta.get(kEnergy) += last_grad_.energy;
+    // Same value, same operator, into the electronic per-term share: the CP
+    // step is only ever reached from the in-plan entry, so it accumulates.
+    frame.meta.get(kEnergyElectronic) += last_grad_.energy;
 
     // 7. Advance the electrons one velocity-Verlet + RATTLE step on the
     //    nuclear clock, then publish the adiabaticity signal. Closed shell is

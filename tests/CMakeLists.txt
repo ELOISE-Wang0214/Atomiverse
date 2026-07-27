@@ -123,6 +123,14 @@ atv_add_cpp_test(test_cpu_box cpu/frame/test_box.cpp)
 # defaults, trivially-copyable / non-polymorphic guards. Layout-only, no
 # physics.
 atv_add_cpp_test(test_cpu_component_context_slices cpu/component/test_context_slices.cpp)
+# esmm-contract-05-accumulate-switch (U8 + U7b): the kEnergyElectronic per-term
+# key — ZeroEnergy must clear it in lockstep with kEnergy, and a co-bound
+# Evaluate pass must leave the QM share alone in it. Registered UNCONDITIONALLY
+# (ZeroEnergy is always-on infrastructure); the two co-binding cases inside are
+# #ifdef ATV_HAS_HF. Serial: the RHF pin must not drift with reduction order.
+atv_add_cpp_test(test_cpu_zero_energy_electronic cpu/component/test_zero_energy_electronic.cpp)
+set_tests_properties(test_cpu_zero_energy_electronic PROPERTIES
+    ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
 atv_add_cpp_test(test_cpu_mc_scaffold cpu/test_mc_scaffold.cpp)
 atv_add_cpp_test(test_cpu_mc_move cpu/montecarlo/test_mc_move.cpp)
 atv_add_cpp_test(test_cpu_mc_transaction_rollback cpu/montecarlo/test_transaction_rollback.cpp)
@@ -886,6 +894,15 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_method_driver_no_alloc
                      cpu/scf/test_method_driver_no_alloc.cpp)
     atv_add_cpp_test(test_cpu_evaluate_driver        cpu/test_evaluate_driver.cpp)
+    # esmm-contract-05-accumulate-switch (U7): two energy sources co-bound into
+    # ONE cpu::Evaluate pass must both land in kEnergy, in either binding order.
+    # HF-gated because the second source is a real cpu::scf::RHF (H2/STO-3G,
+    # literature-pinned) — one SCF on 2 atoms, milliseconds. Serial for the same
+    # ULP-determinism reason as test_cpu_scf_method_driver_parity.
+    atv_add_cpp_test(test_cpu_evaluate_source_cobinding
+                     cpu/evaluate/test_source_cobinding.cpp)
+    set_tests_properties(test_cpu_evaluate_source_cobinding PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
     atv_add_cpp_test(test_cpu_scf_minao         cpu/scf/test_minao.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_eri_deriv cpu/scf/test_rys_eri_deriv.cpp)
     # test_cpu_minimizer_lbfgs relocated to benchmarks/qc/rhf/validation/

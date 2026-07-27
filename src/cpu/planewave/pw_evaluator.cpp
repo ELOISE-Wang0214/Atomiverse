@@ -33,15 +33,19 @@ void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
         double energy_ry = 0.0;
         const auto s = pw_stress(ctx.frame, method_, &energy_ry);
         ctx.frame.restore_resolution_window(saved);
-        ctx.frame.meta.get(kEnergy) = energy_ry * qe_units::rydberg_to_ev;
+        ctx.frame.meta.get(kEnergy) += energy_ry * qe_units::rydberg_to_ev;
+        ctx.frame.meta.get(kEnergyElectronic) +=
+            energy_ry * qe_units::rydberg_to_ev;
         auto& st = ctx.frame.meta.get(kStress);
         for (int k = 0; k < 6; ++k)
-            st[static_cast<std::size_t>(k)] = s[static_cast<std::size_t>(k)];
+            st[static_cast<std::size_t>(k)] += s[static_cast<std::size_t>(k)];
         return;
     }
 
     const auto& result = method_.run(ctx.frame);
-    ctx.frame.meta.get(kEnergy) = result.energy * qe_units::rydberg_to_ev;
+    ctx.frame.meta.get(kEnergy) += result.energy * qe_units::rydberg_to_ev;
+    ctx.frame.meta.get(kEnergyElectronic) +=
+        result.energy * qe_units::rydberg_to_ev;
 
     if (want_forces) {
         const auto saved = ctx.frame.resolution_window();
@@ -55,11 +59,11 @@ void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
         auto fy = ctx.frame.span(kAtom_fy);
         auto fz = ctx.frame.span(kAtom_fz);
         for (int i = 0; i < n; ++i) {
-            fx[i] =
+            fx[i] +=
                 static_cast<AccReal>(forces[static_cast<std::size_t>(i)][0]);
-            fy[i] =
+            fy[i] +=
                 static_cast<AccReal>(forces[static_cast<std::size_t>(i)][1]);
-            fz[i] =
+            fz[i] +=
                 static_cast<AccReal>(forces[static_cast<std::size_t>(i)][2]);
         }
     }
@@ -70,7 +74,7 @@ void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
         ctx.frame.restore_resolution_window(saved);
         auto& st = ctx.frame.meta.get(kStress);
         for (int k = 0; k < 6; ++k)
-            st[static_cast<std::size_t>(k)] = s[static_cast<std::size_t>(k)];
+            st[static_cast<std::size_t>(k)] += s[static_cast<std::size_t>(k)];
     }
 }
 

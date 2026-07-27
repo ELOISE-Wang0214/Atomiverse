@@ -232,6 +232,17 @@ inline constexpr MetaKey<double> kEnergyImproper{"energy_improper", true};
 /// Charging-work bookkeeping \(-\sum_i \Psi_i Q_i\) [eV] (MetalWalls JOSS eq. 6).
 inline constexpr MetaKey<double> kEnergyChargingWork{"energy_charging_work",
                                                      true};
+/// @brief Electronic-structure share of `kEnergy` [eV] — an **accumulator**
+///        channel, written `+=` by every in-plan electronic-structure source
+///        (Gaussian SCF, GPW, plane-wave, AM1/RM1, DFTB2) and cleared by
+///        `ZeroEnergy` in lockstep with `kEnergy`.
+///
+/// Deliberately ONE key shared by every electronic method: co-bound electronic
+/// sources legitimately merge into a single "electronic share" (Δ-learning, the
+/// QM region of a QM/MM partition), so per-method keys would be key explosion
+/// with no consumer. With a sole electronic source it equals `kEnergy`;
+/// co-bound with classical terms it is the attributable QM part.
+inline constexpr MetaKey<double> kEnergyElectronic{"energy_electronic", true};
 inline constexpr MetaKey<double> kKinetic{"kinetic", true};
 inline constexpr MetaKey<double> kConserved{"conserved", true};
 /// Fictitious CP electronic kinetic energy \(T_e\) [eV] (CPMD evaluators;

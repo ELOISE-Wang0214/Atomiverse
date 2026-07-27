@@ -41,16 +41,26 @@ void ZeroForces::launch(const cpu::LaunchContext& ctx) {
 void ZeroEnergy::launch(const cpu::LaunchContext& ctx) {
     auto& meta = ctx.frame.meta;
     meta.get(kEnergy) = 0;
-    // Per-term decomposition (msu-pe-cuda-components-01 / Phase G.3).
-    // Each evaluator writes both `energy` and its term-specific field;
-    // ZeroEnergy must clear all of them in lockstep so the per-step
-    // invariant `energy == Σ per-term` holds.
+    // Per-term decomposition (msu-pe-cuda-components-01 / Phase G.3;
+    // `energy_electronic` added by esmm-contract-05). Each evaluator
+    // accumulates into both `energy` and its term-specific field, so
+    // ZeroEnergy must clear all of them in lockstep.
+    //
+    // The honest invariant is
+    //     energy == Σ per-term + unclassified,
+    // NOT `energy == Σ per-term`: a `Bias` component accumulates into
+    // `energy` and carries no per-term key of its own, so its contribution
+    // lands only in the total. That gap is pre-existing, deliberately NAMED
+    // debt (esmm-contract-05, "Out of scope"); a bias term key is a separate
+    // change. Every source that DOES own a term key must keep both writes in
+    // step, or the decomposition drifts from the total within one run.
     meta.get(kEnergyPair) = 0;
     meta.get(kEnergyBond) = 0;
     meta.get(kEnergyAngle) = 0;
     meta.get(kEnergyDihedral) = 0;
     meta.get(kEnergyImproper) = 0;
     meta.get(kEnergyChargingWork) = 0;
+    meta.get(kEnergyElectronic) = 0;
 }
 
 // ── ZeroStress ───────────────────────────────────────────────────

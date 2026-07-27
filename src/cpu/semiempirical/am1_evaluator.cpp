@@ -84,8 +84,13 @@ void AM1Evaluator::launch(const cpu::LaunchContext& ctx) {
     auto snap = unwrap_for_am1(ctx.frame);
 
     auto& result = solver_.run(ctx.frame);
-    ctx.frame.meta.get(kEnergy) = result.total_energy_ev;
+    ctx.frame.meta.get(kEnergy) += result.total_energy_ev;
+    ctx.frame.meta.get(kEnergyElectronic) += result.total_energy_ev;
     const int n = ctx.frame.nlocal();
+    // Mulliken charges are a STATE channel, not an accumulator: this evaluator
+    // is their sole producer and each launch republishes the whole set, so
+    // last-writer-wins `=` is the contract (`+=` would sum charges across
+    // steps). Only kEnergy / kEnergy* / kAtom_f* accumulate.
     StorageReal* __restrict sp_charge = ctx.frame.span(kAtom_charge);
     for (int i = 0; i < n; ++i) {
         sp_charge[i] = static_cast<StorageReal>(
@@ -100,9 +105,9 @@ void AM1Evaluator::launch(const cpu::LaunchContext& ctx) {
         const auto& forces = solver_.last_result().forces_ev_a;
         for (int i = 0; i < n; ++i) {
             const std::size_t base = static_cast<std::size_t>(3 * i);
-            fx[i] = static_cast<StorageReal>(forces[base + 0]);
-            fy[i] = static_cast<StorageReal>(forces[base + 1]);
-            fz[i] = static_cast<StorageReal>(forces[base + 2]);
+            fx[i] += static_cast<StorageReal>(forces[base + 0]);
+            fy[i] += static_cast<StorageReal>(forces[base + 1]);
+            fz[i] += static_cast<StorageReal>(forces[base + 2]);
         }
     }
 

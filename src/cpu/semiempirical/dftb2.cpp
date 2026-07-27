@@ -1037,6 +1037,9 @@ double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, bool with_forces,
     out_spin = res.spin;
     const double energy = res.energy;
     energy_meta += energy;
+    // The electronic per-term share of the total, same operator, same value
+    // (esmm-contract-05): DFTB2 already accumulated into kEnergy.
+    f.meta.get(kEnergyElectronic) += energy;
 
     if (with_forces) {
         if (!occ.unrestricted && res.n_occ > 0 && res.C.shape(0) > 0) {
@@ -1403,6 +1406,9 @@ double launch_3ob(DFTB2& self, cpu::Frame& f, double scc_tol, int max_scc,
                       max_scc);
     const double energy = e_ha * kHa2eV;
     energy_meta += energy;
+    // The electronic per-term share of the total, same operator, same value
+    // (esmm-contract-05): DFTB2 already accumulated into kEnergy.
+    f.meta.get(kEnergyElectronic) += energy;
 
     if (with_forces) {
         constexpr double h_fd_A = 1.0e-4; // Å

@@ -880,6 +880,15 @@ public:
         bool nested = false;    ///< Entered from an outer loop's force/energy
                                 ///< slot (the nuclear clock ticks) — XL-BOMD
                                 ///< propagates only on these entries.
+        /// Accumulate (`+=`) into `kEnergy` / `kEnergyElectronic` / `kAtom_f*`
+        /// instead of overwriting. True on the **in-plan** entry
+        /// (`run_nested_erased`), where the hosting driver owns zeroing and
+        /// this method is one co-author among however many sources the loop
+        /// binds. False on the **standalone** entries (`run`, `forces`,
+        /// `mp2_forces`, `ccsd_forces`): "the mutating entry always writes" is
+        /// their documented Frame-out contract, and overwrite is the correct
+        /// self-zeroing for a sole author that cannot have a co-author.
+        bool accumulate = false;
     };
 
     /// @brief RAII guard: unwrap positions for the integral build on entry,
