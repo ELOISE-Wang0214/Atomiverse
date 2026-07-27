@@ -30,7 +30,7 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
 | W3-3 | esmm-cpmd-03-observability | W3-2 | DONE 2026-07-27 (closed; see git) — kEnergyElectronKinetic/Thermostat + CpmdConserved → Thermo drift |
 | W3-4 | esmm-cpmd-04-ao-cpmd | W3-1..3 | DONE 2026-07-27 (closed; see git 2de56c65) — Gaussian AO-CPMD on MeanFieldMethod |
 | W3-5 | esmm-cpmd-05-scf-xlbomd | W3-4 | DONE 2026-07-27 (closed; see git) — XL-BOMD on the SCF methods (guess ladder; ASPC-vs-explicit-guess bug fixed) |
-| W3-6 | esmm-cpmd-06-single-eval | W3-3 | GpwDft::overlap(); CPMD single KS eval per step (~2×) |
+| W3-6 | esmm-cpmd-06-single-eval | W3-3 | DONE 2026-07-27 (closed; see git) — GpwDft::overlap(); CPMD single KS eval per step |
 
 ## Ticket — /mol:fix owed (named 2026-07-27, esmm-cpmd-04 close-out)
 
@@ -39,10 +39,14 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   `ScfGradient` — forces are not the gradient of the reported energy for any
   d3bj/d4 run. CPMD refuses d3bj/d4 to keep E_cons honest; BOMD does not.
   Fix = analytic D3(BJ)/D4 gradient legs in scf (GPW twin has them).
-- Minor (same sweep): `reg_cpmd-water` 62 s single-threaded exceeds the 60 s
-  regression budget (pre-existing); `test_cpu_scf_uhf_hessian` +
-  `test_cpu_gpw_dftu` each showed one full-suite-context transient
-  (3/3 green isolated) — flaky-test investigation.
+- Minor (same sweep): `reg_cpmd-water` single-threaded budget — now 54 s
+  after esmm-cpmd-06's single-eval (was 62 s, under budget again);
+  `test_cpu_scf_uhf_hessian` + `test_cpu_gpw_dftu` each showed one
+  full-suite-context transient (3/3 green isolated) — flaky-test
+  investigation. `reg_cpmd-uks` is nondeterministic under threading
+  (pre-existing OpenMP reduction-order noise in the Γ-UKS grid/XC path,
+  ~3e-5 relative; byte-compares must run OMP_NUM_THREADS=1) — /mol:fix if
+  determinism is wanted.
 
 ## Live — deferred PySCF engine gaps (2026-07-24)
 

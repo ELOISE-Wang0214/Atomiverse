@@ -504,3 +504,88 @@ TEST(GpwSolverFixedDensityK, MultiKFixedDensityWithoutGuessThrows) {
     fix.build(atoms);
     EXPECT_THROW(fix.run(atoms), std::invalid_argument);
 }
+
+// ── Standalone overlap parity (esmm-cpmd-06-single-eval, ac-001) ────────
+//
+// Every GPW CPMD production step is about to build S standalone
+// (`GpwDft::overlap` / `overlap_k`), align the propagated coefficients to
+// it, and run exactly ONE fixed-density KS evaluation — instead of the
+// old discard-and-rerun double eval. That deletion is only safe because S
+// is geometry-only: the standalone overlap must be bit-identical to the
+// `.S` / `.S_k` a fixed-density `run()` produces at the same geometry
+// (same image counts, same summation order — extraction, not
+// re-implementation). Reuses the tiny inline H2 `GpwDft` fixture above
+// (`small_h2_cp` / `small_cfg_cp`, shared with `GpwSolverFixedDensityK`).
+
+TEST(GpwSolverOverlap, StandaloneOverlapMatchesFixedDensityRun) {
+    const auto atoms = small_h2_cp(/*box=*/8.0);
+
+    // Converged cold SCF supplies the density guess the fixed-density
+    // (max_iter == 0) path requires (see MultiKFixedDensityWithoutGuessThrows).
+    ATV::cpu::gpw::GpwDft cold = small_cfg_cp(/*box=*/8.0);
+    cold.build(atoms);
+    const auto ref = cold.run(atoms);
+    ASSERT_TRUE(ref.converged);
+
+    ATV::cpu::gpw::GpwDft fix = small_cfg_cp(/*box=*/8.0);
+    fix.max_iter = 0;
+    fix.build(atoms);
+    const auto& r = fix.run(atoms, /*guess_C=*/nullptr, &ref.P);
+    ASSERT_TRUE(r.converged);
+    ASSERT_EQ(r.iters, 0);
+    ASSERT_GT(r.S.size(), 0u);
+
+    // Standalone overlap at the SAME geometry, on the SAME solver instance.
+    const auto s = fix.overlap(atoms);
+    ASSERT_EQ(s.shape(0), r.S.shape(0));
+    ASSERT_EQ(s.shape(1), r.S.shape(1));
+    for (std::size_t i = 0; i < s.shape(0); ++i)
+        for (std::size_t j = 0; j < s.shape(1); ++j)
+            EXPECT_EQ(s(i, j), r.S(i, j)) << "i=" << i << " j=" << j;
+}
+
+TEST(GpwSolverOverlap, StandaloneOverlapKMatchesFixedDensityRun) {
+    const auto atoms = small_h2_cp(/*box=*/8.0);
+
+    ATV::cpu::gpw::GpwDft cold = small_cfg_cp(/*box=*/8.0);
+    cold.k_mesh[0] = 1;
+    cold.k_mesh[1] = 1;
+    cold.k_mesh[2] = 2;
+    cold.k_time_reversal = false;
+    cold.nonperiodic = false;
+    cold.build(atoms);
+    const auto ref = cold.run(atoms);
+    ASSERT_TRUE(ref.converged);
+    ASSERT_GE(ref.n_kpts, 2);
+
+    ATV::cpu::gpw::GpwDft fix = small_cfg_cp(/*box=*/8.0);
+    fix.k_mesh[0] = 1;
+    fix.k_mesh[1] = 1;
+    fix.k_mesh[2] = 2;
+    fix.k_time_reversal = false;
+    fix.nonperiodic = false;
+    fix.max_iter = 0;
+    fix.build(atoms);
+    const auto& r = fix.run(atoms, /*guess_C=*/nullptr, /*guess_P=*/nullptr,
+                             /*guess_P_beta=*/nullptr, &ref.P_k);
+    ASSERT_TRUE(r.converged);
+    ASSERT_EQ(r.iters, 0);
+    ASSERT_EQ(static_cast<int>(r.S_k.size()), r.n_kpts);
+
+    // Standalone multi-k overlap at the SAME geometry, on the SAME solver.
+    const auto s_k = fix.overlap_k(atoms);
+    ASSERT_EQ(static_cast<int>(s_k.size()), r.n_kpts);
+    for (int ik = 0; ik < r.n_kpts; ++ik) {
+        const auto& s_ref = r.S_k[static_cast<std::size_t>(ik)];
+        const auto& s_new = s_k[static_cast<std::size_t>(ik)];
+        ASSERT_EQ(s_new.shape(0), s_ref.shape(0));
+        ASSERT_EQ(s_new.shape(1), s_ref.shape(1));
+        for (std::size_t i = 0; i < s_ref.shape(0); ++i)
+            for (std::size_t j = 0; j < s_ref.shape(1); ++j) {
+                EXPECT_EQ(s_new(i, j).real(), s_ref(i, j).real())
+                    << "k=" << ik << " i=" << i << " j=" << j;
+                EXPECT_EQ(s_new(i, j).imag(), s_ref(i, j).imag())
+                    << "k=" << ik << " i=" << i << " j=" << j;
+            }
+    }
+}

@@ -427,15 +427,21 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             solver_->max_iter = saved_max;
         };
 
-        fixed_density_eval_k();
-        if (static_cast<int>(last_.S_k.size()) != nk
-            || static_cast<int>(last_.H_ks_k.size()) != nk)
+        // S_k is geometry-only: build it standalone, align the propagated
+        // coefficients against it, then evaluate the KS matrices ONCE at the
+        // aligned density. `GpwDft::overlap_k` runs the same phased assembly
+        // the solve does, so these are the very S_k the eval would report.
+        const std::vector<linalg::CplxMatrix> S_k = solver_->overlap_k(atoms);
+        if (static_cast<int>(S_k.size()) != nk)
             throw std::runtime_error(
-                "GPWEvaluator: multi-k CPMD fixed-density missing H_ks_k/S_k");
+                "GPWEvaluator: multi-k CPMD standalone overlap_k size != nk");
         for (int ik = 0; ik < nk; ++ik)
             cpmd_k_[static_cast<std::size_t>(ik)].align_to_overlap(
-                last_.S_k[static_cast<std::size_t>(ik)]);
+                S_k[static_cast<std::size_t>(ik)]);
         fixed_density_eval_k();
+        if (static_cast<int>(last_.H_ks_k.size()) != nk)
+            throw std::runtime_error(
+                "GPWEvaluator: multi-k CPMD fixed-density missing H_ks_k");
 
         frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
 
@@ -491,7 +497,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         for (int ik = 0; ik < nk; ++ik) {
             cpmd_k_[static_cast<std::size_t>(ik)].advance(
                 last_.H_ks_k[static_cast<std::size_t>(ik)],
-                last_.S_k[static_cast<std::size_t>(ik)], cpmd_dt_fs_,
+                S_k[static_cast<std::size_t>(ik)], cpmd_dt_fs_,
                 /*occ=*/2.0);
             const double wk =
                 (ik < static_cast<int>(last_.k_weights.size()))
@@ -549,17 +555,17 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             solver_->max_iter = saved_max;
         };
 
+        // S is geometry-only: build it standalone, align, then evaluate the
+        // fixed-density KS matrix ONCE at the aligned coefficients.
+        // `GpwDft::overlap` runs the same Γ assembly the solve does.
+        const linalg::RealMatrix S = solver_->overlap(atoms);
+
         if (cpmd_uks) {
             // Empty beta C when n_beta==0 (half-metal edge).
             const linalg::RealMatrix empty_c;
-            const linalg::RealMatrix& Ca = cpmd_->C();
-            const linalg::RealMatrix& Cb =
-                (cpmd_beta_ && cpmd_beta_->ready()) ? cpmd_beta_->C()
-                                                    : empty_c;
-            fixed_density_eval_uks(Ca, Cb);
-            cpmd_->align_to_overlap(last_.S);
+            cpmd_->align_to_overlap(S);
             if (cpmd_beta_ && cpmd_beta_->ready())
-                cpmd_beta_->align_to_overlap(last_.S);
+                cpmd_beta_->align_to_overlap(S);
             const linalg::RealMatrix& Ca2 = cpmd_->C();
             const linalg::RealMatrix& Cb2 =
                 (cpmd_beta_ && cpmd_beta_->ready()) ? cpmd_beta_->C()
@@ -593,11 +599,11 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             // Dual electronic steps (occ=1 per spin).
             double te_ha = 0.0;
             double eth_ha = 0.0;
-            cpmd_->advance(last_.H_ks, last_.S, cpmd_dt_fs_, /*occ=*/1.0);
+            cpmd_->advance(last_.H_ks, S, cpmd_dt_fs_, /*occ=*/1.0);
             te_ha += cpmd_->kinetic_ha();
             eth_ha += cpmd_->thermostat_energy_ha();
             if (cpmd_beta_ && cpmd_beta_->ready()) {
-                cpmd_beta_->advance(last_.H_ks_beta, last_.S, cpmd_dt_fs_,
+                cpmd_beta_->advance(last_.H_ks_beta, S, cpmd_dt_fs_,
                                     /*occ=*/1.0);
                 te_ha += cpmd_beta_->kinetic_ha();
                 eth_ha += cpmd_beta_->thermostat_energy_ha();
@@ -609,8 +615,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         }
 
         // Closed-shell RKS CPMD.
-        fixed_density_eval_rks(cpmd_->C());
-        cpmd_->align_to_overlap(last_.S);
+        cpmd_->align_to_overlap(S);
         fixed_density_eval_rks(cpmd_->C());
 
         frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
@@ -631,7 +636,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             }
         }
 
-        cpmd_->advance(last_.H_ks, last_.S, cpmd_dt_fs_, /*occ=*/2.0);
+        cpmd_->advance(last_.H_ks, S, cpmd_dt_fs_, /*occ=*/2.0);
         last_te_ev_ = cpmd_->kinetic_ha() * ATV::units::kHartreeInEv;
         last_etherm_ev_ =
             cpmd_->thermostat_energy_ha() * ATV::units::kHartreeInEv;

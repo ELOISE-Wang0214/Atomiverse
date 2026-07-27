@@ -573,6 +573,131 @@ double pair_overlap_bound(const GridBasisFunction& mu,
     return best;
 }
 
+// Geometry-derived AO setup plus the image-summed Γ one-electron loop — the
+// SINGLE definition shared by the SCF (`run_gpw_scf_impl`) and the standalone
+// public entry points `GpwDft::overlap` / `GpwDft::overlap_k`. The SCF asks for
+// S together with T and Vpp; a standalone overlap asks for S alone. Every
+// matrix element is an independent screened pair contraction over the same cell
+// list, the same screen and the same image reach, so the S written either way
+// is bit-identical — which is what lets a CPMD step align its propagated
+// coefficients against a standalone overlap and then evaluate the KS matrix
+// exactly ONCE instead of twice (esmm-cpmd-06-single-eval).
+struct OneElectronSetup {
+    std::vector<GridBasisFunction> basis; ///< flattened AO basis.
+    std::vector<double> radii;            ///< per-AO Gaussian-tail radius [Bohr].
+    double rmax = 0.0;                    ///< widest AO radius [Bohr].
+    int mimg[3] = {0, 0, 0};              ///< Γ pair-image half-counts per axis.
+
+    // Γ-point lattice-image extent, shared by the analytic S/T/Vpp lattice sums
+    // and the grid collocation. A Gaussian *pair* reaches up to twice the largest
+    // single-function radius; images within that distance contribute. EPS_DEFAULT
+    // sets the radius (CP2K's Gaussian-tail tolerance).
+    OneElectronSetup(const std::vector<GpwAtom>& atoms, const double cell[3],
+                     bool periodic, double eps_default)
+        : basis(global_basis(atoms)), radii(basis.size(), 0.0) {
+        for (std::size_t i = 0; i < basis.size(); ++i) {
+            radii[i] = basis_function_radius(basis[i], eps_default);
+            rmax = std::max(rmax, radii[i]);
+        }
+        pair_image_counts(cell, periodic, 2.0 * rmax, mimg);
+    }
+
+    int nb() const { return static_cast<int>(basis.size()); }
+
+    // Real Γ lattice sums into pre-zeroed nb × nb matrices. `S` is always
+    // written; `T` and `Vpp` only when the caller supplies them. Vpp covers the
+    // analytic local GTH term (skipped when `grid_loc`, i.e. V_loc^SR is
+    // collocated instead) plus the separable Kleinman-Bylander nonlocal.
+    void gamma(const std::vector<GpwAtom>& atoms, const double cell[3],
+               bool periodic, bool grid_loc, RealMatrix& S, RealMatrix* T,
+               RealMatrix* Vpp) const {
+        const int n = nb();
+        // Atom cell list + widest PP width, for the O(nb²) (was O(nb²·natoms))
+        // GTH build: each basis-pair queries only atoms near its product centre.
+        double rmax_pp = 0.0;
+        AtomCells acells;
+        if (Vpp != nullptr) {
+            for (const auto& at : atoms) {
+                double r = at.rloc;
+                for (const auto& ch : at.nonlocal)
+                    r = std::max(r, ch.r);
+                rmax_pp = std::max(rmax_pp, r);
+            }
+            // ATV_GPW_NOCELLS forces one giant cell (query returns all atoms) —
+            // the pre-cell-list path, for bit-identity A/B verification.
+            acells.build(atoms, cell,
+                         std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0, periodic);
+        }
+        // Basis-center cell list: the outer S/T/Vpp build is O(nb²) only because
+        // every pair is screened; the overlaps are short-ranged, so visit only
+        // neighbours. ATV_GPW_NOCELLS forces one giant cell (query returns all j).
+        BasisCells bcells;
+        bcells.build(basis, cell,
+                     std::getenv("ATV_GPW_NOCELLS") ? 1e30 : rmax, periodic);
+#pragma omp parallel for schedule(dynamic, 8)
+        for (int i = 0; i < n; ++i) {
+            if (basis[i].empty())
+                continue;
+            const double* ci = basis[i][0].center;
+            const double Rq =
+                radii[static_cast<std::size_t>(i)] + rmax; // conservative
+            bcells.query(ci, Rq, [&](int j) {
+                // Overlap pair screening: S, T, Vpp are all bounded by the
+                // Gaussian product magnitude of (i,j). If even the best
+                // primitive pair is below the screen, the whole element is
+                // negligible -> leave 0.
+                if (pair_overlap_bound(basis[i], basis[j], cell, periodic)
+                    < kBuildScreen)
+                    return;
+                const double reach = radii[static_cast<std::size_t>(i)]
+                                     + radii[static_cast<std::size_t>(j)];
+                S(i, j) = overlap(basis[i], basis[j], cell, mimg, reach);
+                if (T != nullptr)
+                    (*T)(i, j) = kinetic(basis[i], basis[j], cell, mimg, reach);
+                if (Vpp != nullptr && !grid_loc) // analytic local PP only when
+                                                 // the grid route is disabled
+                    (*Vpp)(i, j) =
+                        gth_matrix_element(basis[i], basis[j], atoms, acells,
+                                           rmax_pp, cell, mimg, reach);
+            });
+        }
+        // GTH nonlocal V_nl via the separable Kleinman-Bylander form
+        // (projectors computed once per (basis,atom)) — adds onto Vpp.
+        if (Vpp != nullptr)
+            add_nonlocal_kb(*Vpp, basis, atoms, radii, cell, mimg, bcells);
+    }
+};
+
+// Sampled k-points of a configuration: the explicit `k_points` list when
+// non-empty, else the Monkhorst-Pack mesh. One definition, so the SCF k branch
+// and the standalone `GpwDft::overlap_k` sample the same points in the same
+// order (S_k parity is per-index).
+std::vector<internal::KPoint> sampled_kpoints(const GpwDft& cfg) {
+    std::vector<internal::KPoint> kpts;
+    if (!cfg.k_points.empty()) {
+        for (std::size_t i = 0; i < cfg.k_points.size(); ++i) {
+            internal::KPoint kp;
+            kp.frac[0] = cfg.k_points[i][0];
+            kp.frac[1] = cfg.k_points[i][1];
+            kp.frac[2] = cfg.k_points[i][2];
+            kp.weight = cfg.k_point_weights[i];
+            kpts.push_back(kp);
+        }
+        return kpts;
+    }
+    return internal::monkhorst_pack(cfg.k_mesh, cfg.k_time_reversal);
+}
+
+// True when this configuration solves on the k-point path (any non-Γ mesh,
+// explicit k list, or metallic smearing — occupations live on the multi-k
+// path, including effective Γ via k_mesh = {1,1,1}). Shared by
+// `run_gpw_scf_impl` and the standalone overlap entry points, which are the
+// Γ / k halves of the same split.
+bool uses_kpath(const GpwDft& cfg) {
+    return !cfg.k_points.empty() || cfg.k_mesh[0] != 1 || cfg.k_mesh[1] != 1
+           || cfg.k_mesh[2] != 1 || cfg.smearing != Smearing::none;
+}
+
 // Ionic core density n_ion(r) = sum_A z_A (2 pi rloc^2)^{-3/2} exp(-|r-R|^2/2 rloc^2).
 // Periodic: minimum-image displacement so unwrapped slab cores collocate through
 // their nearest image (matching the electron-density collocation in collocate.cpp).
@@ -3356,9 +3481,17 @@ static GpwResult run_gpw_scf_impl(
     if (kFftwThreadsOk)
         fftw_plan_with_nthreads(omp_get_max_threads());
 #endif
-    const std::vector<GridBasisFunction> basis = global_basis(atoms);
+    const bool periodic = !cfg.nonperiodic;
+    const double eps_default = cfg.eps_default;
+    // Flattened basis, Gaussian-tail radii, and the Γ pair-image extent —
+    // constructed through the same type `GpwDft::overlap` / `overlap_k` use, so
+    // the standalone overlaps sum exactly the images the SCF's S does.
+    const OneElectronSetup setup(atoms, cfg.cell, periodic, eps_default);
+    const std::vector<GridBasisFunction>& basis = setup.basis;
+    const std::vector<double>& radii = setup.radii;
+    const int* const mimg = setup.mimg;
+    const int nb = setup.nb();
     const std::vector<internal::AoShellTag> ao_tags = global_ao_tags(atoms);
-    const int nb = static_cast<int>(basis.size());
     if (static_cast<int>(ao_tags.size()) != nb)
         throw std::runtime_error(
             "GPW: AO tag count does not match basis size (internal)");
@@ -3371,46 +3504,9 @@ static GpwResult run_gpw_scf_impl(
     const bool do_dftu = !plus_u_slots.empty();
     UniformGrid grid = make_uniform_grid(cfg.cell, cfg.cutoff_ry);
 
-    // Γ-point lattice-image extent, shared by the analytic S/T/Vpp lattice sums
-    // and the grid collocation. A Gaussian *pair* reaches up to twice the largest
-    // single-function radius; images within that distance contribute. EPS_DEFAULT
-    // sets the radius (CP2K's Gaussian-tail tolerance).
-    const bool periodic = !cfg.nonperiodic;
-    const double eps_default = cfg.eps_default;
-    std::vector<double> radii(static_cast<std::size_t>(nb));
-    double rmax = 0.0;
-    for (int i = 0; i < nb; ++i) {
-        radii[static_cast<std::size_t>(i)] =
-            basis_function_radius(basis[i], eps_default);
-        rmax = std::max(rmax, radii[static_cast<std::size_t>(i)]);
-    }
-    int mimg[3];
-    pair_image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
-
-    // k-point RKS branch selector: any non-Γ mesh, explicit k list, or
-    // metallic smearing (occupations live on the multi-k path — including
-    // effective Γ via k_mesh = {1,1,1}).
+    // k-point RKS branch selector.
     // (Configuration conflicts are rejected fail-fast in GpwDft::build.)
-    const bool use_kpath = !cfg.k_points.empty() || cfg.k_mesh[0] != 1
-                           || cfg.k_mesh[1] != 1 || cfg.k_mesh[2] != 1
-                           || cfg.smearing != Smearing::none;
-
-    // Atom cell list + widest PP width, for the O(nb²) (was O(nb²·natoms)) GTH
-    // build: each basis-pair queries only atoms near its product centre.
-    double rmax_pp = 0.0;
-    for (const auto& at : atoms) {
-        double r = at.rloc;
-        for (const auto& ch : at.nonlocal)
-            r = std::max(r, ch.r);
-        rmax_pp = std::max(rmax_pp, r);
-    }
-    AtomCells acells;
-    // ATV_GPW_NOCELLS forces one giant cell (query returns all atoms) — the
-    // pre-cell-list path, for bit-identity A/B verification. The k-point
-    // branch builds its own phased matrices, so the Γ helpers stay empty.
-    if (!use_kpath)
-        acells.build(atoms, cfg.cell,
-                     std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0, periodic);
+    const bool use_kpath = uses_kpath(cfg);
 
     // Dispersion — free-atom TS/MBD/XDM/D3/D4 are geometry-only (pre-SCF).
     // Hirshfeld-scaled TS/MBD and density-dependent vdw_df / vdw_df2 / rvv10
@@ -3521,9 +3617,8 @@ static GpwResult run_gpw_scf_impl(
     RealMatrix Vpp = xt::zeros<double>({nb, nb}); // V_loc^sr + V_nl
     // The geometry-fixed one-electron / GTH matrices dominate the GPW SCF wall
     // time at scale (profiled: ~75-80% for hundreds of atoms; the eigensolve is
-    // <2%). Each (i,j) is an independent primitive contraction → parallelize the
-    // outer index. The atom loop inside gth is cell-list screened (acells), and
-    // the outer pair loop is cell-list screened (bcells, below) → O(nb·neigh).
+    // <2%). Each (i,j) is an independent primitive contraction; the assembly
+    // itself lives in OneElectronSetup::gamma (shared with GpwDft::overlap).
     const bool sprof = std::getenv("ATV_GPW_PROF") != nullptr;
     auto sclk = std::chrono::steady_clock::now();
     auto smark = [&](const char* what) {
@@ -3535,10 +3630,6 @@ static GpwResult run_gpw_scf_impl(
             std::chrono::duration<double, std::milli>(now - sclk).count());
         sclk = now;
     };
-    // Basis-center cell list: the outer S/T/Vpp build is O(nb²) only because every
-    // pair is screened; the overlaps are short-ranged, so visit only neighbours.
-    // ATV_GPW_NOCELLS forces one giant cell (query returns all j) for A/B bit-id.
-    BasisCells bcells;
     // Local short-range PP: by default collocated on the grid (local_pp_grid +
     // V_eff, O(grid)); local_pp_on_grid=false selects the per-pair analytic
     // gth_local_sr (O(nb²·natoms)), kept for grid-vs-analytic energy validation.
@@ -3548,38 +3639,8 @@ static GpwResult run_gpw_scf_impl(
     const bool grid_loc = cfg.local_pp_on_grid;
     // The Γ real S/T/Vpp lattice sums serve the Γ paths only; the k-point
     // branch builds its own phased (complex) matrices per k.
-    if (!use_kpath) {
-        bcells.build(basis, cfg.cell,
-                     std::getenv("ATV_GPW_NOCELLS") ? 1e30 : rmax, periodic);
-#pragma omp parallel for schedule(dynamic, 8)
-        for (int i = 0; i < nb; ++i) {
-            if (basis[i].empty())
-                continue;
-            const double* ci = basis[i][0].center;
-            const double Rq =
-                radii[static_cast<std::size_t>(i)] + rmax; // conservative
-            bcells.query(ci, Rq, [&](int j) {
-                // Overlap pair screening: S, T, Vpp are all bounded by the
-                // Gaussian product magnitude of (i,j). If even the best
-                // primitive pair is below the screen, the whole element is
-                // negligible -> leave 0.
-                if (pair_overlap_bound(basis[i], basis[j], cfg.cell, periodic)
-                    < kBuildScreen)
-                    return;
-                const double reach = radii[static_cast<std::size_t>(i)]
-                                     + radii[static_cast<std::size_t>(j)];
-                S(i, j) = overlap(basis[i], basis[j], cfg.cell, mimg, reach);
-                T(i, j) = kinetic(basis[i], basis[j], cfg.cell, mimg, reach);
-                if (!grid_loc) // analytic local PP only when grid is disabled
-                    Vpp(i, j) =
-                        gth_matrix_element(basis[i], basis[j], atoms, acells,
-                                           rmax_pp, cfg.cell, mimg, reach);
-            });
-        }
-        // GTH nonlocal V_nl via the separable Kleinman-Bylander form
-        // (projectors computed once per (basis,atom)) — adds onto Vpp.
-        add_nonlocal_kb(Vpp, basis, atoms, radii, cfg.cell, mimg, bcells);
-    }
+    if (!use_kpath)
+        setup.gamma(atoms, cfg.cell, periodic, grid_loc, S, &T, &Vpp);
     const RealMatrix H0 = T + Vpp;
     smark("STVpp_build");
 
@@ -3606,19 +3667,7 @@ static GpwResult run_gpw_scf_impl(
             throw std::invalid_argument(
                 "GpwDft::run: multi-k SCF takes complex guess_P_k (one "
                 "density per k); real guess_P / guess_P_beta are Γ-only");
-        std::vector<internal::KPoint> kpts;
-        if (!cfg.k_points.empty()) {
-            for (std::size_t i = 0; i < cfg.k_points.size(); ++i) {
-                internal::KPoint kp;
-                kp.frac[0] = cfg.k_points[i][0];
-                kp.frac[1] = cfg.k_points[i][1];
-                kp.frac[2] = cfg.k_points[i][2];
-                kp.weight = cfg.k_point_weights[i];
-                kpts.push_back(kp);
-            }
-        } else {
-            kpts = internal::monkhorst_pack(cfg.k_mesh, cfg.k_time_reversal);
-        }
+        const std::vector<internal::KPoint> kpts = sampled_kpoints(cfg);
         if (cfg.is_uks()) {
             // Dual-spin multi-k XL: both channels or neither (partial
             // validated inside run_gpw_scf_kpoints_uks).
@@ -5095,6 +5144,50 @@ GpwResult& GpwDft::run(const std::vector<GpwAtom>& atoms,
     result_ = run_gpw_scf_impl(atoms, *this, guess_C, guess_P, guess_P_beta,
                                guess_P_k, guess_P_k_beta);
     return result_;
+}
+
+RealMatrix GpwDft::overlap(const std::vector<GpwAtom>& atoms) const {
+    if (!built_)
+        throw std::logic_error(
+            "GpwDft::overlap called before build() — validate the "
+            "configuration first (no silent auto-build)");
+    if (uses_kpath(*this))
+        throw std::invalid_argument(
+            "GpwDft::overlap: this configuration solves on the k-point path "
+            "(k_mesh / k_points / smearing) and has no real Γ overlap — call "
+            "overlap_k() instead");
+    const bool periodic = !nonperiodic;
+    // Same setup + same assembly routine run_gpw_scf_impl uses; T and Vpp are
+    // simply not requested, which leaves S bit-identical (every element is an
+    // independent screened pair contraction).
+    const OneElectronSetup setup(atoms, cell, periodic, eps_default);
+    const int nb = setup.nb();
+    RealMatrix S = xt::zeros<double>({nb, nb});
+    setup.gamma(atoms, cell, periodic, local_pp_on_grid, S, /*T=*/nullptr,
+                /*Vpp=*/nullptr);
+    return S;
+}
+
+std::vector<linalg::CplxMatrix>
+GpwDft::overlap_k(const std::vector<GpwAtom>& atoms) const {
+    if (!built_)
+        throw std::logic_error(
+            "GpwDft::overlap_k called before build() — validate the "
+            "configuration first (no silent auto-build)");
+    if (!uses_kpath(*this))
+        throw std::invalid_argument(
+            "GpwDft::overlap_k: this configuration solves at Γ (no k_mesh / "
+            "k_points / smearing) — call overlap() instead");
+    const bool periodic = !nonperiodic;
+    const OneElectronSetup setup(atoms, cell, periodic, eps_default);
+    // internal::build_overlap_kinetic_k is the one phased S_k/T_k image sweep
+    // the multi-k SCF branches call; T_k is built with S_k in that sweep and
+    // discarded here.
+    std::vector<linalg::CplxMatrix> S_k, T_k;
+    internal::build_overlap_kinetic_k(setup.basis, setup.radii, cell,
+                                      setup.mimg, kBuildScreen,
+                                      sampled_kpoints(*this), S_k, T_k);
+    return S_k;
 }
 
 namespace {

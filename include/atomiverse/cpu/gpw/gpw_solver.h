@@ -422,6 +422,40 @@ class GpwDft {
     ///        `converged == false` — before the first run).
     const GpwResult& last_result() const { return result_; }
 
+    /// @brief Standalone Γ overlap \(S\) at the given geometry — basis
+    ///        assembly only, no collocation / Poisson / XC.
+    ///
+    /// Bit-identical to the `GpwResult::S` a fixed-density `run()` produces at
+    /// the same geometry: the same flattened basis, the same Gaussian-tail
+    /// radii, the same pair-image counts and the same summation order (one
+    /// shared assembly routine, not a re-implementation). Car–Parrinello uses
+    /// it to align the propagated coefficients against \(S\) **before** the
+    /// step's single KS evaluation, so the step evaluates the KS matrix once
+    /// instead of twice.
+    ///
+    /// @param atoms Atom set at the current geometry [Bohr] (as for `run`).
+    /// @return Overlap matrix \(S\) [nb × nb], dimensionless.
+    /// @throws std::logic_error when called before `build()`.
+    /// @throws std::invalid_argument when this method is configured for the
+    ///         k-point path (non-Γ `k_mesh`, explicit `k_points`, or metallic
+    ///         `smearing`) — that path has no real Γ overlap; use
+    ///         `overlap_k()`.
+    linalg::RealMatrix overlap(const std::vector<GpwAtom>& atoms) const;
+
+    /// @brief Standalone multi-k Bloch overlaps \(S_k\) at the given geometry.
+    ///
+    /// The k-point twin of `overlap()`: Hermitian nb × nb per sampled k, in
+    /// the same k order and bit-identical to the `GpwResult::S_k` a
+    /// fixed-density multi-k `run()` produces (same shared phased assembly).
+    ///
+    /// @param atoms Atom set at the current geometry [Bohr] (as for `run`).
+    /// @return One \(S_k\) [nb × nb] per sampled k (size == `n_kpts`).
+    /// @throws std::logic_error when called before `build()`.
+    /// @throws std::invalid_argument when this method is configured for the Γ
+    ///         path (no k mesh / list / smearing) — use `overlap()`.
+    std::vector<linalg::CplxMatrix>
+    overlap_k(const std::vector<GpwAtom>& atoms) const;
+
     /// @brief GPW MP2 correlation on the converged orbitals of the last
     ///        `run()` — RKS Γ/multi-k or UKS Γ/multi-k (UMP2).
     ///
