@@ -1,0 +1,36 @@
+# MetalWalls would-be twin for regression md/per-electrode-eta (NOT RUN —
+# no MW binary on the agent host; pin taken from the closed-form literature
+# elastance, see ../../../pin_notes_per-electrode-eta.md).
+#
+# Two single-site electrodes, vacuum, d = 4 A, DeltaPsi = 1 V,
+# per-electrode Gaussian widths eta_bot = 1.979 1/A, eta_top = 0.955 1/A.
+# MW syntax sketch (per-species Gaussian width under electrode species):
+
+system
+  num_atoms 2
+  # cell large enough that the pair is effectively isolated (40 x 40 x 40 A)
+
+species
+  species_type
+    name Elec1
+    count 1
+    charge gaussian 1.979   # eta [1/A], bottom wall
+  species_type
+    name Elec2
+    count 1
+    charge gaussian 0.955   # eta [1/A], top wall
+
+electrodes
+  electrode_type
+    name bottom
+    species Elec1
+    potential 0.0           # [V]
+  electrode_type
+    name top
+    species Elec2
+    potential 1.0           # [V]
+  electrode_charges matrix_inversion
+  compute_force false
+
+run
+  num_steps 0               # single BO solve; read electrode charges
