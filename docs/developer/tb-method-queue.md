@@ -25,6 +25,73 @@ See `tb-method-loop.md`.
 **Assign priority (binding ladder):** DFTB0 → DFTB2 depth → DFTB3 → spin DFTB
 → NDDO PM ladder → **only then** GFN-xTB. Do not staff GFN2 while DFTB0/3 and
 analytic DFTB forces are still open unless operator `theme=` overrides.
+**Recover incomplete `[~]` before new pending** (`incomplete ≫ pending`).
+
+## GapCensus — 2026-07-27 wave-2 (parent `dev`)
+
+**Branch:** `dev` @ `77d80486` (`chore(harness): TB method-loop wave 1`).
+
+### Sources re-diffed
+
+| Source | Finding |
+| ------ | ------- |
+| `docs/roadmap/semiempirical.md` ○ | PM3/6/7/OM3; closed-form NDDO F; Hessian; DFTB0/3/D3/PBC/stress/TD/noncollinear/+U/SOC; GFN1/2/IPEA/spin/PBC/analytic G/H; GFN-FF; sTDA |
+| `include/atomiverse/cpu/semiempirical/` | Public types: `AM1`/`RM1` (+ evaluators), `DFTB2`, `XtbGfn0`. **No** `DFTB0`/`DFTB3`/`PM3`/`PM6`/`PM7`/GFN1/2 on `dev` |
+| `SemiEmpiricalMethod` | Enum is **AM1\|RM1 only** — PM tables need enum + param rows |
+| `basis_data/` | `dftb_mio_tables.h` mio-**style** sketch H/C/N/O; `dftb_3ob_tables.h` 3ob-3-1 organic CHNO |
+| `NDDOSolver::compute_forces` | **fixed-density central FD** of E (not multipole dI/dR closed-form) |
+| `dftb2.cpp` forces | Restricted MioSketch: **closed-form** HF+Pulay+γ+rep; open-shell Mio: **re-SCC FD**; ThreeOb: **re-SCC FD** |
+| Spin path | Collinear `multiplicity` on MioSketch only; ThreeOb rejects open shell |
+| `xtb_gfn0` | H/C/O toy onsite+hop+rep — not production GFN0 / xtb |
+| Regressions on `dev` | `am1_*`, `rm1_water_energy`, `h2_dftb2`, `h2o_dftb2_mio`, `dftb2-3ob-organic`, `dftb2-analytic-forces`, `spin-dftb2-o2`, `h2o_gfn0` |
+| REFERENCE hygiene | Wave-1 regs have `oracle:`; `h2_dftb2` **no** REFERENCE; `h2o_gfn0` **no** REFERENCE; AM1/RM1 lack hard mopac E pin |
+| `tools/tb_oracle/` | Family README + `inputs/dftbplus/ch4_3ob_dftb2` + force note on `dev`; mopac/xtb trees empty; more twins only on `wf/*` tips |
+| OpenMOPAC surface | MNDO / AM1 / PM3 / RM1 / PM6 / PM7 / MNDO-d — **not** OM3, **not** DFTB |
+| DFTB+ surface | non-SCC, SCC-DFTB2, DFTB3, spin, PBC/k, forces/stress, TD-DFTB, +U, SOC, dispersion, … |
+| xtb surface | GFN0/1/2, IPEA, analytic G; GFN-FF classical (scope-out); sTDA needs GFN GS |
+| Live SE specs on `dev` | **none** (wave-1 specs deleted) |
+| TB isolation worktrees | **none** (Clearup done); metalwalls `wf/*` worktrees unrelated |
+| Unmerged TB tips | **5** still ahead of `dev` by 1–2 commits, **behind 12** (need rebase before merge) |
+
+### Tree vs roadmap (wave-2)
+
+| Capability | Roadmap | Tree on `dev` | Verdict |
+| ---------- | ------- | ------------- | ------- |
+| AM1 / RM1 energy + ΔHf | ✓ | ship; no hard mopac E pin | deepen → mopac pins |
+| NDDO nuclear forces (product) | ✓ | fixed-P central FD | usable; **not** closed-form multipole |
+| SCC-DFTB2 H/C/N/O E | ✓ | MioSketch + ThreeOb | energy foothold; mio absolute pin still `[~]` |
+| DFTB analytic gradient | ✓ (restricted) | closed-form on **restricted MioSketch only** | deepen ThreeOb + open-shell F |
+| Spin-polarized DFTB | ✓ (collinear) | MioSketch dual αβ + Mulliken m | foothold; open-shell F still FD; noncollinear blocked |
+| Production 3ob organic SK | — (prose) | `DftbSkSet::ThreeOb` + CH4 pin | landed wave-1 (DFTB2 SK, not DFTB3) |
+| Non-SCC DFTB0 | ○ | tip `wf/dftb0-h2` only | **incomplete** |
+| DFTB3 | ○ | tip `wf/dftb3-water-mio` only | **incomplete** |
+| Dispersion D3 | ○ | tip `wf/dftb2-dispersion-d3` only | **incomplete** |
+| Periodic DFTB | ○ | tip `wf/dftb2-periodic-gamma` (Γ only) | **incomplete**; k-mesh still pending |
+| DFTB analytic stress | ○ | absent | **gap** |
+| TD-DFTB | ○ | absent | **gap** |
+| GFN0-xTB | ✓ toy | sketch H/C/O | toy → Phase C deepen |
+| GFN1/2 / IPEA / spin / PBC GFN | ○ | absent | **gaps** (late) |
+| PM3 / PM6 / PM7 | ○ | no types | Phase B **oracle=mopac** |
+| OM3 | ○ | no type | **blocked** |
+| GFN-FF / sTDA / SE Hessian (VIB) | ○ | — | **blocked** (scope or SE-only cmake) |
+
+### Foothold ≠ closed (new deepen slugs this wave)
+
+Wave-1 lands closed restricted Mio forces + collinear spin **energy**/mulliken
+gates + 3ob energy pin — **not** product force completeness:
+
+- ThreeOb nuclear forces remain re-SCC FD → `dftb2-analytic-forces-threeob`
+- Open-shell nuclear forces remain re-SCC FD → `dftb2-spin-analytic-forces`
+- DFTB3 energy tip exists but forces product still open → `dftb3-analytic-forces`
+- Γ-point tip exists; DFTB+ k-mesh surface still open → `dftb2-kpoints`
+- RM1 ships without OpenMOPAC hard E pin → `rm1-water-mopac-energy`
+
+### gaps_remaining (wave-2)
+
+**20** pending + **5** incomplete (`[~]`) + **9** blocked (includes scope-out /
+forbidden-pattern rows) → **nonzero; continue loop**. Never claim queue
+exhausted. Next: **Recover** the five `[~]` tips (rebase onto `dev`) before
+staffing new Phase A pending.
 
 ## GapCensus — 2026-07-27 wave-1 (parent `dev`) — historical
 
@@ -94,8 +161,13 @@ Census snapshot was wave-1 pre-land; **foothold ≠ closed** for remaining ladde
 ### Phase A — DFTB ladder (oracle = DFTB+)
 
 Staff these before NDDO product depth and before GFN-xTB.
+**Prefer Recover of `## in_progress` over new pending.**
 
+- [ ] `dftb2-analytic-forces-threeob` | Closed-form nuclear F on `DftbSkSet::ThreeOb` (replace re-SCC FD) | dftb2 | CH4/H2O | F vs FD | **oracle=dftb+|literature**; deepen wave-1 3ob energy
+- [ ] `dftb2-spin-analytic-forces` | Closed-form collinear open-shell nuclear F (replace re-SCC FD) | dftb2/spin | O2 off-eq | F vs FD | **oracle=dftb+|literature**; deepen `spin-dftb2-o2`
 - [ ] `dftb2-analytic-stress` | Analytic cell stress | dftb2 | mol or Γ cell | stress vs FD | **oracle=dftb+|literature**
+- [ ] `dftb3-analytic-forces` | Analytic DFTB3 nuclear forces after energy foothold | dftb3 | H2O off-eq | F | **oracle=dftb+**; after `dftb3-water-mio` lands
+- [ ] `dftb2-kpoints` | Periodic DFTB k-mesh beyond Γ | dftb2 | small cell | E (and optional F) | **oracle=dftb+**; after `dftb2-periodic-gamma`
 - [ ] `td-dftb-h2` | Linear-response TD-DFTB foothold | td-dftb | H2/H2O | excitation [eV] | **oracle=dftb+|literature**; after ground-state SCC solid
 
 ### Phase B — NDDO product depth (oracle = OpenMOPAC)
@@ -104,8 +176,9 @@ AM1/RM1 energy footholds ship. Forces are fixed-density FD — deepen with
 OpenMOPAC pins and closed-form integrals. Do **not** use DFTB+ for these rows.
 
 - [ ] `am1-water-mopac-energy` | Hard OpenMOPAC total energy / ΔHf pin for H2O AM1 | nddo/am1 | H2O | E [eV] or ΔHf | **oracle=mopac**; existing reg is finite/self-FD only
+- [ ] `rm1-water-mopac-energy` | Hard OpenMOPAC total energy / ΔHf pin for H2O RM1 | nddo/rm1 | H2O | E [eV] or ΔHf | **oracle=mopac**; current reg is method-discriminating only
 - [ ] `nddo-closed-form-forces` | Closed-form multipole / integral-derivative NDDO nuclear forces (replace fixed-P FD) | nddo | H2O off-eq | F vs mopac + FD | **oracle=mopac**
-- [ ] `pm3-organic-energy` | PM3 (or MNDO) on NDDO ladder for table pipeline | nddo | small organic | E | **oracle=mopac**; bridge MNDO→PM6
+- [ ] `pm3-organic-energy` | PM3 (or MNDO) on NDDO ladder for table pipeline | nddo | small organic | E | **oracle=mopac**; bridge MNDO→PM6; extend `SemiEmpiricalMethod`
 - [ ] `pm6-water-energy` | PM6 energy vs OpenMOPAC | nddo/pm6 | H2O | E | **oracle=mopac**
 - [ ] `pm6-water-forces` | PM6 forces vs OpenMOPAC / FD | nddo/pm6 | H2O off-eq | F | **oracle=mopac**
 - [ ] `pm7-water-energy` | PM7 energy vs OpenMOPAC | nddo/pm7 | H2O | E | **oracle=mopac**; after PM6 foothold
@@ -115,7 +188,7 @@ OpenMOPAC pins and closed-form integrals. Do **not** use DFTB+ for these rows.
 xTB is **not** DFTB3++. Staff only when Phase A ground-state DFTB is green
 or operator forces `theme=gfn|xtb`.
 
-- [ ] `gfn0-beyond-toy` | Lift GFN0 past H/C/O sketch tables toward production GFN0 | xtb | multi-element | E | **oracle=xtb|literature**
+- [ ] `gfn0-beyond-toy` | Lift GFN0 past H/C/O sketch tables toward production GFN0 (+ REFERENCE/oracle line) | xtb | multi-element | E | **oracle=xtb|literature**
 - [ ] `gfn1-xtb-organic` | GFN1-xTB energy | xtb | small organic | E [eV] | **oracle=xtb**
 - [ ] `gfn2-xtb-water` | Production GFN2-xTB energy | xtb | H2O | E [eV] | **oracle=xtb**
 - [ ] `gfn2-xtb-forces` | GFN2-xTB analytic forces | xtb | H2O off-eq | F | **oracle=xtb**
@@ -126,25 +199,26 @@ or operator forces `theme=gfn|xtb`.
 ## in_progress
 
 Unmerged TB tips with commits ahead of `dev` (Clearup removed worktrees; keep
-`[~]` until merge or drop decision). **Do not demote to pending.**
+`[~]` until merge or drop decision). **Do not demote to pending.** Tips are
+**behind `dev` by ~12 commits** — Recover must rebase before merge attempt.
 
-- [~] `dftb0-h2` | Non-SCC DFTB / DFTB0 energy + force skeleton | dftb0 | H2 | E, F | **oracle=dftb+**; tip `wf/dftb0-h2`
-- [~] `dftb2-dftbplus-energy-pin` | Offline DFTB+ energy pin on ATV DFTB2 path | dftb2 | H2 / H2O | E [eV] | **oracle=dftb+**; tip `wf/dftb2-dftbplus-energy-pin`
-- [~] `dftb3-water-mio` | SCC-DFTB3 energy (third-order) | dftb3 | H2O | E [eV] | **oracle=dftb+**; tip `wf/dftb3-water-mio`
-- [~] `dftb2-dispersion-d3` | Dispersion-corrected DFTB | dftb2 | water dimer | E_disp / E_tot | **oracle=dftb+|literature**; tip `wf/dftb2-dispersion-d3`
-- [~] `dftb2-periodic-gamma` | Periodic DFTB Γ-point energy | dftb2 | small cell | E | **oracle=dftb+**; tip `wf/dftb2-periodic-gamma`
+- [~] `dftb0-h2` | Non-SCC DFTB / DFTB0 energy + force skeleton | dftb0 | H2 | E, F | **oracle=dftb+**; tip `wf/dftb0-h2` @ `bcff8c4a` ahead=1 behind=12
+- [~] `dftb2-dftbplus-energy-pin` | Offline DFTB+ energy pin on ATV DFTB2 path (mio H–H SK) | dftb2 | H2 | E [eV] | **oracle=dftb+** 24.1; tip `wf/dftb2-dftbplus-energy-pin` @ `00b2476b` ahead=1 behind=12
+- [~] `dftb3-water-mio` | SCC-DFTB3 energy (third-order) | dftb3 | H2O | E [eV] | **oracle=dftb+**; tip `wf/dftb3-water-mio` @ `f26ba40b` ahead=1 behind=12
+- [~] `dftb2-dispersion-d3` | Dispersion-corrected DFTB (D3(BJ) water dimer) | dftb2 | water dimer | E_disp / E_tot | **oracle=dftb+|literature**; tip `wf/dftb2-dispersion-d3` @ `edabfa64` ahead=2 behind=12
+- [~] `dftb2-periodic-gamma` | Periodic DFTB Γ-point energy | dftb2 | small cell | E | **oracle=dftb+**; tip `wf/dftb2-periodic-gamma` @ `5afb23a0` ahead=1 behind=12
 
 ## blocked
 
-- [!] `noncollinear-spin-dftb` | blocked — needs collinear spin-DFTB first (**unblocked enough for collinear product; noncollinear still blocked**)
+- [!] `noncollinear-spin-dftb` | blocked — needs collinear spin-DFTB first (**collinear product foothold exists; noncollinear still blocked**)
 - [!] `dftb-plus-u` | blocked — needs SCC base + Hubbard-U design note
 - [!] `spin-orbit-dftb` | blocked — needs specialized SOC / SK design; not ladder-head
 - [!] `om3-nddo` | blocked — OM3 not in OpenMOPAC primary surface; no family-locked pin (Thiel OMx out of loop oracles)
 - [!] `se-analytic-hessian` | blocked — needs `ATV_BUILD_VIB` / `cpu::vib::Hessian`; SE-only cmake keeps VIB **OFF**
 - [!] `gfn-xtb-analytic-hessian` | blocked — same VIB gate; xtb semi-numeric Hessian is product-later
-- [!] `gfn-ff` | blocked — classical GFN-FF, **scope-out** of electronic SE/TB loop
+- [!] `gfn-ff` | blocked — classical GFN-FF, **scope-out** of electronic SE/TB loop (never pending)
 - [!] `stda-xtb` | blocked — needs production GFN ground state first
-- [!] `mopac-as-dftb-oracle` | **forbidden pattern** — never pin DFTB to OpenMOPAC
+- [!] `mopac-as-dftb-oracle` | **forbidden pattern** — never pin DFTB to OpenMOPAC (never pending)
 
 ## done
 

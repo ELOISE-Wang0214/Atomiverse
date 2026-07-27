@@ -23,11 +23,13 @@ open. AM1-BCC charge assignment still uses the energy/charge path (see
 `reg_h2_dftb2`, `reg_h2o_dftb2_mio`) and production **3ob-3-1** organic CHNO
 tables (`DftbSkSet::ThreeOb`, `reg_dftb2-3ob-organic`, offline DFTB+ pin).
 **Closed-shell** nuclear forces on MioSketch are **analytic** (Hellmann–Feynman
-+ Pulay + SCC γ + repulsive; `reg_dftb2-analytic-forces`); open-shell and ThreeOb
-paths still use re-SCC FD where not yet closed-form. **Collinear spin-DFTB2**
-ships (`multiplicity`, dual α/β, Mulliken m; `reg_spin-dftb2-o2`). **GFN0-xTB
-toy** (`XtbGfn0`, `reg_h2o_gfn0`) remains a sketch. Non-SCC DFTB0, DFTB3,
-D3/PBC/stress/TD depth, and GFN1/2 remain ○. Loop queue:
++ Pulay + SCC γ + repulsive; `reg_dftb2-analytic-forces`); **open-shell** and
+**ThreeOb** paths still use re-SCC FD (deepen: `dftb2-spin-analytic-forces`,
+`dftb2-analytic-forces-threeob`). **Collinear spin-DFTB2** ships
+(`multiplicity`, dual α/β, Mulliken m; `reg_spin-dftb2-o2`). **GFN0-xTB toy**
+(`XtbGfn0`, `reg_h2o_gfn0`) remains a sketch. Non-SCC DFTB0, DFTB3,
+D3/PBC/k-mesh/stress/TD depth, and GFN1/2 remain ○ (several on unmerged
+`wf/*` tips — see queue `## in_progress`). Loop queue:
 `docs/developer/tb-method-queue.md`. Family oracles: OpenMOPAC (NDDO) / DFTB+
 (DFTB) / xtb (GFN) — see `tools/tb_oracle/README.md`.
 
@@ -75,10 +77,12 @@ multipole derivatives stay ○. Analytic Hessian remains finite-difference via
 DFTB2 is multi-element H/C/N/O with static SK tables (`dftb_mio_tables.h` sketch
 + `dftb_3ob_tables.h` 3ob-3-1 organics). Collinear spin (`multiplicity`) and
 **restricted** analytic nuclear forces (HF+Pulay+γ+rep) ship on MioSketch;
-open-shell forces remain re-SCC FD. Offline **DFTB+** absolute energy identity
-on the mio sketch is still a deepen slug (`dftb2-dftbplus-energy-pin`); 3ob CH4
-has a DFTB+ pin under pure SCC-DFTB2. Oracle for all DFTB rows: **DFTB+**
-(never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 → spin product → …
+open-shell and ThreeOb forces remain re-SCC FD. Offline **DFTB+** absolute
+energy identity on mio H–H is an incomplete tip (`dftb2-dftbplus-energy-pin`);
+3ob CH4 has a DFTB+ pin under pure SCC-DFTB2. Analytic **stress**, **k-mesh**
+beyond Γ, **DFTB3** forces, and **TD-DFTB** remain ○. Oracle for all DFTB
+rows: **DFTB+** (never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 →
+spin product depth → …
 
 ## 3. Extended Tight-Binding Methods
 

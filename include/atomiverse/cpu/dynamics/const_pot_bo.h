@@ -59,8 +59,8 @@ struct ElectrodeGroup {
 /// conp.add_electrode(1, 0.0);
 /// conp.Ez = 0.1;                 // [V/Å]
 /// conp.electroneutrality = false;
-/// sim.add(std::move(conp));
-/// sim.add(cpu::md::FixEfield{0.0, 0.0, 0.1});
+/// sim.set_evaluator(std::move(conp));
+/// sim.set_evaluator(cpu::md::FixEfield{0.0, 0.0, 0.1});
 /// @endcode
 class ConstPotBO : public cpu::Component {
   public:

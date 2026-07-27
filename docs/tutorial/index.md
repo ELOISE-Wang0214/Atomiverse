@@ -107,6 +107,7 @@ Oracle priority: **LAMMPS** when the feature overlaps; MetalWalls for MW-only.
 | Method | Page | Regression | Oracle |
 |--------|------|------------|--------|
 | Const-pot BO parallel plate (madelung, E1) | [const-pot-bo-parallel-plate](methods/const-pot-bo-parallel-plate.md) | `regressions/md/const-pot-bo-parallel-plate` | lammps (`perf_exempt`) |
+| Constant-charge electrode control (conq) | [const-charge-electrode](methods/const-charge-electrode.md) | `regressions/md/const-charge-electrode` | lammps (`perf_exempt`) |
 | Freeze electrode atoms (`setforce 0`) | [freeze-electrode-atoms](methods/freeze-electrode-atoms.md) | `regressions/md/freeze-electrode-atoms` | lammps (ratio **3.98**) |
 | Electrode total-charge observer | [const-pot-charge-observer](methods/const-pot-charge-observer.md) | `regressions/md/const-pot-charge-observer` | lammps (`perf_exempt`) |
 | Charging work \(-\sum_i \Psi_i Q_i\) | [charging-work-energy](methods/charging-work-energy.md) | `regressions/md/charging-work-energy` | literature (`perf_exempt`) |

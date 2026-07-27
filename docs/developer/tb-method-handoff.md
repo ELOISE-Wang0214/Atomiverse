@@ -1,9 +1,11 @@
 # TB / SE method loop — handoff
 
 Last harness pass: **2026-07-27 wave 1** on `dev` (`chore(harness)`).
-Merged greens: `dftb2-3ob-organic`, `dftb2-analytic-forces`, `spin-dftb2-o2`.
-**incomplete_remaining=5** (unmerged TB `wf/*` tips kept `[~]`). **pending=15**.
-**blocked=9**. GapCensus still owns discovery — **queue not exhausted**.
+Last GapCensus: **2026-07-27 wave 2** on `dev` @ `77d80486`.
+Merged greens (wave 1): `dftb2-3ob-organic`, `dftb2-analytic-forces`, `spin-dftb2-o2`.
+**incomplete_remaining=5** (unmerged TB `wf/*` tips kept `[~]`, behind≈12).
+**pending=20** (wave-2 refilled +5 deepen). **blocked=9**.
+GapCensus still owns discovery — **queue not exhausted**.
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Clearup →
@@ -68,8 +70,15 @@ dftb.with_forces = true; // analytic F when restricted MioSketch
 // Frame I/O via Evaluate + Semiempirical; no *Config; no make_*/build_*
 ```
 
+## GapCensus wave 2 (2026-07-27)
+
+Re-diffed family oracles + roadmap ○ + tree on `dev`. Wave-1 footholds do **not**
+close ThreeOb/open-shell forces, k-mesh, DFTB3 forces, or hard mopac RM1 pins —
+pending refilled (**+5** slugs). `tools/tb_oracle/README.md` added (was missing
+but referenced). No roadmap ○→✓ this wave (nothing new merged).
+
 ## Next
 
-1. **Recover** the five `[~]` tips (resume merge if green, or re-dispatch).
-2. **GapCensus** after incomplete drains or before next large assign.
-3. Ladder remaining: DFTB0/3 → D3/PBC/stress/TD → NDDO PM → GFN late.
+1. **Recover** the five `[~]` tips (**rebase onto `dev` first** — behind≈12).
+2. Prefer incomplete ≫ new Phase A pending on Assign.
+3. Ladder remaining: DFTB0/3 → D3/PBC/k/stress/TD → force deepen → NDDO PM → GFN late.
