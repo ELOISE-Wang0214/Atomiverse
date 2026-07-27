@@ -89,9 +89,10 @@ non-positive or non-finite `cpmd_mu` / thermostat parameters, and a
 near-singular overlap (`n_dropped > 0`) at the seed all throw. In particular
 **dispersion is refused because `ScfGradient` carries no d3bj/d4 force terms**
 while the total energy includes the dispersion contribution —
-\(E_{\mathrm{cons}}\) would drift silently. (`xl_bomd` on the SCF methods does
-not exist yet; it is the `esmm-cpmd-05` sibling and will be mutually exclusive
-with `cpmd` when it lands.)
+\(E_{\mathrm{cons}}\) would drift silently. `xl_bomd` (the `esmm-cpmd-05`
+sibling, [xl-bomd-rhf-water](xl-bomd-rhf-water.md)) landed and is mutually
+exclusive with `cpmd` in **both** directions — the symmetric row is asserted by
+`MeanFieldMethodXlBomd.RefusesCpmd`.
 
 ## Usage
 
@@ -205,8 +206,9 @@ changes and \(T_e > 0\) is a hard gate there.
 
 ## Honest non-goals
 
-- XL-BOMD on the SCF methods (`esmm-cpmd-05`, not yet in tree), PW CPMD, OT-CP,
-  multi-k, CPMD stress — all out of scope here
+- PW CPMD, OT-CP, multi-k, CPMD stress — all out of scope here (XL-BOMD on the
+  SCF methods shipped separately as `esmm-cpmd-05`:
+  [xl-bomd-rhf-water](xl-bomd-rhf-water.md))
 - QM/MM × CPMD: the `point_charges` gate stays shut
 - The d3bj/d4 gradient gap is **verified and refused**, not fixed
   (`ScfGradient` has no dispersion force terms while `e_total_` includes the

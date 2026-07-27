@@ -103,10 +103,20 @@ done
 #   build_minao_ao_list           — MINAO initial-guess machinery; IntegralPack-deletion round
 #   build_shell_list_from_table   — basis_set.cpp file-local helper; IntegralPack-deletion round
 #   build_shell_to_atom_from_integrals — integral_derivatives.cpp internal; gradient round
+#
+# The identifier must START at `build_` — the leading `(^|[^a-zA-Z0-9_])` is a
+# word boundary, without which every identifier that merely CONTAINS the
+# substring is a false positive (`rebuild_integrals_(`, a private member added
+# by esmm-cpmd-04, turned this gate red at 2de56c65). `\b`/`\<` are GNU
+# extensions; the bracket alternation is plain POSIX ERE and behaves
+# identically under GNU grep and ugrep. Genuine free-function calls still trip
+# it: `build_thing(` at line start (`^`) or after any non-identifier character
+# (space, `=`, `(`, `,`, …). Member calls (`.build_`, `->build_`, `::build_`)
+# match here and are dropped by the next filter, as before.
 for dir in "include/atomiverse/cpu/scf" "src/cpu/scf"; do
     target="${ROOT}/${dir}"
     [ -d "${target}" ] || continue
-    matches="$(grep -rnE 'build_[a-z_0-9]*[[:space:]]*\(' "${target}" 2>/dev/null \
+    matches="$(grep -rnE '(^|[^a-zA-Z0-9_])build_[a-z_0-9]*[[:space:]]*\(' "${target}" 2>/dev/null \
         | grep -vE '(\.|->|::)build_' \
         | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(///|//|\*|/\*|#)' \
         | grep -vE 'build_on[[:space:]]*\(|build_components|build_plan' \

@@ -40,6 +40,7 @@
 #include "atomiverse/cpu/component/timestep_protocol.h"
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/electronic/cpmd.h"
+#include "atomiverse/cpu/electronic/xl_bomd.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/casci.h"
@@ -415,6 +416,51 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
     /// @brief Electronic thermostat coupling time τ_e [fs]. Ignored when
     ///        `cpmd_thermostat` is false; must be finite and > 0 when true.
     double cpmd_tau_e = 50.0;
+
+    // ── Extended-Lagrangian BOMD (esmm-cpmd-05) ───────────────────────
+    /// @brief Propagate an auxiliary density with its own equation of motion
+    ///        and hand it to the SCF as the initial guess instead of reusing
+    ///        the previous step's converged one (Niklasson et al.,
+    ///        J. Chem. Phys. **130**, 214109 (2009)).
+    ///
+    /// Reusing the last density is not time-reversible — the guess always lags
+    /// the nuclei — and the one-sided error pumps energy into the trajectory.
+    /// The auxiliary density has its own (almost time-reversible) dynamics, so
+    /// warm steps converge in a few iterations without ASPC's corrector bias.
+    /// Dimensionless flag; default false = plain Born–Oppenheimer.
+    ///
+    /// **Nested-MD state.** The auxiliary density is a dynamical variable on
+    /// the nuclear clock: it advances exactly once per **converged nested**
+    /// run, so bind the method at `md::Phase::force`. Standalone `run()` /
+    /// `forces()` with `xl_bomd = true` are allowed (XL is a guess strategy,
+    /// not a propagator of the SCF state) but a single point is somewhere else
+    /// in configuration space, so a standalone entry leaves the auxiliary
+    /// history **untouched** — the same line GPW takes. An unconverged nested
+    /// run drops the history instead of propagating an SCF residual into every
+    /// later guess.
+    ///
+    /// **Exclusive with the other guess owners.** `predictor(...)` (ASPC
+    /// extrapolates the density) and `cpmd` (Car–Parrinello propagates the
+    /// coefficients) each answer "what is the density now", so combining
+    /// either with `xl_bomd` throws `std::invalid_argument` on the first
+    /// nested entry (`GPWEvaluator::build` refuses the same pairs).
+    ///
+    /// Channel convention: RHF/RKS propagate the factor-2 total density in one
+    /// channel; UHF/UKS/ROHF/ROKS propagate α and β independently; GHF
+    /// propagates the single 2n-dimensional spinor density.
+    bool xl_bomd = false;
+
+    /// @brief XL-BOMD dissipation order K — history depth K+1 (dimensionless).
+    ///
+    /// (κ, α, c_k) are tabulated rows, not a formula: Table I of Niklasson et
+    /// al. covers K ∈ [3, 9] and anything else throws `std::invalid_argument`
+    /// (lookup table, no fallback). Default 5, the order `GPWEvaluator` ships.
+    /// Changing it between runs re-seats the propagators (history dropped).
+    int xl_bomd_k = 5;
+
+    /// @brief XL-BOMD auxiliary-density propagation steps taken (one per
+    ///        converged nested run). @return Count; 0 under BOMD.
+    int xl_advances() const { return xl_advances_; }
 
     /// @brief Fictitious electronic kinetic energy T_e of the last CPMD step.
     /// @return T_e [eV]; 0 before any electron has moved (including the cold
@@ -821,6 +867,9 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
         int max_iter = -1;         ///< Budget override; <0 ⇒ member `max_iter`.
         double tol_override = -1;  ///< |ΔE| tol override; <0 ⇒ member `tol`.
         bool apply_aspc = true; ///< ASPC front/back; false on recursive call.
+        bool nested = false;    ///< Entered from an outer loop's force/energy
+                                ///< slot (the nuclear clock ticks) — XL-BOMD
+                                ///< propagates only on these entries.
     };
 
     /// @brief RAII guard: unwrap positions for the integral build on entry,
@@ -839,10 +888,17 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
         std::vector<StorageReal> x_, y_, z_;
     };
 
-    /// @brief THE funnel: prologue (per-run assembly) → Driver loop →
-    ///        epilogue (de-shift / spin / result fill / energy / forces).
-    ///        ASPC predict/correct/record is gated only on `use_predictor_`
-    ///        (and `opts.apply_aspc` to prevent recursive re-entry).
+    /// @brief THE funnel: guess ladder → prologue (per-run assembly) → Driver
+    ///        loop → epilogue (de-shift / spin / result fill / energy /
+    ///        forces) → propagator bookkeeping.
+    ///
+    ///        The guess is resolved **once**, by one ordered ladder — explicit
+    ///        guess > XL-BOMD aux > ASPC prediction > last-density reuse — and
+    ///        only the winning rung runs: an ASPC prediction that lost is
+    ///        neither used nor corrected. ASPC record and the last-density
+    ///        snapshot happen on every entry, gated on `opts.apply_aspc`
+    ///        (false on the corrector/fallback recursion, so it never
+    ///        re-enters); the XL advance additionally needs `opts.nested`.
     /// @param frame Geometry; mutated only on the mutating entries.
     /// @param guess Optional density guess.
     /// @param opts  Which shared behaviors apply on this entry.
@@ -955,6 +1011,28 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
     /// @throws std::runtime_error when the seed SCF has no usable
     ///         wavefunction or dropped overlap directions (`n_dropped_ > 0`).
     void cpmd_seed_();
+
+    // ── Extended-Lagrangian BOMD state (xl_bomd = true only) ──────────
+    /// Auxiliary-density propagators: `xl_alpha_` always (the factor-2 total
+    /// density when restricted, the spinor density under GHF, the α channel
+    /// otherwise), `xl_beta_` only where an independent β density exists
+    /// (UHF/UKS/ROHF/ROKS). Constructed on the first nested entry, `nullopt`
+    /// under BOMD.
+    std::optional<electronic::XlBomd> xl_alpha_;
+    std::optional<electronic::XlBomd> xl_beta_;
+    int xl_advances_ = 0; ///< Auxiliary propagations taken (public witness).
+
+    /// @brief Refuse the configurations that give XL-BOMD a second guess owner
+    ///        and construct the propagators, before any electron moves.
+    ///
+    /// Called on every nested entry and idempotent: it constructs (or, after a
+    /// `xl_bomd_k` change, re-seats) the propagators exactly when `xl_bomd` is
+    /// set, and drops them when it is not. Construction is where the Table-I
+    /// order is validated, so a bad K is reported before an SCF is spent
+    /// rather than after the first converged solve.
+    /// @throws std::invalid_argument on `xl_bomd` with the ASPC predictor, on
+    ///         `xl_bomd` with `cpmd`, or on `xl_bomd_k` outside [3, 9].
+    void engage_xl_bomd_();
 
     /// @brief One production Car–Parrinello step: rebuild integrals at the
     ///        new geometry, transport C under the new metric, evaluate the

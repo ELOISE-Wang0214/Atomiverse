@@ -680,6 +680,14 @@ if(ATV_BUILD_HF)
     # E_cons drift physics is regressions/dynamics/cpmd-{rhf-h2,rks-water,
     # uhf-o2}.
     atv_add_cpp_test(test_cpu_scf_cpmd            cpu/scf/test_scf_cpmd.cpp)
+    # esmm-cpmd-05-scf-xlbomd: XL-BOMD (Niklasson JCP 130, 214109) as the
+    # Gaussian-SCF guess — the xl_bomd/xl_bomd_k member surface, the
+    # exclusivity gates (ASPC predictor, cpmd, Table-I order K in [3,9]),
+    # auxiliary-history integrity (advance only on converged nested runs), and
+    # the guess ladder explicit > xl > ASPC > last-P. H2O/STO-3G on a
+    # ballistic nested-MD trajectory, ~1 s; the warm-step iteration margin and
+    # the drift envelope are regressions/dynamics/xl-bomd-rhf-water.
+    atv_add_cpp_test(test_cpu_scf_xl_bomd         cpu/scf/test_scf_xl_bomd.cpp)
     # hf-capability-gaps-08-stability: MO orbital-Hessian A/B kernel +
     # Seeger-Pople stability analysis. NO SCF loop: the converged H2/STO-3G
     # determinant is symmetry-exact in closed form (one Fock build, no

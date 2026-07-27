@@ -344,6 +344,11 @@ template <typename D>
 int MeanFieldMethod<D>::run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
                                           int budget) {
     (void)ctx;
+    // XL-BOMD engages here and nowhere else: the auxiliary density lives on
+    // the nuclear clock, so the nested entry is both the only place it may
+    // propagate and the natural place to refuse a second guess owner (and a
+    // dissipation order Table I does not have) before any SCF is spent.
+    engage_xl_bomd_();
     if (cpmd) {
         // Production Car-Parrinello step: no SCF at all — a fixed-density
         // evaluation plus one electronic velocity-Verlet advance.
@@ -357,6 +362,7 @@ int MeanFieldMethod<D>::run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
         validate_cpmd_config_();
         DriveOpts opts;
         opts.unwrap = true;
+        opts.nested = true;
         opts.forces = true; // CP nuclei need Born-Oppenheimer forces at t = 0
         opts.write_energy = true;
         if (budget > 0)
@@ -380,12 +386,56 @@ int MeanFieldMethod<D>::run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
     }
     DriveOpts opts;
     opts.unwrap = true;
+    opts.nested = true;
     opts.forces = compute_force;
     opts.write_energy = true;
     if (budget > 0)
         opts.max_iter = budget;
     drive_scf_(f, nullptr, opts);
     return iterations_;
+}
+
+// ── XL-BOMD engagement: refuse a second guess owner, seat the propagators ────
+
+template <typename D>
+void MeanFieldMethod<D>::engage_xl_bomd_() {
+    if (!xl_bomd) {
+        // Turned off (or never on): drop any history so a later re-enable
+        // starts a fresh trajectory instead of splicing across the gap.
+        xl_alpha_.reset();
+        xl_beta_.reset();
+        return;
+    }
+    // Competing guess owners. ASPC extrapolates a polynomial through past
+    // densities and CP propagates the coefficients, while XL propagates an
+    // auxiliary density with its own equation of motion — each answers "what
+    // is the density now", so running two means two answers. `GPWEvaluator`
+    // refuses the same pairs.
+    if (use_predictor_)
+        throw std::invalid_argument(
+            "MeanFieldMethod: xl_bomd and the ASPC density predictor are "
+            "mutually exclusive (ASPC extrapolates past densities; XL-BOMD "
+            "propagates an auxiliary density). Drop predictor(...) or clear "
+            "xl_bomd.");
+    if (cpmd)
+        throw std::invalid_argument(
+            "MeanFieldMethod: xl_bomd and cpmd are mutually exclusive "
+            "(Car-Parrinello propagates the orbital coefficients and never "
+            "re-converges the SCF that XL-BOMD would guess for). Clear one.");
+
+    // Seat the propagators (the constructor is the Table-I lookup, so an
+    // unsupported dissipation order throws here — before the first SCF —
+    // rather than after the first converged solve). A changed `xl_bomd_k`
+    // re-seats: the history belongs to one recursion, not two.
+    const bool dual_channel = (spin_ == SpinType::Unrestricted)
+                              || (spin_ == SpinType::RestrictedOpen);
+    if (!xl_alpha_ || xl_alpha_->order() != xl_bomd_k) {
+        xl_alpha_.emplace(xl_bomd_k);
+        if (dual_channel)
+            xl_beta_.emplace(xl_bomd_k);
+        else
+            xl_beta_.reset();
+    }
 }
 
 // ── THE funnel ────────────────────────────────────────────────────────────────
@@ -417,13 +467,45 @@ void MeanFieldMethod<D>::drive_scf_(Frame& frame, const SCFInitialGuess* guess,
         }
     }
 
-    // ASPC predict / correct / record — gated only on use_predictor_ (and
-    // opts.apply_aspc so the corrector/fallback recursion does not re-enter).
+    // ── THE GUESS LADDER ──────────────────────────────────────────────────
+    //
+    // One ordered resolution, highest rung wins, nothing below it runs:
+    //
+    //   1. the caller's explicit guess   — a caller who hands run() a density
+    //      has a reason (a chosen SCF branch, a continuous finite-difference
+    //      path), so no internal warm state may silently displace it;
+    //   2. the XL-BOMD auxiliary density — a dynamical variable on the nuclear
+    //      clock, available once its history is seeded;
+    //   3. the ASPC extrapolation        — a polynomial through the recorded
+    //      densities, available once its history is long enough;
+    //   4. the previous run's converged density (plain warm start).
+    //
+    // A prediction that loses is also not *corrected*: `predicted` stays false,
+    // so rung 1 takes the same plain full solve a cold method would take.
     SCFInitialGuess density_guess;
     const SCFInitialGuess* effective_guess = guess;
     bool predicted = false;
 
-    if (opts.apply_aspc && use_predictor_ && aspc_alpha_ && aspc_beta_) {
+    // Rung 1. `apply_aspc == false` is the corrector/fallback recursion, which
+    // already carries the guess this ladder resolved for it.
+    bool resolved = (guess != nullptr) || !opts.apply_aspc;
+
+    // Rung 2. Restricted / GHF carry one channel (the factor-2 total, resp.
+    // spinor, density); UHF/UKS/ROHF/ROKS carry α and β.
+    if (!resolved && xl_alpha_ && xl_alpha_->ready()) {
+        density_guess.P_alpha = xl_alpha_->aux();
+        density_guess.P_beta = (xl_beta_ && xl_beta_->ready())
+                                   ? xl_beta_->aux()
+                                   : xl_alpha_->aux();
+        density_guess.has_alpha = true;
+        density_guess.has_beta = true;
+        effective_guess = &density_guess;
+        resolved = true;
+    }
+
+    // Rung 3. Both channels are polled (predict has no side effect and the
+    // pair is used or dropped together).
+    if (!resolved && use_predictor_ && aspc_alpha_ && aspc_beta_) {
         xt::xtensor<double, 2> Pa_guess, Pb_guess;
         const bool have_alpha = aspc_alpha_->predict(Pa_guess);
         const bool have_beta = aspc_beta_->predict(Pb_guess);
@@ -434,15 +516,12 @@ void MeanFieldMethod<D>::drive_scf_(Frame& frame, const SCFInitialGuess* guess,
             density_guess.has_beta = true;
             effective_guess = &density_guess;
             predicted = true;
-        } else if (has_last_density_ && !guess) {
-            density_guess.P_alpha = last_P_alpha_;
-            density_guess.P_beta = last_P_beta_;
-            density_guess.has_alpha = true;
-            density_guess.has_beta = true;
-            effective_guess = &density_guess;
+            resolved = true;
         }
-    } else if (opts.apply_aspc && has_last_density_ && !guess) {
-        // Warm-start from the previous outer-step density (even without ASPC).
+    }
+
+    // Rung 4. The previous outer-step density (available with or without ASPC).
+    if (!resolved && has_last_density_) {
         density_guess.P_alpha = last_P_alpha_;
         density_guess.P_beta = last_P_beta_;
         density_guess.has_alpha = true;
@@ -472,6 +551,25 @@ void MeanFieldMethod<D>::drive_scf_(Frame& frame, const SCFInitialGuess* guess,
     // alpha member carries the factor-2 total density (old result convention).
     const RealMatrix& P_alpha = P_alpha_;
     const RealMatrix& P_beta = restricted_ ? P_alpha_ : P_beta_;
+
+    // XL-BOMD: exactly one auxiliary propagation per converged nested run —
+    // the recursion is integrating the nuclear trajectory, so a standalone
+    // single point (no nuclear step) must not enter it, and an unconverged
+    // step has no density worth propagating (its residual would leak into
+    // every later guess). Both cases match the GPW evaluator's treatment.
+    if (opts.apply_aspc && opts.nested && xl_alpha_) {
+        if (this->converged()) {
+            xl_alpha_->advance(P_alpha);
+            if (xl_beta_)
+                xl_beta_->advance(P_beta);
+            ++xl_advances_;
+        } else {
+            xl_alpha_->reset();
+            if (xl_beta_)
+                xl_beta_->reset();
+        }
+    }
+
     if (opts.apply_aspc && use_predictor_ && aspc_alpha_ && aspc_beta_) {
         if (predicted) {
             xt::xtensor<double, 2> Pa_corr, Pb_corr;
@@ -1125,6 +1223,11 @@ void MeanFieldMethod<D>::validate_cpmd_config_() const {
             "MeanFieldMethod: cpmd and the ASPC density predictor are "
             "mutually exclusive (ASPC extrapolates the density; CP propagates "
             "the coefficients). Drop predictor(...) or clear cpmd.");
+    if (xl_bomd)
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd and xl_bomd are mutually exclusive "
+            "(XL-BOMD propagates an auxiliary density to guess an SCF that a "
+            "CP production step never runs). Clear one.");
 
     // Fock builds / one-electron operators the CP force does not cover.
     if (ri != RI::None)

@@ -44,11 +44,13 @@
 /// **Refusal lattice coverage** (ac-004). Rows pinned here: ROHF, ROKS, GHF,
 /// `predictor()`, `ri != None`, `x2c`, `solvent_eps > 0`, `mom != Off`,
 /// `soscf`, non-empty `point_charges`, nonzero `external_field`, `d3bj`, `d4`,
-/// `n_dropped_ > 0` at seed, plus both standalone entries. NOT pinned: the
-/// `xl_bomd` row — `MeanFieldMethod` has no `xl_bomd` member in this tree
-/// (esmm-cpmd-05 adds XL-BOMD to the SCF methods and owns its own mutual-
-/// exclusion guard). Adding a test for a member that a later spec introduces
-/// would pin this file to that spec's shape sight-unseen.
+/// `n_dropped_ > 0` at seed, plus both standalone entries. The `xl_bomd` row is
+/// pinned **from the XL side**: esmm-cpmd-05 added the member together with
+/// `MeanFieldMethodXlBomd.RefusesCpmd` (tests/cpu/scf/test_scf_xl_bomd.cpp) and
+/// the symmetric `validate_cpmd_config_` throw (`cpmd` + `xl_bomd` →
+/// `std::invalid_argument`). Both flags live on one method object, so whichever
+/// validator runs first sees the pair and one guard test covers both
+/// directions; this file does not duplicate it.
 ///
 /// **Determinism.** Fixed geometries and velocities, no RNG, no wall clock, no
 /// filesystem, no network, no third-party oracle. The gradient parity bound is

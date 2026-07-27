@@ -472,6 +472,11 @@ if(ATV_BUILD_HF)
         atv_add_regression(dynamics cpmd-rks-water)
         # UHF triplet O2/STO-3G — dual-channel (alpha + beta) fictitious DOF.
         atv_add_regression(dynamics cpmd-uhf-o2)
+        # Extended-Lagrangian BOMD on the same seam (esmm-cpmd-05): the
+        # auxiliary density is the SCF guess instead of the propagated
+        # coefficients. RHF/STO-3G H2O — warm-step iteration reduction vs a
+        # cold-start twin and a plain-BOMD (last-density reuse) twin.
+        atv_add_regression(dynamics xl-bomd-rhf-water)
     endif()
 endif()
 if(ATV_BUILD_PATH)
