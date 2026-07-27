@@ -41,6 +41,20 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
 | W3-5 | esmm-cpmd-05-scf-xlbomd | W3-4 | DONE 2026-07-27 (closed; see git) — XL-BOMD on the SCF methods (guess ladder; ASPC-vs-explicit-guess bug fixed) |
 | W3-6 | esmm-cpmd-06-single-eval | W3-3 | DONE 2026-07-27 (closed; see git) — GpwDft::overlap(); CPMD single KS eval per step |
 
+## Ticket — design review owed (operator TODO, 2026-07-27)
+
+- **Minimize/Optimizer taxonomy is non-orthogonal** (operator): "CG 到底
+  optimizer 还是 minimizer，还是某种方法？" Three near-synonyms span the
+  layers — namespace `cpu::minimizer::`, Driver preset `Minimize` (the
+  loop), component kind `Optimizer` (the step-proposal role), concretes
+  `CG`/`LBFGS`/`FIRE` — and "method" is already taken by electronic
+  structure. Live symptom: `add(CG{})` vs `set_optimizer(CG{})` confusion
+  in tests during the concurrent no-compat API migration. Route:
+  /mol:discuss for a vocabulary decision (rename namespace? fold kind
+  naming into the driver's? document the tri-layer as-is?); overlaps the
+  known "namespaces not yet aligned to directories" debt. No mid-wave
+  redesign.
+
 ## Ticket — /mol:fix owed (named 2026-07-27, esmm-cpmd-04 close-out)
 
 - **BOMD+d3bj/d4 forces are non-conservative**: `e_total_ += e_disp_`
