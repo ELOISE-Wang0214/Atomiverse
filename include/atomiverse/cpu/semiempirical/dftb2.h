@@ -30,8 +30,11 @@ enum class DftbSkSet {
 /// Mulliken Δq and spin population m = Nα−Nβ.
 ///
 /// - `sk_set = MioSketch` (default): `basis_data/dftb_mio_tables.h` exponential
-///   sketch (+ spin_W). Closed shell (`multiplicity == 1`): analytic nuclear
-///   forces (HF + Pulay + SCC γ + repulsive). Open shell: re-SCC central FD.
+///   sketch (+ spin_W). **Γ-point PBC:** lattice-summed H⁰/S, screened γ, and
+///   repulsive within static SK cutoffs (molecular limit when L ≫ r_cut).
+///   Closed shell (`multiplicity == 1`): analytic nuclear forces (HF + Pulay +
+///   SCC γ + repulsive) under the min-image molecular limit. Open shell:
+///   re-SCC central FD.
 /// - `sk_set = ThreeOb`: `basis_data/dftb_3ob_tables.h` 3ob-3-1 radial H/S +
 ///   repulsive (Gaus et al., JCTC 2013; organic CHNO). Closed-shell energy;
 ///   forces are re-SCC FD. Spin channel is MioSketch-only.

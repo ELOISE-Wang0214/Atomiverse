@@ -1,5 +1,6 @@
 /// @file src/cpu/semiempirical/dftb2.cpp
 /// SCC-DFTB2 multi-element: mio sketch (spin + analytic F) + 3ob-3-1 SK.
+/// Γ-point PBC (MioSketch): lattice-summed H0/S, screened γ, and repulsive.
 #include "atomiverse/cpu/semiempirical/dftb2.h"
 
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/linalg/matrix.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_3ob_tables.h"
@@ -80,11 +82,14 @@ double gamma_ab(double r, double ua, double ub) {
     return 1.0 / std::sqrt(r * r + tau * tau);
 }
 
-/// @brief Fill  n_a × n_b  block of H0/S for atoms A–B separated by R vec.
-void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
-                   const DftbPairSkRow& sk, double dx, double dy, double dz,
-                   double r, linalg::RealMatrix& H0, linalg::RealMatrix& S,
-                   int ia0, int ib0) {
+/// @brief Write directed A→B block of H0/S for bond vector R = R_B − R_A (accumulate).
+///
+/// Does **not** write the transpose — lattice-sum callers walk all ordered pairs (a,b,T).
+/// Min-image molecular forces keep a separate assign-both-triangles helper below.
+void fill_sk_block_directed(const DftbElementRow& ea, const DftbElementRow& eb,
+                            const DftbPairSkRow& sk, double dx, double dy,
+                            double dz, double r, linalg::RealMatrix& H0,
+                            linalg::RealMatrix& S, int ia0, int ib0) {
     if (r < 1e-12)
         return;
     const double inv_r = 1.0 / r;
@@ -101,24 +106,22 @@ void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
     const double Spps = s_radial(sk.s_pps0, r, sk.s_r0, sk.s_w);
     const double Sppp = s_radial(sk.s_ppp0, r, sk.s_r0, sk.s_w);
 
-    auto set_hs = [&](int i, int j, double hv, double sv) {
-        H0(ia0 + i, ib0 + j) = hv;
-        H0(ib0 + j, ia0 + i) = hv;
-        S(ia0 + i, ib0 + j) = sv;
-        S(ib0 + j, ia0 + i) = sv;
+    auto add_hs = [&](int i, int j, double hv, double sv) {
+        H0(ia0 + i, ib0 + j) += hv;
+        S(ia0 + i, ib0 + j) += sv;
     };
 
-    set_hs(0, 0, Hss, Sss);
+    add_hs(0, 0, Hss, Sss);
 
     if (ea.n_ao >= 1 && eb.n_ao == 4) {
-        set_hs(0, 1, l * Hsp, l * Ssp);
-        set_hs(0, 2, m * Hsp, m * Ssp);
-        set_hs(0, 3, n * Hsp, n * Ssp);
+        add_hs(0, 1, l * Hsp, l * Ssp);
+        add_hs(0, 2, m * Hsp, m * Ssp);
+        add_hs(0, 3, n * Hsp, n * Ssp);
     }
     if (ea.n_ao == 4 && eb.n_ao >= 1) {
-        set_hs(1, 0, -l * Hsp, -l * Ssp);
-        set_hs(2, 0, -m * Hsp, -m * Ssp);
-        set_hs(3, 0, -n * Hsp, -n * Ssp);
+        add_hs(1, 0, -l * Hsp, -l * Ssp);
+        add_hs(2, 0, -m * Hsp, -m * Ssp);
+        add_hs(3, 0, -n * Hsp, -n * Ssp);
     }
     if (ea.n_ao == 4 && eb.n_ao == 4) {
         const double dir[3] = {l, m, n};
@@ -127,10 +130,64 @@ void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
                 const double d_ab = (a == b) ? 1.0 : 0.0;
                 const double hv = dir[a] * dir[b] * (Hpps - Hppp) + d_ab * Hppp;
                 const double sv = dir[a] * dir[b] * (Spps - Sppp) + d_ab * Sppp;
-                set_hs(1 + a, 1 + b, hv, sv);
+                add_hs(1 + a, 1 + b, hv, sv);
             }
         }
     }
+}
+
+struct LatVec {
+    double tx, ty, tz;
+};
+
+/// @brief Enumerate lattice translations with |T| ≲ max_cut + cell edge.
+/// Columns of `cell` are lattice vectors (matches Box). Includes T = 0.
+std::vector<LatVec> enumerate_lattice(const Mat3& cell, double max_cut) {
+    double col_len[3];
+    for (int d = 0; d < 3; ++d) {
+        const double cx = static_cast<double>(cell(0, d));
+        const double cy = static_cast<double>(cell(1, d));
+        const double cz = static_cast<double>(cell(2, d));
+        col_len[d] = std::sqrt(cx * cx + cy * cy + cz * cz);
+        if (col_len[d] < 1e-9)
+            throw std::runtime_error("DFTB2: degenerate cell edge");
+    }
+    int nmax[3];
+    for (int d = 0; d < 3; ++d)
+        nmax[d] = std::max(
+            1, static_cast<int>(std::ceil(max_cut / col_len[d])) + 1);
+
+    std::vector<LatVec> out;
+    out.reserve(static_cast<std::size_t>((2 * nmax[0] + 1) * (2 * nmax[1] + 1)
+                                         * (2 * nmax[2] + 1)));
+    for (int n0 = -nmax[0]; n0 <= nmax[0]; ++n0) {
+        for (int n1 = -nmax[1]; n1 <= nmax[1]; ++n1) {
+            for (int n2 = -nmax[2]; n2 <= nmax[2]; ++n2) {
+                const double tx = n0 * static_cast<double>(cell(0, 0))
+                                  + n1 * static_cast<double>(cell(0, 1))
+                                  + n2 * static_cast<double>(cell(0, 2));
+                const double ty = n0 * static_cast<double>(cell(1, 0))
+                                  + n1 * static_cast<double>(cell(1, 1))
+                                  + n2 * static_cast<double>(cell(1, 2));
+                const double tz = n0 * static_cast<double>(cell(2, 0))
+                                  + n1 * static_cast<double>(cell(2, 1))
+                                  + n2 * static_cast<double>(cell(2, 2));
+                out.push_back({tx, ty, tz});
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<LatVec>
+lattice_images_for(const cpu::Box& box,
+                   const std::vector<const DftbElementRow*>& el) {
+    double max_cut = 0;
+    for (const auto* e : el)
+        max_cut = std::max(max_cut, e->r_cut);
+    if (max_cut < 1e-12)
+        max_cut = 1.0;
+    return enumerate_lattice(box.cell(), max_cut);
 }
 
 /// dγ/dR = −R γ³.
@@ -248,7 +305,7 @@ struct SccResult {
     int n_occ = 0;
 };
 
-/// Build H0/S once for current geometry.
+/// Build lattice-summed H0/S at the Γ-point (molecular limit when L ≫ r_cut).
 void build_h0_s(int n_at, int n_ao, const std::vector<const DftbElementRow*>& el,
                 const std::vector<int>& ao0, const int* type,
                 const StorageReal* x, const StorageReal* y, const StorageReal* z,
@@ -256,13 +313,9 @@ void build_h0_s(int n_at, int n_ao, const std::vector<const DftbElementRow*>& el
                 linalg::RealMatrix& S) {
     H0 = xt::zeros<double>({n_ao, n_ao});
     S = xt::zeros<double>({n_ao, n_ao});
-    auto dist_vec = [&](int i, int j, double& dx, double& dy, double& dz) {
-        dx = static_cast<double>(x[j] - x[i]);
-        dy = static_cast<double>(y[j] - y[i]);
-        dz = static_cast<double>(z[j] - z[i]);
-        box.min_image(dx, dy, dz);
-        return std::sqrt(dx * dx + dy * dy + dz * dz);
-    };
+    const auto images = lattice_images_for(box, el);
+
+    // Onsite (T = 0, a = b): diagonal e_s / e_p and S = 1.
     for (int a = 0; a < n_at; ++a) {
         const auto& ea = *el[static_cast<std::size_t>(a)];
         const int ia = ao0[static_cast<std::size_t>(a)];
@@ -274,33 +327,65 @@ void build_h0_s(int n_at, int n_ao, const std::vector<const DftbElementRow*>& el
                 S(ia + p, ia + p) = 1.0;
             }
         }
-        for (int b = a + 1; b < n_at; ++b) {
+    }
+
+    // Lattice sum over ordered pairs (a,b) and images T of B.
+    for (int a = 0; a < n_at; ++a) {
+        const auto& ea = *el[static_cast<std::size_t>(a)];
+        const int ia = ao0[static_cast<std::size_t>(a)];
+        const double xa = static_cast<double>(x[a]);
+        const double ya = static_cast<double>(y[a]);
+        const double za = static_cast<double>(z[a]);
+        for (int b = 0; b < n_at; ++b) {
             const auto& eb = *el[static_cast<std::size_t>(b)];
-            double dx, dy, dz;
-            const double r = dist_vec(a, b, dx, dy, dz);
-            if (r > std::max(ea.r_cut, eb.r_cut))
-                continue;
+            const int ib = ao0[static_cast<std::size_t>(b)];
+            const double xb = static_cast<double>(x[b]);
+            const double yb = static_cast<double>(y[b]);
+            const double zb = static_cast<double>(z[b]);
+            const double rcut = std::max(ea.r_cut, eb.r_cut);
             const auto& sk = pair_sk(type[a], type[b]);
-            fill_sk_block(ea, eb, sk, dx, dy, dz, r, H0, S, ia,
-                          ao0[static_cast<std::size_t>(b)]);
+            for (const auto& T : images) {
+                const double dx = xb + T.tx - xa;
+                const double dy = yb + T.ty - ya;
+                const double dz = zb + T.tz - za;
+                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (r < 1e-12 || r > rcut)
+                    continue;
+                fill_sk_block_directed(ea, eb, sk, dx, dy, dz, r, H0, S, ia,
+                                       ib);
+            }
         }
     }
 }
 
 double repulsive_energy(int n_at, const int* type, const StorageReal* x,
                         const StorageReal* y, const StorageReal* z,
-                        const cpu::Box& box) {
+                        const cpu::Box& box,
+                        const std::vector<const DftbElementRow*>& el) {
+    const auto images = lattice_images_for(box, el);
     double e_rep = 0;
-    for (int a = 0; a < n_at; ++a)
-        for (int b = a + 1; b < n_at; ++b) {
-            double dx = static_cast<double>(x[b] - x[a]);
-            double dy = static_cast<double>(y[b] - y[a]);
-            double dz = static_cast<double>(z[b] - z[a]);
-            box.min_image(dx, dy, dz);
-            const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+    for (int a = 0; a < n_at; ++a) {
+        const double xa = static_cast<double>(x[a]);
+        const double ya = static_cast<double>(y[a]);
+        const double za = static_cast<double>(z[a]);
+        for (int b = 0; b < n_at; ++b) {
+            const double xb = static_cast<double>(x[b]);
+            const double yb = static_cast<double>(y[b]);
+            const double zb = static_cast<double>(z[b]);
+            const double rcut = std::max(el[static_cast<std::size_t>(a)]->r_cut,
+                                         el[static_cast<std::size_t>(b)]->r_cut);
             const auto& rep = pair_rep(type[a], type[b]);
-            e_rep += rep.a * std::exp(-rep.b * r);
+            for (const auto& T : images) {
+                const double dx = xb + T.tx - xa;
+                const double dy = yb + T.ty - ya;
+                const double dz = zb + T.tz - za;
+                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (r < 1e-12 || r > rcut)
+                    continue;
+                e_rep += 0.5 * rep.a * std::exp(-rep.b * r);
+            }
         }
+    }
     return e_rep;
 }
 
@@ -328,15 +413,33 @@ void apply_shift(int n_at, const std::vector<const DftbElementRow*>& el,
 double gamma_pair(int a, int b, const std::vector<const DftbElementRow*>& el,
                   const StorageReal* x, const StorageReal* y,
                   const StorageReal* z, const cpu::Box& box) {
-    if (a == b)
-        return el[static_cast<std::size_t>(a)]->hubbard_u;
-    double dx = static_cast<double>(x[b] - x[a]);
-    double dy = static_cast<double>(y[b] - y[a]);
-    double dz = static_cast<double>(z[b] - z[a]);
-    box.min_image(dx, dy, dz);
-    const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
-    return gamma_ab(r, el[static_cast<std::size_t>(a)]->hubbard_u,
-                    el[static_cast<std::size_t>(b)]->hubbard_u);
+    const double ua = el[static_cast<std::size_t>(a)]->hubbard_u;
+    const double ub = el[static_cast<std::size_t>(b)]->hubbard_u;
+    const double rcut = std::max(el[static_cast<std::size_t>(a)]->r_cut,
+                                 el[static_cast<std::size_t>(b)]->r_cut);
+    const auto images = lattice_images_for(box, el);
+    const double xa = static_cast<double>(x[a]);
+    const double ya = static_cast<double>(y[a]);
+    const double za = static_cast<double>(z[a]);
+    const double xb = static_cast<double>(x[b]);
+    const double yb = static_cast<double>(y[b]);
+    const double zb = static_cast<double>(z[b]);
+    double g = 0;
+    for (const auto& T : images) {
+        const double dx = xb + T.tx - xa;
+        const double dy = yb + T.ty - ya;
+        const double dz = zb + T.tz - za;
+        const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+        if (r < 1e-12) {
+            if (a == b)
+                g += ua; // onsite Hubbard
+            continue;
+        }
+        if (r > rcut)
+            continue;
+        g += gamma_ab(r, ua, ub);
+    }
+    return g;
 }
 
 SccResult scc_energy_restricted(
@@ -401,7 +504,7 @@ SccResult scc_energy_restricted(
     }
 
     SccResult out;
-    out.energy = e_band - e_scc + repulsive_energy(n_at, type, x, y, z, box);
+    out.energy = e_band - e_scc + repulsive_energy(n_at, type, x, y, z, box, el);
     out.dq = std::move(dq);
     out.spin.assign(static_cast<std::size_t>(n_at), 0.0);
     out.C = std::move(C);
@@ -527,7 +630,7 @@ SccResult scc_energy_unrestricted(
 
     SccResult out;
     out.energy = e_band - e_scc - e_spin
-                 + repulsive_energy(n_at, type, x, y, z, box);
+                 + repulsive_energy(n_at, type, x, y, z, box, el);
     out.dq = std::move(dq);
     out.spin = std::move(mspin);
     return out;
