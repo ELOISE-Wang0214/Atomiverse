@@ -12,20 +12,36 @@ namespace ATV {
 namespace cpu {
 namespace semiempirical {
 
-/// @brief SCC-DFTB2 energy (+ optional analytic forces) for H/C/N/O.
+/// @brief Which static SK parameter set DFTB2 uses.
+///
+/// Parameters are a public member on the method (no `*Config` bag).
+enum class DftbSkSet {
+    /// In-tree mio-style exponential sketch (H/C/N/O) — product foothold.
+    MioSketch = 0,
+    /// DFTB.org 3ob-3-1 organic CHNO radial tables (static header).
+    ThreeOb = 1,
+};
+
+/// @brief SCC-DFTB2 energy (+ optional forces) for H/C/N/O.
 ///
 /// Self-consistent-charge DFTB2 (Elstner et al., Phys. Rev. B **58**, 7260
 /// (1998), DOI 10.1103/PhysRevB.58.7260): electronic tight-binding + second-
 /// order SCC Coulomb + pair repulsive. Integrals and onsite/Hubbard data come
-/// from static mio-style tables in `basis_data/dftb_mio_tables.h` (no runtime
-/// `.skf` parser, no public factory). Supported Z: 1, 6, 7, 8; any other
-/// element or missing pair throws.
+/// from static tables — no runtime `.skf` parser, no public factory.
+///
+/// - `sk_set = MioSketch` (default): `basis_data/dftb_mio_tables.h` exponential
+///   sketch (not bit-identical to DFTB.org mio-1-1).
+/// - `sk_set = ThreeOb`: `basis_data/dftb_3ob_tables.h` transcribed 3ob-3-1
+///   radial H/S + repulsive spline (Gaus et al., JCTC 2013; organic CHNO).
+///
+/// Supported Z: 1, 6, 7, 8; any other element or missing pair throws.
 ///
 /// Units on the public surface: energy [eV], positions [Å], forces [eV/Å].
 ///
 /// @code
 ///   cpu::semiempirical::DFTB2 dftb;
-///   dftb.with_forces = true;
+///   dftb.sk_set = cpu::semiempirical::DftbSkSet::ThreeOb;
+///   dftb.with_forces = false;
 ///   eval.on(evaluate::Phase::evaluate).add(std::move(dftb));
 /// @endcode
 class DFTB2 : public cpu::Semiempirical {
@@ -36,6 +52,8 @@ class DFTB2 : public cpu::Semiempirical {
     int max_scc = 50;
     /// @brief When true, write forces F=−∇E [eV/Å] on launch (central FD of E).
     bool with_forces = true;
+    /// @brief Static SK parameter set (constructor/member — not a Config bag).
+    DftbSkSet sk_set = DftbSkSet::MioSketch;
 
     DFTB2() = default;
 
