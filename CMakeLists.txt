@@ -269,6 +269,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/observe/potential_profile.cpp
         src/cpu/observe/charge_autocorr.cpp
         src/cpu/observe/elastance_observer.cpp
+        src/cpu/observe/voronoi_volume.cpp
 
         # CPU MPI communication subsystem (LAMMPS-shaped, ATV::cpu::comm::*)
         src/cpu/communication/atom_pack.cpp
