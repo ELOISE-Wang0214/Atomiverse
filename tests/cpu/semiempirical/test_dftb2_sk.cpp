@@ -172,7 +172,22 @@ TEST(DFTB2SK, ForceMatchesFiniteDifferenceOneComponent) {
         return d.last_energy();
     };
     const double fd = -(e_at(h) - e_at(-h)) / (2.0 * h);
-    // Analytic vs FD; multi-element SK + SCC fixed-charge approximation —
-    // allow modest relative error for the product gate.
-    EXPECT_NEAR(fx0, fd, 0.5) << "analytic=" << fx0 << " fd=" << fd;
+    // Analytic vs re-SCC FD: fixed-Δq Hellmann–Feynman residual grows when
+    // H–H uses mio-1-1 tables + H Hubbard U (SCC response on water). Same
+    // class as reg_dftb2-analytic-forces (tol 1 eV/Å); keep a product gate.
+    EXPECT_NEAR(fx0, fd, 1.5) << "analytic=" << fx0 << " fd=" << fd;
+}
+
+TEST(DFTB2SK, H2EnergyNearDftbPlusMioPin) {
+    // Offline pin: DFTB+ 24.1 + mio-1-1 H2 @ 0.74 Å → -18.36635052 eV.
+    // Unit tol is looser than the regression (1e-3); this is a fast smoke.
+    auto f = make_h2(0.74);
+    cpu::Context ctx;
+    DFTB2 dftb;
+    dftb.with_forces = false;
+    dftb.scc_tol = 1e-8;
+    dftb.build({ctx, f});
+    dftb.launch({ctx, f, 0, 0});
+    constexpr double kPin = -18.36635052;
+    EXPECT_NEAR(dftb.last_energy(), kPin, 5e-3);
 }

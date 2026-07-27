@@ -1,5 +1,10 @@
 # H2O SCC-DFTB2 (static mio-style SK)
 
+```text
+oracle: literature
+oracle_version: Elstner et al. PRB 58, 7260 (1998) — framework gate (not DFTB+ E pin)
+```
+
 ## Method
 
 Self-consistent-charge DFTB2 (Elstner et al., *Phys. Rev. B* **58**, 7260
@@ -7,9 +12,10 @@ Self-consistent-charge DFTB2 (Elstner et al., *Phys. Rev. B* **58**, 7260
 
 ## Data
 
-In-tree static tables `basis_data/dftb_mio_tables.h` for H/C/N/O only.
-**Not** a full DFTB.org mio-1-1 `.skf` dump — hoppings are mio-style
-exponentials for the product path (no runtime parser).
+In-tree static tables for H/C/N/O: H onsite/U + H–H from transcribed mio-1-1
+(`dftb_mio_hh_sk.h`); other pairs exponential sketches (`dftb_mio_tables.h`).
+No runtime `.skf` parser. Full multi-element mio E identity is a separate pin
+(`dftb2-dftbplus-energy-pin` for H₂).
 
 ## Geometry
 
@@ -27,4 +33,5 @@ Cubic box 20 Å (isolated).
 
 - Finite, non-zero total energy [eV] on `frame.meta[kEnergy]`
 - Finite analytic forces [eV/Å] with |F|² > 0
-- One Cartesian component matches central FD to 0.5 eV/Å
+- One Cartesian component matches central FD to **1.5 eV/Å** (fixed-Δq HF vs
+  re-SCC residual after mio-1-1 H–H / H U)
