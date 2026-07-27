@@ -134,9 +134,14 @@ class Minimize : public Driver<ATV::minimizer::Phase> {
 
     Minimize() {
         // Phase-agnostic backend-root Zero*, bound to minimizer phases.
+        // kStress is accumulated by the pair/bonded virials exactly like the
+        // forces are (`PairLJCut` does `+=`), so it needs the same per-iteration
+        // clean slate — without it a cell relax sums the virial over every
+        // minimizer iteration and reports a pressure that only grows.
         this->on(ATV::minimizer::Phase::force)
             .add(cpu::ZeroForces{}, -1000)
-            .add(cpu::ZeroEnergy{}, -999);
+            .add(cpu::ZeroEnergy{}, -999)
+            .add(cpu::ZeroStress{}, -998);
         this->on(ATV::minimizer::Phase::end_of_step).add(cpu::Publish{}, 10);
     }
 

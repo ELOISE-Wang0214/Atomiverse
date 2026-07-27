@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/vibration/hessian.h"
 
+#include "atomiverse/cpu/component/zero.h"
 #include "atomiverse/cpu/vibration/frequency_report.h"
 #include "atomiverse/cpu/vibration/hessian_diagonalizer.h"
 #include "atomiverse/cpu/vibration/mass_weighting.h"
@@ -14,6 +15,27 @@ namespace cpu {
 namespace vib {
 
 namespace {
+
+/// @brief Bind the driver-owned accumulator zeroing for the force phase.
+///
+/// Zeroing the force/energy accumulators is the hosting driver's job, never a
+/// force source's: a source that zeroed would erase a co-bound source. Without
+/// it an accumulating (`+=`) classical Potential integrates its forces across
+/// the `6N` displacement passes and the central difference returns `k/2`
+/// instead of the curvature `k`. Orders `-1000`/`-999` mirror `md::MD` and
+/// `vib::Phonon`, so every driver's force slot has the same head.
+///
+/// Called from **every** construction path (`wire_full_chain` and the
+/// `WithoutAccumulator` ctor) exactly once, so the two wiring sites cannot
+/// drift apart.
+///
+/// @param driver Driver to register the two Zero components into.
+template <class Driver>
+void wire_zeroing(Driver& driver) {
+    driver.on(ATV::vib::Phase::force)
+        .add(cpu::ZeroForces{}, -1000)
+        .add(cpu::ZeroEnergy{}, -999);
+}
 
 /// @brief Register the full vibrational-analysis component chain.
 ///
@@ -32,6 +54,7 @@ void wire_full_chain(Driver& driver, HessianWorkspace* ws, double temperature,
                      double pressure, int multiplicity, int symmetry_number,
                      const std::string& frequency_tsv,
                      const std::string& mode_xyz_prefix) {
+    wire_zeroing(driver);
     driver.add(ReferenceGeometry{ws});
     driver.add(DisplaceStep{ws});
     driver.add(HessianAccumulator{ws});
@@ -69,6 +92,7 @@ Hessian::Hessian(double temperature, double pressure, int multiplicity,
 Hessian::Hessian(WithoutAccumulator /*tag*/) {
     // Test-only configuration: omit HessianAccumulator so the build-time
     // validation throws for the missing Capability::Hessian component.
+    wire_zeroing(*this);
     add(ReferenceGeometry{workspace_.get()});
     add(DisplaceStep{workspace_.get()});
     add(Symmetrize{workspace_.get()});

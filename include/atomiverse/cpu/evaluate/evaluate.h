@@ -73,6 +73,10 @@ class Evaluate : public Driver<ATV::evaluate::Phase> {
     Evaluate() {
         this->on(ATV::evaluate::Phase::prepare).add(cpu::ZeroForces{}, -1000);
         this->on(ATV::evaluate::Phase::prepare).add(cpu::ZeroEnergy{}, -999);
+        // kStress accumulates from the pair/bonded virials just like the
+        // forces do; a reused Evaluate driver would otherwise sum the virial
+        // over every pass (mirrors MD's ZeroStress at pre_force −998).
+        this->on(ATV::evaluate::Phase::prepare).add(cpu::ZeroStress{}, -998);
     }
 
     /// @brief Run a single evaluation pass through the compiled Plan.

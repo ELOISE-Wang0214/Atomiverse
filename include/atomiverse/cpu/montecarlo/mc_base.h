@@ -140,10 +140,15 @@ class McBase : public Driver<ATV::sampling::Phase> {
     ///        the acceptance policy (interleaved draws — one sequence per
     ///        seed, so trajectories are reproducible).
     explicit McBase(std::uint64_t seed) : rng_(seed) {
-        // Zero the energy accumulator at the head of the trial-energy phase
-        // so the evaluator accumulates onto a clean slate each move (mirrors
-        // MD's ZeroEnergy at pre_force −999).
-        this->on(ATV::sampling::Phase::energy).add(cpu::ZeroEnergy{}, -999);
+        // Zero the accumulators at the head of the trial-energy phase so the
+        // evaluator accumulates onto a clean slate each move (mirrors MD's
+        // pair at pre_force −1000 / −999). MC scores energies, but an
+        // accumulating force source still writes kAtom_f* on every trial, and
+        // an unzeroed force channel grows without bound over a long chain
+        // (overflow / NaN, and a misleading force field for any observer).
+        this->on(ATV::sampling::Phase::energy)
+            .add(cpu::ZeroForces{}, -1000)
+            .add(cpu::ZeroEnergy{}, -999);
     }
 
     /// @brief Enforce that a pair evaluator that needs a neighbor list has one.

@@ -1,6 +1,6 @@
 ---
 slug: esmm-contract-01-zeroing
-status: approved
+status: in-progress
 created: 2026-07-26
 revised: 2026-07-26
 domain: driver / pipeline-contract
@@ -109,13 +109,26 @@ All of these are **outside** the operator's in-flight dirty set (verified
 
 ## Tasks
 
-- [ ] RED: `tests/cpu/vibration/test_hessian_zeroing.cpp` — an accumulate-style
+- [x] RED: `tests/cpu/vibration/test_hessian_zeroing.cpp` — an accumulate-style
   (`+=`) harmonic stub potential under `vib::Hessian` must yield `H00 == k`
   (fails today with k/2-flavored garbage)
-- [ ] RED: `tests/cpu/path/test_path_zeroing.cpp` — two PathDriver iterations
+  (captured H00 = 1.25 = k/2 EXACT for k=2.5; ctor plan-shape test included
+  via public Driver::plan(); right-reason probe green with caller-side Zero*)
+- [x] RED: `tests/cpu/path/test_path_zeroing.cpp` — two PathDriver iterations
   with a `+=` stub: iteration-2 replica forces equal iteration-1's at the same
   geometry (fails today: doubled)
-- [ ] Add the five driver Zero bindings per the table
+  (captured exact ×2 on all 3 replicas; iter-0 matches analytic — failure
+  isolated to accumulation. NAMED blocking side-find: tests/CMakeLists
+  :191-193 qmmm unit tests unguarded by ATV_BUILD_HF → default config link
+  failure; routed to GREEN)
+- [x] Add the five driver Zero bindings per the table
+      (wire_zeroing helper at the earned 2nd call site covers both Hessian
+      ctors; side-fix: multiscale unit-test registrations gated SE-outer/
+      HF-inner per nm symbol evidence. CORRECTION: four anchors move —
+      Evaluate/Minimize/Hessian/MC; PathPlanShapeUnchanged asserts no force
+      slot and needs nothing. NAMED deeper debt: root CMake compiles qmmm
+      electrostatic/polarizable sources under SE alone while they reference
+      RHF → SEMIEMPIRICAL AND HF gate owed, folded into the qmmm wave)
 - [ ] Update the three plan-shape anchors in `test_driver_binding_kind.cpp`
 - [ ] Tighten `harmonic_driver_matrix`: delete the k/2 hedge, assert the exact
   scale; run the regression and record H00 == k

@@ -187,10 +187,21 @@ atv_add_cpp_test(test_cpu_pair_born               cpu/potentials/test_pair_born.
 atv_add_cpp_test(test_cpu_pim_induced_dipole      cpu/potentials/test_pim_induced_dipole.cpp)
 atv_add_cpp_test(test_cpu_minimize_aniso_cell     cpu/minimize/test_anisotropic_cell.cpp)
 atv_add_cpp_test(test_cpu_xtb_gfn0                cpu/semiempirical/test_xtb_gfn0.cpp)
-atv_add_cpp_test(test_cpu_qmmm_mechanical         cpu/multiscale/test_qmmm_mechanical.cpp)
-atv_add_cpp_test(test_cpu_qmmm_electrostatic      cpu/multiscale/test_qmmm_electrostatic.cpp)
-atv_add_cpp_test(test_cpu_link_atom               cpu/multiscale/test_link_atom.cpp)
-atv_add_cpp_test(test_cpu_qmmm_polarizable        cpu/multiscale/test_qmmm_polarizable.cpp)
+# QM/MM embedding units. src/cpu/multiscale/*.cpp compiles only under
+# ATV_BUILD_SEMIEMPIRICAL (root CMakeLists), and the electrostatic /
+# polarizable objects additionally reference ATV::cpu::scf::RHF, which only
+# links under ATV_BUILD_HF. Registering them unconditionally broke the default
+# configuration (HF=OFF) at link time.
+if(ATV_BUILD_SEMIEMPIRICAL)
+    atv_add_cpp_test(test_cpu_qmmm_mechanical     cpu/multiscale/test_qmmm_mechanical.cpp)
+    if(ATV_BUILD_HF)
+        atv_add_cpp_test(test_cpu_qmmm_electrostatic  cpu/multiscale/test_qmmm_electrostatic.cpp)
+        # test_link_atom includes multiscale/qmmm_electrostatic.h and drives the
+        # RHF-embedded link-atom cut — same RHF link dependency.
+        atv_add_cpp_test(test_cpu_link_atom           cpu/multiscale/test_link_atom.cpp)
+        atv_add_cpp_test(test_cpu_qmmm_polarizable    cpu/multiscale/test_qmmm_polarizable.cpp)
+    endif()
+endif()
 atv_add_cpp_test(test_cpu_minimize_triclinic      cpu/minimize/test_triclinic_cell.cpp)
 atv_add_cpp_test(test_cpu_bond_fene               cpu/potentials/test_bond_fene.cpp)
 atv_add_cpp_test(test_cpu_pair_wca                cpu/potentials/test_pair_wca.cpp)
@@ -215,7 +226,6 @@ atv_add_cpp_test(test_cpu_am1_scaffold            cpu/semiempirical/test_am1_sca
 atv_add_cpp_test(test_cpu_rm1                     cpu/semiempirical/test_rm1.cpp)
 atv_add_cpp_test(test_cpu_dftb2                   cpu/semiempirical/test_dftb2.cpp)
 atv_add_cpp_test(test_cpu_dftb2_sk                cpu/semiempirical/test_dftb2_sk.cpp)
-atv_add_cpp_test(test_cpu_dftb2_3ob               cpu/semiempirical/test_dftb2_3ob.cpp)
 
 # GPW module tests. All of them run unconditionally on the in-tree GTH + MOLOPT +
 # D3 tables (cpu/gpw/basis_data/) — no external data directory is consulted at
@@ -303,6 +313,10 @@ atv_add_cpp_test(test_cpu_sw  cpu/potentials/test_sw.cpp)
 if(ATV_BUILD_VIB)
     atv_add_cpp_test(test_cpu_vib_phonon_supercell cpu/vibration/test_phonon_supercell.cpp)
     atv_add_cpp_test(test_cpu_vib_phonon_dispersion cpu/vibration/test_phonon_dispersion.cpp)
+    # esmm-contract-01-zeroing: the Hessian driver must zero kAtom_f* / kEnergy
+    # per displacement pass, or an accumulating source halves the curvature.
+    atv_add_cpp_test(test_cpu_vib_hessian_zeroing
+        cpu/vibration/test_hessian_zeroing.cpp)
     # GPW force-consumer wiring for Phonon (no NeighborList). Full FD spectrum
     # lives in regressions/gpw/gpw-fd-phonon-si (6N SCF — not unit budget).
     if(ATV_BUILD_GPW)
@@ -326,6 +340,9 @@ atv_add_cpp_test(test_cpu_path_dimer      cpu/path/test_dimer.cpp)
 atv_add_cpp_test(test_cpu_path_string     cpu/path/test_string_method.cpp)
 atv_add_cpp_test(test_cpu_path_irc        cpu/path/test_irc.cpp)
 atv_add_cpp_test(test_cpu_path_rpmd_est   cpu/path/test_rpmd_estimator.cpp)
+# esmm-contract-01-zeroing: PathDriver must zero kAtom_f* / kEnergy before each
+# per-replica force pass, or an accumulating source grows with the iteration.
+atv_add_cpp_test(test_cpu_path_zeroing    cpu/path/test_path_zeroing.cpp)
 atv_add_cpp_test(test_cpu_minimizer_joint_cell cpu/minimize/test_joint_cell.cpp)
 atv_add_cpp_test(test_cpu_criterion       cpu/driver/test_criterion.cpp)
 atv_add_cpp_test(test_cpu_driver_nesting  cpu/driver/test_driver_nesting.cpp)

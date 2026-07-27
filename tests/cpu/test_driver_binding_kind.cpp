@@ -147,10 +147,19 @@ TEST(DriverBindingKind, MinimizeAddSameKindLbfgsNoThrow) {
 
 // ─── Plan-shape regression anchors (six driver categories) ──────────────
 //
-// The sequences below were MEASURED on the pre-refactor tree (dev,
-// 2026-07-10) by compiling each minimal driver and walking
-// `driver.plan()`. The kind discriminant is consumed inside `add()` and
-// erased before `PlanBuilder`; the compiled Plan must be byte-identical.
+// The sequences below were MEASURED by compiling each minimal driver and
+// walking `driver.plan()`. The kind discriminant is consumed inside `add()`
+// and erased before `PlanBuilder`; adding the discriminant must not perturb
+// the compiled Plan.
+//
+// Updated 2026-07-26 for `esmm-contract-01-zeroing`: every preset that owns a
+// force/energy slot now installs the accumulator-zeroing components as
+// DEFAULTS, so each sequence below gained the Zero* prefix its slot is
+// contracted to have (Evaluate::prepare +zero_stress; Minimize::force
+// +zero_stress before migrate; Hessian::force +zero_forces/+zero_energy;
+// MC::energy +zero_forces). These deltas are the SPEC, not drift — a slot
+// that loses its Zero prefix is accumulating into stale buffers.
+//
 // None of the minimal setups registers a pair evaluator, so no halo
 // component is auto-injected under either an MPI or a serial build —
 // the sequences are build-config invariant.
@@ -166,7 +175,8 @@ TEST(DriverBindingKind, EvaluatePlanShapeUnchanged) {
               static_cast<std::size_t>(ATV::evaluate::Phase::COUNT));
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(
                                    ATV::evaluate::Phase::prepare)),
-              (std::vector<std::string>{"zero_forces", "zero_energy"}));
+              (std::vector<std::string>{"zero_forces", "zero_energy",
+                                        "zero_stress"}));
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(
                                    ATV::evaluate::Phase::evaluate)),
               (std::vector<std::string>{"stub_energy"}));
@@ -226,8 +236,9 @@ TEST(DriverBindingKind, MinimizePlanShapeUnchanged) {
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::line_search)),
               (std::vector<std::string>{"lbfgs"}));
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::force)),
-              (std::vector<std::string>{"zero_forces", "zero_energy", "migrate",
-                                        "stub_force", "reduce"}));
+              (std::vector<std::string>{"zero_forces", "zero_energy",
+                                        "zero_stress", "migrate", "stub_force",
+                                        "reduce"}));
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::convergence_check)),
               (std::vector<std::string>{"lbfgs"}));
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::end_of_step)),
@@ -249,7 +260,8 @@ TEST(DriverBindingKind, HessianPlanShapeUnchanged) {
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::displace)),
               (std::vector<std::string>{"vib_displace_step"}));
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::force)),
-              (std::vector<std::string>{"stub_force"}));
+              (std::vector<std::string>{"zero_forces", "zero_energy",
+                                        "stub_force"}));
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::accumulate)),
               (std::vector<std::string>{"vib_hessian_accumulator"}));
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::diagonalize)),
@@ -276,7 +288,8 @@ TEST(DriverBindingKind, McPlanShapeUnchanged) {
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::propose)),
               (std::vector<std::string>{"translate"}));
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::energy)),
-              (std::vector<std::string>{"zero_energy", "stub_energy"}));
+              (std::vector<std::string>{"zero_forces", "zero_energy",
+                                        "stub_energy"}));
     EXPECT_TRUE(
         slot_names(plan, static_cast<std::size_t>(P::end_of_step)).empty());
 }

@@ -63,6 +63,7 @@
 #include "atomiverse/cpu/component/plane_wave.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/component/semiempirical.h"
+#include "atomiverse/cpu/component/zero.h"
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -85,7 +86,20 @@ class PathDriver : public Driver<ATV::path::Phase> {
     /// could not be replaced. Now it can — `neb.add_criterion(StopOnNaN{})` composes
     /// with it, and a user who wants "stop when the barrier estimate settles" writes
     /// that criterion instead of a seventh driver class.
-    PathDriver() { this->add_criterion(cpu::AllReplicasConverged{}); }
+    ///
+    /// It also binds the driver-owned accumulator zeroing at the head of the
+    /// `force` phase (orders −1000 / −999, mirroring `md::MD`). The `force`
+    /// stage is replayed once per replica, so the pair runs once per image —
+    /// exactly the right scope: an accumulating (`+=`) force source would
+    /// otherwise carry image `i`'s forces into iteration `s+1` and grow the
+    /// band's forces linearly with the iteration count. `NebCoupling` zeroes
+    /// only the frozen endpoints, so nothing else clears the interior images.
+    PathDriver() {
+        this->add_criterion(cpu::AllReplicasConverged{});
+        this->on(ATV::path::Phase::force)
+            .add(cpu::ZeroForces{}, -1000)
+            .add(cpu::ZeroEnergy{}, -999);
+    }
 
     /// @brief Advance the band until every replica converges, or `max_iter` runs out.
     ///
