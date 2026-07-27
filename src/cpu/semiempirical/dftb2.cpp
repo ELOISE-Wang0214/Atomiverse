@@ -1,17 +1,21 @@
 /// @file src/cpu/semiempirical/dftb2.cpp
-/// SCC-DFTB2 multi-element: mio sketch (spin + analytic F) + 3ob-3-1 SK.
+/// SCC-DFTB2 multi-element: mio-1-1 H–H pin + sketch (spin + analytic F) + 3ob.
+/// Γ-point PBC (MioSketch): lattice-summed H0/S, screened γ, and repulsive.
 #include "atomiverse/cpu/semiempirical/dftb2.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/linalg/matrix.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_3ob_tables.h"
+#include "atomiverse/cpu/semiempirical/basis_data/dftb_mio_hh_sk.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h"
 
 namespace ATV {
@@ -28,6 +32,20 @@ using basis_data::kDftbNPairRep;
 using basis_data::kDftbNPairSk;
 using basis_data::kDftbPairRep;
 using basis_data::kDftbPairSk;
+using basis_data::kAToBohr;
+using basis_data::kBohrToA;
+using basis_data::kHaToEV;
+using basis_data::kMioHH_Hss_Ha;
+using basis_data::kMioHH_Sss;
+using basis_data::kMioHH_distFudge_Bohr;
+using basis_data::kMioHH_expCoeffs;
+using basis_data::kMioHH_gridDist_Bohr;
+using basis_data::kMioHH_nGrid;
+using basis_data::kMioHH_nSpline;
+using basis_data::kMioHH_repCutoff_Bohr;
+using basis_data::kMioHH_spCoeffs;
+using basis_data::kMioHH_spLastCoeffs;
+using basis_data::kMioHH_xStart_Bohr;
 
 using basis_data::Dftb3obElement;
 using basis_data::Dftb3obPair;
@@ -80,13 +98,220 @@ double gamma_ab(double r, double ua, double ub) {
     return 1.0 / std::sqrt(r * r + tau * tau);
 }
 
-/// @brief Fill  n_a × n_b  block of H0/S for atoms A–B separated by R vec.
-void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
-                   const DftbPairSkRow& sk, double dx, double dy, double dz,
-                   double r, linalg::RealMatrix& H0, linalg::RealMatrix& S,
-                   int ia0, int ib0) {
+/// Neville polynomial interpolation on a uniform abscissa (DFTB+ polyInterU1).
+double poly_interp(const double* xp, const double* yp, int nn, double xx) {
+    std::vector<double> X(static_cast<std::size_t>(nn + 1));
+    std::vector<double> C(static_cast<std::size_t>(nn + 1));
+    std::vector<double> D(static_cast<std::size_t>(nn + 1));
+    for (int i = 1; i <= nn; ++i) {
+        X[static_cast<std::size_t>(i)] = xp[i - 1];
+        C[static_cast<std::size_t>(i)] = yp[i - 1];
+        D[static_cast<std::size_t>(i)] = yp[i - 1];
+    }
+    int iCl = static_cast<int>(
+        std::ceil((xx - X[1]) / std::abs(X[2] - X[1])));
+    if (iCl < 1)
+        iCl = 1;
+    if (iCl > nn)
+        iCl = nn;
+    double yy = yp[iCl - 1];
+    iCl = iCl - 1;
+    for (int mm = 1; mm <= nn - 1; ++mm) {
+        for (int ii = 1; ii <= nn - mm; ++ii) {
+            double rTmp = X[static_cast<std::size_t>(ii)]
+                          - X[static_cast<std::size_t>(ii + mm)];
+            rTmp = (C[static_cast<std::size_t>(ii + 1)]
+                    - D[static_cast<std::size_t>(ii)])
+                   / rTmp;
+            C[static_cast<std::size_t>(ii)] =
+                (X[static_cast<std::size_t>(ii)] - xx) * rTmp;
+            D[static_cast<std::size_t>(ii)] =
+                (X[static_cast<std::size_t>(ii + mm)] - xx) * rTmp;
+        }
+        double dyy;
+        if (2 * iCl < nn - mm) {
+            dyy = C[static_cast<std::size_t>(iCl + 1)];
+        } else {
+            dyy = D[static_cast<std::size_t>(iCl)];
+            iCl = iCl - 1;
+        }
+        yy += dyy;
+    }
+    return yy;
+}
+
+/// DFTB+ “new” SK grid interpolation for one integral column (Ha or dimless).
+double mio_hh_interp(const double* tab, double r_bohr) {
+    constexpr int nInterNew = 8;
+    constexpr int nRightInterNew = 4;
+    constexpr double deltaR = 1.0e-5;
+    const int leng = static_cast<int>(kMioHH_nGrid);
+    const double incr = kMioHH_gridDist_Bohr;
+    const double rMax =
+        static_cast<double>(leng) * incr + kMioHH_distFudge_Bohr;
+    const int ind = static_cast<int>(std::floor(r_bohr / incr));
+    if (r_bohr >= rMax)
+        return 0.0;
+    if (ind < leng) {
+        int iLast = std::min(leng, ind + nRightInterNew);
+        iLast = std::max(iLast, nInterNew);
+        double xa[nInterNew];
+        double ya[nInterNew];
+        for (int ii = 1; ii <= nInterNew; ++ii) {
+            xa[ii - 1] =
+                static_cast<double>(iLast - nInterNew + ii) * incr;
+            ya[ii - 1] = tab[iLast - nInterNew + ii - 1];
+        }
+        return poly_interp(xa, ya, nInterNew, r_bohr);
+    }
+    // Beyond last grid point: 5th-order taper to zero over distFudge.
+    const double dr = r_bohr - rMax;
+    const int iLast = leng;
+    double xa[nInterNew];
+    double ya[nInterNew];
+    for (int ii = 1; ii <= nInterNew; ++ii) {
+        xa[ii - 1] = static_cast<double>(iLast - nInterNew + ii) * incr;
+        ya[ii - 1] = tab[iLast - nInterNew + ii - 1];
+    }
+    const double y0 =
+        poly_interp(xa, ya, nInterNew, xa[nInterNew - 1] - deltaR);
+    const double y2 =
+        poly_interp(xa, ya, nInterNew, xa[nInterNew - 1] + deltaR);
+    const double y1 = ya[nInterNew - 1];
+    const double y1p = (y2 - y0) / (2.0 * deltaR);
+    const double y1pp = (y2 + y0 - 2.0 * y1) / (deltaR * deltaR);
+    const double dx = -kMioHH_distFudge_Bohr;
+    const double invdx = -1.0 / kMioHH_distFudge_Bohr;
+    const double dx1 = y1p * dx;
+    const double dx2 = y1pp * dx * dx;
+    const double dd = 10.0 * y1 - 4.0 * dx1 + 0.5 * dx2;
+    const double ee = -15.0 * y1 + 7.0 * dx1 - 1.0 * dx2;
+    const double ff = 6.0 * y1 - 3.0 * dx1 + 0.5 * dx2;
+    const double xr = dr * invdx;
+    return ((ff * xr + ee) * xr + dd) * xr * xr * xr;
+}
+
+/// mio-1-1 H–H repulsive energy [eV] at separation r [Å].
+double mio_hh_repulsive_eV(double r_A) {
+    const double rr = r_A * kAToBohr;
+    if (rr < 1e-12 || rr >= kMioHH_repCutoff_Bohr)
+        return 0.0;
+    if (rr < kMioHH_xStart_Bohr[0]) {
+        const double e_ha = std::exp(-kMioHH_expCoeffs[0] * rr
+                                     + kMioHH_expCoeffs[1])
+                            + kMioHH_expCoeffs[2];
+        return e_ha * kHaToEV;
+    }
+    std::size_t lo = 0;
+    std::size_t hi = kMioHH_nSpline;
+    while (hi - lo > 1) {
+        const std::size_t mid = (lo + hi) / 2;
+        if (kMioHH_xStart_Bohr[mid] <= rr)
+            lo = mid;
+        else
+            hi = mid;
+    }
+    const std::size_t iMatch = lo;
+    const double dr = rr - kMioHH_xStart_Bohr[iMatch];
+    double e_ha = 0.0;
+    if (iMatch + 1 < kMioHH_nSpline) {
+        const double* c = &kMioHH_spCoeffs[4 * iMatch];
+        e_ha = c[0] + c[1] * dr + c[2] * dr * dr + c[3] * dr * dr * dr;
+    } else {
+        double xh = 1.0;
+        for (int ii = 0; ii < 6; ++ii) {
+            e_ha += kMioHH_spLastCoeffs[ii] * xh;
+            xh *= dr;
+        }
+    }
+    return e_ha * kHaToEV;
+}
+
+/// dE_rep/dr [eV/Å] for mio-1-1 H–H.
+double mio_hh_repulsive_dE_dr(double r_A) {
+    const double rr = r_A * kAToBohr;
+    if (rr < 1e-12 || rr >= kMioHH_repCutoff_Bohr)
+        return 0.0;
+    double de_drr_ha = 0.0;
+    if (rr < kMioHH_xStart_Bohr[0]) {
+        de_drr_ha = -kMioHH_expCoeffs[0]
+                    * std::exp(-kMioHH_expCoeffs[0] * rr
+                               + kMioHH_expCoeffs[1]);
+    } else {
+        std::size_t lo = 0;
+        std::size_t hi = kMioHH_nSpline;
+        while (hi - lo > 1) {
+            const std::size_t mid = (lo + hi) / 2;
+            if (kMioHH_xStart_Bohr[mid] <= rr)
+                lo = mid;
+            else
+                hi = mid;
+        }
+        const std::size_t iMatch = lo;
+        const double dr = rr - kMioHH_xStart_Bohr[iMatch];
+        if (iMatch + 1 < kMioHH_nSpline) {
+            const double* c = &kMioHH_spCoeffs[4 * iMatch];
+            de_drr_ha = c[1] + 2.0 * c[2] * dr + 3.0 * c[3] * dr * dr;
+        } else {
+            // d/dr (c0 + c1 dr + ... + c5 dr^5)
+            de_drr_ha = kMioHH_spLastCoeffs[1]
+                        + 2.0 * kMioHH_spLastCoeffs[2] * dr
+                        + 3.0 * kMioHH_spLastCoeffs[3] * dr * dr
+                        + 4.0 * kMioHH_spLastCoeffs[4] * dr * dr * dr
+                        + 5.0 * kMioHH_spLastCoeffs[5] * dr * dr * dr * dr;
+        }
+    }
+    return de_drr_ha * kHaToEV * kAToBohr;
+}
+
+/// H–H mio cutoff [Å]; sketch pairs use element r_cut.
+double pair_rcut_A(const DftbElementRow& ea, const DftbElementRow& eb, int za,
+                   int zb) {
+    if (za == 1 && zb == 1) {
+        const double r_bohr = static_cast<double>(kMioHH_nGrid)
+                                  * kMioHH_gridDist_Bohr
+                              + kMioHH_distFudge_Bohr;
+        return r_bohr * kBohrToA;
+    }
+    return std::max(ea.r_cut, eb.r_cut);
+}
+
+double pair_repulsive_eV(int za, int zb, double r_A) {
+    if (za == 1 && zb == 1)
+        return mio_hh_repulsive_eV(r_A);
+    const auto& rep = pair_rep(za, zb);
+    return rep.a * std::exp(-rep.b * r_A);
+}
+
+double pair_repulsive_dE_dr(int za, int zb, double r_A) {
+    if (za == 1 && zb == 1)
+        return mio_hh_repulsive_dE_dr(r_A);
+    const auto& rep = pair_rep(za, zb);
+    return -rep.a * rep.b * std::exp(-rep.b * r_A);
+}
+
+/// @brief Write directed A→B block of H0/S for bond vector R = R_B − R_A (accumulate).
+///
+/// Does **not** write the transpose — lattice-sum callers walk all ordered pairs (a,b,T).
+/// Min-image molecular forces keep a separate assign-both-triangles helper below.
+void fill_sk_block_directed(const DftbElementRow& ea, const DftbElementRow& eb,
+                            const DftbPairSkRow& sk, double dx, double dy,
+                            double dz, double r, linalg::RealMatrix& H0,
+                            linalg::RealMatrix& S, int ia0, int ib0) {
     if (r < 1e-12)
         return;
+
+    // mio-1-1 H–H (s only): table interpolation in Bohr / Hartree.
+    if (ea.z == 1 && eb.z == 1) {
+        const double r_bohr = r * kAToBohr;
+        const double Hss = mio_hh_interp(kMioHH_Hss_Ha, r_bohr) * kHaToEV;
+        const double Sss = mio_hh_interp(kMioHH_Sss, r_bohr);
+        H0(ia0, ib0) += Hss;
+        S(ia0, ib0) += Sss;
+        (void)sk;
+        return;
+    }
+
     const double inv_r = 1.0 / r;
     const double l = dx * inv_r;
     const double m = dy * inv_r;
@@ -101,24 +326,22 @@ void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
     const double Spps = s_radial(sk.s_pps0, r, sk.s_r0, sk.s_w);
     const double Sppp = s_radial(sk.s_ppp0, r, sk.s_r0, sk.s_w);
 
-    auto set_hs = [&](int i, int j, double hv, double sv) {
-        H0(ia0 + i, ib0 + j) = hv;
-        H0(ib0 + j, ia0 + i) = hv;
-        S(ia0 + i, ib0 + j) = sv;
-        S(ib0 + j, ia0 + i) = sv;
+    auto add_hs = [&](int i, int j, double hv, double sv) {
+        H0(ia0 + i, ib0 + j) += hv;
+        S(ia0 + i, ib0 + j) += sv;
     };
 
-    set_hs(0, 0, Hss, Sss);
+    add_hs(0, 0, Hss, Sss);
 
     if (ea.n_ao >= 1 && eb.n_ao == 4) {
-        set_hs(0, 1, l * Hsp, l * Ssp);
-        set_hs(0, 2, m * Hsp, m * Ssp);
-        set_hs(0, 3, n * Hsp, n * Ssp);
+        add_hs(0, 1, l * Hsp, l * Ssp);
+        add_hs(0, 2, m * Hsp, m * Ssp);
+        add_hs(0, 3, n * Hsp, n * Ssp);
     }
     if (ea.n_ao == 4 && eb.n_ao >= 1) {
-        set_hs(1, 0, -l * Hsp, -l * Ssp);
-        set_hs(2, 0, -m * Hsp, -m * Ssp);
-        set_hs(3, 0, -n * Hsp, -n * Ssp);
+        add_hs(1, 0, -l * Hsp, -l * Ssp);
+        add_hs(2, 0, -m * Hsp, -m * Ssp);
+        add_hs(3, 0, -n * Hsp, -n * Ssp);
     }
     if (ea.n_ao == 4 && eb.n_ao == 4) {
         const double dir[3] = {l, m, n};
@@ -127,10 +350,72 @@ void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
                 const double d_ab = (a == b) ? 1.0 : 0.0;
                 const double hv = dir[a] * dir[b] * (Hpps - Hppp) + d_ab * Hppp;
                 const double sv = dir[a] * dir[b] * (Spps - Sppp) + d_ab * Sppp;
-                set_hs(1 + a, 1 + b, hv, sv);
+                add_hs(1 + a, 1 + b, hv, sv);
             }
         }
     }
+}
+
+
+struct LatVec {
+    double tx, ty, tz;
+};
+
+/// @brief Enumerate lattice translations with |T| ≲ max_cut + cell edge.
+/// Columns of `cell` are lattice vectors (matches Box). Includes T = 0.
+std::vector<LatVec> enumerate_lattice(const Mat3& cell, double max_cut) {
+    double col_len[3];
+    for (int d = 0; d < 3; ++d) {
+        const double cx = static_cast<double>(cell(0, d));
+        const double cy = static_cast<double>(cell(1, d));
+        const double cz = static_cast<double>(cell(2, d));
+        col_len[d] = std::sqrt(cx * cx + cy * cy + cz * cz);
+        if (col_len[d] < 1e-9)
+            throw std::runtime_error("DFTB2: degenerate cell edge");
+    }
+    int nmax[3];
+    for (int d = 0; d < 3; ++d)
+        nmax[d] = std::max(
+            1, static_cast<int>(std::ceil(max_cut / col_len[d])) + 1);
+
+    std::vector<LatVec> out;
+    out.reserve(static_cast<std::size_t>((2 * nmax[0] + 1) * (2 * nmax[1] + 1)
+                                         * (2 * nmax[2] + 1)));
+    for (int n0 = -nmax[0]; n0 <= nmax[0]; ++n0) {
+        for (int n1 = -nmax[1]; n1 <= nmax[1]; ++n1) {
+            for (int n2 = -nmax[2]; n2 <= nmax[2]; ++n2) {
+                const double tx = n0 * static_cast<double>(cell(0, 0))
+                                  + n1 * static_cast<double>(cell(0, 1))
+                                  + n2 * static_cast<double>(cell(0, 2));
+                const double ty = n0 * static_cast<double>(cell(1, 0))
+                                  + n1 * static_cast<double>(cell(1, 1))
+                                  + n2 * static_cast<double>(cell(1, 2));
+                const double tz = n0 * static_cast<double>(cell(2, 0))
+                                  + n1 * static_cast<double>(cell(2, 1))
+                                  + n2 * static_cast<double>(cell(2, 2));
+                out.push_back({tx, ty, tz});
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<LatVec>
+lattice_images_for(const cpu::Box& box,
+                   const std::vector<const DftbElementRow*>& el) {
+    double max_cut = 0;
+    for (const auto* e : el)
+        max_cut = std::max(max_cut, e->r_cut);
+    // mio-1-1 H–H table may extend beyond sketch r_cut.
+    {
+        const double r_bohr = static_cast<double>(kMioHH_nGrid)
+                                  * kMioHH_gridDist_Bohr
+                              + kMioHH_distFudge_Bohr;
+        max_cut = std::max(max_cut, r_bohr * kBohrToA);
+    }
+    if (max_cut < 1e-12)
+        max_cut = 1.0;
+    return enumerate_lattice(box.cell(), max_cut);
 }
 
 /// dγ/dR = −R γ³.
@@ -148,6 +433,27 @@ void fill_sk_block_deriv(const DftbElementRow& ea, const DftbElementRow& eb,
         return;
     const double inv_r = 1.0 / r;
     const double dir[3] = {dx * inv_r, dy * inv_r, dz * inv_r};
+
+    // mio-1-1 H–H: d/dr via central FD of table interp, then chain to bond vec.
+    if (ea.z == 1 && eb.z == 1) {
+        constexpr double h = 1.0e-5; // Å
+        const double r_bohr = r * kAToBohr;
+        const double rp = (r + h) * kAToBohr;
+        const double rm = std::max(r - h, 1.0e-8) * kAToBohr;
+        const double dHss =
+            (mio_hh_interp(kMioHH_Hss_Ha, rp) - mio_hh_interp(kMioHH_Hss_Ha, rm))
+            * kHaToEV / (2.0 * h);
+        const double dSss =
+            (mio_hh_interp(kMioHH_Sss, rp) - mio_hh_interp(kMioHH_Sss, rm))
+            / (2.0 * h);
+        for (int k = 0; k < 3; ++k) {
+            dH0[k](ia0, ib0) = dHss * dir[k];
+            dS[k](ia0, ib0) = dSss * dir[k];
+        }
+        (void)sk;
+        (void)r_bohr;
+        return;
+    }
 
     const double Hss = h_radial(sk.h_ss0, r, sk.h_r0, sk.h_d);
     const double Hsp = h_radial(sk.h_sp0, r, sk.h_r0, sk.h_d);
@@ -248,7 +554,7 @@ struct SccResult {
     int n_occ = 0;
 };
 
-/// Build H0/S once for current geometry.
+/// Build lattice-summed H0/S at the Γ-point (molecular limit when L ≫ r_cut).
 void build_h0_s(int n_at, int n_ao, const std::vector<const DftbElementRow*>& el,
                 const std::vector<int>& ao0, const int* type,
                 const StorageReal* x, const StorageReal* y, const StorageReal* z,
@@ -256,13 +562,9 @@ void build_h0_s(int n_at, int n_ao, const std::vector<const DftbElementRow*>& el
                 linalg::RealMatrix& S) {
     H0 = xt::zeros<double>({n_ao, n_ao});
     S = xt::zeros<double>({n_ao, n_ao});
-    auto dist_vec = [&](int i, int j, double& dx, double& dy, double& dz) {
-        dx = static_cast<double>(x[j] - x[i]);
-        dy = static_cast<double>(y[j] - y[i]);
-        dz = static_cast<double>(z[j] - z[i]);
-        box.min_image(dx, dy, dz);
-        return std::sqrt(dx * dx + dy * dy + dz * dz);
-    };
+    const auto images = lattice_images_for(box, el);
+
+    // Onsite (T = 0, a = b): diagonal e_s / e_p and S = 1.
     for (int a = 0; a < n_at; ++a) {
         const auto& ea = *el[static_cast<std::size_t>(a)];
         const int ia = ao0[static_cast<std::size_t>(a)];
@@ -274,33 +576,66 @@ void build_h0_s(int n_at, int n_ao, const std::vector<const DftbElementRow*>& el
                 S(ia + p, ia + p) = 1.0;
             }
         }
-        for (int b = a + 1; b < n_at; ++b) {
+    }
+
+    // Lattice sum over ordered pairs (a,b) and images T of B.
+    for (int a = 0; a < n_at; ++a) {
+        const auto& ea = *el[static_cast<std::size_t>(a)];
+        const int ia = ao0[static_cast<std::size_t>(a)];
+        const double xa = static_cast<double>(x[a]);
+        const double ya = static_cast<double>(y[a]);
+        const double za = static_cast<double>(z[a]);
+        for (int b = 0; b < n_at; ++b) {
             const auto& eb = *el[static_cast<std::size_t>(b)];
-            double dx, dy, dz;
-            const double r = dist_vec(a, b, dx, dy, dz);
-            if (r > std::max(ea.r_cut, eb.r_cut))
-                continue;
+            const int ib = ao0[static_cast<std::size_t>(b)];
+            const double xb = static_cast<double>(x[b]);
+            const double yb = static_cast<double>(y[b]);
+            const double zb = static_cast<double>(z[b]);
+            const double rcut = pair_rcut_A(ea, eb, type[a], type[b]);
             const auto& sk = pair_sk(type[a], type[b]);
-            fill_sk_block(ea, eb, sk, dx, dy, dz, r, H0, S, ia,
-                          ao0[static_cast<std::size_t>(b)]);
+            for (const auto& T : images) {
+                const double dx = xb + T.tx - xa;
+                const double dy = yb + T.ty - ya;
+                const double dz = zb + T.tz - za;
+                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (r < 1e-12 || r > rcut)
+                    continue;
+                fill_sk_block_directed(ea, eb, sk, dx, dy, dz, r, H0, S, ia,
+                                       ib);
+            }
         }
     }
 }
 
 double repulsive_energy(int n_at, const int* type, const StorageReal* x,
                         const StorageReal* y, const StorageReal* z,
-                        const cpu::Box& box) {
+                        const cpu::Box& box,
+                        const std::vector<const DftbElementRow*>& el) {
+    const auto images = lattice_images_for(box, el);
     double e_rep = 0;
-    for (int a = 0; a < n_at; ++a)
-        for (int b = a + 1; b < n_at; ++b) {
-            double dx = static_cast<double>(x[b] - x[a]);
-            double dy = static_cast<double>(y[b] - y[a]);
-            double dz = static_cast<double>(z[b] - z[a]);
-            box.min_image(dx, dy, dz);
-            const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
-            const auto& rep = pair_rep(type[a], type[b]);
-            e_rep += rep.a * std::exp(-rep.b * r);
+    for (int a = 0; a < n_at; ++a) {
+        const auto& ea = *el[static_cast<std::size_t>(a)];
+        const double xa = static_cast<double>(x[a]);
+        const double ya = static_cast<double>(y[a]);
+        const double za = static_cast<double>(z[a]);
+        for (int b = 0; b < n_at; ++b) {
+            const auto& eb = *el[static_cast<std::size_t>(b)];
+            const double xb = static_cast<double>(x[b]);
+            const double yb = static_cast<double>(y[b]);
+            const double zb = static_cast<double>(z[b]);
+            const double rcut = pair_rcut_A(ea, eb, type[a], type[b]);
+            for (const auto& T : images) {
+                const double dx = xb + T.tx - xa;
+                const double dy = yb + T.ty - ya;
+                const double dz = zb + T.tz - za;
+                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (r < 1e-12 || r > rcut)
+                    continue;
+                // 1/2 for double-counting over ordered (a,b,T).
+                e_rep += 0.5 * pair_repulsive_eV(type[a], type[b], r);
+            }
         }
+    }
     return e_rep;
 }
 
@@ -328,15 +663,35 @@ void apply_shift(int n_at, const std::vector<const DftbElementRow*>& el,
 double gamma_pair(int a, int b, const std::vector<const DftbElementRow*>& el,
                   const StorageReal* x, const StorageReal* y,
                   const StorageReal* z, const cpu::Box& box) {
-    if (a == b)
-        return el[static_cast<std::size_t>(a)]->hubbard_u;
-    double dx = static_cast<double>(x[b] - x[a]);
-    double dy = static_cast<double>(y[b] - y[a]);
-    double dz = static_cast<double>(z[b] - z[a]);
-    box.min_image(dx, dy, dz);
-    const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
-    return gamma_ab(r, el[static_cast<std::size_t>(a)]->hubbard_u,
-                    el[static_cast<std::size_t>(b)]->hubbard_u);
+    const double ua = el[static_cast<std::size_t>(a)]->hubbard_u;
+    const double ub = el[static_cast<std::size_t>(b)]->hubbard_u;
+    const double rcut = pair_rcut_A(*el[static_cast<std::size_t>(a)],
+                                    *el[static_cast<std::size_t>(b)],
+                                    el[static_cast<std::size_t>(a)]->z,
+                                    el[static_cast<std::size_t>(b)]->z);
+    const auto images = lattice_images_for(box, el);
+    const double xa = static_cast<double>(x[a]);
+    const double ya = static_cast<double>(y[a]);
+    const double za = static_cast<double>(z[a]);
+    const double xb = static_cast<double>(x[b]);
+    const double yb = static_cast<double>(y[b]);
+    const double zb = static_cast<double>(z[b]);
+    double g = 0;
+    for (const auto& T : images) {
+        const double dx = xb + T.tx - xa;
+        const double dy = yb + T.ty - ya;
+        const double dz = zb + T.tz - za;
+        const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+        if (r < 1e-12) {
+            if (a == b)
+                g += ua; // onsite Hubbard
+            continue;
+        }
+        if (r > rcut)
+            continue;
+        g += gamma_ab(r, ua, ub);
+    }
+    return g;
 }
 
 SccResult scc_energy_restricted(
@@ -401,7 +756,7 @@ SccResult scc_energy_restricted(
     }
 
     SccResult out;
-    out.energy = e_band - e_scc + repulsive_energy(n_at, type, x, y, z, box);
+    out.energy = e_band - e_scc + repulsive_energy(n_at, type, x, y, z, box, el);
     out.dq = std::move(dq);
     out.spin.assign(static_cast<std::size_t>(n_at), 0.0);
     out.C = std::move(C);
@@ -527,7 +882,7 @@ SccResult scc_energy_unrestricted(
 
     SccResult out;
     out.energy = e_band - e_scc - e_spin
-                 + repulsive_energy(n_at, type, x, y, z, box);
+                 + repulsive_energy(n_at, type, x, y, z, box, el);
     out.dq = std::move(dq);
     out.spin = std::move(mspin);
     return out;
@@ -587,7 +942,7 @@ void analytic_forces_restricted(
             const double dir[3] = {dx / r, dy / r, dz / r};
             double dE_dbond[3] = {0, 0, 0};
 
-            if (r <= std::max(ea.r_cut, eb.r_cut)) {
+            if (r <= pair_rcut_A(ea, eb, type[a], type[b])) {
                 const auto& sk = pair_sk(type[a], type[b]);
                 for (int k = 0; k < 3; ++k) {
                     dH0[k] = xt::zeros<double>({n_ao, n_ao});
@@ -619,8 +974,7 @@ void analytic_forces_restricted(
             for (int k = 0; k < 3; ++k)
                 dE_dbond[k] += -dqa * dqb * dgdR * dir[k];
 
-            const auto& rep = pair_rep(type[a], type[b]);
-            const double dErep_dr = -rep.a * rep.b * std::exp(-rep.b * r);
+            const double dErep_dr = pair_repulsive_dE_dr(type[a], type[b], r);
             for (int k = 0; k < 3; ++k)
                 dE_dbond[k] += dErep_dr * dir[k];
 

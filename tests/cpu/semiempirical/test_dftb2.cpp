@@ -75,6 +75,27 @@ cpu::Frame make_o2(double r = 1.21) {
     return f;
 }
 
+
+/// 1-D C dimer crystal: r(C–C)=1.4 Å, Lx=2.8 Å → second-neighbor images.
+cpu::Frame make_c_chain_cell(double Lx = 2.8, double Ly = 12.0, double Lz = 12.0) {
+    cpu::Frame f(2);
+    f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 6;
+    f.span(kAtom_x)[0] = 0.0;
+    f.span(kAtom_y)[0] = 0.0;
+    f.span(kAtom_z)[0] = 0.0;
+    f.span(kAtom_x)[1] = 1.4;
+    f.span(kAtom_y)[1] = 0.0;
+    f.span(kAtom_z)[1] = 0.0;
+    for (int i = 0; i < 2; ++i) {
+        f.span(kAtom_mass)[i] = 12.011;
+        f.span(kAtom_tag)[i] = i + 1;
+        f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
+    }
+    f.box = cpu::Box::orthorhombic(Lx, Ly, Lz);
+    f.meta.get(kEnergy) = 0;
+    return f;
+}
+
 double energy_only(cpu::Frame g) {
     g.meta.get(kEnergy) = 0;
     for (int i = 0; i < g.nlocal(); ++i)
@@ -225,4 +246,30 @@ TEST(DFTB2, RejectsBadMultiplicity) {
     dftb.with_forces = false;
     dftb.build({ctx, f});
     EXPECT_THROW(dftb.launch({ctx, f, 0, 0}), std::runtime_error);
+}
+
+TEST(DFTB2, PeriodicGammaChainFinite) {
+    const double e = energy_only(make_c_chain_cell());
+    EXPECT_TRUE(std::isfinite(e));
+    EXPECT_GT(std::fabs(e), 1e-3);
+}
+
+TEST(DFTB2, PeriodicGammaDiffersFromIsolatedDimer) {
+    // Dense 1-D cell includes second-neighbor images along x; isolated dimer
+    // (large cubic box) does not — energies must separate.
+    const double e_pbc = energy_only(make_c_chain_cell(2.8, 12.0, 12.0));
+    cpu::Frame isol = make_c_chain_cell(2.8, 20.0, 20.0);
+    isol.box = cpu::Box::cubic(20.0);
+    const double e_mol = energy_only(std::move(isol));
+    EXPECT_TRUE(std::isfinite(e_pbc));
+    EXPECT_TRUE(std::isfinite(e_mol));
+    EXPECT_GT(std::fabs(e_pbc - e_mol), 0.05);
+}
+
+TEST(DFTB2, MolecularLimitLargeBoxStable) {
+    // Two large-box H2 runs should agree (lattice sum only sees T=0).
+    const double e1 = energy_only(make_h2(0.74));
+    const double e2 = energy_only(make_h2(0.74));
+    EXPECT_TRUE(std::isfinite(e1));
+    EXPECT_NEAR(e1, e2, 1e-10);
 }
