@@ -307,6 +307,15 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/multiscale/qmmm_electrostatic.cpp
             src/cpu/multiscale/qmmm_polarizable.cpp
         )
+        # Grimme D3 engine for DFTB2::d3 (and peers) under SE-only cmake.
+        # When HF is on, the same sources are listed under ATV_BUILD_HF — do
+        # not double-compile.
+        if(NOT ATV_BUILD_HF)
+            list(APPEND ATOMIVERSE_SRCS
+                src/cpu/gpw/internal/dftd3_params.cpp
+                src/cpu/gpw/internal/dftd3.cpp
+            )
+        endif()
     endif()
 
     if(ATV_BUILD_MC)

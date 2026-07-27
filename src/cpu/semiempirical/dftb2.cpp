@@ -1,14 +1,18 @@
 /// @file src/cpu/semiempirical/dftb2.cpp
-/// SCC-DFTB2 multi-element (H/C/N/O) with static mio-style SK tables.
+/// SCC-DFTB2 multi-element (H/C/N/O) with static mio-style SK tables + D3.
 #include "atomiverse/cpu/semiempirical/dftb2.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/gpw/internal/dftd3.h"
+#include "atomiverse/cpu/gpw/internal/dftd3_params.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/linalg/matrix.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h"
@@ -297,14 +301,47 @@ void DFTB2::launch(const LaunchContext& ctx) {
             e_repulsive += rep.a * std::exp(-rep.b * r);
         }
 
-    // E = sum n ε - E_scc + E_rep  (standard DFTB2 with band including shift)
-    energy_ = e_band - e_scc + e_repulsive;
+    // Optional Grimme D3(BJ) — geometry-only; Hartree → eV for public surface.
+    e_disp_ = 0.0;
+    auto d3_energy_ev = [&]() -> double {
+        if (!d3)
+            return 0.0;
+        std::vector<int> Z(static_cast<std::size_t>(n_at));
+        std::vector<std::array<double, 3>> pos(
+            static_cast<std::size_t>(n_at));
+        const double a2b = units::kAngstromInBohr;
+        for (int i = 0; i < n_at; ++i) {
+            const int zi = static_cast<int>(type[i]);
+            if (!gpw::D3Params::supports_element(zi))
+                throw std::runtime_error(
+                    "DFTB2 D3: element Z=" + std::to_string(zi)
+                    + " is not in the in-tree D3 table (no fallback)");
+            Z[static_cast<std::size_t>(i)] = zi;
+            pos[static_cast<std::size_t>(i)] = {
+                static_cast<double>(x[i]) * a2b,
+                static_cast<double>(y[i]) * a2b,
+                static_cast<double>(z[i]) * a2b};
+        }
+        const double cell[3] = {0.0, 0.0, 0.0};
+        const gpw::D3Params params{};
+        const double e_ha =
+            gpw::dftd3_pbe_bj(Z, pos, cell, /*periodic=*/false, params,
+                              /*rcut_bohr=*/94.2, d3_s6, d3_s8, d3_a1, d3_a2,
+                              /*cp2k_cn=*/false, /*calculate_c9=*/false)
+                .energy;
+        return e_ha * units::kHartreeInEv;
+    };
+    e_disp_ = d3_energy_ev();
+
+    // E = sum n ε - E_scc + E_rep + E_disp  (DFTB2 + optional D3)
+    energy_ = e_band - e_scc + e_repulsive + e_disp_;
     energy_meta += energy_;
 
     if (with_forces) {
         // Forces by central finite difference of the total energy (same SCC
-        // path). Guarantees F = −∇E for Evaluate/MD/Minimize. Closed-form
-        // SK+SCC analytic forces can replace this without changing energy.
+        // path + D3 when enabled). Guarantees F = −∇E for Evaluate/MD/Minimize.
+        // Closed-form SK+SCC analytic forces can replace this without changing
+        // energy.
         constexpr double h_fd = 1.0e-4; // Å
         StorageReal* mx = f.span(kAtom_x);
         StorageReal* my = f.span(kAtom_y);
@@ -427,7 +464,7 @@ void DFTB2::launch(const LaunchContext& ctx) {
                     const auto& rep = pair_rep(type[a], type[b]);
                     e_rep_l += rep.a * std::exp(-rep.b * r);
                 }
-            return e_band_l - e_scc_l + e_rep_l;
+            return e_band_l - e_scc_l + e_rep_l + d3_energy_ev();
         };
 
         for (int a = 0; a < n_at; ++a) {
