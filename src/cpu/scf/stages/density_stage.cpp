@@ -17,6 +17,7 @@
 
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/linalg/density.h"
+#include "atomiverse/cpu/scf/internal/mean_field_energy.h"
 
 namespace ATV {
 namespace cpu {
@@ -182,44 +183,21 @@ void DensityStage::launch(const cpu::LaunchContext& ctx) {
         P_beta_next = restricted ? P_alpha_new : P_beta_new;
     }
 
-    // 6. Energy evaluation.
-    double E_total;
-    double E_one = 0, E_J = 0;
-
-    if (restricted && is_hf) {
-        E_total = double(0.5) * xt::sum((Hcore_cm + F_alpha) * P_alpha)()
-                  + v_nuc_ - e_pcm_fock_half_ + e_solvent_;
-        E_one = xt::sum(Hcore_cm * P_alpha)();
-    } else if (restricted) {
-        E_one = xt::sum(Hcore_cm * P_alpha_new)();
-        E_J = double(0.5) * xt::sum(J_ * P_alpha_new)();
-        // e_exact_exchange = alpha_hf * E_K, nonzero only for a KS global
-        // hybrid (B3LYP / PBE0); zero for pure KS.
-        // KS energy does not use F, so add ΔG_el directly (no half-trace peel).
-        E_total =
-            E_one + E_J + e_exact_exchange_ + e_xc_grid_ + v_nuc_ + e_solvent_;
-    } else if (is_hf) {
-        E_total = double(0.5)
-                      * (xt::sum((Hcore_cm + F_alpha) * P_alpha)()
-                         + xt::sum((Hcore_cm + F_beta) * P_beta)())
-                  + v_nuc_ - e_pcm_fock_half_ + e_solvent_;
-        E_one = xt::sum(Hcore_cm * P_alpha)() + xt::sum(Hcore_cm * P_beta)();
-    } else {
-        RealMatrix P_total_new = P_alpha_new + P_beta_new;
-        E_one = xt::sum(Hcore_cm * P_alpha_new)()
-                + xt::sum(Hcore_cm * P_beta_new)();
-        E_J = double(0.5) * xt::sum(J_ * P_total_new)();
-        // e_exact_exchange nonzero only for a UKS global hybrid.
-        E_total =
-            E_one + E_J + e_exact_exchange_ + e_xc_grid_ + v_nuc_ + e_solvent_;
-    }
+    // 6. Energy evaluation — the four-branch functional, shared verbatim with
+    // the fixed-density (Car-Parrinello) evaluation. The HF branches read the
+    // density the Fock was built from (`P_alpha`/`P_beta`, OLD); the KS
+    // branches read this iteration's output (`P_alpha_new`/`P_beta_new`).
+    const internal::MeanFieldEnergy e = internal::mean_field_energy_at_density(
+        restricted, is_hf, Hcore_cm, F_alpha, F_beta, J_, P_alpha, P_beta,
+        P_alpha_new, P_beta_new, e_xc_grid_, e_exact_exchange_, v_nuc_,
+        e_solvent_, e_pcm_fock_half_);
 
     // Publish: new density (old-in/new-out) and the branch energies.
     P_alpha_ = P_alpha_next;
     P_beta_ = P_beta_next;
-    e_total_ = E_total;
-    e_one_ = E_one;
-    e_coulomb_ = E_J;
+    e_total_ = e.total;
+    e_one_ = e.one_electron;
+    e_coulomb_ = e.coulomb;
 }
 
 } // namespace scf

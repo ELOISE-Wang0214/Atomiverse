@@ -461,6 +461,18 @@ if(ATV_BUILD_HF)
     atv_add_regression(scf mp3-h2-sto3g)
     atv_add_regression(scf h2o_dimer_cp_hf631gs)
     atv_add_regression(scf x2c_argon)
+    # AO-basis Car–Parrinello MD (dynamics domain, esmm-cpmd-04): fictitious
+    # electronic DOF on the Gaussian SCF methods. Needs the MD driver as well
+    # as HF — the electrons are propagated on the integrator's clock, so these
+    # only build when both product modules are on.
+    if(ATV_BUILD_MD)
+        # RHF/STO-3G H2 — seed / zero-iteration production / kConserved wiring.
+        atv_add_regression(dynamics cpmd-rhf-h2)
+        # RKS(LSDA)/STO-3G H2O — fixed-density KS branch + XC gradient.
+        atv_add_regression(dynamics cpmd-rks-water)
+        # UHF triplet O2/STO-3G — dual-channel (alpha + beta) fictitious DOF.
+        atv_add_regression(dynamics cpmd-uhf-o2)
+    endif()
 endif()
 if(ATV_BUILD_PATH)
     atv_add_regression(path neb_muller_brown)

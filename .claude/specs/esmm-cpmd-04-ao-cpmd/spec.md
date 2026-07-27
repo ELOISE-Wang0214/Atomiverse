@@ -1,6 +1,6 @@
 ---
 slug: esmm-cpmd-04-ao-cpmd
-status: approved
+status: code-complete
 created: 2026-07-26
 revised: 2026-07-26
 domain: electronic-propagation / cpmd
@@ -137,18 +137,40 @@ refusal of d3bj/d4 keeps E_cons honest either way.
 
 ## Tasks
 
-- [ ] Verify the d3bj/d4 force gap in `ScfGradient`; record + ticket note
-- [ ] RED: `test_scf_cpmd.cpp` — full refusal lattice (one EXPECT_THROW per
+- [x] Verify the d3bj/d4 force gap in `ScfGradient`; record + ticket note
+      (CONFIRMED 2026-07-27: e_total_ += e_disp_ at mean_field_method.cpp:950
+      -956; zero dispersion terms anywhere in scf/internal/ — BOMD+d3bj/d4
+      forces are non-conservative today. Ticket note lands at close-out.)
+- [x] RED: `test_scf_cpmd.cpp` — full refusal lattice (one EXPECT_THROW per
       row above) + standalone `run()`/`forces()` throw + parity test shape
-- [ ] Extract `mean_field_energy_at_density` from `DensityStage` (bit-identical;
+      (target test_cpu_scf_cpmd; 27 tests; xl_bomd row correctly deferred to
+      esmm-cpmd-05; both dt-gate surfaces pinned; W-form identity pre-verified
+      numerically at 1e-16; harness decisions in the file header)
+- [x] Extract `mean_field_energy_at_density` from `DensityStage` (bit-identical;
       DensityStage keeps its old-P/new-P call conventions)
-- [ ] Implement `compute_at_density` with W_σ = occ·C_σ(C_σᵀF_σC_σ)C_σᵀ;
+      (new internal/mean_field_energy.{h,cpp}; dual density pairs preserve
+      HF-old-P / KS-new-P conventions; full scf suite green = bit-identical)
+- [x] Implement `compute_at_density` with W_σ = occ·C_σ(C_σᵀF_σC_σ)C_σᵀ;
       parity green at 1e-10 (restricted + unrestricted)
-- [ ] Members + TimestepConsumer + `validate_cpmd_config_` + `cpmd_seed_` +
+      (shared assemble_(P_total,P_a,P_b,W) with compute() forwarding;
+      explicit-spin two-electron overload; parity max|Δ|~1e-16)
+- [x] Members + TimestepConsumer + `validate_cpmd_config_` + `cpmd_seed_` +
       `cpmd_step_` + `run_nested_erased` branch + `build_on` dt gate
-- [ ] Tune μ/dt empirically on H2/water/O2 (AO residual is stiffer than PW —
+      (27/27 test_cpu_scf_cpmd; +3 refusal rows beyond the pinned list
+      (bad mu, bad thermostat params, compute_force=false); the meta-keys
+      test system switched H2→HeH+ — homonuclear persymmetry pins T_e≡0,
+      a physics fact the implementer caught and the tester encoded)
+- [x] Tune μ/dt empirically on H2/water/O2 (AO residual is stiffer than PW —
       GPW water needed μ=2000 at dt=0.1 fs); then pin the three regressions
-- [ ] Tutorial page + roadmap row; scoped build + ctest + regressions green
+      (family μ=1000/dt=0.05 fs; μ=400 demonstrably diverges on AO — scan
+      tables in each REFERENCE; H2 T_e≡0 as a HARD negative-control gate
+      <1e-20; O2 probed: 3D σ blocks unfreeze T_e, gated positive; envelopes
+      8.5-17.8× headroom; 0.03/2.0/1.3 s wall)
+- [x] Tutorial page + roadmap row; scoped build + ctest + regressions green
+      (cpmd-rhf-h2.md family page + index row; 42/42 scoped ctest; 3/3 new
+      regressions PASS + 5/5 GPW cpmd canaries non-interference.
+      NAMED: reg_cpmd-water 62 s single-threaded exceeds the 60 s budget
+      (pre-existing); ac-004 xl_bomd row transfers to esmm-cpmd-05)
 
 ## Testing strategy
 
@@ -187,3 +209,10 @@ meta keys present after a step. **Regressions** (each ≤60 s, public API,
   at pre_force); `DriveOpts::accumulate` / `kEnergyElectronic` integration
   arrives with contract-05, which will rebase over this wave's
   mean_field_method / gpw_evaluator changes — do not block on it here.
+
+> Hygiene (/mol:simplify 2026-07-27): rebuild_integrals_ extracted at the
+> genuine second call site (PositionGuard + refusal guards deliberately kept
+> at call sites — lifetime + throw-ordering); targeted clang-format on all
+> added-line ranges (9 files); validate_cpmd_config_ (102 ln) and cpmd_step_
+> (133 ln) accepted as sequential-guard/single-caller exceptions → /mol:note
+> candidates; full scf suite 64/64 re-verified after the shared-header edit.

@@ -29,6 +29,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -36,7 +37,9 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/component/hf.h"
+#include "atomiverse/cpu/component/timestep_protocol.h"
 #include "atomiverse/cpu/driver/driver.h"
+#include "atomiverse/cpu/electronic/cpmd.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/casci.h"
@@ -104,8 +107,15 @@ struct MeanFieldOutputs {
 /// and pure tag `HF` (not a Component). Nested binding is a native driver node;
 /// the sole compute entry is `drive_scf_` (via `run` / `forces` / nested
 /// `run_nested_erased`).
+///
+/// Also a `cpu::TimestepConsumer`, but only under `cpmd = true`: Car–Parrinello
+/// propagates the electrons on the nuclear clock, which the MD integrator owns
+/// (`timestep_required()` tracks the flag exactly, so a Born–Oppenheimer run
+/// never demands an integrator).
 template <typename Derived>
-class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
+class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
+                        public HF,
+                        public cpu::TimestepConsumer {
   public:
     // ── Geometry / basis (inputs from Frame + these members) ──────────
     BasisSet basis = BasisSet::STO3G;
@@ -362,6 +372,71 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     ///        if both set — prefer one). Public evaluator: `scf::D4`.
     bool d4 = false;
 
+    // ── Car–Parrinello molecular dynamics (esmm-cpmd-04) ──────────────
+    /// @brief Propagate the occupied orbitals with a fictitious mass instead
+    ///        of re-converging the SCF at every nuclear step (Car &
+    ///        Parrinello, PRL **55**, 2471 (1985)).
+    ///
+    /// **Nested MD force slot only.** The electrons follow a nuclear
+    /// trajectory, so there is nothing to propagate outside an MD loop:
+    /// standalone `run()` / `forces()` with `cpmd = true` throw
+    /// `std::logic_error`. Bind the method at `md::Phase::force` and let the
+    /// integrator publish the timestep (`TimestepConsumer`; there is
+    /// deliberately no `cpmd_dt` member).
+    ///
+    /// The first nested step is a cold seed: one full SCF (+ Born–Oppenheimer
+    /// forces) whose converged occupied coefficients seed the propagator.
+    /// Every later step is a fixed-density evaluation plus one electronic
+    /// velocity-Verlet/RATTLE advance — `iterations()` is 0 forever after.
+    /// RHF/RKS propagate one channel at occ = 2; UHF/UKS propagate α and β
+    /// independently at occ = 1 each. ROHF/ROKS/GHF are refused, as are the
+    /// configuration rows listed on `validate_cpmd_config_`.
+    ///
+    /// `determinant()` is NOT refreshed on production steps: propagated
+    /// orbitals have no canonical eigenvalues, so the published wavefunction
+    /// stays the seed SCF's — a documented limitation, not an oversight.
+    bool cpmd = false;
+
+    /// @brief Fictitious electronic mass μ [a.u., electron-mass units].
+    ///        Typical CPMD values are 10²–10³; the AO residual is stiffer
+    ///        than a plane-wave one, so a too-large μ breaks adiabaticity.
+    double cpmd_mu = 400.0;
+
+    /// @brief Couple a Nosé–Hoover thermostat to the fictitious electronic
+    ///        degrees of freedom (Blöchl & Parrinello, PRB **45**, 9413
+    ///        (1992)). Default false = NVE electrons.
+    bool cpmd_thermostat = false;
+
+    /// @brief Target fictitious electronic kinetic energy K₀ [Hartree] for
+    ///        the electronic thermostat. Ignored when `cpmd_thermostat` is
+    ///        false; must be finite and > 0 when it is true.
+    double cpmd_ekin_target_ha = 1e-5;
+
+    /// @brief Electronic thermostat coupling time τ_e [fs]. Ignored when
+    ///        `cpmd_thermostat` is false; must be finite and > 0 when true.
+    double cpmd_tau_e = 50.0;
+
+    /// @brief Fictitious electronic kinetic energy T_e of the last CPMD step.
+    /// @return T_e [eV]; 0 before any electron has moved (including the cold
+    ///         seed step). Also published on `frame.meta[kEnergyElectronKinetic]`.
+    double last_electronic_ke_ev() const { return last_te_ev_; }
+
+    /// @brief Electronic Nosé–Hoover thermostat energy of the last CPMD step.
+    /// @return E_therm [eV]; exactly 0 when `cpmd_thermostat` is false. Also
+    ///         published on `frame.meta[kEnergyElectronThermostat]`.
+    double last_electronic_thermostat_ev() const { return last_etherm_ev_; }
+
+    /// @brief True when this method cannot run without the nuclear timestep
+    ///        — i.e. exactly when `cpmd` is set (`TimestepConsumer`).
+    /// @return `cpmd`.
+    bool timestep_required() const override { return cpmd; }
+
+    /// @brief Receive the nuclear MD timestep from the integrator
+    ///        (`cpu::md::MD::build()` pushes it before any component builds).
+    /// @param dt_fs Nuclear timestep [fs]; must be finite and > 0.
+    /// @throws std::invalid_argument when `dt_fs` is not finite and > 0.
+    void set_timestep(double dt_fs) override;
+
     MeanFieldMethod();
     ~MeanFieldMethod() override;
     MeanFieldMethod(MeanFieldMethod&&) noexcept;
@@ -393,6 +468,9 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     ///        wavefunction via `determinant()`.
     /// @param frame  Geometry (Å) + Z in type column.
     /// @param guess  Optional density guess.
+    /// @throws std::logic_error when `cpmd` is set — Car–Parrinello is a
+    ///         nested-MD-force-slot method (there is no nuclear trajectory
+    ///         for the electrons to follow at a standalone single point).
     void run(Frame& frame, const SCFInitialGuess* guess = nullptr);
     /// @brief Const-geometry energy (does not write Frame meta or move
     ///        atoms). Results via `energy()`/`converged()`/`determinant()`.
@@ -405,6 +483,8 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// @param guess  Optional density-matrix guess for the SCF (needed for
     ///               multi-minima / continuous FD paths such as ROHF Hessian).
     /// @return Forces + energy in eV / eV·Å⁻¹.
+    /// @throws std::logic_error when `cpmd` is set (nested MD force slot only;
+    ///         see `run`).
     GradientResult forces(Frame& frame, const SCFInitialGuess* guess = nullptr);
 
     /// @brief Canonical MP2 on top of a fresh SCF run (materializes ERI).
@@ -774,6 +854,29 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     void drive_scf_core_(Frame& frame, const SCFInitialGuess* guess,
                          const DriveOpts& opts);
 
+    /// @brief Rebuild the private integral workspace at the current geometry
+    ///        and resolve the occupation from its electron count — the
+    ///        assembly step shared by `drive_scf_core_` (full SCF drive) and
+    ///        `cpmd_step_` (one fixed-density Fock build per production CP
+    ///        step).
+    ///
+    ///        `PositionGuard` and the ghost-atom/x2c refusal guards stay with
+    ///        the caller, not in this helper: the guard's lifetime must span
+    ///        the whole calling function (through the later force/gradient
+    ///        assembly downstream, which needs the same unwrapped geometry),
+    ///        and the ghost-atom guard must fire before any integral rebuild
+    ///        happens — both are `drive_scf_core_`-only.
+    /// @param frame       Geometry to integrate over [Å]; already
+    ///                    position-guarded by the caller.
+    /// @param compute_pvp Forwarded to `IntegralPack` (x2c's ⟨∇|V|∇⟩ term);
+    ///                    `cpmd_step_` always passes false — x2c is refused
+    ///                    under cpmd (`validate_cpmd_config_`).
+    /// @return The freshly rebuilt pack (`*integrals_sp_`, borrowed const
+    ///         view). `drive_scf_core_` mutates its `Hcore` further (the x2c
+    ///         one-step replacement) after this call returns.
+    const IntegralPack& rebuild_integrals_(const Frame& frame,
+                                           bool compute_pvp);
+
     /// @brief Lazily wire the five stages + `ScfConverged` and compile the Plan.
     ///        Deferred to first `drive_scf_` so member config (grid, level
     ///        shift, xc) is finalized before the stages bind references to the
@@ -824,6 +927,42 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
 
     // Most recent analytic gradient (forces() return + force-slot write).
     GradientResult last_grad_;
+
+    // ── Car–Parrinello state (cpmd = true only) ───────────────────────
+    /// Occupied-orbital propagators: α always, β only for UHF/UKS. Engaged
+    /// (`ready()`) from the cold seed onward; `std::nullopt` under BOMD.
+    std::optional<electronic::Cpmd> cpmd_alpha_;
+    std::optional<electronic::Cpmd> cpmd_beta_;
+    double cpmd_dt_fs_ = 0; ///< Nuclear timestep pushed by the integrator [fs].
+    double last_te_ev_ = 0; ///< Last fictitious T_e [eV].
+    double last_etherm_ev_ = 0; ///< Last electronic thermostat energy [eV].
+
+    /// @brief Refuse every configuration whose CPMD semantics are not
+    ///        productized, before any electron moves.
+    ///
+    /// Static combinations (spin shape, competing propagator, Fock builds the
+    /// CPMD gradient does not cover, energy terms with no force counterpart)
+    /// throw `std::invalid_argument`; state discovered while driving (a
+    /// near-singular overlap at the seed) throws `std::runtime_error` from
+    /// `cpmd_seed_`.
+    /// @throws std::invalid_argument on ROHF/ROKS/GHF, ASPC predictor, RI,
+    ///         x2c, solvent, MOM, SOSCF, point charges, external field,
+    ///         d3bj/d4, or invalid μ / thermostat parameters.
+    void validate_cpmd_config_() const;
+
+    /// @brief Seed the propagators from the just-converged occupied
+    ///        coefficients (S-orthonormal by construction).
+    /// @throws std::runtime_error when the seed SCF has no usable
+    ///         wavefunction or dropped overlap directions (`n_dropped_ > 0`).
+    void cpmd_seed_();
+
+    /// @brief One production Car–Parrinello step: rebuild integrals at the
+    ///        new geometry, transport C under the new metric, evaluate the
+    ///        energy and forces at the propagated density, then advance the
+    ///        electrons one velocity-Verlet/RATTLE step.
+    /// @param frame Geometry in / forces + energies out (accumulated with
+    ///        `+=`, since MD zeroes them at `pre_force`).
+    void cpmd_step_(Frame& frame);
 
     // ASPC (density extrapolation across outer MD steps)
     bool use_predictor_ = false;

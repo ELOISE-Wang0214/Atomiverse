@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <stdexcept>
 #include <vector>
 #include <xtensor-blas/xlinalg.hpp>
 
@@ -686,14 +687,6 @@ void accumulate_two_electron_gradient(
     MeanFieldType method, SpinType spin, XCType xc_type) {
     const auto t_total = LogClock::now();
     const int natm = static_cast<int>(integrals.atoms.size());
-    // The on-the-fly ERI-derivative engines index Cartesian AOs; n is the
-    // Cartesian count (== ipack.n_basis for a Cartesian pack).
-    const int n = integrals.n_ao_cart();
-    const bool is_ks = (method == MeanFieldType::KS);
-    // ROHF feeds the unrestricted (per-spin density) branch unchanged: its
-    // α/β densities from shared spatial orbitals give the correct open-shell
-    // J−K exchange contraction.
-    //
     // GHF (generalized): the spin-off-diagonal blocks P^{αβ}, P^{βα} are
     // generally non-symmetric, so the UHF 8-fold density symmetrization
     // ½[P_ik P_jl + P_jk P_il] does NOT recover Tr[K[D]E] = Σ (ij|kl) D_jk
@@ -844,15 +837,49 @@ void accumulate_two_electron_gradient(
                   elapsed_ms(t_total));
         return;
     }
-    const bool restricted = (spin == SpinType::Restricted);
 
+    // Collinear treatments: the contraction needs only the two spin densities.
     // Per-spin factor-1 densities for the unrestricted exchange contraction
     // and Schwarz bound. Hoisted ONCE (density() returns by value); the
     // restricted branches read only P_total, so skip the build there.
+    xt::xtensor<double, 2> Pa_det, Pb_det;
+    if (spin != SpinType::Restricted) {
+        Pa_det = det.density(SlaterDeterminant::Spin::alpha);
+        Pb_det = det.density(SlaterDeterminant::Spin::beta);
+    }
+    accumulate_two_electron_gradient(grad, integrals, P_total_sph, Pa_det,
+                                     Pb_det, method, spin, xc_type);
+}
+
+void accumulate_two_electron_gradient(xt::xtensor<double, 2>& grad,
+                                      const IntegralPack& integrals,
+                                      const xt::xtensor<double, 2>& P_total_sph,
+                                      const xt::xtensor<double, 2>& P_alpha_in,
+                                      const xt::xtensor<double, 2>& P_beta_in,
+                                      MeanFieldType method, SpinType spin,
+                                      XCType xc_type) {
+    const auto t_total = LogClock::now();
+    const int natm = static_cast<int>(integrals.atoms.size());
+    // The on-the-fly ERI-derivative engines index Cartesian AOs; n is the
+    // Cartesian count (== ipack.n_basis for a Cartesian pack).
+    const int n = integrals.n_ao_cart();
+    const bool is_ks = (method == MeanFieldType::KS);
+    if (spin == SpinType::Generalized)
+        throw std::invalid_argument(
+            "accumulate_two_electron_gradient: SpinType::Generalized needs "
+            "the spinor determinant (four spin blocks) — use the "
+            "SlaterDeterminant overload.");
+    // ROHF feeds the unrestricted (per-spin density) branch unchanged: its
+    // α/β densities from shared spatial orbitals give the correct open-shell
+    // J−K exchange contraction.
+    const bool restricted = (spin == SpinType::Restricted);
+
+    // The restricted branches read only P_total, so the per-spin copies are
+    // taken (and back-transformed below) for the open-shell path only.
     xt::xtensor<double, 2> Pa, Pb;
     if (!restricted) {
-        Pa = det.density(SlaterDeterminant::Spin::alpha);
-        Pb = det.density(SlaterDeterminant::Spin::beta);
+        Pa = P_alpha_in;
+        Pb = P_beta_in;
     }
 
     // Spherical convention: the densities arrive in the spherical AO basis but

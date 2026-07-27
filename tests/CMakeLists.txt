@@ -673,6 +673,13 @@ if(ATV_BUILD_HF)
     # scf-driver-refactor-04b-wire: method-driver nesting + MeanFieldOutputs.
     atv_add_cpp_test(test_cpu_scf_method_driver_wire
                      cpu/scf/test_method_driver_wire.cpp)
+    # esmm-cpmd-04-ao-cpmd: AO Car-Parrinello on the mean-field methods —
+    # the refusal lattice, the TimestepConsumer seam, ScfGradient::
+    # compute_at_density parity at a converged determinant, and the
+    # zero-SCF-iteration production signature. H2/STO-3G only (2 AOs); the
+    # E_cons drift physics is regressions/dynamics/cpmd-{rhf-h2,rks-water,
+    # uhf-o2}.
+    atv_add_cpp_test(test_cpu_scf_cpmd            cpu/scf/test_scf_cpmd.cpp)
     # hf-capability-gaps-08-stability: MO orbital-Hessian A/B kernel +
     # Seeger-Pople stability analysis. NO SCF loop: the converged H2/STO-3G
     # determinant is symmetry-exact in closed form (one Fock build, no

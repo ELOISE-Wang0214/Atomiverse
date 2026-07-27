@@ -129,8 +129,8 @@ static void accumulate_common_gradient(xt::xtensor<double, 2>& grad,
 ///
 /// @param grad_out      [natm,3] gradient accumulator, units Hartree/Bohr.
 /// @param integrals     Integral pack at the current geometry.
-/// @param det           Converged mean-field wavefunction (per-spin factor-1
-///                      densities via `density(Spin)`).
+/// @param Pa            Per-spin factor-1 alpha density (dimensionless).
+/// @param Pb            Per-spin factor-1 beta density (dimensionless).
 /// @param xc_type       Exchange-correlation functional.
 /// @param grid_level    DFT integration-grid quality level.
 /// @param n_radial      Radial grid points per atom (SG0 grid only).
@@ -142,8 +142,9 @@ static void accumulate_common_gradient(xt::xtensor<double, 2>& grad,
 
 static void accumulate_xc_gradient(
     xt::xtensor<double, 2>& grad_out, const IntegralPack& integrals,
-    const SlaterDeterminant& det, XCType xc_type, GridLevel grid_level,
-    int n_radial, int n_angular, const std::vector<int>& shell_to_atom,
+    const xt::xtensor<double, 2>& Pa, const xt::xtensor<double, 2>& Pb,
+    XCType xc_type, GridLevel grid_level, int n_radial, int n_angular,
+    const std::vector<int>& shell_to_atom,
     const std::vector<std::vector<int>>& atom_shells, int natm, int n) {
     // GGA semi-local XC gradient route. True for PBE and the B3LYP / PBE0
     // global hybrids — all carry a gradient-dependent (vsigma) semi-local
@@ -216,19 +217,14 @@ static void accumulate_xc_gradient(
     // ── 2. Density via GEMM ────────────────────────────────────────────
     //
     // Spin-density convention (must match hamiltonian_builder.cpp's XC path):
-    // the spin-resolved XC functional needs the per-spin FACTOR-1 densities,
-    // which is exactly what `SlaterDeterminant::density(Spin)` returns for
-    // both spin treatments (restricted: P^alpha = P^beta = P_total/2;
-    // unrestricted: one spin each). Feeding the unhalved P_total into a
+    // the spin-resolved XC functional needs the per-spin FACTOR-1 densities —
+    // exactly what `SlaterDeterminant::density(Spin)` returns for both spin
+    // treatments (restricted: P^alpha = P^beta = P_total/2; unrestricted: one
+    // spin each), and what the caller passes in as `Pa`/`Pb` (row-major, to
+    // match the GEMM operands below). Feeding the unhalved P_total into a
     // restricted-KS XC gradient evaluates vrho/vsigma at twice the correct
     // density and doubles drho/dR — the ~4-orders-of-magnitude defect the
-    // per-spin convention prevents. Hoisted ONCE (density() returns by
-    // value); row-major copies to match the GEMM operands below.
-    const xt::xtensor<double, 2> Pa =
-        det.density(SlaterDeterminant::Spin::alpha);
-    const xt::xtensor<double, 2> Pb =
-        det.density(SlaterDeterminant::Spin::beta);
-
+    // per-spin convention prevents.
     auto T_a = xt::linalg::dot(Phi, Pa); // [G × N]
     auto T_b = xt::linalg::dot(Phi, Pb);
 
@@ -475,52 +471,32 @@ GradientResult ScfGradient::compute(const Frame& frame,
                                     const IntegralPack& integrals,
                                     const SlaterDeterminant& det,
                                     double e_scf_ha) const {
-    // Spherical-convention packs (def2 family) are supported: the derivative
-    // integrals are sandwiched through the stored c2s in IntegralDerivPack, and
-    // the two-electron path back-transforms the density (both reuse ipack.c2s).
-    // ECP packs are supported via a semi-numerical dU/dR term added to the
-    // gradient below (the analytic non-ECP terms already use Z_val).
-    // ROHF reuses the unrestricted J−K derivative contraction (its α/β
-    // densities come from shared spatial orbitals; the ROHF energy equals the
-    // constrained-UHF energy at the same density). The only ROHF-specific piece
-    // is the energy-weighted density W, built below from the spin Fock matrices.
-    //
-    // GHF: charge density P^αα+P^ββ for the 1e/J/nuclear terms; spinor
-    // energy-weighted density W_spinor = Σ_i ε_i c_i c_iᵀ contracted as
-    // Waa+Wbb against dS (because S_spinor = S⊗1₂). Exchange uses all four
-    // spin blocks via accumulate_two_electron_gradient.
-    const auto t_total = LogClock::now();
-    int natm = static_cast<int>(frame.nlocal());
-    int n = integrals.n_basis;
-    bool is_ks = (method_ == MeanFieldType::KS);
-    bool restricted = (spin_ == SpinType::Restricted);
+    // This entry answers exactly one question — what are P and W at a
+    // CONVERGED determinant — and hands them to the shared assembly. The
+    // Car-Parrinello entry (`compute_at_density`) answers the same question at
+    // a propagated, non-stationary state and reuses everything below it.
+    const int n = integrals.n_basis;
+    const bool is_ks = (method_ == MeanFieldType::KS);
     const bool generalized = (spin_ == SpinType::Generalized);
     if (generalized && is_ks)
         throw std::runtime_error(
             "ScfGradient::compute: GKS (generalized KS) is not implemented.");
-    // ROKS (RestrictedOpen + KS) is supported: same ROHF W construction with
-    // KS spin Focks (F_σ = H + J + Vxc_σ ± hybrid K), plus the KS XC grid
-    // gradient below. PySCF: dft.roks.Gradients → uks_grad.grad_elec +
-    // rohf.make_rdm1e on the KS spin Fock pair.
-    const char* method_label = is_ks ? "KS" : "HF";
-    const char* spin_label =
-        generalized ? "generalized"
-                    : (spin_ == SpinType::RestrictedOpen
-                           ? "restricted_open"
-                           : (restricted ? "restricted" : "unrestricted"));
-
-    ATV_INFO("[gradient] start method={} spin={} natm={} basis={}",
-             method_label, spin_label, natm, n);
-
-    const auto t_dpack = LogClock::now();
-    auto dpack = IntegralDerivPack{integrals};
-    ATV_DEBUG("[gradient] derivative_pack_ms={:.1f}", elapsed_ms(t_dpack));
 
     // P_total = P^alpha + P^beta in both spin treatments (restricted:
     // density_total() is the factor-2 closed-shell density). Hoisted ONCE —
     // density_total() returns by value. Generalized: n×n charge density
     // P^αα + P^ββ (spin-off-diagonal blocks carry no charge).
     const xt::xtensor<double, 2> P = det.density_total();
+
+    // Per-spin factor-1 densities for the unrestricted exchange contraction
+    // and the KS XC grid. `density(Spin)` answers a restricted β query with
+    // the α channel, so both are P_total/2 there. Skipped for GHF, whose
+    // exchange needs all four spin blocks (it keeps the determinant route).
+    xt::xtensor<double, 2> Pa, Pb;
+    if (!generalized) {
+        Pa = det.density(SlaterDeterminant::Spin::alpha);
+        Pb = det.density(SlaterDeterminant::Spin::beta);
+    }
 
     // Row-major copies of the MO coefficients for accumulate_W (restricted
     // determinants answer the beta query with the alpha channel, matching
@@ -559,8 +535,6 @@ GradientResult ScfGradient::compute(const Frame& frame,
         // occupied-α / doubly-occupied MO projectors. Rebuild spin Focks
         // here: HF for ROHF, KS (J + Vxc_σ ± hybrid K) for ROKS.
         // hybrid_alpha_override = -1 → method default exchange fraction.
-        const xt::xtensor<double, 2> Pa = det.density(Spin::alpha);
-        const xt::xtensor<double, 2> Pb = det.density(Spin::beta);
         HamiltonianBuilder hb;
         hb.prepare(integrals, /*is_hf=*/!is_ks, grid_level_, n_radial_,
                    n_angular_, /*fixed_grid=*/nullptr);
@@ -591,6 +565,146 @@ GradientResult ScfGradient::compute(const Frame& frame,
                      det.n_electrons(Spin::beta), n);
     }
 
+    return assemble_(frame, integrals, P, Pa, Pb, W, e_scf_ha,
+                     generalized ? &det : nullptr);
+}
+
+GradientResult ScfGradient::compute_at_density(
+    const Frame& frame, const IntegralPack& integrals,
+    const RealMatrix& C_occ_alpha, const RealMatrix& F_alpha,
+    const RealMatrix& C_occ_beta, const RealMatrix& F_beta, double e_ha) const {
+    const int n = integrals.n_basis;
+    const bool restricted = (spin_ == SpinType::Restricted);
+    if (spin_ == SpinType::Generalized || spin_ == SpinType::RestrictedOpen)
+        throw std::invalid_argument(
+            "ScfGradient::compute_at_density: only Restricted and "
+            "Unrestricted spin treatments carry the multiplier weight "
+            "W = occ·C(CᵀFC)Cᵀ — ROHF/ROKS use projected spin Focks and GHF "
+            "a spinor weight, neither of which is this formula.");
+
+    // Row-major copies: the assembly below (and the ERI-derivative
+    // contraction) index row-major AO matrices, while the SCF matrices are
+    // column-major `RealMatrix`.
+    const auto to_rm = [](const RealMatrix& M) {
+        return xt::xtensor<double, 2>(M);
+    };
+    const auto check = [&](const RealMatrix& C, const RealMatrix& F,
+                           const char* which) {
+        if (static_cast<int>(C.shape()[0]) != n)
+            throw std::invalid_argument(
+                std::string("ScfGradient::compute_at_density: ") + which
+                + " coefficient rows (" + std::to_string(C.shape()[0])
+                + ") != n_basis (" + std::to_string(n) + ").");
+        if (static_cast<int>(F.shape()[0]) != n
+            || static_cast<int>(F.shape()[1]) != n)
+            throw std::invalid_argument(
+                std::string("ScfGradient::compute_at_density: ") + which
+                + " Fock matrix must be n_basis × n_basis (" + std::to_string(n)
+                + ").");
+    };
+
+    // W_σ = occ·C_σ (C_σᵀ F_σ C_σ) C_σᵀ, the Lagrange-multiplier Pulay weight
+    // of a state that need not diagonalize F. `occ` is folded exactly as the
+    // converged path folds it: the restricted channel is counted twice
+    // (factor 2), each unrestricted channel once.
+    const auto weight = [](const xt::xtensor<double, 2>& C_occ,
+                           const xt::xtensor<double, 2>& F, double occ) {
+        const xt::xtensor<double, 2> FC = xt::linalg::dot(F, C_occ);
+        const xt::xtensor<double, 2> eps_mo =
+            xt::linalg::dot(xt::transpose(C_occ), FC);
+        return xt::xtensor<double, 2>(
+            occ
+            * xt::linalg::dot(C_occ,
+                              xt::linalg::dot(eps_mo, xt::transpose(C_occ))));
+    };
+
+    xt::xtensor<double, 2> P, Pa, Pb, W;
+    if (restricted) {
+        if (C_occ_beta.size() != 0 || F_beta.size() != 0)
+            throw std::invalid_argument(
+                "ScfGradient::compute_at_density: a restricted method has one "
+                "channel — pass empty beta matrices (the alpha channel "
+                "carries occ = 2).");
+        check(C_occ_alpha, F_alpha, "alpha");
+        const xt::xtensor<double, 2> Ca = to_rm(C_occ_alpha);
+        const xt::xtensor<double, 2> Fa = to_rm(F_alpha);
+        Pa = xt::linalg::dot(Ca, xt::transpose(Ca)); // factor-1 per spin
+        Pb = Pa;
+        P = 2.0 * Pa;
+        W = weight(Ca, Fa, 2.0);
+    } else {
+        check(C_occ_alpha, F_alpha, "alpha");
+        const xt::xtensor<double, 2> Ca = to_rm(C_occ_alpha);
+        const xt::xtensor<double, 2> Fa = to_rm(F_alpha);
+        Pa = xt::linalg::dot(Ca, xt::transpose(Ca));
+        W = weight(Ca, Fa, 1.0);
+        // A channel with no electrons (e.g. the β side of a doublet) is an
+        // empty coefficient block, not an error: it contributes a zero
+        // density and no weight.
+        if (C_occ_beta.size() != 0) {
+            check(C_occ_beta, F_beta, "beta");
+            const xt::xtensor<double, 2> Cb = to_rm(C_occ_beta);
+            const xt::xtensor<double, 2> Fb = to_rm(F_beta);
+            Pb = xt::linalg::dot(Cb, xt::transpose(Cb));
+            W += weight(Cb, Fb, 1.0);
+        } else {
+            Pb = xt::zeros<double>({n, n});
+        }
+        P = Pa + Pb;
+    }
+
+    return assemble_(frame, integrals, P, Pa, Pb, W, e_ha,
+                     /*generalized_det=*/nullptr);
+}
+
+GradientResult ScfGradient::assemble_(
+    const Frame& frame, const IntegralPack& integrals,
+    const xt::xtensor<double, 2>& P, const xt::xtensor<double, 2>& Pa,
+    const xt::xtensor<double, 2>& Pb, const xt::xtensor<double, 2>& W,
+    double e_scf_ha, const SlaterDeterminant* generalized_det) const {
+    // Spherical-convention packs (def2 family) are supported: the derivative
+    // integrals are sandwiched through the stored c2s in IntegralDerivPack, and
+    // the two-electron path back-transforms the density (both reuse ipack.c2s).
+    // ECP packs are supported via a semi-numerical dU/dR term added to the
+    // gradient below (the analytic non-ECP terms already use Z_val).
+    // ROHF reuses the unrestricted J−K derivative contraction (its α/β
+    // densities come from shared spatial orbitals; the ROHF energy equals the
+    // constrained-UHF energy at the same density). The only ROHF-specific piece
+    // is the energy-weighted density W, built below from the spin Fock matrices.
+    //
+    // GHF: charge density P^αα+P^ββ for the 1e/J/nuclear terms; spinor
+    // energy-weighted density W_spinor = Σ_i ε_i c_i c_iᵀ contracted as
+    // Waa+Wbb against dS (because S_spinor = S⊗1₂). Exchange uses all four
+    // spin blocks via accumulate_two_electron_gradient.
+    const auto t_total = LogClock::now();
+    int natm = static_cast<int>(frame.nlocal());
+    int n = integrals.n_basis;
+    bool is_ks = (method_ == MeanFieldType::KS);
+    bool restricted = (spin_ == SpinType::Restricted);
+    const bool generalized = (spin_ == SpinType::Generalized);
+    if (generalized && !generalized_det)
+        throw std::invalid_argument(
+            "ScfGradient: SpinType::Generalized requires the spinor "
+            "determinant (its exchange contraction needs all four spin "
+            "blocks) — reachable only through compute().");
+    // ROKS (RestrictedOpen + KS) is supported: same ROHF W construction with
+    // KS spin Focks (F_σ = H + J + Vxc_σ ± hybrid K), plus the KS XC grid
+    // gradient below. PySCF: dft.roks.Gradients → uks_grad.grad_elec +
+    // rohf.make_rdm1e on the KS spin Fock pair.
+    const char* method_label = is_ks ? "KS" : "HF";
+    const char* spin_label =
+        generalized ? "generalized"
+                    : (spin_ == SpinType::RestrictedOpen
+                           ? "restricted_open"
+                           : (restricted ? "restricted" : "unrestricted"));
+
+    ATV_INFO("[gradient] start method={} spin={} natm={} basis={}",
+             method_label, spin_label, natm, n);
+
+    const auto t_dpack = LogClock::now();
+    auto dpack = IntegralDerivPack{integrals};
+    ATV_DEBUG("[gradient] derivative_pack_ms={:.1f}", elapsed_ms(t_dpack));
+
     xt::xtensor<double, 2> grad = xt::zeros<double>({(int)natm, (int)3});
 
     const auto t_common = LogClock::now();
@@ -605,10 +719,17 @@ GradientResult ScfGradient::compute(const Frame& frame,
         common_max_abs, common_max_atom_norm);
 
     // Two-electron term: contracted on the fly to avoid materializing dERI.
+    // GHF keeps the determinant route — its unsymmetrized four-block exchange
+    // needs P^{αβ}/P^{βα}, which the two spin densities do not carry.
     const auto t_two_e = LogClock::now();
     xt::xtensor<double, 2> grad_two_e = xt::zeros<double>({(int)natm, (int)3});
-    accumulate_two_electron_gradient(grad_two_e, integrals, P, det, method_,
-                                     spin_, xc_type_);
+    if (generalized)
+        accumulate_two_electron_gradient(grad_two_e, integrals, P,
+                                         *generalized_det, method_, spin_,
+                                         xc_type_);
+    else
+        accumulate_two_electron_gradient(grad_two_e, integrals, P, Pa, Pb,
+                                         method_, spin_, xc_type_);
     grad += grad_two_e;
     const auto [two_e_max_abs, two_e_max_atom_norm] =
         gradient_metrics(grad_two_e);
@@ -866,9 +987,9 @@ GradientResult ScfGradient::compute(const Frame& frame,
             }
         }
         xt::xtensor<double, 2> grad_xc = xt::zeros<double>({(int)natm, (int)3});
-        accumulate_xc_gradient(grad_xc, integrals, det, xc_type_, grid_level_,
-                               n_radial_, n_angular_, shell_to_atom,
-                               atom_shells, natm, n);
+        accumulate_xc_gradient(grad_xc, integrals, Pa, Pb, xc_type_,
+                               grid_level_, n_radial_, n_angular_,
+                               shell_to_atom, atom_shells, natm, n);
 
         // Optional debug: enforce translational invariance of the XC
         // gradient by projecting out the net (sum-over-atoms) component.

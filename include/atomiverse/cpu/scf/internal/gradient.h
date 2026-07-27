@@ -8,6 +8,11 @@
 /// XC grid). GHF uses the spinor energy-weighted density and the unsymmetrized
 /// four-block exchange contraction (P^{αβ} is not 8-fold symmetric).
 ///
+/// `compute_at_density(...)` is the same assembly at an electronic state that
+/// does NOT diagonalize the Fock matrix — the Car–Parrinello force, whose Pulay
+/// weight is the Lagrange-multiplier matrix W = occ·C(CᵀFC)Cᵀ instead of the
+/// energy-weighted density.
+///
 /// References:
 ///   Pulay, Mol. Phys. 17, 197 (1969) -- Pulay forces
 ///   Szabo & Ostlund, Appendix C -- RHF gradient derivation
@@ -18,6 +23,7 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
@@ -65,7 +71,71 @@ class ScfGradient {
     GradientResult compute(const Frame& frame, const IntegralPack& integrals,
                            const SlaterDeterminant& det, double e_scf_ha) const;
 
+    /// @brief Analytic nuclear gradient at an arbitrary (non-stationary)
+    ///        electronic state — the Car–Parrinello force.
+    ///
+    /// `compute` assumes the coefficients diagonalize the Fock matrix, so its
+    /// Pulay weight is the energy-weighted density
+    /// \(\sum_i \varepsilon_i c_i c_i^\top\). Propagated Car–Parrinello
+    /// orbitals satisfy \(C^\top S C = I\) but are **not** eigenvectors, so the
+    /// weight must be the full Lagrange-multiplier form
+    /// \(W_\sigma = \mathrm{occ}\cdot C_\sigma (C_\sigma^\top F_\sigma
+    /// C_\sigma) C_\sigma^\top\) — which collapses to the energy-weighted
+    /// density exactly when \(C_\sigma^\top F_\sigma C_\sigma\) is diagonal.
+    /// Restricted folds occ = 2 into one channel
+    /// (\(W = 2\,C(C^\top F C)C^\top\), \(P = 2\,CC^\top\)); unrestricted
+    /// carries occ = 1 per channel and sums. Same assembly as `compute`
+    /// otherwise (one-electron, Coulomb/exchange or XC grid, ECP, embedding,
+    /// field, solvent). Marx & Hutter, *Ab Initio Molecular Dynamics* (CUP
+    /// 2009) §2.5; Pulay, Mol. Phys. **17**, 197 (1969).
+    ///
+    /// @param frame       System geometry (positions in Å, type_id = Z).
+    /// @param integrals   Integrals at that geometry (atomic units).
+    /// @param C_occ_alpha Occupied α coefficients [n_basis × n_occ^α]
+    ///                    (dimensionless, S-orthonormal).
+    /// @param F_alpha     α Fock/KS matrix at this density [Hartree], n × n.
+    /// @param C_occ_beta  Occupied β coefficients [n_basis × n_occ^β]; **must
+    ///                    be empty** when the method is restricted, and may be
+    ///                    empty (zero columns) for an unrestricted channel
+    ///                    with no β electrons.
+    /// @param F_beta      β Fock/KS matrix [Hartree] (unrestricted only;
+    ///                    empty when restricted).
+    /// @param e_ha        Total energy at this density [Hartree] (reported on
+    ///                    the result in eV).
+    /// @return Forces on all atoms [eV/Å] and total energy [eV].
+    /// @throws std::invalid_argument for ROHF/ROKS/GHF spin treatments (their
+    ///         weights are not this one), on a shape mismatch, or when a
+    ///         restricted call supplies β matrices.
+    GradientResult
+    compute_at_density(const Frame& frame, const IntegralPack& integrals,
+                       const RealMatrix& C_occ_alpha, const RealMatrix& F_alpha,
+                       const RealMatrix& C_occ_beta, const RealMatrix& F_beta,
+                       double e_ha) const;
+
   private:
+    /// @brief The gradient assembly shared by both entry points.
+    ///
+    /// Everything after "what are P and W": one-electron + Pulay, two-electron
+    /// (or Coulomb + XC grid), ECP, QM/MM embedding, external field, and
+    /// continuum solvent.
+    /// @param frame     Geometry (Å).
+    /// @param integrals Integrals at that geometry (atomic units).
+    /// @param P_total   Total density \(P^\alpha + P^\beta\) (dimensionless).
+    /// @param P_alpha   Per-spin factor-1 α density (unused when restricted HF).
+    /// @param P_beta    Per-spin factor-1 β density.
+    /// @param W         Energy-weighted / multiplier density [Hartree].
+    /// @param e_ha      Total energy [Hartree] carried onto the result.
+    /// @param generalized_det GHF spinor wavefunction — required (and used)
+    ///        only by the `SpinType::Generalized` exchange contraction, which
+    ///        needs all four spin blocks; null for every other spin treatment.
+    /// @return Forces [eV/Å] + energy [eV].
+    GradientResult assemble_(const Frame& frame, const IntegralPack& integrals,
+                             const xt::xtensor<double, 2>& P_total,
+                             const xt::xtensor<double, 2>& P_alpha,
+                             const xt::xtensor<double, 2>& P_beta,
+                             const xt::xtensor<double, 2>& W, double e_ha,
+                             const SlaterDeterminant* generalized_det) const;
+
     MeanFieldType method_;                 ///< HF or KS mean field.
     SpinType spin_;                        ///< Restricted / unrestricted.
     XCType xc_type_;                       ///< XC functional (KS only).

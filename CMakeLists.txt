@@ -542,6 +542,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/stages/fock_stage.cpp
             src/cpu/scf/stages/mix_stage.cpp
             src/cpu/scf/stages/density_stage.cpp
+            src/cpu/scf/internal/mean_field_energy.cpp
             src/cpu/scf/mean_field_method.cpp
             src/cpu/scf/internal/orbital_hessian.cpp
             src/cpu/scf/internal/stability.cpp

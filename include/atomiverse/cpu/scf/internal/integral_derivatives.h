@@ -90,7 +90,8 @@ struct IntegralDerivPack {
 /// @param P_total        Total density matrix P^alpha + P^beta (dimensionless).
 /// @param det            Converged mean-field wavefunction; supplies the
 ///                       per-spin factor-1 densities for the unrestricted
-///                       exchange contraction.
+///                       exchange contraction, and all four spin blocks for
+///                       `SpinType::Generalized`.
 /// @param method         HF or KS mean field (selects the exchange fraction).
 /// @param spin           Restricted or unrestricted spin treatment.
 /// @param xc_type        XC functional (KS hybrid exact-exchange fraction).
@@ -98,6 +99,31 @@ void accumulate_two_electron_gradient(
     xt::xtensor<double, 2>& grad, const IntegralPack& integrals,
     const xt::xtensor<double, 2>& P_total, const SlaterDeterminant& det,
     MeanFieldType method, SpinType spin, XCType xc_type);
+
+/// @brief Same contraction from explicit spin densities (no determinant).
+///
+/// The Car–Parrinello force is taken at a propagated electronic state, which
+/// is not a converged determinant — only the densities exist. Collinear spin
+/// treatments only: `SpinType::Generalized` needs the spin-off-diagonal blocks
+/// and must use the determinant overload above.
+///
+/// @param[out] grad Gradient accumulator [n_atoms, 3] in Hartree/Bohr.
+/// @param integrals Integral pack for the current geometry.
+/// @param P_total   Total density P^alpha + P^beta (dimensionless).
+/// @param P_alpha   Per-spin factor-1 alpha density (unrestricted only; the
+///                  restricted branches read `P_total` alone).
+/// @param P_beta    Per-spin factor-1 beta density.
+/// @param method    HF or KS mean field (selects the exchange fraction).
+/// @param spin      Restricted or unrestricted spin treatment.
+/// @param xc_type   XC functional (KS hybrid exact-exchange fraction).
+/// @throws std::invalid_argument when `spin == SpinType::Generalized`.
+void accumulate_two_electron_gradient(xt::xtensor<double, 2>& grad,
+                                      const IntegralPack& integrals,
+                                      const xt::xtensor<double, 2>& P_total,
+                                      const xt::xtensor<double, 2>& P_alpha,
+                                      const xt::xtensor<double, 2>& P_beta,
+                                      MeanFieldType method, SpinType spin,
+                                      XCType xc_type);
 
 // ── Second derivatives (hf-capability-gaps-13-cphf) ──────────────────
 

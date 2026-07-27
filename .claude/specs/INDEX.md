@@ -32,6 +32,18 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
 | W3-5 | esmm-cpmd-05-scf-xlbomd | W3-4 | XL-BOMD on the SCF methods (guess ladder) |
 | W3-6 | esmm-cpmd-06-single-eval | W3-3 | GpwDft::overlap(); CPMD single KS eval per step (~2×) |
 
+## Ticket — /mol:fix owed (named 2026-07-27, esmm-cpmd-04 close-out)
+
+- **BOMD+d3bj/d4 forces are non-conservative**: `e_total_ += e_disp_`
+  (mean_field_method.cpp DFT-D block) has zero dispersion force terms in
+  `ScfGradient` — forces are not the gradient of the reported energy for any
+  d3bj/d4 run. CPMD refuses d3bj/d4 to keep E_cons honest; BOMD does not.
+  Fix = analytic D3(BJ)/D4 gradient legs in scf (GPW twin has them).
+- Minor (same sweep): `reg_cpmd-water` 62 s single-threaded exceeds the 60 s
+  regression budget (pre-existing); `test_cpu_scf_uhf_hessian` +
+  `test_cpu_gpw_dftu` each showed one full-suite-context transient
+  (3/3 green isolated) — flaky-test investigation.
+
 ## Live — deferred PySCF engine gaps (2026-07-24)
 
 Approved for **later** implementation (do **not** auto `/mol:impl` until

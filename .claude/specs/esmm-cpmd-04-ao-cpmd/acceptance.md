@@ -11,7 +11,8 @@ criteria:
       at a converged determinant, restricted AND unrestricted; the extracted
       mean_field_energy_at_density leaves DensityStage numerics bit-identical
       (existing SCF suites green).
-    status: pending
+    status: verified
+    last_checked: 2026-07-27
   - id: ac-002
     summary: Production CPMD steps run zero SCF iterations
     type: runtime
@@ -19,7 +20,8 @@ criteria:
       In all three new regressions, every post-seed MD step reports
       iterations() == 0; the seed step is one converged full SCF (throws if
       unconverged).
-    status: pending
+    status: verified
+    last_checked: 2026-07-27
   - id: ac-003
     summary: Conserved-energy drift pinned for RHF, RKS, UHF
     type: runtime
@@ -29,7 +31,12 @@ criteria:
       REFERENCE.md; kConserved == kEnergy+kKinetic+T_e(+E_therm) consistency
       holds; each REFERENCE.md cites Car & Parrinello PRL 55, 2471 (1985)
       and Marx & Hutter (CUP 2009) §2.4-2.5 and records the tuned mu/dt.
-    status: pending
+    status: verified
+    last_checked: 2026-07-27
+    note: |
+      Family mu=1000/dt=0.05 fs; envelopes 5e-6/5e-5/5e-6 with 8.5-17.8x
+      headroom; H2 T_e==0 hardened into a negative-control gate (<1e-20);
+      O2 probed non-frozen (3D sigma blocks).
   - id: ac-004
     summary: Refusal lattice is complete and guard-tested
     type: runtime
@@ -39,7 +46,13 @@ criteria:
       non-empty point_charges, nonzero external_field, d3bj, d4,
       n_dropped_ > 0 at seed; standalone run()/forces() with cpmd=true throw
       std::logic_error.
-    status: pending
+    status: verified
+    last_checked: 2026-07-27
+    note: |
+      14/15 rows + 3 extra (bad mu, bad thermostat params, compute_force
+      =false). The xl_bomd row is unimplementable here — the member does not
+      exist until esmm-cpmd-05, which owns the cpmd<->xl_bomd exclusivity
+      guard in both directions (recorded in its RED).
   - id: ac-005
     summary: dt arrives only via TimestepConsumer
     type: code
@@ -47,7 +60,8 @@ criteria:
       MeanFieldMethod has no public dt member; timestep_required() returns
       cpmd; build_on throws when cpmd is set and no dt was pushed; grep shows
       no local dt duplication on the SCF CPMD path.
-    status: pending
+    status: verified
+    last_checked: 2026-07-27
   - id: ac-006
     summary: d3bj/d4 force-gap verification recorded
     type: docs

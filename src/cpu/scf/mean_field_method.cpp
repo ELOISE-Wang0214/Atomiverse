@@ -24,6 +24,7 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/electronic/aspc_predictor.h"
+#include "atomiverse/cpu/linalg/density.h" // build_density_matrix (CPMD fixed-density step)
 #include "atomiverse/cpu/linalg/eigensolve.h" // CanonicalOrth, build_orthogonalization_matrix
 #include "atomiverse/cpu/scf/dftd3.h"
 #include "atomiverse/cpu/scf/dftd4.h"
@@ -39,6 +40,7 @@
 #include "atomiverse/cpu/scf/internal/hueckel_guess.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/level_shift.h" // kLevelShiftSkipThreshold
+#include "atomiverse/cpu/scf/internal/mean_field_energy.h"
 #include "atomiverse/cpu/scf/internal/minao.h"
 #include "atomiverse/cpu/scf/internal/mp2_gradient.h"
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
@@ -55,6 +57,52 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
+
+namespace {
+
+/// @brief Publish the two Car-Parrinello electronic energies [eV] on the frame
+///        so Thermo, observers and `cpu::md::CpmdConserved` see the
+///        adiabaticity signal (which `CpmdConserved` requires: it throws on an
+///        absent key rather than silently dropping T_e from E_cons).
+///
+/// The keys are open-schema (not pre-inserted by `Frame(int)`), so the first
+/// step inserts and later steps overwrite — the `kDipole` pattern, mirrored
+/// from the GPW CPMD twin (src/cpu/gpw/gpw_evaluator.cpp).
+/// @param frame     Frame to write.
+/// @param te_ev     Fictitious electronic kinetic energy T_e [eV].
+/// @param etherm_ev Electronic Nosé–Hoover thermostat energy [eV].
+void publish_electronic_energies(Frame& frame, double te_ev, double etherm_ev) {
+    if (!frame.meta.contains(kEnergyElectronKinetic.key))
+        frame.meta.insert(kEnergyElectronKinetic, te_ev);
+    else
+        frame.meta.set(kEnergyElectronKinetic, te_ev);
+    if (!frame.meta.contains(kEnergyElectronThermostat.key))
+        frame.meta.insert(kEnergyElectronThermostat, etherm_ev);
+    else
+        frame.meta.set(kEnergyElectronThermostat, etherm_ev);
+}
+
+/// @brief Refuse a standalone (non-nested) entry under Car-Parrinello.
+///
+/// `run` / `forces` evaluate ONE geometry, and CP is the dynamics of the
+/// electrons ALONG a nuclear trajectory — there is no trajectory here to
+/// follow, so the request is meaningless rather than merely unsupported.
+/// Hence `std::logic_error`, matching the GPW twin's entry-point convention.
+/// @param cpmd  The method's `cpmd` flag.
+/// @param entry Fully-qualified entry name, interpolated into the message.
+/// @throws std::logic_error when `cpmd` is true.
+void refuse_standalone_cpmd(bool cpmd, const char* entry) {
+    if (!cpmd)
+        return;
+    throw std::logic_error(
+        std::string(entry)
+        + ": cpmd = true is a nested-MD-force-slot method — the electrons "
+          "follow the nuclei, and a standalone single point has no nuclear "
+          "trajectory. Bind this method at md::Phase::force in a cpu::md::MD "
+          "loop, or clear cpmd.");
+}
+
+} // namespace
 
 // ── PositionGuard: unwrap for the integral build, restore on exit ─────────────
 
@@ -271,6 +319,19 @@ void MeanFieldMethod<D>::build_on(cpu::Runtime& rt) {
     // Stage wiring needs geometry (IntegralPack dimensions); deferred to the
     // first drive_scf_. Parent Runtime does not own this method's Plan.
     (void)rt;
+    // The one thing a nested build CAN check: Car-Parrinello shares the
+    // nuclear clock, and only a `TimestepProvider` in the same loop can
+    // publish it. `cpu::md::MD::build()` refuses the missing provider itself;
+    // this catches the loop that pushes nothing at all (Evaluate / Minimize),
+    // where `cpmd_dt_fs_ = 0` would otherwise propagate the electrons by zero
+    // and silently produce a Born-Oppenheimer-looking trajectory with a frozen
+    // wavefunction.
+    if (cpmd && !(cpmd_dt_fs_ > 0.0))
+        throw std::runtime_error(
+            "MeanFieldMethod: cpmd requires an MD integrator publishing the "
+            "timestep — no timestep was pushed into this method (nest it at "
+            "md::Phase::force in a cpu::md::MD loop whose integrator "
+            "implements TimestepProvider).");
 }
 
 template <typename D>
@@ -283,6 +344,40 @@ template <typename D>
 int MeanFieldMethod<D>::run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
                                           int budget) {
     (void)ctx;
+    if (cpmd) {
+        // Production Car-Parrinello step: no SCF at all — a fixed-density
+        // evaluation plus one electronic velocity-Verlet advance.
+        if (cpmd_alpha_ && cpmd_alpha_->ready()) {
+            cpmd_step_(f);
+            return 0;
+        }
+        // Cold seed. Validate BEFORE any SCF work so a refused configuration
+        // costs a driver build, and so the CPMD gate (not a downstream
+        // force-path gate of the same knob) is the one that speaks.
+        validate_cpmd_config_();
+        DriveOpts opts;
+        opts.unwrap = true;
+        opts.forces = true; // CP nuclei need Born-Oppenheimer forces at t = 0
+        opts.write_energy = true;
+        if (budget > 0)
+            opts.max_iter = budget;
+        drive_scf_(f, nullptr, opts);
+        if (!this->converged())
+            throw std::runtime_error(
+                "MeanFieldMethod: the Car-Parrinello seed SCF did not "
+                "converge ("
+                + this->stop_reason()
+                + ") — CP propagates FROM a stationary state, and seeding off "
+                  "it injects fictitious kinetic energy that never leaves.");
+        cpmd_seed_();
+        // The electrons have not moved yet: publish zeros so a consumer of
+        // `kEnergyElectronKinetic` (cpu::md::CpmdConserved) sees the key from
+        // the first step rather than throwing on the seed.
+        last_te_ev_ = 0.0;
+        last_etherm_ev_ = 0.0;
+        publish_electronic_energies(f, last_te_ev_, last_etherm_ev_);
+        return iterations_;
+    }
     DriveOpts opts;
     opts.unwrap = true;
     opts.forces = compute_force;
@@ -396,6 +491,19 @@ void MeanFieldMethod<D>::drive_scf_(Frame& frame, const SCFInitialGuess* guess,
     }
 }
 
+// @brief Rebuild the private integral workspace at the current geometry and
+// resolve the occupation from its electron count — see the header for why
+// PositionGuard and the ghost-atom/x2c refusal guards stay with the caller.
+template <typename D>
+const IntegralPack&
+MeanFieldMethod<D>::rebuild_integrals_(const Frame& frame, bool compute_pvp) {
+    *integrals_sp_ =
+        IntegralPack{frame, basis, charge, compute_eri, ecp, ghost_atoms,
+                    compute_pvp};
+    resolve_occupation(integrals_sp_->n_electrons);
+    return *integrals_sp_;
+}
+
 template <typename D>
 void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
                                          const SCFInitialGuess* guess,
@@ -417,13 +525,7 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             "Kohn-Sham (RKS/UKS) — ghost / counterpoise support is pure HF "
             "only in this link. Use RHF/UHF, or clear ghost_atoms.");
 
-    *integrals_sp_ = IntegralPack{frame,
-                                  basis,
-                                  charge,
-                                  compute_eri,
-                                  ecp,
-                                  ghost_atoms,
-                                  /*compute_pvp=*/x2c};
+    const IntegralPack& ints = rebuild_integrals_(frame, /*compute_pvp=*/x2c);
     // x2c-1e: replace the non-relativistic core Hamiltonian with the
     // one-step exact-two-component h^X2C. S / ERI / Fock loop are untouched
     // (two-electron integrals stay non-relativistic by definition of
@@ -439,8 +541,6 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
                                             internal::kLightSpeedAU);
         integrals_sp_->Hcore = x2c_ws.hcore();
     }
-    const IntegralPack& ints = *integrals_sp_;
-    resolve_occupation(ints.n_electrons);
 
     // SOSCF is HF-only in this link: the CIAH Hessian products carry no XC
     // second-order kernel, so a Kohn-Sham run would silently Newton-step the
@@ -985,10 +1085,313 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     }
 }
 
+// ── Car–Parrinello (cpmd = true) ──────────────────────────────────────────────
+
+template <typename D>
+void MeanFieldMethod<D>::set_timestep(double dt_fs) {
+    if (!(dt_fs > 0.0) || !std::isfinite(dt_fs))
+        throw std::invalid_argument(
+            "MeanFieldMethod::set_timestep: nuclear timestep must be finite "
+            "and > 0 (fs), got "
+            + std::to_string(dt_fs));
+    cpmd_dt_fs_ = dt_fs;
+}
+
+template <typename D>
+void MeanFieldMethod<D>::validate_cpmd_config_() const {
+    // Spin shapes that are not a pair of independently propagated coefficient
+    // matrices. ROHF/ROKS share one set of spatial orbitals between the
+    // channels (the extended Lagrangian is a different constrained problem);
+    // GHF propagates two-component spinors (the RATTLE metric is the spinor
+    // overlap). Neither is "RHF with more columns".
+    if (spin_ == SpinType::RestrictedOpen)
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd is not supported for ROHF/ROKS — the "
+            "restricted-open channels share one set of spatial orbitals, so "
+            "there are no independent alpha/beta coefficients to propagate. "
+            "Use RHF/RKS (occ = 2) or UHF/UKS (dual channel, occ = 1).");
+    if (spin_ == SpinType::Generalized)
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd is not supported for GHF — Car-Parrinello "
+            "on a two-component spinor manifold is new physics (the "
+            "constraint metric is the spinor overlap), not RHF with twice the "
+            "columns. Use RHF/RKS or UHF/UKS.");
+
+    // Competing density propagators: ASPC extrapolates the density across
+    // nuclear steps while CP propagates the coefficients — running both means
+    // two answers to "what is P now". The GPW twin refuses the same pair.
+    if (use_predictor_)
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd and the ASPC density predictor are "
+            "mutually exclusive (ASPC extrapolates the density; CP propagates "
+            "the coefficients). Drop predictor(...) or clear cpmd.");
+
+    // Fock builds / one-electron operators the CP force does not cover.
+    if (ri != RI::None)
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd requires ri = RI::None — the analytic "
+            "gradient of a density-fitted energy needs the 2-/3-center "
+            "derivative integrals, which ScfGradient does not carry.");
+    if (x2c)
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd is not supported with x2c = true — the "
+            "h^X2C nuclear gradient (picture change + decoupling-matrix "
+            "response) is not derived, so the CP nuclei would feel a "
+            "non-relativistic force under a relativistic energy.");
+    if (solvent_eps > 0.0)
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd is not supported with a continuum solvent "
+            "— the reaction field is a fixed-point of the SCF density, which "
+            "a propagated density never solves. Set solvent_eps = 0.");
+    if (mom != MomStyle::Off)
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd and mom != Off are mutually exclusive — "
+            "maximum-overlap occupation re-selects the occupied subspace at "
+            "every diagonalization, and a CP production step never "
+            "diagonalizes.");
+    if (soscf)
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd and soscf are mutually exclusive — SOSCF "
+            "is a second-order accelerator for the SCF loop that a CP "
+            "production step deliberately does not run.");
+    if (!point_charges.empty())
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd with QM/MM point charges is not "
+            "productized — the embedding force on the MM sites and the "
+            "electron-MM Pulay response at a non-stationary density are the "
+            "whole QM/MM x CPMD integration, not a flag. Clear "
+            "point_charges.");
+    if (external_field[0] != 0.0 || external_field[1] != 0.0
+        || external_field[2] != 0.0)
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd with a uniform external field is not "
+            "productized — clear external_field.");
+
+    // Energy terms with no force counterpart. `e_total_` includes E_disp
+    // while ScfGradient carries no dispersion gradient, so a CP run would
+    // silently break the conserved-energy gate that makes the method
+    // verifiable (under BOMD this is a pre-existing non-conservative force).
+    if (d3bj || d4)
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd with d3bj/d4 is refused — the dispersion "
+            "energy enters the total energy but ScfGradient has no "
+            "dispersion force term, so the Car-Parrinello conserved energy "
+            "would drift for a reason the trajectory cannot show. Clear "
+            "d3bj/d4.");
+
+    // Propagator parameters (validated here so a bad mu is reported before a
+    // full seed SCF is spent).
+    if (!(cpmd_mu > 0.0) || !std::isfinite(cpmd_mu))
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd_mu must be finite and > 0 (a.u. mass)");
+    if (cpmd_thermostat) {
+        if (!(cpmd_ekin_target_ha > 0.0) || !std::isfinite(cpmd_ekin_target_ha))
+            throw std::invalid_argument(
+                "MeanFieldMethod: cpmd_thermostat requires "
+                "cpmd_ekin_target_ha finite and > 0 (Hartree)");
+        if (!(cpmd_tau_e > 0.0) || !std::isfinite(cpmd_tau_e))
+            throw std::invalid_argument(
+                "MeanFieldMethod: cpmd_thermostat requires cpmd_tau_e finite "
+                "and > 0 (fs)");
+    }
+    if (!compute_force)
+        throw std::invalid_argument(
+            "MeanFieldMethod: cpmd requires compute_force = true — the "
+            "nuclei are integrated from the CP force, so a force-free CP "
+            "step would move nothing and conserve nothing.");
+}
+
+template <typename D>
+void MeanFieldMethod<D>::cpmd_seed_() {
+    // A near-singular overlap makes the holonomic constraint CᵀSC = I
+    // ill-conditioned, so the propagated coefficients drift off the manifold.
+    // Discovered while driving (the drop count is known only after the seed
+    // SCF built X), hence runtime_error rather than invalid_argument.
+    if (n_dropped_ > 0)
+        throw std::runtime_error(
+            "MeanFieldMethod: cpmd cannot seed from a wavefunction with "
+            + std::to_string(n_dropped_)
+            + " dropped overlap direction(s) (lindep_threshold = "
+            + std::to_string(lindep_threshold)
+            + ") — the RATTLE metric CᵀSC = I is ill-conditioned there. "
+              "Lower lindep_threshold or use a less redundant basis.");
+    if (n_alpha_ < 1)
+        throw std::runtime_error(
+            "MeanFieldMethod: cpmd seed requires at least one occupied alpha "
+            "orbital to propagate.");
+    const int n = static_cast<int>(C_alpha_.shape()[0]);
+    if (n < 1 || static_cast<int>(C_alpha_.shape()[1]) < n_alpha_)
+        throw std::runtime_error(
+            "MeanFieldMethod: cpmd seed: the converged alpha MO set has "
+            "fewer columns than occupied orbitals.");
+
+    // Occupied columns only. They are S-orthonormal by construction on both
+    // the Löwdin and the canonical-orthogonalization paths (CᵀSC = I is what
+    // the generalized eigensolver returns), which is exactly the seed
+    // contract of `electronic::Cpmd::seed`.
+    const auto occupied = [](const RealMatrix& C, int n_occ, int n_basis) {
+        RealMatrix out = xt::zeros<double>({n_basis, n_occ});
+        for (int mu = 0; mu < n_basis; ++mu)
+            for (int i = 0; i < n_occ; ++i)
+                out(mu, i) = C(mu, i);
+        return out;
+    };
+
+    cpmd_alpha_.emplace(cpmd_mu);
+    cpmd_alpha_->thermostat = cpmd_thermostat;
+    cpmd_alpha_->ekin_target_ha = cpmd_ekin_target_ha;
+    cpmd_alpha_->tau_e_fs = cpmd_tau_e;
+    cpmd_alpha_->seed(occupied(C_alpha_, n_alpha_, n));
+
+    // UHF/UKS: the beta channel is independent (occ = 1 each). A doublet with
+    // no beta electrons simply has no beta propagator.
+    if (spin_ == SpinType::Unrestricted && n_beta_ > 0) {
+        if (static_cast<int>(C_beta_.shape()[1]) < n_beta_)
+            throw std::runtime_error(
+                "MeanFieldMethod: cpmd seed: the converged beta MO set has "
+                "fewer columns than occupied beta orbitals.");
+        cpmd_beta_.emplace(cpmd_mu);
+        cpmd_beta_->thermostat = cpmd_thermostat;
+        cpmd_beta_->ekin_target_ha = cpmd_ekin_target_ha;
+        cpmd_beta_->tau_e_fs = cpmd_tau_e;
+        cpmd_beta_->seed(occupied(C_beta_, n_beta_, n));
+    } else {
+        cpmd_beta_.reset();
+    }
+}
+
+template <typename D>
+void MeanFieldMethod<D>::cpmd_step_(Frame& frame) {
+    // A production Car-Parrinello step is NOT the stage Plan: DIIS,
+    // diagonalization and the density rebuild are exactly what CP skips, and
+    // `DriveOpts.max_iter = 0` cannot express "build one Fock at a given
+    // density" (the loop body would never run, so no Fock would be built).
+    // Drive `internal::HamiltonianBuilder` directly — the precedent is the
+    // de-shift epilogue in drive_scf_core_.
+    PositionGuard guard(frame, /*active=*/true);
+
+    restricted_ = (spin_ == SpinType::Restricted);
+    is_hf_ = (method_ == MeanFieldType::HF);
+    const bool restricted = restricted_;
+    const bool is_hf = is_hf_;
+
+    // 1. Integrals at the new geometry (ERI is direct; CP never needs the
+    //    dense tensor, and the guards already refused every knob that would).
+    const IntegralPack& ints =
+        rebuild_integrals_(frame, /*compute_pvp=*/false);
+    const int n = ints.n_basis;
+    S_ = ints.S;
+    Hcore_ = ints.Hcore;
+    v_nuc_ = ints.V_nuc;
+    n_basis_ = n;
+
+    // 2. Löwdin-transport the coefficients under the NEW metric (a geometry
+    //    change is not a dynamics step) and project the electronic velocity
+    //    back onto the constraint manifold.
+    cpmd_alpha_->align_to_overlap(S_);
+    const bool has_beta = (cpmd_beta_ && cpmd_beta_->ready());
+    if (has_beta)
+        cpmd_beta_->align_to_overlap(S_);
+
+    // 3. Density from the propagated coefficients. Restricted folds occ = 2
+    //    into the alpha channel (the loop's convention: P_alpha carries the
+    //    factor-2 closed-shell density and P_beta aliases it).
+    const RealMatrix& C_a = cpmd_alpha_->C();
+    const int n_occ_a = static_cast<int>(C_a.shape()[1]);
+    RealMatrix P_a =
+        linalg::build_density_matrix(C_a, n_occ_a, n, restricted ? 2.0 : 1.0);
+    RealMatrix P_b;
+    if (restricted) {
+        P_b = P_a;
+    } else if (has_beta) {
+        const RealMatrix& C_b = cpmd_beta_->C();
+        P_b = linalg::build_density_matrix(
+            C_b, static_cast<int>(C_b.shape()[1]), n, 1.0);
+    } else {
+        P_b = xt::zeros<double>({n, n});
+    }
+
+    // 4. One Fock/KS build at that fixed density.
+    internal::HamiltonianBuilder hb;
+    hb.prepare(ints, is_hf, grid_level, n_radial, n_angular, fixed_grid, ri,
+               aux_basis, coulomb, cfmm_order, cfmm_threshold);
+    const internal::FockResult fock = hb.step(ints, restricted, is_hf, xc_type_,
+                                              hybrid_alpha_override, P_a, P_b);
+    F_alpha_ = fock.F_alpha;
+    F_beta_ = fock.F_beta;
+    J_ = fock.J;
+    e_xc_grid_ = fock.E_xc_grid;
+    e_exact_exchange_ = fock.E_exact_exchange;
+    int_n_alpha_ = fock.int_n_alpha;
+    int_n_beta_ = fock.int_n_beta;
+    // Solvent / dispersion are refused under cpmd; keep the members honest.
+    e_solvent_ = 0;
+    e_pcm_fock_half_ = 0;
+    e_disp_ = 0;
+
+    // 5. The same four-branch functional the SCF loop evaluates, at a density
+    //    that is both the Fock's input and this step's output.
+    const internal::MeanFieldEnergy e = internal::mean_field_energy_at_density(
+        restricted, is_hf, Hcore_, F_alpha_, F_beta_, J_, P_a, P_b, P_a, P_b,
+        e_xc_grid_, e_exact_exchange_, v_nuc_, e_solvent_, e_pcm_fock_half_);
+    e_total_ = e.total;
+    e_one_ = e.one_electron;
+    e_coulomb_ = e.coulomb;
+    P_alpha_ = P_a;
+    P_beta_ = P_b;
+
+    // 6. Nuclear forces at the propagated (non-stationary) state: the Pulay
+    //    weight is the full Lagrange-multiplier form, not sum_i eps_i c_i c_i^T.
+    //    Accumulate with `+=`: MD zeroes forces and energy at pre_force, so
+    //    this method is one contributor among however many the loop binds.
+    internal::ScfGradient gradient{method_,
+                                   spin_,
+                                   xc_type_,
+                                   grid_level,
+                                   n_radial,
+                                   n_angular,
+                                   xc_grad_project_translation};
+    const RealMatrix empty;
+    last_grad_ = gradient.compute_at_density(
+        frame, ints, C_a, F_alpha_,
+        restricted || !has_beta ? empty : cpmd_beta_->C(),
+        restricted ? empty : F_beta_, e_total_);
+    const int natm = static_cast<int>(frame.nlocal());
+    AccReal* __restrict fx = frame.span(kAtom_fx);
+    AccReal* __restrict fy = frame.span(kAtom_fy);
+    AccReal* __restrict fz = frame.span(kAtom_fz);
+    for (int A = 0; A < natm; ++A) {
+        fx[A] += last_grad_.forces(A, 0);
+        fy[A] += last_grad_.forces(A, 1);
+        fz[A] += last_grad_.forces(A, 2);
+    }
+    frame.meta.get(kEnergy) += last_grad_.energy;
+
+    // 7. Advance the electrons one velocity-Verlet + RATTLE step on the
+    //    nuclear clock, then publish the adiabaticity signal. Closed shell is
+    //    one channel at occ = 2; UHF/UKS are two channels at occ = 1 each and
+    //    T_e is their sum.
+    cpmd_alpha_->advance(F_alpha_, S_, cpmd_dt_fs_, restricted ? 2.0 : 1.0);
+    double te_ha = cpmd_alpha_->kinetic_ha();
+    double etherm_ha = cpmd_alpha_->thermostat_energy_ha();
+    if (has_beta) {
+        cpmd_beta_->advance(F_beta_, S_, cpmd_dt_fs_, /*occ=*/1.0);
+        te_ha += cpmd_beta_->kinetic_ha();
+        etherm_ha += cpmd_beta_->thermostat_energy_ha();
+    }
+    last_te_ev_ = te_ha * units::kHartreeInEv;
+    last_etherm_ev_ = etherm_ha * units::kHartreeInEv;
+    publish_electronic_energies(frame, last_te_ev_, last_etherm_ev_);
+
+    // The defining CP signature: zero SCF iterations, forever after the seed.
+    iterations_ = 0;
+}
+
 // ── Entry points ──────────────────────────────────────────────────────────────
 
 template <typename D>
 void MeanFieldMethod<D>::run(Frame& frame, const SCFInitialGuess* guess) {
+    refuse_standalone_cpmd(cpmd, "MeanFieldMethod::run");
     DriveOpts opts;
     opts.unwrap = true;
     opts.write_energy = true; // Frame-out: the mutating entry always writes.
@@ -998,6 +1401,7 @@ void MeanFieldMethod<D>::run(Frame& frame, const SCFInitialGuess* guess) {
 
 template <typename D>
 void MeanFieldMethod<D>::run(const Frame& frame, const SCFInitialGuess* guess) {
+    refuse_standalone_cpmd(cpmd, "MeanFieldMethod::run");
     // SCF is read-only w.r.t. the frame: the stages compute on private member
     // matrices, never frame fields; this entry unwraps nothing and writes
     // nothing back. The const_cast is therefore never a mutation of the
@@ -1013,6 +1417,7 @@ void MeanFieldMethod<D>::run(const Frame& frame, const SCFInitialGuess* guess) {
 template <typename D>
 GradientResult MeanFieldMethod<D>::forces(Frame& frame,
                                           const SCFInitialGuess* guess) {
+    refuse_standalone_cpmd(cpmd, "MeanFieldMethod::forces");
     DriveOpts opts;
     opts.unwrap = false;
     opts.write_energy = false;
