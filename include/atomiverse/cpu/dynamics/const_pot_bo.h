@@ -228,6 +228,10 @@ class ConstPotBO : public cpu::Component {
     double site_density = 0.0;
 
   private:
+    /// `ConstPotMaZe` (mass-zero constrained dynamics) reuses the elastance
+    /// build / RHS / write-back internals instead of duplicating them.
+    friend class ConstPotMaZe;
+
     std::vector<ElectrodeGroup> groups_;
 
     // Maps: electrode local index → frame atom row; group id per electrode atom.

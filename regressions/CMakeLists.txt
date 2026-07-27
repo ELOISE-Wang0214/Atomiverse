@@ -71,6 +71,7 @@ if(ATV_BUILD_MD)
     atv_add_regression(md finite-field-single-electrode)
     atv_add_regression(md pim-induced-dipole-bulk)
     atv_add_regression(md thomas-fermi-electrode)
+    atv_add_regression(md maze-symplectic-charge-dynamics)
     atv_add_regression(md dipole-electrode-joint)
     # Ghost-charge transport after the const-pot Q solve under MPI DD:
     # self-relaunching binary (mpiexec -n 2), oracle=literature invariant.
