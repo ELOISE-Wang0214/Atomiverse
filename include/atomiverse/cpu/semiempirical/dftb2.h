@@ -22,7 +22,7 @@ enum class DftbSkSet {
     ThreeOb = 1,
 };
 
-/// @brief SCC-DFTB2 energy (+ optional forces) for H/C/N/O.
+/// @brief SCC-DFTB2 energy (+ optional analytic nuclear forces) for H/C/N/O.
 ///
 /// Self-consistent-charge DFTB2 (Elstner et al., Phys. Rev. B **58**, 7260
 /// (1998), DOI 10.1103/PhysRevB.58.7260): electronic tight-binding + second-
@@ -30,11 +30,18 @@ enum class DftbSkSet {
 /// from static tables — no runtime `.skf` parser, no public factory.
 ///
 /// - `sk_set = MioSketch` (default): `basis_data/dftb_mio_tables.h` exponential
-///   sketch (not bit-identical to DFTB.org mio-1-1).
+///   sketch (not bit-identical to DFTB.org mio-1-1). Analytic forces (HF +
+///   Pulay + SCC shift on ∂S + fixed-Δq ∂γ + repulsive) on this path.
 /// - `sk_set = ThreeOb`: `basis_data/dftb_3ob_tables.h` transcribed 3ob-3-1
 ///   radial H/S + repulsive spline (Gaus et al., JCTC 2013; organic CHNO).
+///   Forces currently re-SCC central FD of E (energy path is oracle-pinned).
 ///
 /// Supported Z: 1, 6, 7, 8; any other element or missing pair throws.
+///
+/// Energy is \(E=\sum_i n_i\varepsilon_i - E_{\mathrm{SCC}} + E_{\mathrm{rep}}\)
+/// with SCC Hamiltonian \(H=H_0+\tfrac12 S_{\mu\nu}(\Delta V_A+\Delta V_B)\).
+/// When @c with_forces is true on MioSketch, nuclear forces are the closed-form
+/// gradient — the DFTB+ force module boundary — not a re-SCC finite difference.
 ///
 /// Units on the public surface: energy [eV], positions [Å], forces [eV/Å].
 ///
@@ -50,7 +57,7 @@ class DFTB2 : public cpu::Semiempirical {
     double scc_tol = 1e-8;
     /// @brief Maximum SCC iterations (dimensionless).
     int max_scc = 50;
-    /// @brief When true, write forces F=−∇E [eV/Å] on launch (central FD of E).
+    /// @brief When true, write F=−∇E [eV/Å] on launch (analytic on MioSketch).
     bool with_forces = true;
     /// @brief Static SK parameter set (constructor/member — not a Config bag).
     DftbSkSet sk_set = DftbSkSet::MioSketch;

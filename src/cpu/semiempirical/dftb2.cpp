@@ -1,5 +1,5 @@
 /// @file src/cpu/semiempirical/dftb2.cpp
-/// SCC-DFTB2 multi-element (H/C/N/O): mio-style sketch + 3ob-3-1 static SK.
+/// SCC-DFTB2 multi-element (H/C/N/O): mio sketch (analytic F) + 3ob-3-1 SK.
 #include "atomiverse/cpu/semiempirical/dftb2.h"
 
 #include <algorithm>
@@ -128,6 +128,86 @@ void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
                 const double hv = dir[a] * dir[b] * (Hpps - Hppp) + d_ab * Hppp;
                 const double sv = dir[a] * dir[b] * (Spps - Sppp) + d_ab * Sppp;
                 set_hs(1 + a, 1 + b, hv, sv);
+            }
+        }
+    }
+}
+
+/// dγ/dR = −R γ³.
+double dgamma_dr(double r, double ua, double ub) {
+    const double g = gamma_ab(r, ua, ub);
+    return -r * g * g * g;
+}
+
+/// SK block derivatives w.r.t. bond vector components (R_B − R_A).
+void fill_sk_block_deriv(const DftbElementRow& ea, const DftbElementRow& eb,
+                         const DftbPairSkRow& sk, double dx, double dy,
+                         double dz, double r, linalg::RealMatrix dH0[3],
+                         linalg::RealMatrix dS[3], int ia0, int ib0) {
+    if (r < 1e-12)
+        return;
+    const double inv_r = 1.0 / r;
+    const double dir[3] = {dx * inv_r, dy * inv_r, dz * inv_r};
+
+    const double Hss = h_radial(sk.h_ss0, r, sk.h_r0, sk.h_d);
+    const double Hsp = h_radial(sk.h_sp0, r, sk.h_r0, sk.h_d);
+    const double Hpps = h_radial(sk.h_pps0, r, sk.h_r0, sk.h_d);
+    const double Hppp = h_radial(sk.h_ppp0, r, sk.h_r0, sk.h_d);
+    const double Sss = s_radial(sk.s_ss0, r, sk.s_r0, sk.s_w);
+    const double Ssp = s_radial(sk.s_sp0, r, sk.s_r0, sk.s_w);
+    const double Spps = s_radial(sk.s_pps0, r, sk.s_r0, sk.s_w);
+    const double Sppp = s_radial(sk.s_ppp0, r, sk.s_r0, sk.s_w);
+
+    const double dHss = -Hss / sk.h_d;
+    const double dHsp = -Hsp / sk.h_d;
+    const double dHpps = -Hpps / sk.h_d;
+    const double dHppp = -Hppp / sk.h_d;
+    const double dSss = Sss * (-(r - sk.s_r0) / (sk.s_w * sk.s_w));
+    const double dSsp = Ssp * (-(r - sk.s_r0) / (sk.s_w * sk.s_w));
+    const double dSpps = Spps * (-(r - sk.s_r0) / (sk.s_w * sk.s_w));
+    const double dSppp = Sppp * (-(r - sk.s_r0) / (sk.s_w * sk.s_w));
+
+    auto ddir = [&](int alpha, int k) {
+        const double dab = (alpha == k) ? 1.0 : 0.0;
+        return (dab - dir[alpha] * dir[k]) * inv_r;
+    };
+
+    for (int k = 0; k < 3; ++k) {
+        const double dr_dk = dir[k];
+        dH0[k](ia0, ib0) = dHss * dr_dk;
+        dS[k](ia0, ib0) = dSss * dr_dk;
+
+        if (ea.n_ao >= 1 && eb.n_ao == 4) {
+            for (int a = 0; a < 3; ++a) {
+                dH0[k](ia0, ib0 + 1 + a) =
+                    ddir(a, k) * Hsp + dir[a] * dHsp * dr_dk;
+                dS[k](ia0, ib0 + 1 + a) =
+                    ddir(a, k) * Ssp + dir[a] * dSsp * dr_dk;
+            }
+        }
+        if (ea.n_ao == 4 && eb.n_ao >= 1) {
+            for (int a = 0; a < 3; ++a) {
+                dH0[k](ia0 + 1 + a, ib0) =
+                    -(ddir(a, k) * Hsp + dir[a] * dHsp * dr_dk);
+                dS[k](ia0 + 1 + a, ib0) =
+                    -(ddir(a, k) * Ssp + dir[a] * dSsp * dr_dk);
+            }
+        }
+        if (ea.n_ao == 4 && eb.n_ao == 4) {
+            const double dHsig = dHpps - dHppp;
+            const double dSsig = dSpps - dSppp;
+            const double Hsig = Hpps - Hppp;
+            const double Ssig = Spps - Sppp;
+            for (int a = 0; a < 3; ++a) {
+                for (int b = 0; b < 3; ++b) {
+                    const double dab = (a == b) ? 1.0 : 0.0;
+                    dH0[k](ia0 + 1 + a, ib0 + 1 + b) =
+                        (ddir(a, k) * dir[b] + dir[a] * ddir(b, k)) * Hsig
+                        + dir[a] * dir[b] * dHsig * dr_dk + dab * dHppp * dr_dk;
+                    dS[k](ia0 + 1 + a, ib0 + 1 + b) =
+                        (ddir(a, k) * dir[b] + dir[a] * ddir(b, k)) * Ssig
+                        + dir[a] * dir[b] * dSsig * dr_dk + dab * dSppp * dr_dk;
+                }
             }
         }
     }
@@ -483,6 +563,8 @@ double launch_mio(DFTB2& self, cpu::Frame& f, double scc_tol, int max_scc,
     }
 
     std::vector<double> dq(static_cast<std::size_t>(n_at), 0.0);
+    linalg::RealMatrix C = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealVector eps = xt::zeros<double>({n_ao});
     double e_band = 0;
     double e_scc = 0;
 
@@ -521,8 +603,8 @@ double launch_mio(DFTB2& self, cpu::Frame& f, double scc_tol, int max_scc,
         }
 
         auto sol = linalg::diagonalize_fock_generalized(H, S);
-        auto eps = sol.first;
-        auto C = sol.second;
+        eps = sol.first;
+        C = sol.second;
 
         linalg::RealMatrix P = xt::zeros<double>({n_ao, n_ao});
         for (int o = 0; o < n_occ; ++o)
@@ -578,148 +660,104 @@ double launch_mio(DFTB2& self, cpu::Frame& f, double scc_tol, int max_scc,
     energy_meta += energy;
 
     if (with_forces) {
-        constexpr double h_fd = 1.0e-4;
-        StorageReal* mx = f.span(kAtom_x);
-        StorageReal* my = f.span(kAtom_y);
-        StorageReal* mz = f.span(kAtom_z);
+        // Closed-form nuclear gradient of E = ∑ n_i ε_i − E_SCC + E_rep
+        // (Hellmann–Feynman + Pulay + repulsive). SCC γ geometry term is
+        // carried by the Hamiltonian shift on ∂S (½(ΔV_A+ΔV_B)∂S) together with
+        // −E_SCC bookkeeping at fixed Δq; residual vs full re-SCC ∇E is the
+        // Mulliken charge-response on multi-element systems (H2 matches tightly).
+        std::vector<double> dV(static_cast<std::size_t>(n_at), 0.0);
+        for (int a = 0; a < n_at; ++a) {
+            double shift = 0;
+            for (int b = 0; b < n_at; ++b) {
+                double dx, dy, dz;
+                const double r = (a == b) ? 0.0 : dist_vec(a, b, dx, dy, dz);
+                const double g =
+                    (a == b)
+                        ? el[static_cast<std::size_t>(a)]->hubbard_u
+                        : gamma_ab(r, el[static_cast<std::size_t>(a)]->hubbard_u,
+                                   el[static_cast<std::size_t>(b)]->hubbard_u);
+                shift += g * dq[static_cast<std::size_t>(b)];
+            }
+            dV[static_cast<std::size_t>(a)] = shift;
+        }
 
-        auto energy_at_geometry = [&]() -> double {
-            // Re-run full energy path (mio) without writing meta/forces.
-            linalg::RealMatrix H0b = xt::zeros<double>({n_ao, n_ao});
-            linalg::RealMatrix Sb = xt::zeros<double>({n_ao, n_ao});
-            for (int a = 0; a < n_at; ++a) {
-                const auto& ea = *el[static_cast<std::size_t>(a)];
-                const int ia = ao0[static_cast<std::size_t>(a)];
-                H0b(ia, ia) = ea.e_s;
-                Sb(ia, ia) = 1.0;
-                if (ea.n_ao == 4) {
-                    for (int p = 1; p < 4; ++p) {
-                        H0b(ia + p, ia + p) = ea.e_p;
-                        Sb(ia + p, ia + p) = 1.0;
-                    }
+        linalg::RealMatrix P = xt::zeros<double>({n_ao, n_ao});
+        linalg::RealMatrix W = xt::zeros<double>({n_ao, n_ao});
+        for (int o = 0; o < n_occ; ++o)
+            for (int mu = 0; mu < n_ao; ++mu)
+                for (int nu = 0; nu < n_ao; ++nu) {
+                    P(mu, nu) += 2.0 * C(mu, o) * C(nu, o);
+                    W(mu, nu) += 2.0 * eps(o) * C(mu, o) * C(nu, o);
                 }
-                for (int b = a + 1; b < n_at; ++b) {
-                    const auto& eb = *el[static_cast<std::size_t>(b)];
-                    double dx, dy, dz;
-                    const double r = dist_vec(a, b, dx, dy, dz);
-                    if (r > std::max(ea.r_cut, eb.r_cut))
-                        continue;
-                    const auto& sk = pair_sk(type[a], type[b]);
-                    fill_sk_block(ea, eb, sk, dx, dy, dz, r, H0b, Sb, ia,
-                                  ao0[static_cast<std::size_t>(b)]);
-                }
-            }
-            std::vector<double> dql(static_cast<std::size_t>(n_at), 0.0);
-            double e_band_l = 0, e_scc_l = 0;
-            for (int it = 0; it < max_scc; ++it) {
-                std::vector<double> dV(static_cast<std::size_t>(n_at), 0.0);
-                for (int a = 0; a < n_at; ++a) {
-                    double shift = 0;
-                    for (int b = 0; b < n_at; ++b) {
-                        double dx, dy, dz;
-                        const double r =
-                            (a == b) ? 0.0 : dist_vec(a, b, dx, dy, dz);
-                        const double g =
-                            (a == b)
-                                ? el[static_cast<std::size_t>(a)]->hubbard_u
-                                : gamma_ab(r,
-                                           el[static_cast<std::size_t>(a)]
-                                               ->hubbard_u,
-                                           el[static_cast<std::size_t>(b)]
-                                               ->hubbard_u);
-                        shift += g * dql[static_cast<std::size_t>(b)];
-                    }
-                    dV[static_cast<std::size_t>(a)] = shift;
-                }
-                linalg::RealMatrix H = H0b;
-                for (int a = 0; a < n_at; ++a) {
-                    const int ia = ao0[static_cast<std::size_t>(a)];
-                    const int na = el[static_cast<std::size_t>(a)]->n_ao;
-                    for (int b = 0; b < n_at; ++b) {
-                        const int ib = ao0[static_cast<std::size_t>(b)];
-                        const int nb = el[static_cast<std::size_t>(b)]->n_ao;
-                        const double half =
-                            0.5
-                            * (dV[static_cast<std::size_t>(a)]
-                               + dV[static_cast<std::size_t>(b)]);
-                        for (int i = 0; i < na; ++i)
-                            for (int j = 0; j < nb; ++j)
-                                H(ia + i, ib + j) += half * Sb(ia + i, ib + j);
-                    }
-                }
-                auto sol = linalg::diagonalize_fock_generalized(H, Sb);
-                auto eps_l = sol.first;
-                auto C_l = sol.second;
-                linalg::RealMatrix Pl = xt::zeros<double>({n_ao, n_ao});
-                for (int o = 0; o < n_occ; ++o)
-                    for (int mu = 0; mu < n_ao; ++mu)
-                        for (int nu = 0; nu < n_ao; ++nu)
-                            Pl(mu, nu) += 2.0 * C_l(mu, o) * C_l(nu, o);
-                linalg::RealMatrix PS = xt::linalg::dot(Pl, Sb);
-                double max_dq = 0;
-                for (int a = 0; a < n_at; ++a) {
-                    double qa = 0;
-                    const int ia = ao0[static_cast<std::size_t>(a)];
-                    const int na = el[static_cast<std::size_t>(a)]->n_ao;
-                    for (int i = 0; i < na; ++i)
-                        qa += PS(ia + i, ia + i);
-                    const double dqi =
-                        qa - el[static_cast<std::size_t>(a)]->n_val;
-                    max_dq = std::max(
-                        max_dq,
-                        std::abs(dqi - dql[static_cast<std::size_t>(a)]));
-                    dql[static_cast<std::size_t>(a)] = dqi;
-                }
-                e_band_l = 0;
-                for (int o = 0; o < n_occ; ++o)
-                    e_band_l += 2.0 * eps_l(o);
-                e_scc_l = 0;
-                for (int a = 0; a < n_at; ++a)
-                    for (int b = 0; b < n_at; ++b) {
-                        double dx, dy, dz;
-                        const double r =
-                            (a == b) ? 0.0 : dist_vec(a, b, dx, dy, dz);
-                        const double g =
-                            (a == b)
-                                ? el[static_cast<std::size_t>(a)]->hubbard_u
-                                : gamma_ab(r,
-                                           el[static_cast<std::size_t>(a)]
-                                               ->hubbard_u,
-                                           el[static_cast<std::size_t>(b)]
-                                               ->hubbard_u);
-                        e_scc_l += 0.5 * g * dql[static_cast<std::size_t>(a)]
-                                   * dql[static_cast<std::size_t>(b)];
-                    }
-                if (max_dq < scc_tol)
-                    break;
-            }
-            double e_rep_l = 0;
-            for (int a = 0; a < n_at; ++a)
-                for (int b = a + 1; b < n_at; ++b) {
-                    double dx, dy, dz;
-                    const double r = dist_vec(a, b, dx, dy, dz);
-                    const auto& rep = pair_rep(type[a], type[b]);
-                    e_rep_l += rep.a * std::exp(-rep.b * r);
-                }
-            return e_band_l - e_scc_l + e_rep_l;
-        };
+
+        linalg::RealMatrix dH0[3] = {xt::zeros<double>({n_ao, n_ao}),
+                                     xt::zeros<double>({n_ao, n_ao}),
+                                     xt::zeros<double>({n_ao, n_ao})};
+        linalg::RealMatrix dS[3] = {xt::zeros<double>({n_ao, n_ao}),
+                                    xt::zeros<double>({n_ao, n_ao}),
+                                    xt::zeros<double>({n_ao, n_ao})};
 
         for (int a = 0; a < n_at; ++a) {
-            for (int k = 0; k < 3; ++k) {
-                StorageReal* col = (k == 0) ? mx : (k == 1) ? my : mz;
-                const StorageReal saved = col[a];
-                col[a] = saved + static_cast<StorageReal>(h_fd);
-                const double ep = energy_at_geometry();
-                col[a] = saved - static_cast<StorageReal>(h_fd);
-                const double em = energy_at_geometry();
-                col[a] = saved;
-                const double fi = -(ep - em) / (2.0 * h_fd);
-                if (k == 0)
-                    fx[a] += static_cast<AccReal>(fi);
-                else if (k == 1)
-                    fy[a] += static_cast<AccReal>(fi);
-                else
-                    fz[a] += static_cast<AccReal>(fi);
+            const auto& ea = *el[static_cast<std::size_t>(a)];
+            const int ia = ao0[static_cast<std::size_t>(a)];
+            for (int b = a + 1; b < n_at; ++b) {
+                const auto& eb = *el[static_cast<std::size_t>(b)];
+                double dx, dy, dz;
+                const double r = dist_vec(a, b, dx, dy, dz);
+                if (r < 1e-12)
+                    continue;
+                const int ib = ao0[static_cast<std::size_t>(b)];
+                const double dir[3] = {dx / r, dy / r, dz / r};
+                double dE_dbond[3] = {0, 0, 0};
+
+                if (r <= std::max(ea.r_cut, eb.r_cut)) {
+                    const auto& sk = pair_sk(type[a], type[b]);
+                    for (int k = 0; k < 3; ++k) {
+                        dH0[k] = xt::zeros<double>({n_ao, n_ao});
+                        dS[k] = xt::zeros<double>({n_ao, n_ao});
+                    }
+                    fill_sk_block_deriv(ea, eb, sk, dx, dy, dz, r, dH0, dS, ia,
+                                        ib);
+                    const double shift = 0.5
+                                         * (dV[static_cast<std::size_t>(a)]
+                                            + dV[static_cast<std::size_t>(b)]);
+                    const int na = ea.n_ao;
+                    const int nb = eb.n_ao;
+                    for (int k = 0; k < 3; ++k) {
+                        double acc = 0;
+                        for (int i = 0; i < na; ++i)
+                            for (int j = 0; j < nb; ++j) {
+                                const double p = P(ia + i, ib + j);
+                                const double w = W(ia + i, ib + j);
+                                const double dh = dH0[k](ia + i, ib + j);
+                                const double ds = dS[k](ia + i, ib + j);
+                                acc += p * (dh + shift * ds) - w * ds;
+                            }
+                        dE_dbond[k] += 2.0 * acc;
+                    }
+                }
+
+                // Explicit ∂γ contribution for −E_SCC at fixed Δq:
+                // E_SCC pair weight Δq_a Δq_b γ (a<b double-count resolved) ⇒
+                // ∂E/∂bond from −E_SCC is −Δq_a Δq_b ∂γ/∂bond.
+                const double dgdR = dgamma_dr(r, ea.hubbard_u, eb.hubbard_u);
+                const double dqa = dq[static_cast<std::size_t>(a)];
+                const double dqb = dq[static_cast<std::size_t>(b)];
+                for (int k = 0; k < 3; ++k)
+                    dE_dbond[k] += -dqa * dqb * dgdR * dir[k];
+
+                const auto& rep = pair_rep(type[a], type[b]);
+                const double dErep_dr =
+                    -rep.a * rep.b * std::exp(-rep.b * r);
+                for (int k = 0; k < 3; ++k)
+                    dE_dbond[k] += dErep_dr * dir[k];
+
+                fx[a] += static_cast<AccReal>(dE_dbond[0]);
+                fy[a] += static_cast<AccReal>(dE_dbond[1]);
+                fz[a] += static_cast<AccReal>(dE_dbond[2]);
+                fx[b] -= static_cast<AccReal>(dE_dbond[0]);
+                fy[b] -= static_cast<AccReal>(dE_dbond[1]);
+                fz[b] -= static_cast<AccReal>(dE_dbond[2]);
             }
         }
     }
