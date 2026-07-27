@@ -176,6 +176,7 @@ atv_add_cpp_test(test_cpu_compiled_forcefield     cpu/io/test_compiled_forcefiel
 atv_add_cpp_test(test_cpu_lammps_data_full        cpu/io/test_lammps_data_full.cpp)
 atv_add_cpp_test(test_cpu_lammps_real             cpu/io/test_lammps_real.cpp)
 atv_add_cpp_test(test_cpu_fix_efield              cpu/dynamics/test_fix_efield.cpp)
+atv_add_cpp_test(test_cpu_fix_dfield              cpu/dynamics/test_fix_dfield.cpp)
 atv_add_cpp_test(test_cpu_fix_addforce            cpu/dynamics/test_fix_addforce.cpp)
 atv_add_cpp_test(test_cpu_fix_oscillating_efield  cpu/dynamics/test_fix_oscillating_efield.cpp)
 atv_add_cpp_test(test_cpu_fix_wall_lj1043         cpu/dynamics/test_fix_wall_lj1043.cpp)
