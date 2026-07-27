@@ -1036,6 +1036,8 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
         bool has_constraint = false; ///< A Constraint component is registered.
         bool has_halo_send = false;  ///< A HaloSend is already registered.
         bool has_halo_recv = false;  ///< A HaloRecv is already registered.
+        bool has_charge_updater =
+            false; ///< A component rewrites owned charges mid-step.
         std::string neighbor_consumer_name; ///< First `NeighborConsumer`.
         std::optional<AccReal>
             neighbor_consumer_cutoff; ///< Set when it declares a cutoff > 0.
@@ -1088,6 +1090,8 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
                 s.has_neighbor_list = true;
             if (c.as_constraint())
                 s.has_constraint = true;
+            if (c.updates_owned_charges())
+                s.has_charge_updater = true;
             if (cpu::HaloParticipant* hp = c.halo_participant()) {
                 if (hp->halo_endpoint() == cpu::HaloParticipant::Endpoint::send)
                     s.has_halo_send = true;

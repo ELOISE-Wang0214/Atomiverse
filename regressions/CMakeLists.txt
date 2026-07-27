@@ -72,6 +72,13 @@ if(ATV_BUILD_MD)
     atv_add_regression(md pim-induced-dipole-bulk)
     atv_add_regression(md thomas-fermi-electrode)
     atv_add_regression(md dipole-electrode-joint)
+    # Ghost-charge transport after the const-pot Q solve under MPI DD:
+    # self-relaunching binary (mpiexec -n 2), oracle=literature invariant.
+    if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
+        atv_add_regression(md const-pot-charge-halo-mpi)
+        target_compile_definitions(reg_const-pot-charge-halo-mpi PRIVATE
+            ATV_MPIEXEC="${MPIEXEC_EXECUTABLE}")
+    endif()
 endif()
 if(ATV_BUILD_MC)
     atv_add_regression(mc gcmc_lj)

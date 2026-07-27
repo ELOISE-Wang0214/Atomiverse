@@ -463,6 +463,21 @@ class MD : public Driver<ATV::md::Phase> {
                 .add(comm::HaloRefresh{comm::HaloRefresh::Field::velocities},
                      +150);
         }
+
+        // A constant-potential charge solver rewrites owned charges at
+        // pre_force (ConstPot* bind at -500/-50) — AFTER the step's forward
+        // halo at pre_neighbor. Without a refresh, the force stages read
+        // ghost charges one solve stale (zero at step 0): forces are silently
+        // wrong exactly at rank boundaries. Same "make forgetting impossible"
+        // rationale as the constraint refreshes above. Idempotent, so a
+        // user-registered charge refresh alongside this one is harmless.
+        // LAMMPS twin: fix electrode forward-communicates q after every conp
+        // solve (Ahrens-Iwers et al., J. Chem. Phys. 157, 084801 (2022)).
+        if (s.has_charge_updater) {
+            this->on(ATV::md::Phase::pre_force)
+                .add(comm::HaloRefresh{comm::HaloRefresh::Field::charges},
+                     +900);
+        }
 #endif
 
         this->throw_if_missing_neighbor_list_(
