@@ -27,7 +27,7 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
 | W1-1 | esmm-contract-01-zeroing | — | DONE 2026-07-27 (closed; see git 66664744) — Zero* unification + k/2 oracle fix |
 | W1-2 | esmm-contract-02-validation-walks | — | DONE 2026-07-27 (closed; see git 17f52238 + close commit) — node-aware validation walks |
 | W1-3 | esmm-contract-03-runslot-nested | — | DONE 2026-07-27 (closed; see git 3480c6ab/6ea2ea23) — run_slot_ nested dispatch + R2 CCCBDB pin |
-| W1-4 | esmm-contract-04-forces-requested | W1-2 | phase_wants_forces plumbing + ASPC-under-MC guard + R3 |
+| W1-4 | esmm-contract-04-forces-requested | W1-2 | DONE 2026-07-27 (closed; see git fc204c63 + R3 commit) — energy-only phases in the Plan + ASPC-under-MC guard + first QM-in-MC regression |
 | W1-5 | esmm-contract-05-accumulate-switch | W1-1 | all ES sources `=`→`+=` + kEnergyElectronic + R1 |
 | W2-1 | esmm-qmmm-01-embed-forces | — | analytic embedding gradient + MM-site forces (third law) |
 | W2-2 | esmm-qmmm-02-qm-engine-protocol | W2-1 | QmEngine/EmbeddingEngine protocols; MFM×7 + AM1 + DFTB2 |
@@ -70,6 +70,17 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   (pre-existing OpenMP reduction-order noise in the Γ-UKS grid/XC path,
   ~3e-5 relative; byte-compares must run OMP_NUM_THREADS=1) — /mol:fix if
   determinism is wanted.
+- **Regressions run thread-unpinned; small-system cases pay catastrophic
+  fork/join overhead** (named 2026-07-27, esmm-contract-04 R3): the
+  `regressions` target runs binaries with no `OMP_NUM_THREADS`, and only ~3
+  of ~250 registered cases pin their thread count (`set_threads(1)`;
+  precedent `neb_muller_brown`, now also `mc_bias_es`). Measured on
+  mc_bias_es (2 atoms, 2 AOs): 7 s CPU at 1 thread, 231 s at 8, unfinished
+  after 11 min at the node default 48 — results bit-identical at every
+  count, pure OpenMP fork/join waste. Every other small-system case is
+  exposed. Fix options: per-case `set_threads` sweep, or the regressions
+  CMake target exporting `OMP_NUM_THREADS=1` by default with per-case
+  opt-out. Route /mol:fix (mechanical, wide).
 
 ## Live — deferred PySCF engine gaps (2026-07-24)
 

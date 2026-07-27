@@ -88,6 +88,12 @@ if(ATV_BUILD_MC)
     atv_add_regression(mc gcmc_lj)
     atv_add_regression(mc npt_lj)
     atv_add_regression(mc widom_hs)
+    if(ATV_BUILD_HF)
+        # Monte Carlo on an electronic structure (esmm-contract-04 R3): the
+        # trial energy is a NESTED cpu::scf::RHF driver node, so the binary
+        # needs the Gaussian SCF vtables compiled in — hence the HF nest.
+        atv_add_regression(mc mc_bias_es)
+    endif()
 endif()
 if(ATV_BUILD_PW)
     atv_add_regression(pw h_force_fd)
