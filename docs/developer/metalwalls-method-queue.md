@@ -16,21 +16,28 @@ MD+KSPACE+TESTS+REGRESSIONS **ON**). See `metalwalls-method-loop.md`.
 Census source: `.claude/notes/metalwalls-capability-map.md` slices **E1–E12**,
 plus classical MD/FF ○ rows that LAMMPS or MetalWalls can oracle offline.
 
-Census: **2026-07-24 wave 5 gap-census** (parent `dev`; waves 1–3 done=26;
-wave-4 staff still unstarted).
-**Tree audit (this census):** no wave-4 Components / regressions / `wf/<slug>`
-ahead of `dev`. Map ○/~ rows re-diffed; foothold ≠ closed. Open MD/electrochem
-specs: **none** (only deferred PySCF live specs — out of loop). Unmerged
-in-scope `wf/<slug>` ahead_of_dev: **none**. **Preserved:** `## in_progress`
-10× `[~]` (do not demote); blocked (4); done (26).
-**Foothold ≠ closed:** Gaussian / Born / Buck remain **O(N²)**; slab Yeh–Berkowitz
-≠ full 2D product; TF lacks Voronoi; electrode \(Q\) forces and MaZe still ○;
-const-pot+water/IL production boxes still open; D-field / \(C_{QQ}\) / elastance
-still ○.
+Census: **2026-07-27 gap-census (wave-5 refresh)** (parent `dev`; waves 1–4
+done=36; `## in_progress` empty).
+**Tree audit (this census):** wave-4 land verified on `dev` (`96e16823`) — all
+10 Components/regressions present: `ConstPotMaZe`,
+`ConstPotBO::write_electrode_forces` / `::global_electroneutrality`,
+`PairGaussianCoul` + `PairBorn` NeighborList bulk paths, `FixDfield`,
+`FixMove`, `ChargeChargeAutocorr`, `ElastanceObserver`,
+`reg_const-pot-tip4p-edl`. Map §1/§3/§8/§9 marks flipped accordingly
+(2026-07-27 re-audit). Residual pending re-verified open against tree: no QEq,
+no Voronoi, no XL dipoles, per-electrode \(\eta\) still a single shared
+`ConstPotBO::eta`, no halo/MPI handling in `ConstPot*`, no PIM-NPT / IL-EDL /
+nanoporous / TI regressions. Open MD/electrochem specs: **none**. Unmerged
+in-scope `wf/<slug>` ahead_of_dev: **none**. **Preserved:** in_progress (0);
+blocked (4); done (36).
+**Foothold ≠ closed (drives new rows):** `ConstPotMaZe` is a CG+ASPC adiabatic
+foothold — Coretti symplectic mass-zero constrained dynamics deferred
+in-header; `FixDfield` is a vacuum \(E\equiv D\) foothold — no self-consistent
+\(E = D - 4\pi P\) update; MW molten-salt+Al+MaZe example scenario now
+reachable (MaZe + Fumi–Tosi NL footholds) but unbuilt.
 - **Excluded from pending:** already ✓ classical twins with in-tree pins
   (`lj_argon`, `npt_pme_nacl` Madelung, `gaff_peo_fragment` specials, NH/NPT
-  integrators), wave-1 done (10), wave-2 done (10), wave-3 done (6), items
-  already in `## in_progress` (do not duplicate), SCF/post-HF, GPW/PW, CUDA
+  integrators), waves 1–4 done (36), SCF/post-HF, GPW/PW, CUDA
   product, AIM/DAIM (E11 blocked), ML electrodes (E12 blocked), hybrid DFT
   electrodes, **full 2D-PBC product stack** (slab Yeh–Berkowitz ✓ is the
   foothold; true 2D Ewald out of scope), **PLUMED** bridge, cross-language
@@ -42,11 +49,16 @@ still ○.
 
 ## pending
 
-### E1 / E2 — const-pot residual (not wave-4 staff)
+### E1 / E2 — const-pot residual
 
-- [ ] `per-electrode-eta` | Per-electrode Gaussian width \(\eta_e\) (v1 shares one \(\eta\)) | electrochem | multi-wall different \(\eta\) | — | \(Q\), \(A\) diag vs shared-\(\eta\) twin | **oracle=metalwalls**; map §1 multi-electrode \(V,\eta\) ~
+- [ ] `per-electrode-eta` | Per-electrode Gaussian width \(\eta_e\) (v1 shares one \(\eta\)) | electrochem | multi-wall different \(\eta\) | — | \(Q\), \(A\) diag vs shared-\(\eta\) twin | **oracle=metalwalls**; map §1 multi-electrode \(V,\eta\) ~; `ConstPotBO::pair_A_(r,\eta_i,\eta_j)` internals ready, public surface still one shared `eta` (verified 2026-07-27)
 - [ ] `const-charge-electrode` | Constant-charge electrode control (fixed \(Q\), not const-\(V\)) | electrochem | parallel-plate fixed total \(Q\) | — | \(Q\) fixed, \(V\) response | **oracle=lammps** ELECTRODE / fixed charge + freeze; map §1 const-charge ~
-- [ ] `const-pot-charge-halo-mpi` | Charge halo correctness after \(Q\) update under MPI DD | electrochem | multi-rank planar walls | — | ghost \(q\) match owner after solve | **oracle=literature** / self-consistency; map §1/§6 P0 timing (schema borders ✓; pre_force-after-HaloSend stale ghosts)
+- [ ] `const-pot-charge-halo-mpi` | Charge halo correctness after \(Q\) update under MPI DD | electrochem | multi-rank planar walls | — | ghost \(q\) match owner after solve | **oracle=literature** / self-consistency; map §1/§6 P0 timing (schema borders ✓; no halo/MPI handling in `ConstPot*` — verified 2026-07-27)
+
+### E1 / E3 depth — wave-4 footholds ≠ closed (new 2026-07-27)
+
+- [ ] `maze-symplectic-charge-dynamics` | True mass-zero constrained (SHAKE-like) MaZe charge dynamics (Coretti et al.) | electrochem | parallel-plate vs `ConstPotMaZe` foothold | — | \(Q(t)\) continuity, constraint residual, energy conservation vs CG+ASPC twin | **oracle=metalwalls**; map §1 MaZe ~ (`ConstPotMaZe` = CG+ASPC adiabatic foothold; symplectic constrained deferred in-header)
+- [ ] `constant-d-polarization-feedback` | Self-consistent constant-\(\mathbf{D}\) ensemble: \(E = D - 4\pi P\) from itinerant polarization | electrochem | bulk electrolyte constant-\(D_z\) | — | \(P_z(t)\), \(E_z\) response vs vacuum-foothold twin | **oracle=metalwalls** / literature (Zhang–Sprik constant-D); map §1 D-field ~ (`FixDfield` = vacuum \(E\equiv D\) foothold)
 
 ### E4 / E5 — polarization depth
 
@@ -60,8 +72,9 @@ still ○.
 
 ### E9 / scenarios — production EDL (beyond wave-4 aqueous staff)
 
-- [ ] `const-pot-il-edl-box` | Planar const-pot + non-polarizable IL EDL production box | electrochem | graphene-like walls + IL | — | \(Q\), \(\Psi(z)\), short NVT | **oracle=metalwalls**; map §9 planar graphene+const-pot+IL ~ (E1 Components ✓; product box open; aqueous path is wave-4 `const-pot-tip4p-edl`)
+- [ ] `const-pot-il-edl-box` | Planar const-pot + non-polarizable IL EDL production box | electrochem | graphene-like walls + IL | — | \(Q\), \(\Psi(z)\), short NVT | **oracle=metalwalls**; map §9 planar graphene+const-pot+IL ~ (E1 Components ✓; product box open; aqueous twin landed wave-4 `const-pot-tip4p-edl`)
 - [ ] `nanoporous-carbon-const-pot` | Nanoporous carbon geometry + const-pot (product) | electrochem | slit / pore carbon + electrolyte | — | \(Q\), occupancy proxy | **oracle=metalwalls**; map §9 nanoporous ○ (after E1 production depth)
+- [ ] `maze-molten-salt-al` | Molten-salt + Al wall + MaZe MW example scenario | electrochem | Fumi–Tosi NL salt + Al const-pot walls | — | \(Q\), \(g(r)\) proxy, short NVT | **oracle=metalwalls**; map §9 molten salt ~ (MaZe + Fumi–Tosi NL footholds landed wave-4; product box unbuilt — new 2026-07-27)
 
 ### E10 — TI residual (after charge-tool observers)
 

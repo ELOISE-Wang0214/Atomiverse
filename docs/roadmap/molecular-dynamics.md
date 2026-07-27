@@ -150,7 +150,7 @@ biomolecular work is **general rigid bodies** (and remaining vsite constructors)
 | Constant electric-field MD          |  ✓  |   ○  |   ○  |
 | Oscillating electric-field MD       |  ✓  |   ○  |   ○  |
 | Constant-force pulling              |  ✓  |   ○  |   ○  |
-| Constant-velocity pulling           |  ○  |   ○  |   ○  |
+| Constant-velocity pulling           |  ✓  |   ○  |   ○  |
 | Steered molecular dynamics          |  ○  |   ○  |   ○  |
 | SLLOD shear dynamics                |  ○  |   ○  |   ○  |
 | Lees–Edwards shear dynamics         |  ○  |   ○  |   ○  |
