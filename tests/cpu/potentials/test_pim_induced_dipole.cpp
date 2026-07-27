@@ -184,3 +184,86 @@ TEST(PimInducedDipole, SccThrowsWhenUnconverged) {
     pim.build({ctx, f});
     EXPECT_THROW(pim.launch({ctx, f, 0, 0}), std::runtime_error);
 }
+
+TEST(PimInducedDipole, VirialDimerMatchesPairForm) {
+    // Two atoms: W = r_01 ⊗ F_01, so W_xx = (x0−x1)·F0x for the axis-aligned
+    // dimer; every other Voigt component vanishes (transverse forces are 0).
+    const double r = 3.0;
+    auto f = ion_pair(r, 1.0, -1.0, 1, 2);
+    for (int c = 0; c < 6; ++c)
+        f.meta.get(kStress)[c] = 0;
+    cpu::Context ctx;
+    cpu::PimInducedDipole pim(20.0, {0.0, 1.0, 1.5}, 0.39, 1e-12, 200);
+    pim.build({ctx, f});
+    pim.launch({ctx, f, 0, 0});
+
+    const double f0x = f.span(kAtom_fx)[0];
+    const double w_xx_want = (0.0 - r) * f0x; // r_01 = x0 − x1 = −r
+    EXPECT_NEAR(f.meta.get(kStress)[0], w_xx_want, 1e-12);
+    EXPECT_LT(f.meta.get(kStress)[0], 0.0); // attraction ⇒ tensile
+    for (int c = 1; c < 6; ++c)
+        EXPECT_NEAR(f.meta.get(kStress)[c], 0.0, 1e-12) << "Voigt c=" << c;
+}
+
+TEST(PimInducedDipole, VirialTraceMatchesFdScalingUndamped) {
+    // Undamped forces are exact gradients, so trace(W) = −dE/ds under
+    // uniform scaling of coordinates AND box (s = 1 ± h). Non-symmetric
+    // 4-ion periodic configuration; min-image active (L/2 < spread paths).
+    const double L0 = 8.0;
+    const double x0[4] = {0.0, 2.5, 0.4, 6.9};
+    const double y0[4] = {0.0, 0.6, 2.8, 6.2};
+    const double z0[4] = {0.0, 0.3, 1.1, 7.0};
+    const double q[4] = {1.0, -1.0, 1.0, -1.0};
+    const std::vector<double> alpha = {0.0, 1.0, 1.5};
+    const int t[4] = {1, 2, 1, 2};
+
+    auto energy_and_stress = [&](double s, double* w6) {
+        cpu::Frame f(4);
+        for (int i = 0; i < 4; ++i) {
+            f.span(kAtom_x)[i] = s * x0[i];
+            f.span(kAtom_y)[i] = s * y0[i];
+            f.span(kAtom_z)[i] = s * z0[i];
+            f.span(kAtom_charge)[i] = q[i];
+            f.span(kAtom_type)[i] = t[i];
+            f.span(kAtom_mass)[i] = 1.0;
+            f.span(kAtom_tag)[i] = i + 1;
+            f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] =
+                0;
+        }
+        f.box = cpu::Box::cubic(s * L0);
+        f.meta.get(kEnergy) = 0;
+        for (int c = 0; c < 6; ++c)
+            f.meta.get(kStress)[c] = 0;
+        cpu::Context ctx;
+        cpu::PimInducedDipole pim(3.9, alpha, /*thole=*/0.0, 1e-13, 500);
+        pim.build({ctx, f});
+        pim.launch({ctx, f, 0, 0});
+        if (w6)
+            for (int c = 0; c < 6; ++c)
+                w6[c] = f.meta.get(kStress)[c];
+        return f.meta.get(kEnergy);
+    };
+
+    double w[6];
+    energy_and_stress(1.0, w);
+    const double trace = w[0] + w[1] + w[2];
+    const double h = 1e-5;
+    const double dEds =
+        (energy_and_stress(1.0 + h, nullptr)
+         - energy_and_stress(1.0 - h, nullptr))
+        / (2.0 * h);
+    ASSERT_NE(trace, 0.0);
+    EXPECT_NEAR(trace, -dEds, std::max(1e-8, 1e-5 * std::fabs(trace)));
+}
+
+TEST(PimInducedDipole, VirialUntouchedWhenUnpolarizable) {
+    auto f = ion_pair(3.0, 1.0, -1.0, 1, 2);
+    for (int c = 0; c < 6; ++c)
+        f.meta.get(kStress)[c] = 0;
+    cpu::Context ctx;
+    cpu::PimInducedDipole pim(20.0, {0.0, 0.0, 0.0}, 0.39, 1e-12, 200);
+    pim.build({ctx, f});
+    pim.launch({ctx, f, 0, 0});
+    for (int c = 0; c < 6; ++c)
+        EXPECT_EQ(f.meta.get(kStress)[c], 0.0) << "Voigt c=" << c;
+}
