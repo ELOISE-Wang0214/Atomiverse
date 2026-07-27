@@ -255,6 +255,14 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
     //   F_i = q_i E_i^μ + (μ_i · ∇) E_i^{q+μ}
     // excluding permanent charge–charge (q_i E_i^q).
     // Undamped multipole gradients; Thole/TT scale the multipole kernels.
+    //
+    // Configurational virial (Newton-pair form over the same per-pair
+    // forces): W = ½ Σ_{i≠j} r_ij ⊗ f_ij, accumulated in Voigt order
+    // xx yy zz xy xz yz [eV] into frame.meta kStress — LAMMPS sign
+    // (positive trace ⇔ compressive), same convention as PairCoulCut/EAM.
+    // Barostats (NoseHooverNPT, PR-NPT, Berendsen, NPH) read this trace,
+    // so PIM under NPT barostats on the full polarization pressure.
+    double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
     for (int i = 0; i < n; ++i) {
         const double qi = charge[i];
         const double ai = alpha[static_cast<std::size_t>(i)];
@@ -292,18 +300,23 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
             const double Emy = L5 * 3.0 * mjr * dy / r5 - L3 * muj[1] / r3;
             const double Emz = L5 * 3.0 * mjr * dz / r5 - L3 * muj[2] / r3;
 
+            // Per-pair force f_ij on i due to j (Gaussian e²/Å² until the
+            // final ×k). Newton's third law holds term-by-term (each kernel
+            // is odd under r → −r), so the pair virial is ½ r_ij ⊗ f_ij.
+            double fpx = 0, fpy = 0, fpz = 0;
+
             // q_i × E_i^μ  (induced field force on permanent charge)
-            fix += qi * Emx;
-            fiy += qi * Emy;
-            fiz += qi * Emz;
+            fpx += qi * Emx;
+            fpy += qi * Emy;
+            fpz += qi * Emz;
 
             // Field gradient of charge q_j at i (for μ_i · G^q):
             // G_ab = q_j [ L3 δ_ab/r^3 − L5 * 3 r_a r_b / r^5 ]
             // (μ · G)_a = q_j [ L3 μ_a/r^3 − L5 * 3 (μ·r) r_a / r^5 ]
             const double mir = mui[0] * dx + mui[1] * dy + mui[2] * dz;
-            fix += qj * (L3 * mui[0] / r3 - L5 * 3.0 * mir * dx / r5);
-            fiy += qj * (L3 * mui[1] / r3 - L5 * 3.0 * mir * dy / r5);
-            fiz += qj * (L3 * mui[2] / r3 - L5 * 3.0 * mir * dz / r5);
+            fpx += qj * (L3 * mui[0] / r3 - L5 * 3.0 * mir * dx / r5);
+            fpy += qj * (L3 * mui[1] / r3 - L5 * 3.0 * mir * dy / r5);
+            fpz += qj * (L3 * mui[2] / r3 - L5 * 3.0 * mir * dz / r5);
 
             // Dipole–dipole: V = μ_i T μ_j = 3(μi·r)(μj·r)/r^5 − (μi·μj)/r^3
             // U_pair = −k V  (from U_T = −½ Σ_{a≠b} = −Σ_{a<b}).
@@ -312,12 +325,25 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
             // F_i = −∇_i U_pair = k ∇_i V (Thole: L5/L7 scale the kernels).
             const double mir_mj =
                 mui[0] * muj[0] + mui[1] * muj[1] + mui[2] * muj[2];
-            fix += L5 * 3.0 / r5 * (mir_mj * dx + mjr * mui[0] + mir * muj[0])
+            fpx += L5 * 3.0 / r5 * (mir_mj * dx + mjr * mui[0] + mir * muj[0])
                    - L7 * 15.0 / r7 * mir * mjr * dx;
-            fiy += L5 * 3.0 / r5 * (mir_mj * dy + mjr * mui[1] + mir * muj[1])
+            fpy += L5 * 3.0 / r5 * (mir_mj * dy + mjr * mui[1] + mir * muj[1])
                    - L7 * 15.0 / r7 * mir * mjr * dy;
-            fiz += L5 * 3.0 / r5 * (mir_mj * dz + mjr * mui[2] + mir * muj[2])
+            fpz += L5 * 3.0 / r5 * (mir_mj * dz + mjr * mui[2] + mir * muj[2])
                    - L7 * 15.0 / r7 * mir * mjr * dz;
+
+            fix += fpx;
+            fiy += fpy;
+            fiz += fpz;
+
+            // ½ r_ij ⊗ f_ij per ordered-pair visit (each unordered pair is
+            // visited twice with equal contribution).
+            v_xx += 0.5 * dx * fpx;
+            v_yy += 0.5 * dy * fpy;
+            v_zz += 0.5 * dz * fpz;
+            v_xy += 0.5 * dx * fpy;
+            v_xz += 0.5 * dx * fpz;
+            v_yz += 0.5 * dy * fpz;
         }
 
         // Convert Gaussian force (e²/Å²) → eV/Å
@@ -325,6 +351,14 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
         fy[i] += k * fiy;
         fz[i] += k * fiz;
     }
+
+    // Convert Gaussian virial (e²/Å) → eV, publish to the shared stress meta.
+    f.meta.get(kStress)[0] += k * v_xx;
+    f.meta.get(kStress)[1] += k * v_yy;
+    f.meta.get(kStress)[2] += k * v_zz;
+    f.meta.get(kStress)[3] += k * v_xy;
+    f.meta.get(kStress)[4] += k * v_xz;
+    f.meta.get(kStress)[5] += k * v_yz;
 }
 
 } // namespace cpu

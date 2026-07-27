@@ -8,8 +8,12 @@
 /// optionally Tang–Toennies-damped) dipole tensor. Polarization energy
 /// \(E_{\mathrm{pol}}=-\frac12\sum_i\boldsymbol{\mu}_i\cdot\mathbf{E}_i^{\mathrm{perm}}\)
 /// [eV] and Hellmann–Feynman forces (charge–dipole + dipole–dipole) are
-/// written to Frame. Permanent charge–charge Coulomb is **not** included —
-/// use `PairCoulCut` / long-range Coulomb separately.
+/// written to Frame, together with the matching configurational virial
+/// \(W=\tfrac12\sum_{i\neq j}\mathbf r_{ij}\otimes\mathbf f_{ij}\) into
+/// `frame.meta.get(kStress)` (Voigt xx yy zz xy xz yz, eV, LAMMPS sign) so
+/// barostats (NPT/NPH) see the polarization pressure. Permanent
+/// charge–charge Coulomb is **not** included — use `PairCoulCut` /
+/// long-range Coulomb separately.
 ///
 /// MetalWalls capability map **E4**. Refs: Thole, *Chem. Phys.* **59**, 341
 /// (1981); Applequist; MetalWalls JOSS **5**, 2373 (2020) bulk PIM form.
