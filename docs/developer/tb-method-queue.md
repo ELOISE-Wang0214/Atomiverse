@@ -49,9 +49,9 @@ analytic DFTB forces are still open unless operator `theme=` overrides.
 | OpenMOPAC surface | MNDO / AM1 / PM3 / RM1 / PM6 / PM7 / MNDO-d — **not** OM3, **not** DFTB |
 | DFTB+ surface | non-SCC, SCC-DFTB2, DFTB3, spin, PBC/k, forces/stress, TD-DFTB, +U, SOC, dispersion, … |
 | xtb surface | GFN0/1/2, IPEA, analytic G; GFN-FF classical (scope-out); sTDA needs GFN GS |
-| Live SE specs on `dev` | **none** (wave-1 specs deleted) |
+| Live SE specs on `dev` | **none** (wave-1 + wave-2 harness specs deleted) |
 | TB isolation worktrees | **none** (Clearup done); metalwalls `wf/*` worktrees unrelated |
-| Unmerged TB tips | **5** still ahead of `dev` by 1–2 commits, **behind 12** (need rebase before merge) |
+| Unmerged TB tips | **3** still ahead of `dev` by 1–2 commits, **behind ~39** after wave-2 land (need rebase before merge) |
 
 ### Tree vs roadmap (wave-2)
 
@@ -59,14 +59,14 @@ analytic DFTB forces are still open unless operator `theme=` overrides.
 | ---------- | ------- | ------------- | ------- |
 | AM1 / RM1 energy + ΔHf | ✓ | ship; no hard mopac E pin | deepen → mopac pins |
 | NDDO nuclear forces (product) | ✓ | fixed-P central FD | usable; **not** closed-form multipole |
-| SCC-DFTB2 H/C/N/O E | ✓ | MioSketch + ThreeOb | energy foothold; mio absolute pin still `[~]` |
+| SCC-DFTB2 H/C/N/O E | ✓ | MioSketch + ThreeOb + **mio-1-1 H–H pin** | energy product path; H–H absolute pin **done** wave-2 |
 | DFTB analytic gradient | ✓ (restricted) | closed-form on **restricted MioSketch only** | deepen ThreeOb + open-shell F |
 | Spin-polarized DFTB | ✓ (collinear) | MioSketch dual αβ + Mulliken m | foothold; open-shell F still FD; noncollinear blocked |
 | Production 3ob organic SK | — (prose) | `DftbSkSet::ThreeOb` + CH4 pin | landed wave-1 (DFTB2 SK, not DFTB3) |
 | Non-SCC DFTB0 | ○ | tip `wf/dftb0-h2` only | **incomplete** |
 | DFTB3 | ○ | tip `wf/dftb3-water-mio` only | **incomplete** |
 | Dispersion D3 | ○ | tip `wf/dftb2-dispersion-d3` only | **incomplete** |
-| Periodic DFTB | ○ | tip `wf/dftb2-periodic-gamma` (Γ only) | **incomplete**; k-mesh still pending |
+| Periodic DFTB | ✓ (Γ) | lattice-sum H⁰/S/γ/rep on MioSketch | **landed** wave-2; k-mesh → `dftb2-kpoints` |
 | DFTB analytic stress | ○ | absent | **gap** |
 | TD-DFTB | ○ | absent | **gap** |
 | GFN0-xTB | ✓ toy | sketch H/C/O | toy → Phase C deepen |
@@ -86,12 +86,13 @@ gates + 3ob energy pin — **not** product force completeness:
 - Γ-point tip exists; DFTB+ k-mesh surface still open → `dftb2-kpoints`
 - RM1 ships without OpenMOPAC hard E pin → `rm1-water-mopac-energy`
 
-### gaps_remaining (wave-2)
+### gaps_remaining (wave-2 census snapshot; post harness wave-2 land)
 
-**20** pending + **5** incomplete (`[~]`) + **9** blocked (includes scope-out /
+**20** pending + **3** incomplete (`[~]`) + **9** blocked (includes scope-out /
 forbidden-pattern rows) → **nonzero; continue loop**. Never claim queue
-exhausted. Next: **Recover** the five `[~]` tips (rebase onto `dev`) before
-staffing new Phase A pending.
+exhausted. Wave-2 harness closed `dftb2-dftbplus-energy-pin` +
+`dftb2-periodic-gamma` → done. Next: **Recover** the three remaining `[~]`
+tips (rebase onto `dev`) before staffing new Phase A pending.
 
 ## GapCensus — 2026-07-27 wave-1 (parent `dev`) — historical
 
@@ -156,6 +157,20 @@ Census snapshot was wave-1 pre-land; **foothold ≠ closed** for remaining ladde
 
 **Next:** Recover/Merge incomplete tips or GapCensus+Assign remaining pending ladder.
 
+## Recover / harness — 2026-07-27 (harness wave-2)
+
+| Source | Result |
+| ------ | ------ |
+| Queue greens merged | `dftb2-dftbplus-energy-pin`, `dftb2-periodic-gamma` → **done** |
+| Unmerged TB `wf/*` with commits ahead of `dev` | **3** → keep **`[~]`** (`dftb0-h2`, `dftb3-water-mio`, `dftb2-dispersion-d3`) |
+| Isolation worktrees (TB) | none (Clearup already ran) |
+| Live SE/TB specs after close | none (two wave-2 specs deleted) |
+| Pending | **20** (unchanged this harness; GapCensus owns refill) |
+| Blocked | **9** |
+
+**Next:** Recover remaining incomplete (rebase onto `dev`) before new pending staff;
+GapCensus owns discovery — **queue not exhausted**.
+
 ## pending
 
 ### Phase A — DFTB ladder (oracle = DFTB+)
@@ -200,13 +215,11 @@ or operator forces `theme=gfn|xtb`.
 
 Unmerged TB tips with commits ahead of `dev` (Clearup removed worktrees; keep
 `[~]` until merge or drop decision). **Do not demote to pending.** Tips are
-**behind `dev` by ~12 commits** — Recover must rebase before merge attempt.
+**behind `dev` by ~39 commits** — Recover must rebase before merge attempt.
 
-- [~] `dftb0-h2` | Non-SCC DFTB / DFTB0 energy + force skeleton | dftb0 | H2 | E, F | **oracle=dftb+**; tip `wf/dftb0-h2` @ `bcff8c4a` ahead=1 behind=12
-- [~] `dftb2-dftbplus-energy-pin` | Offline DFTB+ energy pin on ATV DFTB2 path (mio H–H SK) | dftb2 | H2 | E [eV] | **oracle=dftb+** 24.1; tip `wf/dftb2-dftbplus-energy-pin` @ `00b2476b` ahead=1 behind=12
-- [~] `dftb3-water-mio` | SCC-DFTB3 energy (third-order) | dftb3 | H2O | E [eV] | **oracle=dftb+**; tip `wf/dftb3-water-mio` @ `f26ba40b` ahead=1 behind=12
-- [~] `dftb2-dispersion-d3` | Dispersion-corrected DFTB (D3(BJ) water dimer) | dftb2 | water dimer | E_disp / E_tot | **oracle=dftb+|literature**; tip `wf/dftb2-dispersion-d3` @ `edabfa64` ahead=2 behind=12
-- [~] `dftb2-periodic-gamma` | Periodic DFTB Γ-point energy | dftb2 | small cell | E | **oracle=dftb+**; tip `wf/dftb2-periodic-gamma` @ `5afb23a0` ahead=1 behind=12
+- [~] `dftb0-h2` | Non-SCC DFTB / DFTB0 energy + force skeleton | dftb0 | H2 | E, F | **oracle=dftb+**; tip `wf/dftb0-h2` @ `bcff8c4a` ahead=1 behind=39
+- [~] `dftb3-water-mio` | SCC-DFTB3 energy (third-order) | dftb3 | H2O | E [eV] | **oracle=dftb+**; tip `wf/dftb3-water-mio` @ `f26ba40b` ahead=1 behind=39
+- [~] `dftb2-dispersion-d3` | Dispersion-corrected DFTB (D3(BJ) water dimer) | dftb2 | water dimer | E_disp / E_tot | **oracle=dftb+|literature**; tip `wf/dftb2-dispersion-d3` @ `edabfa64` ahead=2 behind=39
 
 ## blocked
 
@@ -222,11 +235,13 @@ Unmerged TB tips with commits ahead of `dev` (Clearup removed worktrees; keep
 
 ## done
 
-_(footholds + wave-1 product depth on `dev`)_
+_(footholds + wave-1/2 product depth on `dev`)_
 
+- [x] `dftb2-dftbplus-energy-pin` | Offline DFTB+ 24.1 H₂ total-energy pin on mio-1-1 H–H static SK (`dftb_mio_hh_sk.h`) | `reg_dftb2-dftbplus-energy-pin` | **oracle=dftb+**
+- [x] `dftb2-periodic-gamma` | Γ-point periodic SCC-DFTB2 lattice-sum energy (H⁰/S, γ, repulsive) | `reg_dftb2-periodic-gamma` | **oracle=literature** (+ family dftb+); k-mesh → `dftb2-kpoints`
 - [x] `dftb2-3ob-organic` | Static 3ob-3-1 organic CHNO SK (`DftbSkSet::ThreeOb`) + CH4 DFTB+ 24.1 pin | `reg_dftb2-3ob-organic` | **oracle=dftb+**
 - [x] `dftb2-analytic-forces` | Closed-form DFTB2 nuclear gradient (HF+Pulay+SCC γ+repulsive); replace re-SCC FD on restricted MioSketch | `reg_dftb2-analytic-forces` | **oracle=dftb+** (formula / module boundary)
 - [x] `spin-dftb2-o2` | Collinear unrestricted spin-DFTB2; O₂ triplet Mulliken m | `reg_spin-dftb2-o2` | **oracle=literature** (+ family dftb+)
-- [x] `h2_dftb2` / `h2o_dftb2_mio` | SCC-DFTB2 H/C/N/O static SK sketch + forces path | deepen via `dftb2-dftbplus-energy-pin` (**dftb+**)
+- [x] `h2_dftb2` / `h2o_dftb2_mio` | SCC-DFTB2 H/C/N/O static SK sketch + forces path | absolute H–H pin closed via `dftb2-dftbplus-energy-pin`
 - [x] `h2o_gfn0` | GFN0-xTB **toy** | not product GFN0/1/2
 - [x] `am1_*` / `rm1_water_energy` | NDDO AM1/RM1 energy + fixed-P FD forces | further NDDO → OpenMOPAC (PM6/PM7, mopac E pin, closed-form F)
