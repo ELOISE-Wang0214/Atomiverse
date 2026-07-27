@@ -358,10 +358,13 @@ TEST(MeanFieldMethodXlBomd, RefusesAspcPredictor) {
 /// covers both directions of the exclusion.
 TEST(MeanFieldMethodXlBomd, RefusesCpmd) {
     auto f = make_water(/*moving=*/false);
-    auto m = xl_rhf();
-    // CP exclusivity: construct CarParrinelloMethod instead of m.cpmd
-    // (was:
-                   // row fails on the exclusion and not on the missing clock
+    // Under the wrapper API the invalid pair is expressed by stacking: CP
+    // over an XL-wrapped method sets both flags on one object, so whichever
+    // validator runs first sees the pair. dt is pushed by the MD harness, so
+    // the row fails on the exclusion and not on the missing clock.
+    ATV::cpu::electronic::CarParrinelloMethod<
+        ATV::cpu::electronic::XlBomdMethod<cpu::scf::RHF>>
+        m{xl_rhf(), /*mu_au=*/400.0};
     EXPECT_THROW(drive_nested_md_step(std::move(m), f), std::invalid_argument);
 }
 
@@ -372,8 +375,14 @@ TEST(MeanFieldMethodXlBomd, RefusesCpmd) {
 /// (GPW does the same at `build`).
 TEST(MeanFieldMethodXlBomd, RefusesDissipationOrderOutsideTable) {
     auto f = make_water(/*moving=*/false);
-    auto m = xl_rhf();
-    
+    // K = 11 is outside Table I's [3, 9]; the wrapper ctor stores it and the
+    // engage gate surfaces the table lookup's throw on the first drive.
+    cpu::scf::RHF rhf_base;
+    rhf_base.basis = BasisSet::STO3G;
+    rhf_base.tol = kScfTol;
+    rhf_base.max_iter = 200;
+    ATV::cpu::electronic::XlBomdMethod<cpu::scf::RHF> m{std::move(rhf_base),
+                                                        /*k=*/11};
     EXPECT_THROW(drive_nested_md_step(std::move(m), f), std::invalid_argument);
 }
 

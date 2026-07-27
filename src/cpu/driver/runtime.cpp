@@ -182,7 +182,7 @@ void Runtime::step(int step_idx) {
 // `step_plan` (and nested driver ops dispatched from `run_slot_`'s trial
 // replay, below) never index into it. Nested ops are deliberately untimed on
 // both replay paths — extending TimerRegistry to sparse nested handles is a
-// separate decision.
+// separate decision (deferred by esmm-contract-03-runslot-nested).
 //
 // ## Resolution windows on the replay paths
 //
@@ -280,7 +280,7 @@ void Runtime::run_slot_(int slot_index, int step_idx) {
     // the section note above step_plan. Nested ops are deliberately untimed on
     // both replay paths (here and step_plan): op_handle_ indices belong to the
     // bound outer plan — extending TimerRegistry to sparse nested handles is
-    // a separate decision.
+    // a separate decision (deferred by esmm-contract-03-runslot-nested).
     for (auto& slot : plan_->slots) {
         if (slot.phase != slot_index)
             continue;

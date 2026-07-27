@@ -510,6 +510,12 @@ if(ATV_BUILD_MINIMIZER)
     atv_add_regression(minimizer joint_lj_zero_p)
     atv_add_regression(minimizer aniso_lj_box)
     atv_add_regression(minimizer triclinic_lj_shear)
+    if(ATV_BUILD_HF)
+        # StrongWolfe line search over a NESTED RHF force source (the
+        # Runtime::run_slot_ nested-node replay): H2 relaxes to the CCCBDB
+        # RHF/STO-3G equilibrium bond length inside a frozen iteration bound.
+        atv_add_regression(minimizer rhf_h2_linesearch)
+    endif()
 endif()
 if(ATV_BUILD_POTENTIALS)
     atv_add_regression(forcefield tip3p_two_water)
