@@ -249,23 +249,43 @@ class HaloSend : public cpu::Component, public cpu::HaloParticipant {
 /// unlike `HaloRecv`, whose reverse accumulation must run exactly once or it
 /// double-applies ghost forces to their owners.
 ///
-/// **Positions take the PBC shift; velocities do not.** A ghost across a periodic
-/// boundary sits at `x - L` in the receiver's frame, but its velocity is unchanged.
-/// Shifting velocities would be an exquisitely silent bug: energies stay finite, the
-/// geometry stays rigid, and only the constrained dynamics is wrong.
+/// **Positions take the PBC shift; velocities and charges do not.** A ghost across a
+/// periodic boundary sits at `x - L` in the receiver's frame, but its velocity and its
+/// charge are unchanged. Shifting velocities would be an exquisitely silent bug:
+/// energies stay finite, the geometry stays rigid, and only the constrained dynamics
+/// is wrong.
+///
+/// **Charges** are the constant-potential case: every electrode charge solver
+/// (`ConstPotBO`, `ConstPotMaZe`, `ConstPotCG`, `ConstPotentialBO`,
+/// `DipoleElectrodeJoint`) rewrites owned charges at `pre_force`, i.e. AFTER the
+/// step's forward halo — so the force stages would read ghost charges one solve
+/// stale (and zero at step 0). `cpu::md::MD::install_defaults()` auto-injects
+/// `HaloRefresh{Field::charges}` at `pre_force @ +900` whenever a registered
+/// component declares `updates_owned_charges()` (see
+/// Thompson et al., Comput. Phys. Commun. 271, 108171 (2022): LAMMPS
+/// `fix electrode` forward-communicates q after every conp solve).
 class HaloRefresh : public cpu::Component {
   public:
-    /// @brief Which per-atom field triple to refresh.
+    /// @brief Which per-atom field set to refresh.
     enum class Field {
         positions,  ///< x, y, z — carries the periodic shift.
         velocities, ///< vx, vy, vz — no shift; a boost is not a translation.
+        charges,    ///< charge — no shift; scalar, translation-invariant.
     };
 
-    /// @param field Field triple to re-send to the ghosts.
+    /// @param field Field set to re-send to the ghosts.
     explicit HaloRefresh(Field field) : field_(field) {}
 
     std::string name() const override {
-        return field_ == Field::positions ? "halo_refresh_x" : "halo_refresh_v";
+        switch (field_) {
+        case Field::positions:
+            return "halo_refresh_x";
+        case Field::velocities:
+            return "halo_refresh_v";
+        case Field::charges:
+            return "halo_refresh_q";
+        }
+        return "halo_refresh";
     }
 
     /// @brief Write-set: it writes ghost rows of the chosen field.

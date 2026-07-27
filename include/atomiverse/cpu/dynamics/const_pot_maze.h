@@ -28,6 +28,9 @@ class ConstPotMaZe : public cpu::Component {
 
     std::string name() const override { return "const_pot_maze"; }
 
+    /// @brief Declares the mid-step charge rewrite (owned ConstPotBO writes).
+    bool updates_owned_charges() const override { return true; }
+
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::pre_force, -50)};
     }

@@ -863,18 +863,26 @@ void zero_ghost_forces(Frame& frame, const md::mpi::DomainDecomposition& dd,
     }
 }
 
-std::array<ColumnRef, 3> refresh_columns(const PackPlan& plan, bool positions) {
-    const std::array<std::uint16_t, 3> ids =
-        positions ? std::array<std::uint16_t,
-                               3>{static_cast<std::uint16_t>(AtomFieldId::x),
-                                  static_cast<std::uint16_t>(AtomFieldId::y),
-                                  static_cast<std::uint16_t>(AtomFieldId::z)}
-                  : std::array<std::uint16_t, 3>{
-                        static_cast<std::uint16_t>(AtomFieldId::vx),
-                        static_cast<std::uint16_t>(AtomFieldId::vy),
-                        static_cast<std::uint16_t>(AtomFieldId::vz)};
-    std::array<ColumnRef, 3> selected{};
-    std::array<bool, 3> found{};
+std::vector<ColumnRef> refresh_columns(const PackPlan& plan,
+                                       HaloRefresh::Field field) {
+    std::vector<std::uint16_t> ids;
+    switch (field) {
+    case HaloRefresh::Field::positions:
+        ids = {static_cast<std::uint16_t>(AtomFieldId::x),
+               static_cast<std::uint16_t>(AtomFieldId::y),
+               static_cast<std::uint16_t>(AtomFieldId::z)};
+        break;
+    case HaloRefresh::Field::velocities:
+        ids = {static_cast<std::uint16_t>(AtomFieldId::vx),
+               static_cast<std::uint16_t>(AtomFieldId::vy),
+               static_cast<std::uint16_t>(AtomFieldId::vz)};
+        break;
+    case HaloRefresh::Field::charges:
+        ids = {static_cast<std::uint16_t>(AtomFieldId::charge)};
+        break;
+    }
+    std::vector<ColumnRef> selected(ids.size());
+    std::vector<bool> found(ids.size(), false);
     for (const ColumnRef& column : plan.fields) {
         for (std::size_t component = 0; component < ids.size(); ++component) {
             if (column.wire_id != ids[component])
@@ -890,23 +898,24 @@ std::array<ColumnRef, 3> refresh_columns(const PackPlan& plan, bool positions) {
     }
     if (!std::all_of(found.begin(), found.end(),
                      [](bool value) { return value; }))
-        throw column_error("halo refresh plan is missing its field triple");
+        throw column_error("halo refresh plan is missing its field set");
     return selected;
 }
 
-std::size_t refresh_payload_bytes(int count) {
+std::size_t refresh_payload_bytes(int count, std::size_t n_columns) {
     if (count < 0)
         throw std::invalid_argument("negative halo refresh count");
-    return checked_mul(checked_mul(static_cast<std::size_t>(count),
-                                   std::size_t{3}, "halo refresh payload"),
+    return checked_mul(checked_mul(static_cast<std::size_t>(count), n_columns,
+                                   "halo refresh payload"),
                        sizeof(StorageReal), "halo refresh payload");
 }
 
-void pack_refresh_rows(const std::array<ColumnRef, 3>& columns,
+void pack_refresh_rows(const std::vector<ColumnRef>& columns,
                        const std::vector<int>& rows,
                        const std::array<double, 3>& shift,
                        std::vector<std::byte>& buffer) {
-    buffer.resize(refresh_payload_bytes(static_cast<int>(rows.size())));
+    buffer.resize(
+        refresh_payload_bytes(static_cast<int>(rows.size()), columns.size()));
     std::size_t offset = 0;
     for (int row : rows) {
         for (std::size_t component = 0; component < columns.size();
@@ -917,17 +926,19 @@ void pack_refresh_rows(const std::array<ColumnRef, 3>& columns,
                             + static_cast<std::size_t>(row)
                                   * sizeof(StorageReal),
                         sizeof(value));
+            // Only the position set carries a component shift; scalar sets
+            // (charges) pass shift = {0,0,0} and stay bit-exact.
             value = static_cast<StorageReal>(static_cast<double>(value)
-                                             + shift[component]);
+                                             + shift[component % 3]);
             std::memcpy(buffer.data() + offset, &value, sizeof(value));
             offset += sizeof(value);
         }
     }
 }
 
-void unpack_refresh_rows(const std::array<ColumnRef, 3>& columns, int first,
+void unpack_refresh_rows(const std::vector<ColumnRef>& columns, int first,
                          int count, const std::vector<std::byte>& buffer) {
-    if (buffer.size() != refresh_payload_bytes(count))
+    if (buffer.size() != refresh_payload_bytes(count, columns.size()))
         throw std::length_error("halo refresh payload size mismatch");
     std::size_t offset = 0;
     for (int k = 0; k < count; ++k) {
@@ -1096,11 +1107,18 @@ void HaloRefresh::launch(const cpu::LaunchContext& ctx) {
     PackPlan plan = make_comm_plan(frame);
     constexpr std::uint64_t kPositionRefresh = 0x706f736974696f6eull;
     constexpr std::uint64_t kVelocityRefresh = 0x76656c6f63697479ull;
-    require_collective_halo_schema(plan, {}, dd->cart_comm,
-                                   pos ? "halo/refresh-position"
-                                       : "halo/refresh-velocity",
-                                   pos ? kPositionRefresh : kVelocityRefresh);
-    const auto columns = refresh_columns(plan, pos);
+    constexpr std::uint64_t kChargeRefresh = 0x63686172676573ull; // "charges"
+    const char* refresh_name = pos ? "halo/refresh-position"
+                                   : (field_ == Field::velocities
+                                          ? "halo/refresh-velocity"
+                                          : "halo/refresh-charge");
+    const std::uint64_t refresh_token =
+        pos ? kPositionRefresh
+            : (field_ == Field::velocities ? kVelocityRefresh
+                                           : kChargeRefresh);
+    require_collective_halo_schema(plan, {}, dd->cart_comm, refresh_name,
+                                   refresh_token);
+    const auto columns = refresh_columns(plan, field_);
 
     // Replay the cascade EXACTLY as the last full rebuild laid it out: axis 0,1,2;
     // within an axis, the -face then the +face; ghost slots appended from n_local.
@@ -1136,7 +1154,8 @@ void HaloRefresh::launch(const cpu::LaunchContext& ctx) {
             std::array<double, 3> shifts{};
             shifts[static_cast<std::size_t>(dim)] = shift;
             pack_refresh_rows(columns, list, shifts, sb);
-            rb.assign(refresh_payload_bytes(n_recv), std::byte{0});
+            rb.assign(refresh_payload_bytes(n_recv, columns.size()),
+                      std::byte{0});
 
             if (nbr == MPI_PROC_NULL || nbr == me)
                 continue;

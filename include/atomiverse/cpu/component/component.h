@@ -90,6 +90,12 @@ class Component {
     virtual bool requires_system_stress() const { return false; }
     /// @brief Writes system stress meta (kinetic and/or assembled virial).
     virtual bool provides_system_stress() const { return false; }
+    /// @brief Rewrites owned per-atom charges mid-step (constant-potential
+    /// electrode solvers). Under MPI DD the MD driver auto-injects a
+    /// `comm::HaloRefresh{Field::charges}` after the charge-solve slot so
+    /// ghost rows see the updated charges before the force stages read them
+    /// (otherwise ghost q is one solve stale — zero at step 0).
+    virtual bool updates_owned_charges() const { return false; }
 
     virtual Scheduling scheduling() const { return Scheduling::blocking; }
     virtual int frequency() const { return 0; }

@@ -152,6 +152,8 @@ atv_add_cpp_test(test_cpu_md_lj_exclusions        cpu/dynamics/test_lj_exclusion
 atv_add_cpp_test(test_cpu_md_pair_lj_cut          cpu/dynamics/test_pair_lj_cut.cpp)
 atv_add_cpp_test(test_cpu_md_const_pot_bo         cpu/dynamics/test_const_pot_bo.cpp)
 atv_add_cpp_test(test_cpu_md_const_pot_cg         cpu/dynamics/test_const_pot_cg.cpp)
+atv_add_cpp_test(test_cpu_md_charge_updater_probe cpu/dynamics/test_charge_updater_probe.cpp)
+atv_add_cpp_test(test_cpu_comm_halo_refresh_charges cpu/communication/test_halo_refresh_charges.cpp)
 atv_add_cpp_test(test_cpu_md_const_pot_ffield     cpu/dynamics/test_const_pot_ffield.cpp)
 atv_add_cpp_test(test_cpu_md_dipole_electrode_joint cpu/dynamics/test_dipole_electrode_joint.cpp)
 atv_add_cpp_test(test_cpu_classical_polarization  cpu/observe/test_classical_polarization.cpp)
@@ -430,6 +432,11 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_halo_exchange_n1 test_mpi_halo_exchange 1)
     atv_add_mpi_run(test_mpi_halo_exchange_n2 test_mpi_halo_exchange 2)
     atv_add_mpi_run(test_mpi_halo_exchange_n8 test_mpi_halo_exchange 8)
+
+    # Ghost-charge refresh after a mid-step Q rewrite (const-pot MPI DD).
+    atv_add_mpi_exec(test_mpi_halo_refresh_charges mpi/test_halo_refresh_charges.cpp)
+    atv_add_mpi_run(test_mpi_halo_refresh_charges_n1 test_mpi_halo_refresh_charges 1)
+    atv_add_mpi_run(test_mpi_halo_refresh_charges_n2 test_mpi_halo_refresh_charges 2)
 
     atv_add_mpi_exec(test_mpi_lj_nve mpi/test_lj_nve.cpp)
     atv_add_mpi_run(test_mpi_lj_nve_n1 test_mpi_lj_nve 1)

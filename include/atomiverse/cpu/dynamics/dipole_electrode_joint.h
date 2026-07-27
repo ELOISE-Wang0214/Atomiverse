@@ -50,6 +50,10 @@ class DipoleElectrodeJoint : public cpu::Component {
 
     std::string name() const override { return "dipole_electrode_joint"; }
 
+    /// @brief Declares the mid-step charge rewrite: under MPI DD the MD
+    /// driver auto-injects a ghost-charge refresh after this slot.
+    bool updates_owned_charges() const override { return true; }
+
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::pre_force, -50)};
     }
