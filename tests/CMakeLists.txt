@@ -152,6 +152,7 @@ atv_add_cpp_test(test_cpu_md_lj_exclusions        cpu/dynamics/test_lj_exclusion
 atv_add_cpp_test(test_cpu_md_pair_lj_cut          cpu/dynamics/test_pair_lj_cut.cpp)
 atv_add_cpp_test(test_cpu_md_const_pot_bo         cpu/dynamics/test_const_pot_bo.cpp)
 atv_add_cpp_test(test_cpu_md_const_charge_electrode cpu/dynamics/test_const_charge_electrode.cpp)
+atv_add_cpp_test(test_cpu_md_qeq                  cpu/dynamics/test_qeq.cpp)
 atv_add_cpp_test(test_cpu_md_const_pot_cg         cpu/dynamics/test_const_pot_cg.cpp)
 atv_add_cpp_test(test_cpu_md_const_pot_per_eta    cpu/dynamics/test_const_pot_per_eta.cpp)
 atv_add_cpp_test(test_cpu_md_charge_updater_probe cpu/dynamics/test_charge_updater_probe.cpp)
