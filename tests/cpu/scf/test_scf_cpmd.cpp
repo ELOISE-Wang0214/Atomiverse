@@ -190,14 +190,18 @@ cpu::Frame make_moving_heh_plus() {
 }
 
 /// @brief RHF/STO-3G with CPMD switched on and nothing else unusual.
-/// @return The method by value (moved into the driver by the caller).
-cpu::scf::RHF cpmd_rhf() {
+///
+/// The `cpmd*` flags are protected on `MeanFieldMethod`; `CarParrinelloMethod`
+/// is the only thing that may set them, so the *wrapper* is the return type —
+/// returning `cpu::scf::RHF` would slice CP straight back off and every
+/// refusal row below would silently test plain BOMD instead.
+/// @return The wrapped method by value (moved into the driver by the caller),
+///         μ = 400 a.u., electronic thermostat off.
+CarParrinelloMethod<cpu::scf::RHF> cpmd_rhf() {
     cpu::scf::RHF rhf;
     rhf.basis = BasisSet::STO3G;
     rhf.tol = 1e-10;
-    // CP via wrapper — reassign
-    /*cpmd*/ (void)rhf;
-    return rhf;
+    return CarParrinelloMethod<cpu::scf::RHF>{std::move(rhf), 400.0};
 }
 
 /// @brief Bind `method` at the MD force phase and take exactly one step.
@@ -295,21 +299,53 @@ void expect_forces_equal(const GradientResult& got, const GradientResult& want,
 
 // ─── the CPMD member surface (mirrors GPW, minus dt) ───────────────────
 
-/// Parameters are **members with defaults**, not a `CpmdConfig` bag and not
-/// constructor arguments — a BOMD user must be able to ignore all of them, and
-/// a CPMD user must get the same μ / thermostat defaults the GPW evaluator
-/// ships. `cpmd_dt` is deliberately absent: the clock comes from the
-/// integrator (ac-005). The readbacks start at zero, before any electron has
-/// moved.
+/// A BOMD user must be able to ignore Car–Parrinello entirely, and a CPMD user
+/// must get the same thermostat numbers the GPW evaluator ships. Since the
+/// `cpmd*` flags were privatized behind `electronic::CarParrinelloMethod<M>`,
+/// that contract is stated through three public things: a bare method is *not*
+/// CP (`is_cpmd()`), wrapping it *is* CP, and the electronic-thermostat knobs
+/// carry their defaults on the public `ScfElectronicThermostat` aggregate. No
+/// `CpmdConfig` bag; `cpmd_dt` is deliberately absent — the clock comes from
+/// the integrator (ac-005). The readbacks start at zero, before any electron
+/// has moved, wrapped or not.
+///
+/// **Coverage change (API migration).** `cpmd_mu`'s 400 a.u. default and the
+/// thermostat-off default are no longer publicly observable: `cpmd_mu` is a
+/// protected member and the wrapper *requires* μ as a constructor argument
+/// (there is no default to read back), and `cpmd_thermostat` has no public
+/// accessor. Those two defaults are now pinned only where they are reachable —
+/// μ validation below, and the thermostat behaviour in
+/// `regressions/dynamics/cpmd-*`.
 TEST(MeanFieldMethodCpmd, MemberSurfaceDefaults) {
-    cpu::scf::RHF rhf;
-    EXPECT_FALSE(rhf.cpmd);
-    EXPECT_DOUBLE_EQ(rhf.cpmd_mu, 400.0); // [a.u.] fictitious mass
-    EXPECT_FALSE(rhf.cpmd_thermostat);
-    EXPECT_DOUBLE_EQ(rhf.cpmd_ekin_target_ha, 1e-5); // [Hartree]
-    EXPECT_DOUBLE_EQ(rhf.cpmd_tau_e, 50.0);          // [fs] coupling time
-    EXPECT_DOUBLE_EQ(rhf.last_electronic_ke_ev(), 0.0);
-    EXPECT_DOUBLE_EQ(rhf.last_electronic_thermostat_ev(), 0.0);
+    // Plain BOMD method: Car–Parrinello is off and costs the user nothing.
+    cpu::scf::RHF bomd;
+    EXPECT_FALSE(bomd.is_cpmd());
+    EXPECT_FALSE(bomd.timestep_required());
+    EXPECT_DOUBLE_EQ(bomd.last_electronic_ke_ev(), 0.0);
+    EXPECT_DOUBLE_EQ(bomd.last_electronic_thermostat_ev(), 0.0);
+
+    // The electronic-thermostat defaults are the aggregate's, and public.
+    const cpu::electronic::ScfElectronicThermostat th;
+    EXPECT_DOUBLE_EQ(th.ekin_target_ha, 1e-5); // [Hartree]
+    EXPECT_DOUBLE_EQ(th.tau_e_fs, 50.0);       // [fs] coupling time
+
+    // Wrapping turns CP on; μ is a required ctor argument, not a default.
+    cpu::scf::RHF base;
+    CarParrinelloMethod<cpu::scf::RHF> cp{std::move(base), 400.0};
+    EXPECT_TRUE(cp.is_cpmd());
+    EXPECT_DOUBLE_EQ(cp.last_electronic_ke_ev(), 0.0);
+    EXPECT_DOUBLE_EQ(cp.last_electronic_thermostat_ev(), 0.0);
+}
+
+/// μ is the fictitious electron mass [a.u.]: zero, negative or non-finite is
+/// not a slow CP run, it is a divergent one. The wrapper is the only place
+/// that can still set it, so it is the only place that can still reject it.
+TEST(MeanFieldMethodCpmd, WrapperRejectsNonPositiveMass) {
+    EXPECT_THROW(CarParrinelloMethod<cpu::scf::RHF>(cpu::scf::RHF{}, 0.0),
+                 std::invalid_argument);
+    EXPECT_THROW(CarParrinelloMethod<cpu::scf::RHF>(
+                     cpu::scf::RHF{}, std::numeric_limits<double>::infinity()),
+                 std::invalid_argument);
 }
 
 // ─── ac-004: refusal lattice — spin shapes that are not productized ─────

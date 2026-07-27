@@ -74,13 +74,14 @@ int main() {
     cpu::scf::RHF rhf_base;
     rhf_base.basis = cpu::scf::BasisSet::STO3G;
     rhf_base.tol = 1e-10;
-    cpu::electronic::CarParrinelloMethod<cpu::scf::RHF> rhf{std::move(rhf_base), 400.0};
     // Family-wide fictitious mass: the AO residual is stiffer than a
     // plane-wave one, and the textbook μ = 400 a.u. blows the sibling cases up
     // (see REFERENCE.md for the μ × dt scan). On H2 the drift is *identical*
     // to five digits for every scanned μ, because T_e ≡ 0 by persymmetry —
     // the value is carried here only to keep the family on one setting.
-    rhf.cpmd_mu = 1000.0;
+    constexpr double mu_au = 1000.0;
+    cpu::electronic::CarParrinelloMethod<cpu::scf::RHF> rhf{std::move(rhf_base),
+                                                            mu_au};
 
     constexpr int n_prod = 40;
     // Envelope: 12× the worst observed relative drift (4.20e-07) over these
@@ -97,7 +98,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.set_evaluator_ref(rhf, /*order=*/0);
+    sim.set_evaluator_ref(rhf);
     // E_cons is assembled by the engine: CpmdConserved sums
     // E_SCF + T_nuc + T_e + E_therm^e onto frame.meta[kConserved] [eV] at its
     // default slot (end_of_step @ -90 — after KineticEnergy @ -100, so the
@@ -231,7 +232,7 @@ int main() {
 
     std::printf("CPMD H2 RHF/STO-3G NVE (mu=%.0f a.u., dt=%.3g fs): "
                 "seed+1+%d steps  E0=%.8g eV  Ef=%.8g eV\n",
-                rhf.cpmd_mu, dt, n_prod, e0, frame.meta.get(kConserved));
+                mu_au, dt, n_prod, e0, frame.meta.get(kConserved));
     std::printf("  worst |dE_cons|/scale=%.3e (tol %.1e)  "
                 "worst |Ec-(PE+KE+Te+Eth)|=%.3e eV (tol %.1e)\n",
                 worst_drift, drift_tol, worst_sum_residual, sum_tol);

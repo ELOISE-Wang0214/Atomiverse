@@ -69,12 +69,13 @@ int main() {
     cpu::scf::RKS rks_base{cpu::scf::XCType::LSDA};
     rks_base.basis = cpu::scf::BasisSet::STO3G;
     rks_base.tol = 1e-9;
-    cpu::electronic::CarParrinelloMethod<cpu::scf::RKS> rks{std::move(rks_base), 400.0};
     // Scanned μ ∈ {400, 1000, 2000} a.u. × dt ∈ {0.05, 0.1} fs (REFERENCE.md):
     // the plane-wave textbook μ = 400 a.u. loses adiabaticity on the stiffer AO
     // residual and diverges inside 120 steps; μ = 1000 at dt = 0.05 fs is the
     // stable window and is the family-wide setting.
-    rks.cpmd_mu = 1000.0;
+    constexpr double mu_au = 1000.0;
+    cpu::electronic::CarParrinelloMethod<cpu::scf::RKS> rks{std::move(rks_base),
+                                                            mu_au};
 
     constexpr int n_prod = 40;
     // Envelope: 8.5× the worst observed relative drift (5.85e-06) over these
@@ -88,7 +89,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.set_evaluator_ref(rks, /*order=*/0);
+    sim.set_evaluator_ref(rks);
     // CpmdConserved sums E_KS + T_nuc + T_e + E_therm^e onto
     // frame.meta[kConserved] [eV] at end_of_step @ -90 (after KineticEnergy
     // @ -100, so the nuclear term is this step's).
@@ -217,7 +218,7 @@ int main() {
 
     std::printf("CPMD H2O RKS(LSDA)/STO-3G NVE (mu=%.0f a.u., dt=%.3g fs): "
                 "seed+1+%d steps  E0=%.8g eV  Ef=%.8g eV\n",
-                rks.cpmd_mu, dt, n_prod, e0, frame.meta.get(kConserved));
+                mu_au, dt, n_prod, e0, frame.meta.get(kConserved));
     std::printf("  worst |dE_cons|/scale=%.3e (tol %.1e)  "
                 "worst |Ec-(PE+KE+Te+Eth)|=%.3e eV (tol %.1e)\n",
                 worst_drift, drift_tol, worst_sum_residual, sum_tol);

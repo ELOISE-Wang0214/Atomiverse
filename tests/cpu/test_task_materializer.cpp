@@ -288,7 +288,9 @@ TEST(TaskMaterializer, MinimizePlanMatchesDirectTypedConstruction) {
     direct.on(ATV::minimizer::Phase::force)
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10)
         .add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
-    direct.add(cpu::minimizer::LBFGS{7, 0.02, 12});
+    // An unbound (`std::nullopt`) optimizer entry is materialized through the
+    // categorical setter, so the hand-built mirror uses it too.
+    direct.set_optimizer(cpu::minimizer::LBFGS{7, 0.02, 12});
     direct.build();
 
     EXPECT_EQ(plan_signature(materialized.plan()),

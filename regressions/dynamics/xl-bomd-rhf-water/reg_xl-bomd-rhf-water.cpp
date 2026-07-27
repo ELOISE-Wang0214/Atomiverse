@@ -125,7 +125,7 @@ int main() {
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     // Borrow (add_ref) so the SCF diagnostics stay readable after the run.
-    sim.set_evaluator_ref(xl, /*order=*/0);
+    sim.set_evaluator_ref(xl);
     sim.enable_timing(false);
     sim.build();
 
@@ -188,7 +188,7 @@ int main() {
     cpu::Frame frame_b = make_water();
     cpu::md::MD sim_b;
     sim_b.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim_b.set_evaluator_ref(reuse, /*order=*/0);
+    sim_b.set_evaluator_ref(reuse);
     sim_b.enable_timing(false);
     sim_b.build();
 
@@ -301,7 +301,8 @@ int main() {
 
     std::printf("XL-BOMD H2O RHF/STO-3G NVE (K=%d, dt=%.3g fs, tol=%.0e Ha): "
                 "%d steps  E0=%.8g eV  Ef=%.8g eV\n",
-                xl.xl_bomd_k, dt, scf_tol, n_steps, e0, xl_etot.back());
+                xl.xl_bomd_order(), dt, scf_tol, n_steps, e0,
+                xl_etot.back());
     std::printf("  SCF iterations  XL:");
     for (int it : xl_iters)
         std::printf(" %d", it);

@@ -107,7 +107,11 @@ int main() {
         probe_sim.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
         probe_sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
         probe_sim.set_integrator(cpu::md::VelocityVerlet{dt});
-        probe_sim.add_ref(probe);
+        // PistonElectrode's three default bindings, spelled out (borrowed, so
+        // `probe.last_*()` stays readable after the run).
+        probe_sim.on(md::Phase::post_force).add_ref(probe, +900);
+        probe_sim.on(md::Phase::post_integrate).add_ref(probe, 0);
+        probe_sim.on(md::Phase::final_integrate).add_ref(probe, +200);
         probe_sim.enable_timing(false);
         probe_sim.build();
         probe_sim.run(frame, 1);

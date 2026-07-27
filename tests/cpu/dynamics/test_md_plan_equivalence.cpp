@@ -5,11 +5,19 @@
 /// T10 is the load-bearing acceptance test: build the same MD
 /// simulation two ways — once via the categorical setter API
 /// (`set_evaluator`, `set_neighbor`, `set_integrator`, …) and once via
-/// the raw `add()` / `on(phase).add(c, order)` escape hatch —
-/// and assert the two compiled component graphs (sorted by
-/// phase / order / component name) are byte-equivalent. This
+/// the raw `on(phase).add(c, order)` / `on(phase).add_ref(c, order)`
+/// escape hatch — and assert the two compiled component graphs (sorted
+/// by phase / order / component name) are byte-equivalent. This
 /// proves the new API is sugar over the underlying machinery,
 /// not a rewrite that silently reorders components.
+///
+/// The raw path spells out, by hand, exactly what the setter's
+/// `bind_defaults()` expands each component's `default_bindings()` into.
+/// A multi-phase component (VelocityVerlet, NoseHooverNPT) is bound
+/// through `add_ref` at each of its phases so ONE instance lands in
+/// several slots — which is what `bind_defaults` does; binding an rvalue
+/// per phase would silently create one integrator *per phase* and split
+/// the thermostat/barostat state.
 ///
 /// T15 verifies that user-defined hooks registered via
 /// `sim.on(phase).add(MyHook{}, +N)` coexist with the categorical
@@ -76,13 +84,20 @@ TEST(MDPlanEquivalence, NVELJSetApiMatchesRawAddPath) {
     via_setters.set_integrator(cpu::md::VelocityVerlet{kDt});
     via_setters.build();
 
+    // Declared BEFORE the driver: the Plan borrows it, so it must outlive
+    // `via_raw` (locals destruct in reverse declaration order).
+    cpu::md::VelocityVerlet vv{kDt};
+
     cpu::md::MD via_raw;
     via_raw.on(md::Phase::force).add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
     // set_neighbor binds at the dedicated `neighbor` phase @ -10 (the
     // LAMMPS-granular skeleton), so the raw mirror must too.
     via_raw.on(md::Phase::neighbor)
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
-    via_raw.add(cpu::md::VelocityVerlet{kDt});
+    // VelocityVerlet::default_bindings() = {initial_integrate @ 0,
+    // final_integrate @ 0} — the kick-drift-kick split. BOTH, one instance.
+    via_raw.on(md::Phase::initial_integrate).add_ref(vv, 0);
+    via_raw.on(md::Phase::final_integrate).add_ref(vv, 0);
     via_raw.build();
 
     const auto sa = signature_of(via_setters);
@@ -108,25 +123,27 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
     via_setters.build();
 
     // The raw path adds Virial explicitly — what existing
-    // tests-mpi/* tests do today.
+    // tests-mpi/* tests do today. Both multi-phase components are declared
+    // before the driver that borrows them.
+    cpu::md::NoseHooverNPT npt{300.0, 100.0, 0.0, 1000.0, kDt};
+
     cpu::md::MD via_raw;
     via_raw.on(md::Phase::force).add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
     via_raw.on(md::Phase::neighbor)
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
-    via_raw.add(cpu::md::VelocityVerlet{
-        kDt}); // placeholder integrator? no, we want NPT
-    // Actually, swap in NPT — we mirror the via_setters integrator.
-    // Reconstructing because VV was added above for clarity.
-    cpu::md::MD via_raw2;
-    via_raw2.on(md::Phase::force).add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
-    via_raw2.on(md::Phase::neighbor)
-        .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
-    via_raw2.add(cpu::md::NoseHooverNPT{300.0, 100.0, 0.0, 1000.0, kDt});
-    via_raw2.add(cpu::md::Virial{}); // explicit — what existing NPT tests do
-    via_raw2.build();
+    // NoseHooverNPT::default_bindings() = {initial_integrate @ 0,
+    // final_integrate @ 0, end_of_step @ -40} — the MTK half-steps plus the
+    // chain/barostat bookkeeping. All three, one instance.
+    via_raw.on(md::Phase::initial_integrate).add_ref(npt, 0);
+    via_raw.on(md::Phase::final_integrate).add_ref(npt, 0);
+    via_raw.on(md::Phase::end_of_step).add_ref(npt, -40);
+    // Virial::default_bindings() = {post_force @ -50} — the same slot
+    // install_defaults() auto-injects into on the setter path.
+    via_raw.on(md::Phase::post_force).add(cpu::md::Virial{}, -50);
+    via_raw.build();
 
     const auto sa = signature_of(via_setters);
-    const auto sr = signature_of(via_raw2);
+    const auto sr = signature_of(via_raw);
     EXPECT_EQ(sa, sr) << "categorical setters:\n"
                       << render(sa) << "raw add() path with explicit Virial:\n"
                       << render(sr);

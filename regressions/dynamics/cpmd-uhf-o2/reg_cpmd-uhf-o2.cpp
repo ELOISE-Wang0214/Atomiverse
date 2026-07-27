@@ -67,12 +67,13 @@ int main() {
     cpu::scf::UHF uhf_base{/*n_alpha=*/9, /*n_beta=*/7};
     uhf_base.basis = cpu::scf::BasisSet::STO3G;
     uhf_base.tol = 1e-9;
-    cpu::electronic::CarParrinelloMethod<cpu::scf::UHF> uhf{std::move(uhf_base), 400.0};
     // Scanned μ ∈ {400, 1000, 2000} a.u. × dt ∈ {0.05, 0.1} fs (REFERENCE.md):
     // the plane-wave textbook μ = 400 a.u. loses adiabaticity on the stiffer AO
     // residual (T_e → 25 eV inside 120 steps); μ = 1000 at dt = 0.05 fs is the
     // stable window and is the family-wide setting.
-    uhf.cpmd_mu = 1000.0;
+    constexpr double mu_au = 1000.0;
+    cpu::electronic::CarParrinelloMethod<cpu::scf::UHF> uhf{std::move(uhf_base),
+                                                            mu_au};
 
     constexpr int n_prod = 40;
     // Envelope: 18× the worst observed relative drift (2.81e-07) over these
@@ -89,7 +90,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.set_evaluator_ref(uhf, /*order=*/0);
+    sim.set_evaluator_ref(uhf);
     // CpmdConserved sums E_UHF + T_nuc + T_e(α)+T_e(β) + E_therm^e onto
     // frame.meta[kConserved] [eV] at end_of_step @ -90.
     sim.set_observer(cpu::md::CpmdConserved{});
@@ -235,7 +236,7 @@ int main() {
     std::printf("CPMD O2 UHF triplet/STO-3G NVE (mu=%.0f a.u., dt=%.3g fs, "
                 "N_alpha/N_beta=%d/%d): seed+1+%d steps  E0=%.9g eV  "
                 "Ef=%.9g eV\n",
-                uhf.cpmd_mu, dt, n_a, n_b, n_prod, e0,
+                mu_au, dt, n_a, n_b, n_prod, e0,
                 frame.meta.get(kConserved));
     std::printf("  worst |dE_cons|/scale=%.3e (tol %.1e)  "
                 "worst |Ec-(PE+KE+Te+Eth)|=%.3e eV (tol %.1e)\n",
