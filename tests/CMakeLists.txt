@@ -185,6 +185,7 @@ atv_add_cpp_test(test_cpu_gaussian_charge         cpu/potentials/test_gaussian_c
 atv_add_cpp_test(test_cpu_pair_buck               cpu/potentials/test_pair_buck.cpp)
 atv_add_cpp_test(test_cpu_pair_born               cpu/potentials/test_pair_born.cpp)
 atv_add_cpp_test(test_cpu_pim_induced_dipole      cpu/potentials/test_pim_induced_dipole.cpp)
+atv_add_cpp_test(test_cpu_pim_xl_dipole           cpu/potentials/test_pim_xl_dipole.cpp)
 atv_add_cpp_test(test_cpu_minimize_aniso_cell     cpu/minimize/test_anisotropic_cell.cpp)
 atv_add_cpp_test(test_cpu_xtb_gfn0                cpu/semiempirical/test_xtb_gfn0.cpp)
 atv_add_cpp_test(test_cpu_qmmm_mechanical         cpu/multiscale/test_qmmm_mechanical.cpp)
@@ -619,18 +620,19 @@ atv_add_cpp_test(test_cpu_linalg_linear_solve
 # ── Electronic-state propagator tests ─────────────────────────────────
 #
 # esmm-cpmd-01-electronic-home: Cpmd/CpmdCplx (Car-Parrinello RATTLE),
-# XlBomd/XlBomdCplx (Niklasson dissipative recursion) and ASPCPredictor(Cplx)
-# (Kolafa extrapolation) live in cpu/electronic/ — method-agnostic dense
-# algebra over cpu/linalg, consumed by Gaussian SCF *and* GPW. Their sources
-# compile under ATV_BUILD_HF (see the root CMakeLists HF source block), so
-# these units gate on HF only — deliberately NOT on ATV_BUILD_GPW. Every test
-# here is pure propagator algebra; the GPW build()/guess_P integration guards
-# stay in the ATV_BUILD_GPW section above.
+# Cpmd/CpmdCplx and ASPCPredictor(Cplx) live in cpu/electronic/ —
+# method-agnostic dense algebra over cpu/linalg, consumed by Gaussian SCF
+# *and* GPW. Their sources compile under ATV_BUILD_HF (see the root
+# CMakeLists HF source block), so these units gate on HF only — deliberately
+# NOT on ATV_BUILD_GPW. Every test here is pure propagator algebra; the GPW
+# build()/guess_P integration guards stay in the ATV_BUILD_GPW section above.
+# XlBomd/XlBomdCplx compile in the always-on set (classical PIM XL dipoles
+# consume the recursion in MD-only builds), so its unit is unconditional.
+
+atv_add_cpp_test(test_cpu_electronic_xl_bomd cpu/electronic/test_xl_bomd.cpp)
 
 if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_electronic_cpmd   cpu/electronic/test_cpmd.cpp)
-    atv_add_cpp_test(test_cpu_electronic_xl_bomd
-                     cpu/electronic/test_xl_bomd.cpp)
     atv_add_cpp_test(test_cpu_electronic_aspc_predictor
                      cpu/electronic/test_aspc_predictor.cpp)
 endif()

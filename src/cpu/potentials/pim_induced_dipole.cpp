@@ -108,6 +108,7 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
     if (n <= 0) {
         e_pol_ = 0;
         last_mu_.clear();
+        mu_guess.clear();
         last_pol_iters_ = 0;
         last_pol_converged_ = true;
         return;
@@ -134,6 +135,7 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
     if (!any_pol) {
         e_pol_ = 0;
         last_mu_.assign(static_cast<std::size_t>(3 * n), 0.0);
+        mu_guess.clear();
         last_pol_iters_ = 0;
         last_pol_converged_ = true;
         return;
@@ -166,8 +168,14 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
         }
     }
 
-    // SCC: μ = α (E^perm + T·μ)
-    last_mu_.assign(static_cast<std::size_t>(3 * n), 0.0);
+    // SCC: μ = α (E^perm + T·μ) — warm-started from mu_guess when supplied
+    // (extended-Lagrangian / predictor owners), cold from μ = 0 otherwise.
+    if (mu_guess.size() == static_cast<std::size_t>(3 * n)) {
+        last_mu_ = mu_guess;
+    } else {
+        last_mu_.assign(static_cast<std::size_t>(3 * n), 0.0);
+    }
+    mu_guess.clear();
     std::vector<double> mu_new(static_cast<std::size_t>(3 * n), 0.0);
     std::vector<double> e_tot(static_cast<std::size_t>(3 * n), 0.0);
 

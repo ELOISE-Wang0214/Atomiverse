@@ -55,6 +55,13 @@ class PimInducedDipole : public Potential {
     int pol_max_iter = 100;
     /// α [Å³] by type index.
     std::vector<double> alpha_by_type;
+    /// @brief Initial SCC guess for the next `launch` (packed xyz, e·Å).
+    ///
+    /// Empty (default) ⇒ cold start from μ = 0. When its size equals
+    /// 3·nlocal it seeds the SCC; any other size is ignored. Consumed and
+    /// cleared by the next `launch` — set it again per step (the
+    /// extended-Lagrangian owner `PimXlDipole` does exactly that).
+    std::vector<double> mu_guess;
 
     std::string name() const override { return "pim_induced_dipole"; }
 
