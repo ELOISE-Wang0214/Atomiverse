@@ -129,6 +129,19 @@ ConstPotBO ConstPotBO::add_electrode(int type, double psi) && {
     return std::move(*this);
 }
 
+ConstPotBO& ConstPotBO::add_electrode(int type, double psi, double eta_e) & {
+    if (!(eta_e > 0.0))
+        throw std::invalid_argument(
+            "ConstPotBO: per-electrode eta must be > 0 [1/Å]");
+    groups_.push_back(ElectrodeGroup{type, psi, eta_e});
+    return *this;
+}
+
+ConstPotBO ConstPotBO::add_electrode(int type, double psi, double eta_e) && {
+    add_electrode(type, psi, eta_e); // lvalue overload validates + pushes
+    return std::move(*this);
+}
+
 void ConstPotBO::ensure_aspc_() {
     if (predictor_order <= 0) {
         aspc_.reset();
@@ -150,6 +163,8 @@ void ConstPotBO::build(const BuildContext& ctx) {
     if (groups_.empty())
         throw std::runtime_error("ConstPotBO: add at least one electrode via "
                                  "add_electrode(type, Psi)");
+    if (!(eta > 0.0))
+        throw std::invalid_argument("ConstPotBO: eta must be > 0 [1/Å]");
     if (l_tf < 0.0)
         throw std::invalid_argument("ConstPotBO: l_tf must be >= 0 [Å]");
     if (l_tf > 0.0 && !(site_density > 0.0))
@@ -216,6 +231,7 @@ void ConstPotBO::collect_electrodes_(const cpu::Frame& frame) {
     elec_atoms_.clear();
     elec_group_.clear();
     psi_vec_.clear();
+    eta_vec_.clear();
     const int n = frame.nlocal();
     auto type = frame.span(kAtom_type);
     for (int i = 0; i < n; ++i) {
@@ -224,6 +240,9 @@ void ConstPotBO::collect_electrodes_(const cpu::Frame& frame) {
                 elec_atoms_.push_back(i);
                 elec_group_.push_back(static_cast<int>(g));
                 psi_vec_.push_back(groups_[g].psi);
+                // Per-group η_e when registered; shared member otherwise.
+                eta_vec_.push_back(groups_[g].eta > 0.0 ? groups_[g].eta
+                                                        : eta);
                 break;
             }
         }
@@ -265,12 +284,14 @@ void ConstPotBO::build_matrix_(const cpu::Frame& frame) {
     std::fill(A_.begin(), A_.end(), 0.0);
     for (int a = 0; a < m; ++a) {
         const int ia = elec_atoms_[static_cast<std::size_t>(a)];
-        // Self: k * η * sqrt(2/π)
+        const double eta_a = eta_vec_[static_cast<std::size_t>(a)];
+        // Self: k * η_a * sqrt(2/π)
         A_[static_cast<std::size_t>(a) * m + a] =
-            units::coulomb * eta * kSqrt2OverPi;
+            units::coulomb * eta_a * kSqrt2OverPi;
 
         for (int b = a + 1; b < m; ++b) {
             const int ib = elec_atoms_[static_cast<std::size_t>(b)];
+            const double eta_b = eta_vec_[static_cast<std::size_t>(b)];
             double aij = 0.0;
             for (int nx = -R; nx <= R; ++nx) {
                 for (int ny = -R; ny <= R; ++ny) {
@@ -289,7 +310,7 @@ void ConstPotBO::build_matrix_(const cpu::Frame& frame) {
                     }
                     if (r < 1e-14)
                         continue;
-                    aij += pair_A_(r, eta, eta);
+                    aij += pair_A_(r, eta_a, eta_b);
                     if (R == 0)
                         break; // single min-image contrib
                 }
@@ -309,9 +330,9 @@ void ConstPotBO::build_matrix_(const cpu::Frame& frame) {
                         continue;
                     const double r = std::sqrt((nx * Lx) * (nx * Lx)
                                                + (ny * Ly) * (ny * Ly));
-                    // Same-site images use η/√2 (plate_cap / Gaussian product)
+                    // Same-site images use η_a/√2 (plate_cap / Gaussian product)
                     self_img +=
-                        units::coulomb * std::erf((eta / kSqrt2) * r) / r;
+                        units::coulomb * std::erf((eta_a / kSqrt2) * r) / r;
                 }
             }
             A_[static_cast<std::size_t>(a) * m + a] += self_img;
@@ -369,6 +390,7 @@ void ConstPotBO::build_rhs_(const cpu::Frame& frame) {
     std::fill(b_.begin(), b_.end(), 0.0);
     for (int a = 0; a < m; ++a) {
         const int ia = elec_atoms_[static_cast<std::size_t>(a)];
+        const double eta_a = eta_vec_[static_cast<std::size_t>(a)];
         double bi = 0.0;
         for (int j = 0; j < n; ++j) {
             if (is_elec[static_cast<std::size_t>(j)])
@@ -389,7 +411,7 @@ void ConstPotBO::build_rhs_(const cpu::Frame& frame) {
                         const double dz = z[ia] - z[j];
                         r = std::sqrt(dx * dx + dy * dy + dz * dz);
                     }
-                    bi += pair_b_(r, qj, eta);
+                    bi += pair_b_(r, qj, eta_a);
                     if (R == 0)
                         break;
                 }
@@ -622,14 +644,16 @@ void ConstPotBO::write_electrode_forces_(cpu::Frame& frame) const {
     for (int ia : elec_atoms_)
         is_elec[static_cast<std::size_t>(ia)] = 1;
 
-    // d(pair_b)/dr for Φ = coulomb * q * erf(η r / √2) / r
-    // pair_b_ = coulomb * q * erf(α r) / r with α = η/√2
+    // d(pair_b)/dr of the SAME kernel the RHS used:
+    // pair_b_ = coulomb * q * erf(α r) / r with α = η_i (Gaussian–point).
     // dΦ/dr = coulomb * q * [ (2α/√π) exp(-(αr)²)/r − erf(αr)/r² ]
-    const double alpha = eta / kSqrt2;
+    // (Was α = η/√2 — the gradient of a Gaussian–Gaussian kernel the solve
+    // never used; fixed to match pair_b_ per iron law, per-atom η_i.)
     constexpr double kSqrtPi = 1.7724538509055160273;
 
     for (int a = 0; a < m; ++a) {
         const int ia = elec_atoms_[static_cast<std::size_t>(a)];
+        const double alpha = eta_vec_[static_cast<std::size_t>(a)];
         const double Qi = Q_[static_cast<std::size_t>(a)];
         if (Qi == 0.0)
             continue;

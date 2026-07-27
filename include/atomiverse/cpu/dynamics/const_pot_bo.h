@@ -27,6 +27,8 @@ namespace md {
 struct ElectrodeGroup {
     int type = 0;     ///< Atom type (matches `kAtom_type`).
     double psi = 0.0; ///< Applied electrostatic potential [V].
+    /// Per-group Gaussian width [1/Å]; 0 = inherit the shared solver `eta`.
+    double eta = 0.0;
 };
 
 /// @brief Constant-potential BO charge solver (dense inverse or CG + ASPC).
@@ -62,15 +64,26 @@ struct ElectrodeGroup {
 /// @endcode
 class ConstPotBO : public cpu::Component {
   public:
-    /// @param eta Gaussian charge width \(\eta\) [1/Å] (shared by all
-    ///            electrode sites in v1).
+    /// @param eta Gaussian charge width \(\eta\) [1/Å] (shared default for
+    ///            every electrode group registered without its own width).
     explicit ConstPotBO(double eta);
 
-    /// @brief Register one electrode group (type + applied potential).
+    /// @brief Register one electrode group (type + applied potential) using
+    ///        the shared Gaussian width `eta`.
     /// @param type Atom type of electrode sites.
     /// @param psi Applied potential [V].
     ConstPotBO& add_electrode(int type, double psi) &;
     ConstPotBO add_electrode(int type, double psi) &&;
+
+    /// @brief Register one electrode group with its **own** Gaussian width
+    ///        \(\eta_e\) (MetalWalls multi-electrode \(V,\eta\); dissimilar
+    ///        wall materials). Mixed pairs use
+    ///        \(\eta_{ij}=\eta_i\eta_j/\sqrt{\eta_i^2+\eta_j^2}\).
+    /// @param type Atom type of electrode sites.
+    /// @param psi Applied potential [V].
+    /// @param eta Gaussian width for this group [1/Å]; must be > 0.
+    ConstPotBO& add_electrode(int type, double psi, double eta) &;
+    ConstPotBO add_electrode(int type, double psi, double eta) &&;
 
     std::string name() const override { return "const_pot_bo"; }
 
@@ -125,7 +138,9 @@ class ConstPotBO : public cpu::Component {
     const std::vector<double>& charges() const { return Q_; }
 
     // ── Public parameters (mutable after construction) ───────────────
-    double eta = 1.979; ///< Gaussian width [1/Å].
+    /// Shared Gaussian width [1/Å] for groups registered without their own
+    /// \(\eta_e\) (2-arg `add_electrode`). Per-group widths override it.
+    double eta = 1.979;
     bool electroneutrality =
         true; ///< Project electrode net charge (see global_*).
     /// When true with `electroneutrality`, enforce global neutrality
@@ -177,6 +192,7 @@ class ConstPotBO : public cpu::Component {
     std::vector<int> elec_atoms_;
     std::vector<int> elec_group_;
     std::vector<double> psi_vec_; ///< \(\Psi_i\) per electrode atom [V].
+    std::vector<double> eta_vec_; ///< \(\eta_i\) per electrode atom [1/Å].
     std::vector<double> Q_;       ///< Solved charges [e].
     std::vector<double> b_;       ///< Electrolyte potential [V].
     std::vector<double> A_;       ///< Row-major elastance [V/e].
