@@ -18,13 +18,18 @@ Heat of formation is MOPAC-style. Hard OpenMOPAC energy pins and PM6/PM7 remain
 open. AM1-BCC charge assignment still uses the energy/charge path (see
 [Multiscale and Properties](multiscale.md)).
 
-**SCC-DFTB2** multi-element H/C/N/O (`DFTB2`, static in-tree **mio-style sketch**
-SK tables — not DFTB.org mio-1-1 bit-identical; `reg_h2_dftb2`,
-`reg_h2o_dftb2_mio`) and **GFN0-xTB toy** (`XtbGfn0`, `reg_h2o_gfn0`) ship as TB
-families beside NDDO. DFTB2 forces are re-SCC central FD of E (`with_forces`),
-not analytic. Non-SCC DFTB0, production 3ob/mio pins, DFTB3, and GFN1/2 remain ○.
-Loop queue: `docs/developer/tb-method-queue.md`. Family oracles:
-OpenMOPAC (NDDO) / DFTB+ (DFTB) / xtb (GFN) — see `tools/tb_oracle/README.md`.
+**SCC-DFTB2** multi-element H/C/N/O (`DFTB2`) ships with static in-tree
+**mio-style sketch** SK tables (not DFTB.org mio-1-1 bit-identical;
+`reg_h2_dftb2`, `reg_h2o_dftb2_mio`) and production **3ob-3-1** organic CHNO
+tables (`DftbSkSet::ThreeOb`, `reg_dftb2-3ob-organic`, offline DFTB+ pin).
+**Closed-shell** nuclear forces on MioSketch are **analytic** (Hellmann–Feynman
++ Pulay + SCC γ + repulsive; `reg_dftb2-analytic-forces`); open-shell and ThreeOb
+paths still use re-SCC FD where not yet closed-form. **Collinear spin-DFTB2**
+ships (`multiplicity`, dual α/β, Mulliken m; `reg_spin-dftb2-o2`). **GFN0-xTB
+toy** (`XtbGfn0`, `reg_h2o_gfn0`) remains a sketch. Non-SCC DFTB0, DFTB3,
+D3/PBC/stress/TD depth, and GFN1/2 remain ○. Loop queue:
+`docs/developer/tb-method-queue.md`. Family oracles: OpenMOPAC (NDDO) / DFTB+
+(DFTB) / xtb (GFN) — see `tools/tb_oracle/README.md`.
 
 ## 1. Semiempirical Quantum Methods
 
@@ -57,21 +62,23 @@ multipole derivatives stay ○. Analytic Hessian remains finite-difference via
 | Non-SCC DFTB / DFTB0      |  ○  |   ○  |   ○  |
 | SCC-DFTB / DFTB2          |  ✓  |   ○  |   ○  |
 | DFTB3                     |  ○  |   ○  |   ○  |
-| Spin-polarized DFTB       |  ○  |   ○  |   ○  |
+| Spin-polarized DFTB       |  ✓  |   ○  |   ○  |
 | Noncollinear-spin DFTB    |  ○  |   ○  |   ○  |
 | DFTB+U                    |  ○  |   ○  |   ○  |
 | Dispersion-corrected DFTB |  ○  |   ○  |   ○  |
 | Spin-orbit DFTB           |  ○  |   ○  |   ○  |
 | Periodic DFTB             |  ○  |   ○  |   ○  |
-| DFTB analytic gradient    |  ○  |   ○  |   ○  |
+| DFTB analytic gradient    |  ✓  |   ○  |   ○  |
 | DFTB analytic stress      |  ○  |   ○  |   ○  |
 | TD-DFTB                   |  ○  |   ○  |   ○  |
 
-DFTB2 is multi-element H/C/N/O with static SK tables (`basis_data/dftb_mio_tables.h`).
-Energy foothold only (no offline **DFTB+** pin yet). Forces exist via re-SCC
-central FD of energy (`with_forces`) — the analytic-gradient row stays ○ until
-Hellmann–Feynman / SK derivatives ship. Oracle for all DFTB rows: **DFTB+**
-(never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 → spin → …
+DFTB2 is multi-element H/C/N/O with static SK tables (`dftb_mio_tables.h` sketch
++ `dftb_3ob_tables.h` 3ob-3-1 organics). Collinear spin (`multiplicity`) and
+**restricted** analytic nuclear forces (HF+Pulay+γ+rep) ship on MioSketch;
+open-shell forces remain re-SCC FD. Offline **DFTB+** absolute energy identity
+on the mio sketch is still a deepen slug (`dftb2-dftbplus-energy-pin`); 3ob CH4
+has a DFTB+ pin under pure SCC-DFTB2. Oracle for all DFTB rows: **DFTB+**
+(never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 → spin product → …
 
 ## 3. Extended Tight-Binding Methods
 
