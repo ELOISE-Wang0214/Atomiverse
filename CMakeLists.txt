@@ -267,6 +267,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/observe/classical_polarization.cpp
         src/cpu/observe/capacitance_charge_fluctuation.cpp
         src/cpu/observe/potential_profile.cpp
+        src/cpu/observe/species_density_profile.cpp
         src/cpu/observe/charge_autocorr.cpp
         src/cpu/observe/elastance_observer.cpp
 
