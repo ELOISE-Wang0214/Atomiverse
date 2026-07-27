@@ -551,9 +551,14 @@ if(ATV_BUILD_SEMIEMPIRICAL)
     atv_add_regression(semiempirical h2o_gfn0)
     atv_add_regression(semiempirical spin-dftb2-o2)
     atv_add_regression(multiscale qmmm_h2_ar)
-    atv_add_regression(multiscale qmmm_es_h2)
-    atv_add_regression(multiscale qmmm_link_ch3oh)
-    atv_add_regression(multiscale qmmm_pol_h2o)
+    if(ATV_BUILD_HF)
+        # ES/link/polarizable embedding instantiate cpu::scf::RHF through the
+        # QMMM library sources; without ATV_BUILD_HF the RHF vtable is not
+        # compiled and these binaries cannot link (MD-only merge gate).
+        atv_add_regression(multiscale qmmm_es_h2)
+        atv_add_regression(multiscale qmmm_link_ch3oh)
+        atv_add_regression(multiscale qmmm_pol_h2o)
+    endif()
 endif()
 if(ATV_BUILD_KSPACE AND ATV_BUILD_MD)
     atv_add_regression(md npt_pme_nacl)
