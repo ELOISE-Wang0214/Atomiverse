@@ -139,13 +139,13 @@ Notes:
 | ----------------------------------- | :-: | :--: | :---: |
 | Drude oscillator model              |  ○  |   ○  |   ○  |
 | Self-consistent induced dipoles     |  ✓  |   ○  |   ○  |
-| Extended-Lagrangian induced dipoles |  ○  |   ○  |   ○  |
+| Extended-Lagrangian induced dipoles |  ✓  |   ○  |   ○  |
 | Thole-damped polarization           |  ✓  |   ○  |   ○  |
 | Atomic-multipole electrostatics     |  ○  |   ○  |   ○  |
 | AMOEBA electrostatics               |  ○  |   ○  |   ○  |
 | AMOEBA polarization                 |  ○  |   ○  |   ○  |
-| Fluctuating-charge model            |  ○  |   ○  |   ○  |
-| QEq polarization                    |  ○  |   ○  |   ○  |
+| Fluctuating-charge model            |  ✓  |   ○  |   ○  |
+| QEq polarization                    |  ✓  |   ○  |   ○  |
 | Charge-equilibration dynamics       |  ○  |   ○  |   ○  |
 
 **Bulk PIM** (`cpu::PimInducedDipole`) is MetalWalls-style self-consistent
@@ -153,10 +153,16 @@ induced dipoles with Thole exponential damping and optional Tang–Toennies
 (`tt_b`); permanent charge–charge is separate (`PairCoulCut` / PME). Pin
 `reg_pim-induced-dipole-bulk`. **Electrode-coupled dipole ⊕ \(Q\) joint** ships
 as `cpu::md::DipoleElectrodeJoint` (alternating ConstPotBO \(Q\) + PIM \(\mu\)
-until joint tol; `reg_dipole-electrode-joint`, oracle=metalwalls). **Extended-
-Lagrangian dipoles**, **QEq / fluctuating-charge**, and **PIM-NPT polarizable
-IL product twin** remain ○ (MetalWalls pending: `extended-lagrangian-dipoles`,
-`qeq-fluctuating-charge`, `pim-npt-polarizable-il`). Drude / AMOEBA remain ○.
+until joint tol; `reg_dipole-electrode-joint`, oracle=metalwalls).
+**Extended-Lagrangian induced dipoles** ship as `cpu::PimXlDipole`
+(time-reversible XL propagation of the PIM dipoles;
+`reg_extended-lagrangian-dipoles`, oracle=metalwalls / iEL-SCF literature).
+**QEq / fluctuating-charge** ships as `cpu::md::QEq` (LAMMPS `fix qeq/point`
+twin; `reg_qeq-fluctuating-charge`, oracle=lammps, fair-bench ratio 0.45).
+The **PIM-NPT polarizable IL product twin** landed as
+`reg_pim-npt-polarizable-il` (oracle=metalwalls offline Thole-PIM pin).
+Charge-equilibration *dynamics* (extended-Lagrangian charge propagation,
+LAMMPS `qeq/dynamic`-class) and Drude / AMOEBA remain ○.
 
 ## 4. Many-Body and Reactive Potentials
 

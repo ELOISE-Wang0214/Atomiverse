@@ -60,17 +60,7 @@ reachable (MaZe + Fumi–Tosi NL footholds) but unbuilt.
 
 ## in_progress
 
-### Wave 5 — assigned 2026-07-27
-
-- [~] `per-electrode-eta` | Per-electrode Gaussian width \(\eta_e\) (v1 shares one \(\eta\)) | electrochem | multi-wall different \(\eta\) | — | \(Q\), \(A\) diag vs shared-\(\eta\) twin | **oracle=metalwalls**; map §1 multi-electrode \(V,\eta\) ~; `ConstPotBO::pair_A_(r,\eta_i,\eta_j)` internals ready, public surface still one shared `eta` (verified 2026-07-27)
-- [~] `const-charge-electrode` | Constant-charge electrode control (fixed \(Q\), not const-\(V\)) | electrochem | parallel-plate fixed total \(Q\) | — | \(Q\) fixed, \(V\) response | **oracle=lammps** ELECTRODE / fixed charge + freeze; map §1 const-charge ~
-- [~] `const-pot-charge-halo-mpi` | Charge halo correctness after \(Q\) update under MPI DD | electrochem | multi-rank planar walls | — | ghost \(q\) match owner after solve | **oracle=literature** / self-consistency; map §1/§6 P0 timing (schema borders ✓; no halo/MPI handling in `ConstPot*` — verified 2026-07-27)
-- [x] `maze-symplectic-charge-dynamics` | True mass-zero constrained (SHAKE-like) MaZe charge dynamics (Coretti et al.) | electrochem | parallel-plate vs `ConstPotMaZe` foothold | — | \(Q(t)\) continuity, constraint residual, energy conservation vs CG+ASPC twin | **oracle=metalwalls** literature pin (Coretti 2020, perf_exempt); landed wave-5: `ConstPotMaZe.symplectic` default path (SHAKE CG on \(A^2\gamma=-\sigma\), Verlet guess, χ-shift neutrality), `reg_maze-symplectic-charge-dynamics` (reversible palindrome + grand-energy conservation vs loose CG+ASPC twin)
-- [~] `constant-d-polarization-feedback` | Self-consistent constant-\(\mathbf{D}\) ensemble: \(E = D - 4\pi P\) from itinerant polarization | electrochem | bulk electrolyte constant-\(D_z\) | — | \(P_z(t)\), \(E_z\) response vs vacuum-foothold twin | **oracle=metalwalls** / literature (Zhang–Sprik constant-D); map §1 D-field ~ (`FixDfield` = vacuum \(E\equiv D\) foothold)
-- [~] `qeq-fluctuating-charge` | QEq / fluctuating-charge (≠ const-pot electrode) | polarizable | small organic / ionic toy | — | \(q_i\), \(E\) | **oracle=lammps** `fix qeq` / charge equilibration; map §2 FQ/QEq ○
-- [~] `pim-npt-polarizable-il` | Bulk polarizable IL under NPT (PIM product twin) | polarizable | small IL box NPT | — | \(E\), \(P\), short NPT | **oracle=metalwalls**; map §9 PIM-NPT ~ (bulk SCF PIM foothold only)
-- [~] `voronoi-volume-tf` | Voronoi / site-volume companion for Thomas–Fermi metallicity | electrochem | TF gold capacitor toy | — | \(v_i\), \(Q\) vs fixed-density TF | **oracle=metalwalls**; map §1 Voronoi volume (TF) ○; TF `l_tf` foothold ✓
-- [~] `const-pot-il-edl-box` | Planar const-pot + non-polarizable IL EDL production box | electrochem | graphene-like walls + IL | — | \(Q\), \(\Psi(z)\), short NVT | **oracle=metalwalls**; map §9 planar graphene+const-pot+IL ~ (E1 Components ✓; product box open; aqueous twin landed wave-4 `const-pot-tip4p-edl`)
+*(empty — wave 5 merged and harnessed 2026-07-27)*
 
 ## blocked
 
@@ -137,8 +127,17 @@ reachable (MaZe + Fumi–Tosi NL footholds) but unbuilt.
 | [x] `elastance-condition-observer` | `regressions/md/elastance-condition-observer` | literature | perf_exempt |
 | [x] `constant-velocity-smd` | `regressions/md/constant-velocity-smd` | lammps fix move | perf_exempt |
 
-### Wave 5 — 2026-07-27 (worker `wf/extended-lagrangian-dipoles`)
+### Wave 5 — 2026-07-27 (merged → `dev`)
 
 | slug | Regression | oracle | ratio |
 | ---- | ---------- | ------ | ----- |
+| [x] `per-electrode-eta` | `regressions/md/per-electrode-eta` | literature (Reed 2007 DOI 10.1063/1.2464084; Scalfi 2020 DOI 10.1063/5.0028232; MW JOSS 2020) | perf_exempt |
+| [x] `const-charge-electrode` | `regressions/md/const-charge-electrode` | lammps (ELECTRODE `conq` twin) | perf_exempt |
+| [x] `const-pot-charge-halo-mpi` | `regressions/md/const-pot-charge-halo-mpi` | literature / self-consistency | perf_exempt |
+| [x] `maze-symplectic-charge-dynamics` | `regressions/md/maze-symplectic-charge-dynamics` | metalwalls (Coretti 2020 literature pin) | perf_exempt |
+| [x] `constant-d-polarization-feedback` | `regressions/md/constant-d-polarization-feedback` | metalwalls (Zhang–Sprik constant-D) | perf_exempt |
 | [x] `extended-lagrangian-dipoles` | `regressions/md/extended-lagrangian-dipoles` | metalwalls (iEL/SCF literature pins — Albaugh/Niklasson; MW MaZe route cited) | perf_exempt (no MW binary; no LAMMPS iEL/SCF twin) |
+| [x] `qeq-fluctuating-charge` | `regressions/md/qeq-fluctuating-charge` | lammps (`fix qeq/point`) | **0.45** |
+| [x] `pim-npt-polarizable-il` | `regressions/md/pim-npt-polarizable-il` | metalwalls (offline numpy Thole-PIM pin; MW JOSS 2020, Thole 1981) | perf_exempt |
+| [x] `voronoi-volume-tf` | `regressions/md/voronoi-volume-tf` | metalwalls | perf_exempt |
+| [x] `const-pot-il-edl-box` | `regressions/md/const-pot-il-edl-box` | metalwalls | perf_exempt |

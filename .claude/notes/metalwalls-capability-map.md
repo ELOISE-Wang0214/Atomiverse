@@ -26,9 +26,8 @@ kernel only) or over-scope (rewrite ATV’s MD stack to clone Fortran
 
 **Evidence.** MW: GitLab `ampere2/metalwalls` branch `release` (src +
 `example/LIST`), JOSS 2020 (10.21105/joss.02373), JCP 2022 polarizable
-interfaces. ATV: tree as of **2026-07-27 gap-census (wave-5 refresh)** on
-`dev` (waves 1–4 shipped 36 classical electrochem/MD/FF slugs; wave-4 land
-`96e16823` verified in-tree; see
+interfaces. ATV: tree as of **2026-07-27 wave-5 harness** on `dev`
+(`ca3b511a`; waves 1–5 shipped 46 classical electrochem/MD/FF slugs; see
 `docs/developer/metalwalls-method-queue.md`).
 
 **Supersedes:** conversation-only summaries that treated MW as “just
@@ -42,6 +41,16 @@ empty-\(C\) ○→✓ (`ElastanceObserver`), Fumi–Tosi / Born ~→✓ (NL bulk
 TIP4P+const-pot ○→✓ (`reg_const-pot-tip4p-edl`), molten-salt+MaZe scenario
 ○→~. Pending refill adds `maze-symplectic-charge-dynamics`,
 `constant-d-polarization-feedback`, `maze-molten-salt-al`.
+**Wave-5 harness re-audit (2026-07-27):** per-electrode \(V,\eta\) ~→✓
+(`add_electrode(type, psi, eta)`), const-charge control ~→✓
+(`add_electrode_charge` conq twin), charge-halo timing designed→landed
+(post-solve ghost-charge refresh, `reg_const-pot-charge-halo-mpi`), MaZe
+foothold→true symplectic (`ConstPotMaZe.symplectic`), D-field ~→✓
+(`FixDfield.polarization_feedback`), Voronoi TF ○→✓ (`VoronoiVolume`), XL
+dipoles ○→✓ (`PimXlDipole`), FQ/QEq ○→✓ (`cpu::md::QEq`), PIM-NPT IL and
+planar const-pot+IL scenarios ~→✓ (`reg_pim-npt-polarizable-il`,
+`reg_const-pot-il-edl-box`). Residual open: nanoporous carbon product,
+molten-salt+Al+MaZe product box, TI capacitance workflow.
 
 ---
 
@@ -81,21 +90,21 @@ spine; keep ATV advantages.
 |---|:---:|:---:|---|:---:|
 | Constant-potential electrodes (fluctuating \(Q\)) | ✓★ | ✓ | `ConstPotBO` / `ConstPotCG` → `kAtom_charge` | **P0** |
 | Gaussian charge on electrode atoms | ✓★ | ✓ | `PairGaussianCoul` (NeighborList bulk, `reg_gaussian-coul-neighborlist`) + Gaussian \(A\) in BO | **P0–P1** |
-| Constant-charge electrodes (control) | ✓ | ~ | Fixed charge + `FixFreeze`; no separate “const-Q electrode” type | P1 |
+| Constant-charge electrodes (control) | ✓ | ✓ | `ConstPotBO::add_electrode_charge` const-\(Q\) control (LAMMPS `electrode/conq` twin; `reg_const-charge-electrode`) | P1 |
 | BO matrix inverse for \(Q\) | ✓ | ✓ | Dense Cholesky path on `ConstPotBO` | **P0** |
 | CG solve for \(Q\) | ✓ | ✓ | `ConstPotCG` / `ConstPotBO::use_cg` | P1 |
 | MaZe mass-zero charge dynamics | ✓★ | ✓ | `ConstPotMaZe.symplectic` true SHAKE mass-zero path (wave-5, `reg_maze-symplectic-charge-dynamics`); `symplectic=false` keeps the CG+ASPC adiabatic twin (`reg_maze-charge-dynamics`) | P2 |
 | Electrode charge predictor | ✓ | ✓ | `ChargeASPC` / `predictor_order` on BO | P1 |
 | Electrode electroneutrality \(\sum Q_i=0\) | ✓ | ✓ | Augmented system on BO/CG | **P0** |
 | Global electroneutrality (incl. electrolyte) | ✓ | ✓ | `ConstPotBO::global_electroneutrality` (`reg_global-electroneutrality-bo`) | P1 |
-| Multi-electrode, per-electrode \(V,\eta\) | ✓ | ~ | Multi-type \(V\) ✓; shared \(\eta\) in v1 | **P0** |
+| Multi-electrode, per-electrode \(V,\eta\) | ✓ | ✓ | `add_electrode(type, psi, eta)` per-group widths, mixed \(\eta_{ij}\) (`reg_per-electrode-eta`, wave-5) | **P0** |
 | Forces on electrode atoms (term breakdown) | ✓ | ✓ | `ConstPotBO::write_electrode_forces` (`reg_electrode-atom-forces`) | P1 |
 | Freeze / immobile ions | ✓ (`mobile`) | ✓ | `FixFreeze` | **P0** |
 | Piston electrode + constant \(P_z\) | ✓★ | ✓ | `PistonElectrode` | P2 |
 | Thomas–Fermi finite metallicity | ✓★ | ✓ | `ConstPotBO::l_tf`, `site_density` | P2 |
-| Voronoi volume (TF) | ✓ | ○ | TF companion still absent | P2 |
+| Voronoi volume (TF) | ✓ | ✓ | `VoronoiVolume` TF site-volume companion (`reg_voronoi-volume-tf`, wave-5) | P2 |
 | Applied E-field (MD) | ✓★ | ✓ | `FixEfield` + `FixOscillatingEfield` | P1 |
-| Displacement D-field | ✓★ | ~ | `FixDfield` vacuum \(E\equiv D\) foothold (`reg_displacement-dfield-md`); self-consistent \(E=D-4\pi P\) open (`constant-d-polarization-feedback`) | P2 |
+| Displacement D-field | ✓★ | ✓ | `FixDfield` vacuum path (`reg_displacement-dfield-md`) + self-consistent constant-\(D\) `polarization_feedback` \(E = D - 4\pi k_e P\) (`reg_constant-d-polarization-feedback`, wave-5) | P2 |
 | Finite-field + single electrode (3D) | ✓★ | ✓ | Dufils path (`ConstPotBO` + \(E_z\)) | P2 |
 | 2D PBC electrochemical cell | ✓★ | ~ | Yeh–Berkowitz **slab** only; full 2D product **out of loop scope** | P1 |
 | Charging work \(-\sum\Psi_i Q_i\) in energy | ✓ | ✓ | `ChargingWork` | **P0** |
@@ -105,10 +114,12 @@ spine; keep ATV advantages.
 | Empty capacitance / matrix condition | ✓ tools | ✓ | `ElastanceObserver` \(\mathrm{cond}(A)\) + empty-\(C\) (`reg_elastance-condition-observer`) | P1 |
 | ML heterogeneous electrodes (PiNNwall, …) | ecosystem ✓ | ○ | External interface — **blocked E12** | P3 |
 
-**MD phase / halo (implementation constraint):** `kAtom_charge` already
-borders (`kColComm|kColBorder|kColWriteBack`). Updating \(Q\) at `pre_force`
-after `HaloSend` leaves **stale ghost charges** under MPI. Prefer solve
-before halo, or `HaloRefresh` including charge after solve.
+**MD phase / halo (implementation constraint — resolved wave-5):**
+`kAtom_charge` already borders (`kColComm|kColBorder|kColWriteBack`).
+Updating \(Q\) at `pre_force` after `HaloSend` leaves **stale ghost charges**
+under MPI; the landed design refreshes ghost charges **after** the solve
+(`reg_const-pot-charge-halo-mpi`). Any new charge-writing Component must keep
+that post-solve refresh.
 
 ---
 
@@ -117,14 +128,14 @@ before halo, or `HaloRefresh` including charge after solve.
 | Capability | MW | ATV | Notes | Pri |
 |---|:---:|:---:|---|:---:|
 | PIM induced dipoles (SCF) | ✓★ | ✓ | `PimInducedDipole` bulk foothold | P1 |
-| Extended-Lagrangian dipoles | ~ MaZe-related | ○ | Roadmap ○ — deeper after SCF PIM | P2 |
+| Extended-Lagrangian dipoles | ~ MaZe-related | ✓ | `PimXlDipole` time-reversible XL propagation (`reg_extended-lagrangian-dipoles`, wave-5) | P2 |
 | **Coupled** dipole ⊕ electrode \(Q\) solve | ✓★ | ✓ | `DipoleElectrodeJoint` | **P1** |
 | Thole / Tang–Toennies damping | ✓ | ✓ | Thole + optional `tt_b` on PIM | P1 |
 | Per-species polarizability | ✓ | ✓ | `alpha_by_type` table on PIM | P1 |
 | AIM aspherical ions | ✓★ | ○ | **blocked E11** until scheduled | P3 |
 | DAIM deformable ions | ✓★ | ○ | **blocked E11** | P3 |
 | Multipole force field | ✓ | ~ | `observe/multipole` ≠ multipole FF | P2 |
-| Fluctuating-charge / QEq | ~ electrode only | ○ | Roadmap QEq/FQ ○; ≠ const-potential electrode | P2 |
+| Fluctuating-charge / QEq | ~ electrode only | ✓ | `cpu::md::QEq` (LAMMPS `fix qeq/point` twin; `reg_qeq-fluctuating-charge`, ratio 0.45, wave-5); ≠ const-potential electrode | P2 |
 | Drude / AMOEBA | ○ | ○ | Both roadmap-level | — |
 | QM/MM polarizable | ○ | ~ | `qmmm_polarizable` — ATV path, not MW | ATV+ |
 
@@ -192,7 +203,7 @@ before halo, or `HaloRefresh` including charge after solve.
 | 3D Ewald | ✓ | ✓ | | — |
 | MPI MD + domain decomp | ✓ | ✓ | | — |
 | Neighbor lists | ✓ | ✓ | | — |
-| Charge halo correctness after \(Q\) update | ✓ | ✓ schema; **timing** must be designed | See §1 | **P0** |
+| Charge halo correctness after \(Q\) update | ✓ | ✓ | Post-solve ghost-charge refresh landed wave-5 (`reg_const-pot-charge-halo-mpi`); see §1 | **P0** |
 | CUDA MD + PME | ○ | ✓ | **ATV+** | ATV+ |
 | FMM open-boundary | ○ | ~ operators / SCF | Not MD `KSpace` | — |
 
@@ -232,8 +243,8 @@ before halo, or `HaloRefresh` including charge after solve.
 | Scenario | MW | ATV today | Gap |
 |---|:---:|---|---|
 | Bulk non-polarizable IL | ✓ | ✓ LJ+Coul+PME | — |
-| Bulk polarizable IL / PIM-NPT | ✓ | ~ | PIM bulk ✓; NPT product twin open |
-| Planar graphene + const-pot + IL | ✓ | ~ | E1 Components ✓; production EDL box open |
+| Bulk polarizable IL / PIM-NPT | ✓ | ✓ | `reg_pim-npt-polarizable-il` (wave-5) |
+| Planar graphene + const-pot + IL | ✓ | ✓ | `reg_const-pot-il-edl-box` production EDL box (wave-5) |
 | Nanoporous carbon + const-pot | ✓ | ○ | Geometry + E1 (product) |
 | Blue energy / CDC desalination | ✓ | ○ | Product workflow |
 | Finite-field single electrode | ✓ | ✓ | Dufils foothold |

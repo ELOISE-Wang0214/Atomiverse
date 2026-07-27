@@ -1,178 +1,93 @@
 # MetalWalls method loop — handoff
 
-Last land: **wave 4 — 2026-07-25** (manual; sources were on-disk/uncommitted
-after 2026-07-24 write; re-verified build-mw + 10/10 regressions PASS).
-All 10 wave-4 slugs → `## done`. Pending residual (**10**) and blocked (**4**)
-remain for later GapCensus/impl. **incomplete_remaining=0**.
-
-Prior census: **wave 5 gap-census — 2026-07-24** (refill pending while wave-4
-was still `[~]`; historical — see section below). Last assign was wave 4.
+Last land: **wave 5 — 2026-07-27** (10/10 staffed slugs green, all merged into
+`dev` via `merge(wf/<slug>)` commits; harness at `dev` head `ca3b511a`).
+All 10 wave-5 slugs → `## done` (done total **46**). Specs closed (10).
+Pending residual (**3**) and blocked (**4**) remain for the next
+GapCensus/assign. **incomplete_remaining=0**.
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
 Tutorial. See `docs/developer/metalwalls-method-loop.md`.
 
-## Wave 4 land (2026-07-25 re-verify)
+## Wave 5 land (2026-07-27, merged → `dev`)
 
-| Slug | Component / change | Regression | Result |
-| ---- | ------------------ | ---------- | ------ |
-| `maze-charge-dynamics` | `ConstPotMaZe` | `reg_maze-charge-dynamics` | PASS |
-| `electrode-atom-forces` | `ConstPotBO::write_electrode_forces` | `reg_electrode-atom-forces` | PASS |
-| `global-electroneutrality-bo` | `ConstPotBO::global_electroneutrality` | `reg_global-electroneutrality-bo` | PASS |
-| `gaussian-coul-neighborlist` | `PairGaussianCoul` NL path | `reg_gaussian-coul-neighborlist` | PASS |
-| `displacement-dfield-md` | `FixDfield` | `reg_displacement-dfield-md` | PASS |
-| `born-buck-neighborlist-bulk` | `PairBorn` NL path | `reg_born-buck-neighborlist-bulk` | PASS |
-| `const-pot-tip4p-edl` | const-pot + electrolyte EDL toy | `reg_const-pot-tip4p-edl` | PASS |
-| `charge-charge-autocorr` | `ChargeAutocorr` | `reg_charge-charge-autocorr` | PASS |
-| `elastance-condition-observer` | `ElastanceObserver` + `matrix_condition` | `reg_elastance-condition-observer` | PASS |
-| `constant-velocity-smd` | `FixMove` | `reg_constant-velocity-smd` | PASS |
+| Slug | Component / change | Regression | oracle | ratio |
+| ---- | ------------------ | ---------- | ------ | ----- |
+| `per-electrode-eta` | `ConstPotBO::add_electrode(type, psi, eta)` per-group Gaussian widths, mixed \(\eta_{ij}\) | `reg_per-electrode-eta` | literature (Reed 2007 DOI 10.1063/1.2464084; Scalfi 2020 DOI 10.1063/5.0028232; MW JOSS 2020) | perf_exempt |
+| `const-charge-electrode` | `ConstPotBO::add_electrode_charge` const-\(Q\) control (LAMMPS `electrode/conq` twin) | `reg_const-charge-electrode` | lammps | perf_exempt |
+| `const-pot-charge-halo-mpi` | post-solve ghost-charge refresh under MPI DD (`ConstPot*` charge halo) | `reg_const-pot-charge-halo-mpi` | literature / self-consistency | perf_exempt |
+| `maze-symplectic-charge-dynamics` | `ConstPotMaZe.symplectic` true SHAKE mass-zero path (Coretti) | `reg_maze-symplectic-charge-dynamics` | metalwalls (Coretti 2020 literature pin) | perf_exempt |
+| `constant-d-polarization-feedback` | `FixDfield.polarization_feedback` self-consistent \(E = D - 4\pi k_e P\) (Zhang–Sprik) | `reg_constant-d-polarization-feedback` | metalwalls | perf_exempt |
+| `extended-lagrangian-dipoles` | `cpu::PimXlDipole` time-reversible XL induced dipoles | `reg_extended-lagrangian-dipoles` | metalwalls (iEL/SCF literature pins — Albaugh/Niklasson; MW MaZe route cited) | perf_exempt |
+| `qeq-fluctuating-charge` | `cpu::md::QEq` (LAMMPS `fix qeq/point` twin) | `reg_qeq-fluctuating-charge` | lammps | **0.45** |
+| `pim-npt-polarizable-il` | bulk PIM + NPT polarizable-IL product twin | `reg_pim-npt-polarizable-il` | metalwalls (offline numpy Thole-PIM pin; MW JOSS 2020, Thole 1981) | perf_exempt |
+| `voronoi-volume-tf` | `VoronoiVolume` TF site-volume companion | `reg_voronoi-volume-tf` | metalwalls | perf_exempt |
+| `const-pot-il-edl-box` | planar const-pot + non-polarizable IL EDL production box | `reg_const-pot-il-edl-box` | metalwalls | perf_exempt |
 
-**Next:** GapCensus/assign on residual **pending=10** (no incomplete left).
+All regressions registered behind `ATV_BUILD_REGRESSIONS`; every `REFERENCE.md`
+states `oracle:` + `oracle_version`; ctest never launches LAMMPS/MetalWalls.
 
-## Gap-census wave 5 (2026-07-24) — historical
-
-| Field | Value |
-| ----- | ----- |
-| Tree | `dev`; waves 1–3 done=26; wave-4 not yet committed |
-| `## in_progress` | **10** preserved `[~]` at census time |
-| Open MD/electrochem specs | **0** |
-| Unmerged in-scope `wf/<slug>` ahead_of_dev | **0** |
-| Blocked | **4** preserved |
-| Pending after rewrite | **10** (+7 new map residual slugs; kept XL/QEq/TI) |
-| gaps_remaining then | **20** (= pending 10 + in_progress 10); **now 10** after wave-4 land |
-| Roadmap / map | MD + FF notes + capability map ATV evidence refreshed |
-
-**New pending slugs (7):** `per-electrode-eta`, `const-charge-electrode`,
-`const-pot-charge-halo-mpi`, `pim-npt-polarizable-il`, `voronoi-volume-tf`,
-`const-pot-il-edl-box`, `nanoporous-carbon-const-pot`.
-
-## Recover inventory (2026-07-24, post-assign wave 4)
+## Recover inventory (2026-07-27, post-harness wave 5)
 
 | Source | Result |
 | ------ | ------ |
-| A queue `## in_progress` `[~]` | **10** (wave-4 staffed, work not started) |
-| B open `.claude/specs/` MD/electrochem | **0** (only PySCF deferred live — out of loop) |
-| C unmerged `wf/<slug>` (this loop) | **0** (wave-1/2/3 tips ancestors of `dev`; no wave-4 branches yet) |
-| D handoff incomplete rows | **none** beyond queue `[~]` |
-| E half-written `regressions/{md,forcefield}/` | **0** MW/wave-4 slugs; orphans only method-ladder (see below) |
-
-**Resume set (10):** `maze-charge-dynamics`, `electrode-atom-forces`,
-`global-electroneutrality-bo`, `gaussian-coul-neighborlist`,
-`displacement-dfield-md`, `born-buck-neighborlist-bulk`, `const-pot-tip4p-edl`,
-`charge-charge-autocorr`, `elastance-condition-observer`,
-`constant-velocity-smd`. Keep as `[~]`; do **not** demote to pending.
-**incomplete_remaining=10**. Pending after wave-5 census=**10**; blocked=4.
-Next for impl: worktrees + **spec-first** on each wave-4 `wf/<slug>`.
-
-### Recover inventory (2026-07-24, pre assign wave 4) — historical
-
-| Source | Result |
-| ------ | ------ |
-| A queue `## in_progress` `[~]` | **0** before assign; **10** after |
-| B open `.claude/specs/` MD/electrochem | **0** |
-| C unmerged `wf/<slug>` (this loop) | **0** |
+| A queue `## in_progress` `[~]` | **0** (wave 5 fully merged) |
+| B open `.claude/specs/` MD/electrochem | **0** (esmm-\*/dftb2-\*/periodic-rhf-gamma/rsh-eri-cam-b3lyp belong to other loops — never touch) |
+| C unmerged `wf/<slug>` (this loop) | **0** (all wave-5 tips ancestors of `dev`) |
 | D handoff incomplete rows | **none** |
-| E half-written `regressions/{md,forcefield}/` | **0** MW slugs |
+| E half-written `regressions/{md,forcefield}/` | **0** MW slugs (method-ladder orphans unchanged, not this loop) |
 
-**Resume set then:** empty at assign start. Gap-census pending=13 → staffed 10.
+**Resume set: empty.** **incomplete_remaining=0**.
 
-## Wave 1 summary (historical — harnessed 2026-07-23)
+## Next (after harness wave 5 — 2026-07-27)
 
-| Slug | Domain | Status | Regression | oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
-| ---- | ------ | ------ | ---------- | ------ | ---------------------------------------------- |
-| `const-pot-bo-parallel-plate` | electrochem E1 | **merged → done** | `regressions/md/const-pot-bo-parallel-plate` | lammps | **perf_exempt** |
-| `freeze-electrode-atoms` | md E1 | **merged → done** | `regressions/md/freeze-electrode-atoms` | lammps | **3.98** |
-| `const-pot-charge-observer` | electrochem E1 | **merged → done** | `regressions/md/const-pot-charge-observer` | lammps | **perf_exempt** |
-| `charging-work-energy` | electrochem E1 | **merged → done** | `regressions/md/charging-work-energy` | literature | **perf_exempt** |
-| `const-pot-md-nvt-short` | electrochem E1 | **merged → done** | `regressions/md/const-pot-md-nvt-short` | metalwalls | **perf_exempt** |
-| `gaussian-electrode-charge` | electrochem E2 | **merged → done** | `regressions/md/gaussian-electrode-charge` | literature | **perf_exempt** |
-| `slab-2d-ewald-foothold` | electrochem E2 | **merged → done** | `regressions/md/slab-2d-ewald-foothold` | lammps | **6.49** |
-| `external-efield-md` | electrochem E3 | **merged → done** | `regressions/md/external-efield-md` | lammps | **0.60** |
-| `buckingham-pair-lammps` | forcefield E8 | **merged → done** | `regressions/forcefield/buckingham-pair-lammps` | lammps | **perf_exempt** |
-| `four-site-tip4p-foothold` | md E9 | **merged → done** | `regressions/md/four-site-tip4p-foothold` | lammps | **0.338** |
+Residual queue: **pending=3**, **blocked=4**, in_progress=0.
 
-## Wave 2 summary (harnessed 2026-07-24)
+1. Pending (next assign staffs these): `nanoporous-carbon-const-pot` (E9
+   product geometry), `maze-molten-salt-al` (MW example scenario; MaZe +
+   Fumi–Tosi footholds landed), `thermo-integration-capacitance` (E10 TI
+   workflow).
+2. Blocked (out of loop, unchanged): `cuda-const-pot`, `aim-daim-product`,
+   `ml-pinnwall-electrode`, `periodic-hybrid-electrode-dft`.
+3. Next wave starts with **GapCensus** (map re-diff; foothold ≠ closed), then
+   worktrees `wf/<slug>` off `dev`, **spec-first**, MD-only build.
 
-| Slug | Domain | Status | Regression | oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
-| ---- | ------ | ------ | ---------- | ------ | ---------------------------------------------- |
-| `const-pot-cg-large-electrode` | electrochem E2 | **merged → done** | `regressions/md/const-pot-cg-large-electrode` | metalwalls | **perf_exempt** |
-| `electrode-charge-predictor` | electrochem E2 | **merged → done** | `regressions/md/electrode-charge-predictor` | metalwalls | **perf_exempt** |
-| `finite-field-single-electrode` | electrochem E3 | **merged → done** | `regressions/md/finite-field-single-electrode` | metalwalls | **perf_exempt** |
-| `pim-induced-dipole-bulk` | polarizable E4 | **merged → done** | `regressions/md/pim-induced-dipole-bulk` | metalwalls | **perf_exempt** |
-| `piston-electrode-pz` | electrochem E6 | **merged → done** | `regressions/md/piston-electrode-pz` | metalwalls | **perf_exempt** |
-| `thomas-fermi-electrode` | electrochem E7 | **merged → done** | `regressions/md/thomas-fermi-electrode` | metalwalls | **perf_exempt** |
-| `fumi-tosi-nacl` | forcefield E8 | **merged → done** | `regressions/forcefield/fumi-tosi-nacl` | lammps | **perf_exempt** |
-| `steele-wall-argon` | forcefield E8 | **merged → done** | `regressions/forcefield/steele-wall-argon` | lammps | **perf_exempt** |
-| `born-repulsion-foothold` | forcefield E8 | **merged → done** | `regressions/forcefield/born-repulsion-foothold` | lammps | **perf_exempt** |
-| `capacitance-charge-fluctuation` | electrochem E10 | **merged → done** | `regressions/md/capacitance-charge-fluctuation` | literature | **perf_exempt** |
-
-## Wave 3 summary (harnessed 2026-07-24)
-
-| Slug | Domain | Status | Regression | oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
-| ---- | ------ | ------ | ---------- | ------ | ---------------------------------------------- |
-| `constant-force-pull-ion` | md (shared) | **merged → done** | `regressions/md/constant-force-pull-ion` | lammps | **0.12** |
-| `oscillating-efield-md` | electrochem E3 | **merged → done** | `regressions/md/oscillating-efield-md` | lammps | **2.12** |
-| `potential-profile-observer` | electrochem E10 | **merged → done** | `regressions/md/potential-profile-observer` | literature | **perf_exempt** |
-| `surface-tension-coupling` | md (shared) | **merged → done** | `regressions/md/surface-tension-coupling` | lammps | **2.88** |
-| `virtual-site-multi-topology` | md E9 | **merged → done** | `regressions/md/virtual-site-multi-topology` | lammps | **0.084** |
-| `dipole-electrode-joint` | electrochem E5 | **merged → done** | `regressions/md/dipole-electrode-joint` | metalwalls | **perf_exempt** |
-
-### Incomplete remaining (wave 3)
-
-*(none — all six acceptance-met and merged)*
-
-- **Blocked this wave:** none of the staffed six; global blocked set still
-  `cuda-const-pot`, `aim-daim-product`, `ml-pinnwall-electrode`,
-  `periodic-hybrid-electrode-dft` (out of CPU MD loop)
-- **Merge-failed this wave:** none
-- **Incomplete remaining after harness wave 3:** **0**
-- **Queue after harness wave 3:** pending = **0**; in_progress = **0**;
-  done = **26** (wave 1 + 2 + 3); blocked = **4**
-- **Roadmap (CPU ○→✓ on `dev` after wave 3):** constant-surface-tension
-  coupling / NPγT (`SurfaceTensionNPT`, couple xy); oscillating E-field
-  (`FixOscillatingEfield`); constant-force pull (`FixAddForce`); multi-topology
-  virtual sites (`VirtualSites` Weighted3 + OutOfPlane3 TIP4P/TIP5P);
-  dipole⊕electrode joint (`DipoleElectrodeJoint`); slab \(\Psi(z)\) observer
-  (`PotentialProfile` / planar Poisson). All Components on `cpu::md::MD` /
-  Evaluate — not new Driver categories; charge solve not inside `KSpace*`.
-- **Specs closed:** all 6 wave-3 slugs (acceptance met on `dev`; deleted under
-  `.claude/specs/`).
-- **Capability map:** no lasting rule change this harness (oracle priority and
-  Component-on-MD architecture unchanged).
-- **Orphans (not incomplete for this loop):**
-  - `regressions/md/{dpd_ab_mix,dpd_groot_warren,fene_wca_chain}/`,
-    `regressions/forcefield/yukawa_dimer/` — method-ladder shipped reg bodies,
-    no `REFERENCE.md` (hygiene; not on MW queue; do not invent `[~]` rows)
-  - local `wf/*` tips for wave-1/2/3 slugs fully merged into `dev` (stale branch
-    names OK)
+Parent stays on **`dev`**. Default **staff_count=10**.
 
 ## Oracle
 
 - Overlap with LAMMPS → **LAMMPS** offline pin (`tools/metalwalls_oracle/` + LAMMPS inputs)
 - MW-only → **MetalWalls** offline pin (or literature when no binary)
 - `ctest` never launches LAMMPS or MetalWalls
-- Wave-3 oracle tags: force-pull / oscillating efield / surface tension /
-  virtual sites → **lammps**; \(\Psi(z)\) → **literature**; dipole⊕electrode
-  joint → **metalwalls**
+- Wave-5 oracle tags: `qeq-fluctuating-charge` + `const-charge-electrode` →
+  **lammps**; `per-electrode-eta` + `const-pot-charge-halo-mpi` →
+  **literature**; the other six → **metalwalls** (literature/numpy pins where
+  no MW binary)
 
 ## Build (workers)
 
 MD-only flags: `ATV_BUILD_MD=ON`, `ATV_BUILD_KSPACE=ON`, `ATV_BUILD_TESTS=ON`,
 `ATV_BUILD_REGRESSIONS=ON`, **HF/PW/GPW/CUDA/Torch OFF**.
 
-## Next (after assign wave 4 — 2026-07-24)
+## History (compact)
 
-Classical MW **foothold** staff queue (waves 1–3, 26 done) is closed; **production
-depth + residual map ○** staffed as wave-4 **in_progress=10**, **pending=3**,
-`blocked=4`. Map ATV marks in `.claude/notes/metalwalls-capability-map.md`
-(foothold ≠ ✓).
+- **Wave 1** (2026-07-23): 10 merged → done (const-pot BO/observer/NVT,
+  charging work, Gaussian electrode, slab Ewald, E-field, Buckingham, TIP4P
+  foothold, freeze). Ratios: freeze 3.98, slab 6.49, efield 0.60, tip4p 0.338;
+  rest perf_exempt.
+- **Wave 2** (2026-07-24): 10 merged → done (ConstPotCG, ASPC predictor,
+  finite-field single electrode, bulk PIM, piston, Thomas–Fermi, Fumi–Tosi,
+  Steele wall, Born, capacitance fluctuation). All perf_exempt.
+- **Wave 3** (2026-07-24): 6 merged → done (force pull 0.12, oscillating
+  efield 2.12, surface tension 2.88, virtual sites 0.084, \(\Psi(z)\) +
+  dipole⊕electrode joint perf_exempt).
+- **Wave 4** (2026-07-24 write, manual land re-verified 2026-07-25): 10 → done
+  (ConstPotMaZe CG+ASPC foothold, electrode forces, global electroneutrality,
+  Gaussian/Born NL bulk paths, `FixDfield` vacuum foothold, TIP4P EDL,
+  \(C_{QQ}\), elastance observer, `FixMove` SMD). All perf_exempt.
+- **Wave 5** (2026-07-27): table above; done total **46**.
 
-1. **Worktrees** for each `[~]` slug: `wf/<slug>` under
-   `/nobackup/proj/disk/teoroo/personal/jicli594/work/molcrafts/grok-worktrees/`.
-2. **Spec-first** on each worker: write `.claude/specs/<slug>/` before code.
-3. Implement + MD-only build + unit/regression; then merge → harness → tutorial.
-4. Remaining pending (XL dipoles, QEq, TI capacitance) wait for next assign.
-5. Unblock tracks remain out of loop: CUDA const-pot, AIM/DAIM, ML PINN wall,
-   periodic hybrid DFT electrodes, full 2D-PBC product, PLUMED.
-
-Parent stays on **`dev`**. Default **staff_count=10**.
+Queue: `docs/developer/metalwalls-method-queue.md` (do not delete done rows).
+Map: `.claude/notes/metalwalls-capability-map.md` (ATV marks re-audited
+2026-07-27 post-wave-5).
