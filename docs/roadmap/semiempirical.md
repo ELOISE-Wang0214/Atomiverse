@@ -30,11 +30,13 @@ open. AM1-BCC charge assignment still uses the energy/charge path (see
 (`multiplicity`, dual α/β, Mulliken m; `reg_spin-dftb2-o2`). **Γ-point
 periodic** SCC-DFTB2 lattice sums (H⁰/S, screened γ, repulsive) ship on
 MioSketch (`reg_dftb2-periodic-gamma`); k-mesh remains ○
-(`dftb2-kpoints`). **GFN0-xTB toy** (`XtbGfn0`, `reg_h2o_gfn0`) remains a
-sketch. Non-SCC DFTB0, DFTB3, D3/stress/TD depth, and GFN1/2 remain ○
-(several on unmerged `wf/*` tips — see queue `## in_progress`). Loop queue:
-`docs/developer/tb-method-queue.md`. Family oracles: OpenMOPAC (NDDO) / DFTB+
-(DFTB) / xtb (GFN) — see `tools/tb_oracle/README.md`.
+(`dftb2-kpoints`); lattice-image-consistent nuclear forces under PBC remain ○
+(`dftb2-periodic-forces` — energy lattice sums vs min_image force path).
+**GFN0-xTB toy** (`XtbGfn0`, `reg_h2o_gfn0`) remains a sketch. Non-SCC DFTB0,
+DFTB3, D3/stress/TD depth, and GFN1/2 remain ○ (several on unmerged `wf/*`
+tips — see queue `## in_progress`: dftb0, dftb3, D3, ThreeOb F, spin F, stress).
+Loop queue: `docs/developer/tb-method-queue.md`. Family oracles: OpenMOPAC
+(NDDO) / DFTB+ (DFTB) / xtb (GFN) — see `tools/tb_oracle/README.md`.
 
 ## 1. Semiempirical Quantum Methods
 
@@ -84,9 +86,10 @@ Collinear spin (`multiplicity`) and **restricted** analytic nuclear forces
 re-SCC FD. Offline **DFTB+** absolute energy identity on mio-1-1 H–H ships
 (`reg_dftb2-dftbplus-energy-pin`); 3ob CH4 has a DFTB+ pin under pure
 SCC-DFTB2. **Γ-point PBC** lattice-sum energy ships (`reg_dftb2-periodic-gamma`);
-analytic **stress**, **k-mesh** beyond Γ, **DFTB3** forces, and **TD-DFTB**
-remain ○. Oracle for all DFTB rows: **DFTB+** (never OpenMOPAC). Ladder:
-DFTB0 → DFTB2 depth → DFTB3 → spin product depth → …
+lattice-consistent **PBC forces**, analytic **stress**, **k-mesh** beyond Γ,
+**DFTB3** forces, and **TD-DFTB** remain ○. Oracle for all DFTB rows:
+**DFTB+** (never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 → spin
+product depth → …
 
 ## 3. Extended Tight-Binding Methods
 

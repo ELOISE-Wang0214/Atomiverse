@@ -40,10 +40,15 @@ tools/tb_oracle/
 | Path | Family | Notes |
 | ---- | ------ | ----- |
 | `inputs/dftbplus/ch4_3ob_dftb2/` | DFTB+ | CH4 3ob-3-1 under pure DFTB2 (`SCC=Yes`, no `ThirdOrder`) |
+| `inputs/dftbplus/h2_mio_scc/` | DFTB+ | H₂ mio-1-1 absolute E pin twin (`reg_dftb2-dftbplus-energy-pin`) |
+| `inputs/dftbplus/dftb2-periodic-gamma/` | DFTB+ | Γ-PBC C-chain geometry twin (ATV Hamiltonian pin) |
 | `inputs/dftbplus/dftb2_analytic_forces_note.md` | DFTB+ | Formula-level force module boundary (no host binary) |
+| `inputs/mopac/` | OpenMOPAC | **empty on `dev`** — seed with AM1/RM1/PM* pins (Phase B) |
+| `inputs/xtb/` | xtb | **empty on `dev`** — seed with GFN pins (Phase C, late) |
 
-Additional twins may exist only on unmerged `wf/*` tips (e.g. H2 mio SCC,
-DFTB0 notes, D3 dimer XYZ, Γ-point PBC). Merge brings them onto `dev`.
+Additional twins may exist only on unmerged `wf/*` tips (DFTB0 notes, D3
+dimer XYZ, ThreeOb/spin force notes, stress notes). Merge brings them onto
+`dev`.
 
 ## How to pin (operator / worker)
 
