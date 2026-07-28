@@ -402,7 +402,7 @@ follow-up, not part of this layout.
   frame/         Frame pillar: device-resident state + residency ops
   driver/        Driver pillar: the loop node Driver<P>, the erased nestable base
                  DriverNode, the Runtime coordinator (composes the sub-runtimes below),
-                 built-in criteria, OutcomePolicy, SubDriver (nesting), step executor
+                 built-in criteria, OutcomePolicy, nesting via DriverNode, step executor
   component/     Component pillar: Component, Launch/Context, generic + shared bases
   evaluate/      domain: the Evaluate preset + single_point
   io/            external formats / molrs bridge (extxyz, frame_writer, lammps_data; CPU only)
@@ -544,7 +544,8 @@ current loop cannot reach the loop above it. This bug shipped twice (LBFGS's unc
 unwritable rather than merely forbidden. Pinned by `tests/cpu/driver/test_sub_driver.cpp`.
 
 **A Driver is an executable node.** Same lifecycle as a component (build → launch × N →
-destroy), so a Plan slot holds a component **or** a sub-driver (`cpu::SubDriver`). The
+destroy), so a Plan slot holds a component **or** a nested driver (any
+`cpu::Driver<P>`, which derives `cpu::DriverNode`). The
 child runs its own Plan on the **parent's Runtime** (`ctx.exec.runtime`): no second
 Backend, no rebuilt decomposition, no re-bound frame, no split communicator. **Type
 erasure happens at the NODE boundary, never at the stage boundary** — the child keeps its
@@ -565,7 +566,7 @@ category to one method.
 **Known ceiling: components cannot be cloned.** Running one inner Driver body over N
 replicas would need N independent component states (N L-BFGS curvature histories), and
 there is no `clone()` on `Component`. Nesting makes this **sharper**, not softer — a
-`SubDriver` holds ONE inner driver with ONE component set. Undecided; see `.claude/notes/notes.md`.
+a nested node is ONE inner driver with ONE component set. Undecided; see `.claude/notes/notes.md`.
 
 **Adding a new preset is cheap and adding a new "category" is meaningless.** If you catch
 yourself wanting a new driver class, ask what *terminates* differently — and write a
@@ -1043,10 +1044,10 @@ sim.stop_reason();                            // which criterion ended it
 // A Driver is a node: nest one in another, on ONE shared Runtime
 cpu::minimizer::Minimize inner;                     // its own phases + criteria
 inner.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});
-inner.on(minimizer::Phase::force).add(forces);
+inner.on(minimizer::Phase::force).add_ref(forces);   // named lvalue -> borrow
 cpu::md::MD outer;                                  // a DIFFERENT phase enum
 outer.set_integrator(cpu::md::VelocityVerlet{0.5});
-outer.on(md::Phase::end_of_step).add(cpu::SubDriver{inner, /*budget=*/50});
+outer.on(md::Phase::end_of_step).add_ref(inner, /*order=*/0, /*budget=*/50);
 outer.build();                                      // builds BOTH; inner allocates once
 outer.run(frame, 1000);                             // inner's convergence CANNOT stop outer
 ```
@@ -1065,7 +1066,7 @@ outer.run(frame, 1000);                             // inner's convergence CANNO
 | `cpu::PathDriver` | CPU | `path::Phase` | criterion `AllReplicasConverged` |
 
 Each derives the loop node (`cpu::Driver<P>` / `cuda::Driver<P>`) **directly** and
-configures its defaults in its **constructor**. `cpu::SubDriver<P>` wraps any of them as a
+configures its defaults in its **constructor**. Any of them derives `cpu::DriverNode`, so it binds as a
 node in another driver's Plan (nesting, on one shared Runtime).
 
 **Target:** SCF / PW / GPW / NDDO self-consistency loops are **Drivers** (or
