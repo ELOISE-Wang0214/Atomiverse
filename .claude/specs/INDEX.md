@@ -97,6 +97,56 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   take 110 s and >180 s. Real options: shrink the case (physics/spec change) or
   raise the budget for GPW/OT cases. Route /mol:discuss + /mol:fix.
 
+## Ticket — /mol:fix owed (named 2026-07-28, repo-cleanup wave)
+
+- **DFTB3's SCC potential is not the derivative of its energy** (blocking:
+  `wf/dftb3-water-mio` is the ONE branch NOT merged; its tip is kept).
+  Measured on the merge candidate: `V_code` vs numerical `∂(E²+E³)/∂Δq` off by
+  **0.457 eV** at Δq=(−0.6,0.3,0.3), while with `U_d=0` (pure second order) the
+  residual is 4.5e-10 — the defect is isolated to the third-order block. Euler
+  check at the converged Δq: `Σ Δq·V³(code) = 15.496` vs exact `3·E³ = 23.240`
+  (a correct derivative satisfies it to 7e-15). The double-counting subtraction
+  is also short a term: code subtracts `E²+E³`, a consistent V³ needs `E²+2E³`.
+  Symptom: `|E_DFTB3 − E_DFTB2| = 46.96 eV` against a reported `E³ = 6.46 eV`.
+  Its regression pin is ALSO stale (−84.5617 vs −89.0775 eV), proven to be
+  100% the H-parameter upgrade — but re-pinning was refused: it would bless a
+  non-variational solution as dev's reference DFTB3 number. Fix the physics
+  first, then re-pin and merge the branch.
+- **DFTB2's charge-dependent gradient is wrong for polar systems**
+  (pre-existing, now present in three functions). Every Δq=0 case is exact
+  (O2 3.0e-07, H2 5e-03 eV/Å); every polar case is off (H2O mio 0.23/0.75,
+  H2O 3ob **0.84/0.24** eV/Å — 8× relative on `F_H1_y`). A converged SCC-DFTB2
+  gradient is stationary and must be FD-exact, so the "charge-response
+  residual" framing is masking a bug; A/B rules out the cheap fixes (term
+  dropped 1.020, sign flipped 2.268 eV/Å). **These gates pass only because
+  their tolerance is 1.0 eV/Å** — fix, then tighten. Also: the spin gate
+  cannot see it (O2 has Δq ≡ 0 by symmetry); an open-shell Δq ≠ 0 case is owed.
+- **D3 dispersion gaps** (from the merged `dftb2-dispersion-d3`): D3 forces are
+  ungated in-tree (both D3 gates run `with_forces = false`), and D3 is absent
+  from `kStress` on both paths — `d3=true` + `with_stress=true` silently yields
+  an electronic+repulsive-only stress. No periodic D3, no periodic stress.
+- **The mio-1-1 H–H reader exists twice**: `internal/mio_hh_table.h` (new,
+  used by DFTB0) and a private copy in `dftb2.cpp`'s anonymous namespace
+  (~lines 102–277). Rewire dftb2 onto the shared header (needs
+  `d_repulsive_dr` added to `MioHHTable`). Route /mol:refactor.
+- **Seven PW/bands/DOS regressions resolve `tests/data/` relative to CWD**, so
+  they FAIL when the `regressions` target runs them from the build directory
+  and PASS from the repo root (verified both ways on `reg_bands-dos-si`,
+  `reg_dos-spin-si`). Harness defect, not physics. Fix = resolve the data path
+  from a compiled-in root or set the target's WORKING_DIRECTORY.
+- **Five genuinely failing regressions, attribution proven pre-existing**
+  (rebuilt and re-run at `2b350442`, i.e. before the esmm contract wave, with
+  byte-identical failure messages): `rigid_water`, `settle_tip3p` (no verdict
+  line — SETTLE Frame-lookup budget), `npt_lj` ("<V> off the NPT ensemble
+  prediction"), `remd_harmonic` ("accept ratio out of (0.01,0.99): 1.000"),
+  `gaussian-electrode-charge` (no verdict line). Plus `python_pure_import`
+  (missing `typer` in the env). Classical-MD/MC domain work, unrelated to the
+  ES accumulation contract.
+- **Four `.claude/specs/` dirs arrived with the merged branches**
+  (`dftb2-dispersion-d3`, `dftb2-spin-analytic-forces`, `dftb2-analytic-stress`,
+  `dftb2-analytic-forces-threeob`) — house rule says specs die at done. Decide
+  their lifecycle (close + delete, or keep as the wave's record).
+
 ## Live — deferred PySCF engine gaps (2026-07-24)
 
 Approved for **later** implementation (do **not** auto `/mol:impl` until
