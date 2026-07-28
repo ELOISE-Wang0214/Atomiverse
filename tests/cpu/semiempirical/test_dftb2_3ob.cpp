@@ -174,8 +174,11 @@ TEST(DFTB23ob, AnalyticForcesMatchFdWater) {
         EXPECT_NEAR(net[d], 0.0, 1e-6);
 
     constexpr double h = 1e-4;
-    // Fixed-Δq analytic vs re-SCC FD residual (charge response); 1.0 eV/Å gate.
-    constexpr double tol = 1.0;
+    // A converged SCC-DFTB2 gradient is stationary, so fixed-Δq analytic is
+    // FD-exact to the central-difference truncation error. The old 1.0 eV/Å
+    // "charge response" gate was masking the γ-gradient sign bug (measured
+    // residual 8.4e-1 → 4.4e-7 eV/Å when fixed, 2026-07-28).
+    constexpr double tol = 1e-5;
 
     {
         auto fp = make_water_offeq();

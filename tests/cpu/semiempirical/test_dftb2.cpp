@@ -126,6 +126,50 @@ TEST(DFTB2, H2EnergyFinite) {
     EXPECT_NEAR(dftb.last_mulliken_spin()[1], 0.0, 1e-8);
 }
 
+TEST(DFTB2, SccConvergesIndependentOfIterationBudget) {
+    // Undamped Picard on a polar system is a period-2 limit cycle: it never
+    // meets scc_tol, always burns the whole budget, and the reported energy
+    // is selected by the PARITY of max_scc. A mixed SCC reaches the fixed
+    // point, so the budget must not touch the answer.
+    double e[3] = {0, 0, 0};
+    for (int i = 0; i < 3; ++i) {
+        auto f = make_water_offeq();
+        cpu::Context ctx;
+        cpu::semiempirical::DFTB2 dftb;
+        dftb.with_forces = false;
+        dftb.scc_tol = 1e-10;
+        dftb.max_scc = 49 + i;
+        dftb.build({ctx, f});
+        dftb.launch({ctx, f, 0, 0});
+        EXPECT_LT(dftb.last_scc_residual(), dftb.scc_tol) << "budget " << i;
+        EXPECT_LT(dftb.last_scc_iterations(), dftb.max_scc) << "budget " << i;
+        e[i] = dftb.last_energy();
+    }
+    EXPECT_NEAR(e[0], e[1], 1e-10);
+    EXPECT_NEAR(e[1], e[2], 1e-10);
+}
+
+TEST(DFTB2, ThrowsWhenSccBudgetIsExhausted) {
+    // No silent fallback to the last iterate — an unconverged SCC is an error.
+    auto f = make_water_offeq();
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 dftb;
+    dftb.with_forces = false;
+    dftb.scc_tol = 1e-10;
+    dftb.max_scc = 2;
+    dftb.build({ctx, f});
+    EXPECT_THROW(dftb.launch({ctx, f, 0, 0}), std::runtime_error);
+}
+
+TEST(DFTB2, RejectsMixBetaOutsideUnitInterval) {
+    auto f = make_h2(0.74);
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 dftb;
+    dftb.mix_beta = 0.0;
+    dftb.build({ctx, f});
+    EXPECT_THROW(dftb.launch({ctx, f, 0, 0}), std::invalid_argument);
+}
+
 TEST(DFTB2, RejectsUnsupportedElement) {
     cpu::Frame f(1);
     f.span(kAtom_type)[0] = 9; // F not in tables
@@ -189,15 +233,18 @@ TEST(DFTB2, AnalyticForceMatchesFdH2O) {
 
     const double h = 1e-4;
     // Gate O_x and H1_y only (same dual-component gate as dftb2-analytic-forces).
-    // Multi-element re-SCC residual includes Mulliken charge response beyond
-    // fixed-Δq Hellmann–Feynman (H2 matches to 5e-3; H2O ~1 eV/Å class).
+    // A converged SCC-DFTB2 gradient is stationary, so this is FD-exact to the
+    // central-difference truncation error — there is NO "charge response
+    // residual" (that framing was masking the γ-gradient sign bug and the
+    // Σ_A V_A q⁰_A double-counting error; both fixed 2026-07-28).
+    constexpr double kFdTol = 1e-5; // eV/Å; measured residual ≤ 3e-7
     {
         auto fp = make_water_offeq();
         fp.span(kAtom_x)[0] += static_cast<StorageReal>(h);
         auto fm = make_water_offeq();
         fm.span(kAtom_x)[0] -= static_cast<StorageReal>(h);
         const double fd = -(energy_only(fp) - energy_only(fm)) / (2.0 * h);
-        EXPECT_NEAR(static_cast<double>(f.span(kAtom_fx)[0]), fd, 1.0);
+        EXPECT_NEAR(static_cast<double>(f.span(kAtom_fx)[0]), fd, kFdTol);
     }
     {
         auto fp = make_water_offeq();
@@ -205,7 +252,7 @@ TEST(DFTB2, AnalyticForceMatchesFdH2O) {
         auto fm = make_water_offeq();
         fm.span(kAtom_y)[1] -= static_cast<StorageReal>(h);
         const double fd = -(energy_only(fp) - energy_only(fm)) / (2.0 * h);
-        EXPECT_NEAR(static_cast<double>(f.span(kAtom_fy)[1]), fd, 1.0);
+        EXPECT_NEAR(static_cast<double>(f.span(kAtom_fy)[1]), fd, kFdTol);
     }
 
     double net[3] = {0, 0, 0};

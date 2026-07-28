@@ -109,6 +109,65 @@ TEST(DFTB3, ThirdOrderDiffersFromDftb2) {
     EXPECT_GT(std::fabs(d3.last_e3()), 0.0);
 }
 
+TEST(DFTB3, SccConvergesIndependentOfIterationBudget) {
+    // Undamped Picard on polar water is a period-2 limit cycle: it never meets
+    // scc_tol, always burns the whole budget, and the reported energy is
+    // selected by the PARITY of max_scc. A mixed SCC reaches the fixed point,
+    // so the budget must not touch the answer.
+    double e[3] = {0, 0, 0};
+    for (int i = 0; i < 3; ++i) {
+        auto f = make_water();
+        cpu::Context ctx;
+        cpu::semiempirical::DFTB3 dftb3;
+        dftb3.with_forces = false;
+        dftb3.scc_tol = 1e-10;
+        dftb3.max_scc = 49 + i;
+        dftb3.build({ctx, f});
+        dftb3.launch({ctx, f, 0, 0});
+        EXPECT_LT(dftb3.last_scc_residual(), dftb3.scc_tol) << "budget " << i;
+        EXPECT_LT(dftb3.last_scc_iterations(), dftb3.max_scc) << "budget " << i;
+        e[i] = dftb3.last_energy();
+    }
+    EXPECT_NEAR(e[0], e[1], 1e-10);
+    EXPECT_NEAR(e[1], e[2], 1e-10);
+}
+
+TEST(DFTB3, ThrowsWhenSccBudgetIsExhausted) {
+    // No silent fallback to the last iterate — an unconverged SCC is an error.
+    auto f = make_water();
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB3 dftb3;
+    dftb3.with_forces = false;
+    dftb3.scc_tol = 1e-10;
+    dftb3.max_scc = 2;
+    dftb3.build({ctx, f});
+    EXPECT_THROW(dftb3.launch({ctx, f, 0, 0}), std::runtime_error);
+}
+
+TEST(DFTB3, ThirdOrderMovesEnergyByItsOwnMagnitude) {
+    // The double-counting route decides this: E_band − (E²+2E³) carried a
+    // spurious Σ_A V_A q⁰_A that is LINEAR in Δq, so the DFTB3−DFTB2 gap was
+    // ~7× |E³| instead of ~|E³|.
+    auto f3 = make_water();
+    auto f2 = make_water();
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB3 d3;
+    d3.with_forces = false;
+    d3.scc_tol = 1e-10;
+    d3.build({ctx, f3});
+    d3.launch({ctx, f3, 0, 0});
+    cpu::semiempirical::DFTB2 d2;
+    d2.with_forces = false;
+    d2.scc_tol = 1e-10;
+    d2.build({ctx, f2});
+    d2.launch({ctx, f2, 0, 0});
+
+    const double gap = std::fabs(d3.last_energy() - d2.last_energy());
+    EXPECT_GT(std::fabs(d3.last_e3()), 1e-6);
+    EXPECT_LT(gap, 2.0 * std::fabs(d3.last_e3()));
+    EXPECT_GT(gap, 0.5 * std::fabs(d3.last_e3()));
+}
+
 TEST(DFTB3, RejectsUnsupportedElement) {
     cpu::Frame f(1);
     f.span(kAtom_type)[0] = 26; // Fe
