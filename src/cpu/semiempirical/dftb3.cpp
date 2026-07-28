@@ -1,5 +1,8 @@
 /// @file src/cpu/semiempirical/dftb3.cpp
 /// SCC-DFTB3 multi-element (H/C/N/O) with static mio-style SK tables.
+/// H–H reads the shared transcribed mio-1-1 grid (`internal/mio_hh_table.h`),
+/// the same one DFTB0/DFTB2 read, so DFTB3 reduces to DFTB2 exactly when the
+/// charge fluctuations vanish.
 #include "atomiverse/cpu/semiempirical/dftb3.h"
 
 #include <algorithm>
@@ -13,6 +16,8 @@
 #include "atomiverse/cpu/linalg/matrix.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h"
 #include "atomiverse/cpu/semiempirical/internal/dftb3_scc.h"
+#include "atomiverse/cpu/semiempirical/internal/mio_hh_table.h"
+#include "atomiverse/cpu/semiempirical/internal/scc_mixer.h"
 
 namespace ATV {
 namespace cpu {
@@ -61,12 +66,43 @@ double s_radial(double s0, double r, double r0, double w) {
     return s0 * std::exp(-0.5 * t * t);
 }
 
+/// H–H reaches as far as the transcribed mio grid; sketch pairs use r_cut [Å].
+double pair_rcut_A(const DftbElementRow& ea, const DftbElementRow& eb) {
+    if (ea.z == 1 && eb.z == 1)
+        return internal::MioHHTable{}.cutoff();
+    return std::max(ea.r_cut, eb.r_cut);
+}
+
+/// Pair repulsive energy [eV]: mio-1-1 spline for H–H, sketch exponential else.
+double pair_repulsive_eV(int za, int zb, double r_A) {
+    if (za == 1 && zb == 1)
+        return internal::MioHHTable{}.repulsive(r_A);
+    const auto& rep = pair_rep(za, zb);
+    return rep.a * std::exp(-rep.b * r_A);
+}
+
 void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
                    const DftbPairSkRow& sk, double dx, double dy, double dz,
                    double r, linalg::RealMatrix& H0, linalg::RealMatrix& S,
                    int ia0, int ib0) {
     if (r < 1e-12)
         return;
+
+    auto set_hs = [&](int i, int j, double hv, double sv) {
+        H0(ia0 + i, ib0 + j) = hv;
+        H0(ib0 + j, ia0 + i) = hv;
+        S(ia0 + i, ib0 + j) = sv;
+        S(ib0 + j, ia0 + i) = sv;
+    };
+
+    // mio-1-1 H–H (s only): shared transcribed table, not the sketch radial.
+    if (ea.z == 1 && eb.z == 1) {
+        const internal::MioHHTable mio;
+        set_hs(0, 0, mio.hopping_ss(r), mio.overlap_ss(r));
+        (void)sk;
+        return;
+    }
+
     const double inv_r = 1.0 / r;
     const double l = dx * inv_r;
     const double m = dy * inv_r;
@@ -80,13 +116,6 @@ void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
     const double Ssp = s_radial(sk.s_sp0, r, sk.s_r0, sk.s_w);
     const double Spps = s_radial(sk.s_pps0, r, sk.s_r0, sk.s_w);
     const double Sppp = s_radial(sk.s_ppp0, r, sk.s_r0, sk.s_w);
-
-    auto set_hs = [&](int i, int j, double hv, double sv) {
-        H0(ia0 + i, ib0 + j) = hv;
-        H0(ib0 + j, ia0 + i) = hv;
-        S(ia0 + i, ib0 + j) = sv;
-        S(ib0 + j, ia0 + i) = sv;
-    };
 
     set_hs(0, 0, Hss, Sss);
 
@@ -113,6 +142,168 @@ void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
     }
 }
 
+/// One converged DFTB3 solve at a frozen geometry.
+struct SccSolution {
+    double e_h0 = 0;  ///< Tr(ρH⁰) [eV]
+    double e2 = 0;    ///< E^(2) [eV]
+    double e3 = 0;    ///< E^(3) [eV]
+    double e_rep = 0; ///< pair repulsive [eV]
+    double residual = 0;
+    int iterations = 0;
+    std::vector<double> dq;
+
+    /// @brief Total electronic + repulsive energy [eV].
+    double energy() const { return e_h0 + e2 + e3 + e_rep; }
+};
+
+/// The one DFTB3 self-consistency loop — energy and its finite-difference
+/// gradient both go through here, so they cannot disagree on the functional.
+///
+/// Charges are Anderson-mixed (`internal::ChargeMixer`): undamped Picard is a
+/// period-2 limit cycle for polar systems and never meets `scc_tol`. Not
+/// converging is an error, never a silently returned iterate.
+SccSolution solve_scc(const cpu::Frame& f, const int* type,
+                      const StorageReal* x, const StorageReal* y,
+                      const StorageReal* z,
+                      const std::vector<const DftbElementRow*>& el,
+                      const std::vector<int>& ao0, int n_at, int n_ao,
+                      int n_occ, double scc_tol, int max_scc, double mix_beta) {
+    auto dist_vec = [&](int i, int j, double& dx, double& dy, double& dz) {
+        dx = static_cast<double>(x[j] - x[i]);
+        dy = static_cast<double>(y[j] - y[i]);
+        dz = static_cast<double>(z[j] - z[i]);
+        f.box.min_image(dx, dy, dz);
+        return std::sqrt(dx * dx + dy * dy + dz * dz);
+    };
+
+    linalg::RealMatrix H0 = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealMatrix S = xt::zeros<double>({n_ao, n_ao});
+    // Row-major n×n minimum-image distances of this geometry [Å].
+    std::vector<double> dist(static_cast<std::size_t>(n_at)
+                                 * static_cast<std::size_t>(n_at),
+                             0.0);
+    const std::size_t n = static_cast<std::size_t>(n_at);
+
+    for (int a = 0; a < n_at; ++a) {
+        const auto& ea = *el[static_cast<std::size_t>(a)];
+        const int ia = ao0[static_cast<std::size_t>(a)];
+        H0(ia, ia) = ea.e_s;
+        S(ia, ia) = 1.0;
+        if (ea.n_ao == 4) {
+            for (int p = 1; p < 4; ++p) {
+                H0(ia + p, ia + p) = ea.e_p;
+                S(ia + p, ia + p) = 1.0;
+            }
+        }
+        for (int b = a + 1; b < n_at; ++b) {
+            const auto& eb = *el[static_cast<std::size_t>(b)];
+            double dx, dy, dz;
+            const double r = dist_vec(a, b, dx, dy, dz);
+            dist[static_cast<std::size_t>(a) * n + static_cast<std::size_t>(b)] =
+                r;
+            dist[static_cast<std::size_t>(b) * n + static_cast<std::size_t>(a)] =
+                r;
+            if (r > pair_rcut_A(ea, eb))
+                continue;
+            fill_sk_block(ea, eb, pair_sk(type[a], type[b]), dx, dy, dz, r, H0,
+                          S, ia, ao0[static_cast<std::size_t>(b)]);
+        }
+    }
+
+    std::vector<double> hubbard_u(n);
+    std::vector<double> hubbard_du(n);
+    for (int a = 0; a < n_at; ++a) {
+        hubbard_u[static_cast<std::size_t>(a)] =
+            el[static_cast<std::size_t>(a)]->hubbard_u;
+        hubbard_du[static_cast<std::size_t>(a)] =
+            el[static_cast<std::size_t>(a)]->hubbard_du;
+    }
+    const internal::Dftb3Scc scc(hubbard_u, hubbard_du, dist);
+
+    std::vector<double> dq(n, 0.0);
+    std::vector<double> dq_out(n, 0.0);
+    linalg::RealMatrix P = xt::zeros<double>({n_ao, n_ao});
+    SccSolution out;
+    bool converged = false;
+    // Retained iterates in the Anderson charge mixer (dimensionless).
+    constexpr int kSccMixDepth = 6;
+    internal::ChargeMixer mixer(mix_beta, kSccMixDepth);
+
+    for (int it = 0; it < max_scc; ++it) {
+        const std::vector<double> dV = scc.potential(dq);
+
+        linalg::RealMatrix H = H0;
+        for (int a = 0; a < n_at; ++a) {
+            const int ia = ao0[static_cast<std::size_t>(a)];
+            const int na = el[static_cast<std::size_t>(a)]->n_ao;
+            for (int b = 0; b < n_at; ++b) {
+                const int ib = ao0[static_cast<std::size_t>(b)];
+                const int nb = el[static_cast<std::size_t>(b)]->n_ao;
+                const double half = 0.5
+                                    * (dV[static_cast<std::size_t>(a)]
+                                       + dV[static_cast<std::size_t>(b)]);
+                for (int i = 0; i < na; ++i)
+                    for (int j = 0; j < nb; ++j)
+                        H(ia + i, ib + j) += half * S(ia + i, ib + j);
+            }
+        }
+
+        auto sol = linalg::diagonalize_fock_generalized(H, S);
+        const auto& C = sol.second;
+
+        P = xt::zeros<double>({n_ao, n_ao});
+        for (int o = 0; o < n_occ; ++o)
+            for (int mu = 0; mu < n_ao; ++mu)
+                for (int nu = 0; nu < n_ao; ++nu)
+                    P(mu, nu) += 2.0 * C(mu, o) * C(nu, o);
+
+        const linalg::RealMatrix PS = xt::linalg::dot(P, S);
+        double residual = 0;
+        for (int a = 0; a < n_at; ++a) {
+            double qa = 0;
+            const int ia = ao0[static_cast<std::size_t>(a)];
+            const int na = el[static_cast<std::size_t>(a)]->n_ao;
+            for (int i = 0; i < na; ++i)
+                qa += PS(ia + i, ia + i);
+            dq_out[static_cast<std::size_t>(a)] =
+                qa - el[static_cast<std::size_t>(a)]->n_val;
+            residual = std::max(residual,
+                                std::abs(dq_out[static_cast<std::size_t>(a)]
+                                         - dq[static_cast<std::size_t>(a)]));
+        }
+
+        out.residual = residual;
+        out.iterations = it + 1;
+        if (residual < scc_tol) {
+            dq = dq_out;
+            converged = true;
+            break;
+        }
+        dq = mixer.next(dq, dq_out);
+    }
+
+    if (!converged)
+        throw std::runtime_error(
+            "DFTB3: SCC did not converge in " + std::to_string(max_scc)
+            + " iterations (residual " + std::to_string(out.residual)
+            + " e > scc_tol " + std::to_string(scc_tol)
+            + "); raise max_scc or lower mix_beta");
+
+    for (int mu = 0; mu < n_ao; ++mu)
+        for (int nu = 0; nu < n_ao; ++nu)
+            out.e_h0 += P(mu, nu) * H0(mu, nu);
+    out.e2 = scc.second_order_energy(dq);
+    out.e3 = scc.third_order_energy(dq);
+    for (int a = 0; a < n_at; ++a)
+        for (int b = a + 1; b < n_at; ++b)
+            out.e_rep += pair_repulsive_eV(
+                type[a], type[b],
+                dist[static_cast<std::size_t>(a) * n
+                     + static_cast<std::size_t>(b)]);
+    out.dq = std::move(dq);
+    return out;
+}
+
 } // namespace
 
 void DFTB3::build(const BuildContext& /*ctx*/) {}
@@ -122,11 +313,13 @@ void DFTB3::launch(const LaunchContext& ctx) {
     const int n_at = f.nlocal();
     if (n_at < 1)
         throw std::invalid_argument("DFTB3: empty frame");
+    if (!(mix_beta > 0.0) || mix_beta > 1.0)
+        throw std::invalid_argument("DFTB3: mix_beta must be in (0, 1]");
 
     const auto type = f.span(kAtom_type);
-    const StorageReal* x = f.span(kAtom_x);
-    const StorageReal* y = f.span(kAtom_y);
-    const StorageReal* z = f.span(kAtom_z);
+    StorageReal* x = f.span(kAtom_x);
+    StorageReal* y = f.span(kAtom_y);
+    StorageReal* z = f.span(kAtom_z);
     AccReal* fx = f.span(kAtom_fx);
     AccReal* fy = f.span(kAtom_fy);
     AccReal* fz = f.span(kAtom_fz);
@@ -151,245 +344,35 @@ void DFTB3::launch(const LaunchContext& ctx) {
             "DFTB3: odd/non-integer valence electron count not supported");
     const int n_occ = static_cast<int>(std::lround(n_elec)) / 2;
 
-    auto dist_vec = [&](int i, int j, double& dx, double& dy, double& dz) {
-        dx = static_cast<double>(x[j] - x[i]);
-        dy = static_cast<double>(y[j] - y[i]);
-        dz = static_cast<double>(z[j] - z[i]);
-        f.box.min_image(dx, dy, dz);
-        return std::sqrt(dx * dx + dy * dy + dz * dz);
-    };
-    // Row-major n×n minimum-image distances of the current geometry [Å].
-    auto distance_matrix = [&]() {
-        const std::size_t n = static_cast<std::size_t>(n_at);
-        std::vector<double> d(n * n, 0.0);
-        for (int a = 0; a < n_at; ++a)
-            for (int b = a + 1; b < n_at; ++b) {
-                double dx, dy, dz;
-                const double r = dist_vec(a, b, dx, dy, dz);
-                const std::size_t ia = static_cast<std::size_t>(a);
-                const std::size_t ib = static_cast<std::size_t>(b);
-                d[ia * n + ib] = r;
-                d[ib * n + ia] = r;
-            }
-        return d;
-    };
-
-    std::vector<double> hubbard_u(static_cast<std::size_t>(n_at));
-    std::vector<double> hubbard_du(static_cast<std::size_t>(n_at));
-    for (int a = 0; a < n_at; ++a) {
-        hubbard_u[static_cast<std::size_t>(a)] =
-            el[static_cast<std::size_t>(a)]->hubbard_u;
-        hubbard_du[static_cast<std::size_t>(a)] =
-            el[static_cast<std::size_t>(a)]->hubbard_du;
-    }
-
-    linalg::RealMatrix H0 = xt::zeros<double>({n_ao, n_ao});
-    linalg::RealMatrix S = xt::zeros<double>({n_ao, n_ao});
-
-    for (int a = 0; a < n_at; ++a) {
-        const auto& ea = *el[static_cast<std::size_t>(a)];
-        const int ia = ao0[static_cast<std::size_t>(a)];
-        H0(ia, ia) = ea.e_s;
-        S(ia, ia) = 1.0;
-        if (ea.n_ao == 4) {
-            for (int p = 1; p < 4; ++p) {
-                H0(ia + p, ia + p) = ea.e_p;
-                S(ia + p, ia + p) = 1.0;
-            }
-        }
-        for (int b = a + 1; b < n_at; ++b) {
-            const auto& eb = *el[static_cast<std::size_t>(b)];
-            double dx, dy, dz;
-            const double r = dist_vec(a, b, dx, dy, dz);
-            const double rcut = std::max(ea.r_cut, eb.r_cut);
-            if (r > rcut)
-                continue;
-            const auto& sk = pair_sk(type[a], type[b]);
-            fill_sk_block(ea, eb, sk, dx, dy, dz, r, H0, S, ia,
-                          ao0[static_cast<std::size_t>(b)]);
-        }
-    }
-
-    std::vector<double> dq(static_cast<std::size_t>(n_at), 0.0);
-    linalg::RealMatrix C = xt::zeros<double>({n_ao, n_ao});
-    linalg::RealVector eps = xt::zeros<double>({n_ao});
-
-    double e_band = 0;
-    e2_ = 0;
-    e3_ = 0;
-
-    const internal::Dftb3Scc scc(hubbard_u, hubbard_du, distance_matrix());
-
-    for (int it = 0; it < max_scc; ++it) {
-        const std::vector<double> dV = scc.potential(dq);
-
-        linalg::RealMatrix H = H0;
-        for (int a = 0; a < n_at; ++a) {
-            const int ia = ao0[static_cast<std::size_t>(a)];
-            const int na = el[static_cast<std::size_t>(a)]->n_ao;
-            for (int b = 0; b < n_at; ++b) {
-                const int ib = ao0[static_cast<std::size_t>(b)];
-                const int nb = el[static_cast<std::size_t>(b)]->n_ao;
-                const double half = 0.5
-                                    * (dV[static_cast<std::size_t>(a)]
-                                       + dV[static_cast<std::size_t>(b)]);
-                for (int i = 0; i < na; ++i)
-                    for (int j = 0; j < nb; ++j)
-                        H(ia + i, ib + j) += half * S(ia + i, ib + j);
-            }
-        }
-
-        auto sol = linalg::diagonalize_fock_generalized(H, S);
-        eps = sol.first;
-        C = sol.second;
-
-        linalg::RealMatrix P = xt::zeros<double>({n_ao, n_ao});
-        for (int o = 0; o < n_occ; ++o)
-            for (int mu = 0; mu < n_ao; ++mu)
-                for (int nu = 0; nu < n_ao; ++nu)
-                    P(mu, nu) += 2.0 * C(mu, o) * C(nu, o);
-
-        linalg::RealMatrix PS = xt::linalg::dot(P, S);
-        double max_dq = 0;
-        for (int a = 0; a < n_at; ++a) {
-            double qa = 0;
-            const int ia = ao0[static_cast<std::size_t>(a)];
-            const int na = el[static_cast<std::size_t>(a)]->n_ao;
-            for (int i = 0; i < na; ++i)
-                qa += PS(ia + i, ia + i);
-            const double dqi = qa - el[static_cast<std::size_t>(a)]->n_val;
-            max_dq = std::max(max_dq,
-                              std::abs(dqi - dq[static_cast<std::size_t>(a)]));
-            dq[static_cast<std::size_t>(a)] = dqi;
-        }
-
-        e_band = 0;
-        for (int o = 0; o < n_occ; ++o)
-            e_band += 2.0 * eps(o);
-        e2_ = scc.second_order_energy(dq);
-        e3_ = scc.third_order_energy(dq);
-        if (max_dq < scc_tol)
-            break;
-    }
-
-    double e_repulsive = 0;
-    for (int a = 0; a < n_at; ++a)
-        for (int b = a + 1; b < n_at; ++b) {
-            double dx, dy, dz;
-            const double r = dist_vec(a, b, dx, dy, dz);
-            const auto& rep = pair_rep(type[a], type[b]);
-            e_repulsive += rep.a * std::exp(-rep.b * r);
-        }
-
-    // The band energy is built from V = ∂(E² + E³)/∂Δq, and E²/E³ are
-    // homogeneous of degree 2/3 in Δq, so Σ_A Δq_A V_A = 2E² + 3E³: the
-    // double-counting correction is E² + 2E³, not E² + E³.
-    energy_ = e_band - (e2_ + 2.0 * e3_) + e_repulsive;
+    const SccSolution sol = solve_scc(f, type.data(), x, y, z, el, ao0, n_at,
+                                      n_ao, n_occ, scc_tol, max_scc, mix_beta);
+    e2_ = sol.e2;
+    e3_ = sol.e3;
+    scc_residual_ = sol.residual;
+    scc_iterations_ = sol.iterations;
+    // E = Tr(ρH⁰) + E² + E³ + E_rep. The band energy is NOT the starting
+    // point: Tr(ρH) = Tr(ρH⁰) + Σ_A V_A q_A carries the GROSS Mulliken
+    // population, so subtracting a double-counting built from Δq alone
+    // leaves a spurious Σ_A V_A q⁰_A that is linear in Δq.
+    energy_ = sol.energy();
     energy_meta += energy_;
 
     if (with_forces) {
         constexpr double h_fd = 1.0e-4; // Å
-        StorageReal* mx = f.span(kAtom_x);
-        StorageReal* my = f.span(kAtom_y);
-        StorageReal* mz = f.span(kAtom_z);
-
-        auto energy_at_geometry = [&]() -> double {
-            linalg::RealMatrix H0b = xt::zeros<double>({n_ao, n_ao});
-            linalg::RealMatrix Sb = xt::zeros<double>({n_ao, n_ao});
-            for (int a = 0; a < n_at; ++a) {
-                const auto& ea = *el[static_cast<std::size_t>(a)];
-                const int ia = ao0[static_cast<std::size_t>(a)];
-                H0b(ia, ia) = ea.e_s;
-                Sb(ia, ia) = 1.0;
-                if (ea.n_ao == 4) {
-                    for (int p = 1; p < 4; ++p) {
-                        H0b(ia + p, ia + p) = ea.e_p;
-                        Sb(ia + p, ia + p) = 1.0;
-                    }
-                }
-                for (int b = a + 1; b < n_at; ++b) {
-                    const auto& eb = *el[static_cast<std::size_t>(b)];
-                    double dx, dy, dz;
-                    const double r = dist_vec(a, b, dx, dy, dz);
-                    if (r > std::max(ea.r_cut, eb.r_cut))
-                        continue;
-                    const auto& sk = pair_sk(type[a], type[b]);
-                    fill_sk_block(ea, eb, sk, dx, dy, dz, r, H0b, Sb, ia,
-                                  ao0[static_cast<std::size_t>(b)]);
-                }
-            }
-            std::vector<double> dql(static_cast<std::size_t>(n_at), 0.0);
-            double e_band_l = 0, e2_l = 0, e3_l = 0;
-            const internal::Dftb3Scc scc_l(hubbard_u, hubbard_du,
-                                           distance_matrix());
-            for (int it = 0; it < max_scc; ++it) {
-                const std::vector<double> dV = scc_l.potential(dql);
-                linalg::RealMatrix H = H0b;
-                for (int a = 0; a < n_at; ++a) {
-                    const int ia = ao0[static_cast<std::size_t>(a)];
-                    const int na = el[static_cast<std::size_t>(a)]->n_ao;
-                    for (int b = 0; b < n_at; ++b) {
-                        const int ib = ao0[static_cast<std::size_t>(b)];
-                        const int nb = el[static_cast<std::size_t>(b)]->n_ao;
-                        const double half =
-                            0.5
-                            * (dV[static_cast<std::size_t>(a)]
-                               + dV[static_cast<std::size_t>(b)]);
-                        for (int i = 0; i < na; ++i)
-                            for (int j = 0; j < nb; ++j)
-                                H(ia + i, ib + j) += half * Sb(ia + i, ib + j);
-                    }
-                }
-                auto sol = linalg::diagonalize_fock_generalized(H, Sb);
-                auto eps_l = sol.first;
-                auto C_l = sol.second;
-                linalg::RealMatrix Pl = xt::zeros<double>({n_ao, n_ao});
-                for (int o = 0; o < n_occ; ++o)
-                    for (int mu = 0; mu < n_ao; ++mu)
-                        for (int nu = 0; nu < n_ao; ++nu)
-                            Pl(mu, nu) += 2.0 * C_l(mu, o) * C_l(nu, o);
-                linalg::RealMatrix PS = xt::linalg::dot(Pl, Sb);
-                double max_dq = 0;
-                for (int a = 0; a < n_at; ++a) {
-                    double qa = 0;
-                    const int ia = ao0[static_cast<std::size_t>(a)];
-                    const int na = el[static_cast<std::size_t>(a)]->n_ao;
-                    for (int i = 0; i < na; ++i)
-                        qa += PS(ia + i, ia + i);
-                    const double dqi =
-                        qa - el[static_cast<std::size_t>(a)]->n_val;
-                    max_dq = std::max(
-                        max_dq,
-                        std::abs(dqi - dql[static_cast<std::size_t>(a)]));
-                    dql[static_cast<std::size_t>(a)] = dqi;
-                }
-                e_band_l = 0;
-                for (int o = 0; o < n_occ; ++o)
-                    e_band_l += 2.0 * eps_l(o);
-                e2_l = scc_l.second_order_energy(dql);
-                e3_l = scc_l.third_order_energy(dql);
-                if (max_dq < scc_tol)
-                    break;
-            }
-            double e_rep_l = 0;
-            for (int a = 0; a < n_at; ++a)
-                for (int b = a + 1; b < n_at; ++b) {
-                    double dx, dy, dz;
-                    const double r = dist_vec(a, b, dx, dy, dz);
-                    const auto& rep = pair_rep(type[a], type[b]);
-                    e_rep_l += rep.a * std::exp(-rep.b * r);
-                }
-            return e_band_l - (e2_l + 2.0 * e3_l) + e_rep_l;
-        };
-
         for (int a = 0; a < n_at; ++a) {
             for (int k = 0; k < 3; ++k) {
-                StorageReal* col = (k == 0) ? mx : (k == 1) ? my : mz;
+                StorageReal* col = (k == 0) ? x : (k == 1) ? y : z;
                 const StorageReal saved = col[a];
                 col[a] = saved + static_cast<StorageReal>(h_fd);
-                const double ep = energy_at_geometry();
+                const double ep =
+                    solve_scc(f, type.data(), x, y, z, el, ao0, n_at, n_ao,
+                              n_occ, scc_tol, max_scc, mix_beta)
+                        .energy();
                 col[a] = saved - static_cast<StorageReal>(h_fd);
-                const double em = energy_at_geometry();
+                const double em =
+                    solve_scc(f, type.data(), x, y, z, el, ao0, n_at, n_ao,
+                              n_occ, scc_tol, max_scc, mix_beta)
+                        .energy();
                 col[a] = saved;
                 const double fi = -(ep - em) / (2.0 * h_fd);
                 if (k == 0)

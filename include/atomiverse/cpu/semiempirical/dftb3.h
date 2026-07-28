@@ -39,8 +39,16 @@ class DFTB3 : public cpu::Semiempirical {
   public:
     /// @brief SCC residual tolerance on max |Δq| (dimensionless e).
     double scc_tol = 1e-8;
-    /// @brief Maximum SCC iterations (dimensionless).
+    /// @brief Maximum SCC iterations (dimensionless). Exhausting it throws.
     int max_scc = 50;
+    /// @brief Anderson charge-mixing relaxation β ∈ (0,1] (dimensionless).
+    ///
+    /// Undamped Picard (no mixing) is a period-2 limit cycle for polar
+    /// systems: it never meets `scc_tol` and the reported energy is picked by
+    /// the parity of `max_scc`. Charges go through `internal::ChargeMixer`.
+    /// The default converges every in-tree case in ≤ 14 iterations; β ≳ 0.7
+    /// stops converging for hydrogen-bonded systems.
+    double mix_beta = 0.3;
     /// @brief When true, write forces F=−∇E [eV/Å] on launch (central FD of E).
     bool with_forces = true;
 
@@ -60,10 +68,19 @@ class DFTB3 : public cpu::Semiempirical {
     /// @brief Last third-order term \(E^{(3)}\) [eV].
     double last_e3() const { return e3_; }
 
+    /// @brief SCC residual max|Δq_out − Δq_in| at exit [e]; below `scc_tol`
+    ///        whenever `launch` returned (it throws otherwise).
+    double last_scc_residual() const { return scc_residual_; }
+
+    /// @brief SCC iterations the last solve took (dimensionless).
+    int last_scc_iterations() const { return scc_iterations_; }
+
   private:
     double energy_ = 0;
     double e2_ = 0;
     double e3_ = 0;
+    double scc_residual_ = 0;
+    int scc_iterations_ = 0;
 };
 
 } // namespace semiempirical
