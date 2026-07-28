@@ -98,3 +98,101 @@ TEST(DFTB23ob, DistinctFromMioSketch) {
     b.launch({ctx, f2, 0, 0});
     EXPECT_GT(std::fabs(a.last_energy() - b.last_energy()), 0.5);
 }
+
+namespace {
+
+cpu::Frame make_water_offeq() {
+    // Off-eq water (Å) so |F| ≠ 0 — same geometry as dftb2-analytic-forces.
+    cpu::Frame f(3);
+    f.span(kAtom_type)[0] = 8;
+    f.span(kAtom_x)[0] = 0.0;
+    f.span(kAtom_y)[0] = 0.0;
+    f.span(kAtom_z)[0] = 0.0;
+    f.span(kAtom_type)[1] = 1;
+    f.span(kAtom_x)[1] = 1.05;
+    f.span(kAtom_y)[1] = 0.0;
+    f.span(kAtom_z)[1] = 0.0;
+    f.span(kAtom_type)[2] = 1;
+    f.span(kAtom_x)[2] = -0.26;
+    f.span(kAtom_y)[2] = 1.0;
+    f.span(kAtom_z)[2] = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        f.span(kAtom_mass)[i] = (i == 0) ? 15.999 : 1.008;
+        f.span(kAtom_tag)[i] = i + 1;
+        f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
+    }
+    f.box = cpu::Box::cubic(20.0);
+    f.meta.get(kEnergy) = 0;
+    return f;
+}
+
+double energy_3ob_only(cpu::Frame g) {
+    g.meta.get(kEnergy) = 0;
+    for (int i = 0; i < g.nlocal(); ++i)
+        g.span(kAtom_fx)[i] = g.span(kAtom_fy)[i] = g.span(kAtom_fz)[i] = 0;
+    cpu::Context ctx;
+    DFTB2 d;
+    d.sk_set = DftbSkSet::ThreeOb;
+    d.with_forces = false;
+    d.scc_tol = 1e-10;
+    d.max_scc = 80;
+    d.build({ctx, g});
+    d.launch({ctx, g, 0, 0});
+    return g.meta.get(kEnergy);
+}
+
+} // namespace
+
+TEST(DFTB23ob, AnalyticForcesMatchFdWater) {
+    auto f = make_water_offeq();
+    cpu::Context ctx;
+    DFTB2 dftb;
+    dftb.sk_set = DftbSkSet::ThreeOb;
+    dftb.with_forces = true;
+    dftb.scc_tol = 1e-10;
+    dftb.max_scc = 80;
+    dftb.build({ctx, f});
+    dftb.launch({ctx, f, 0, 0});
+
+    EXPECT_TRUE(std::isfinite(dftb.last_energy()));
+    double f2 = 0;
+    double net[3] = {0, 0, 0};
+    for (int i = 0; i < 3; ++i) {
+        const double fxi = static_cast<double>(f.span(kAtom_fx)[i]);
+        const double fyi = static_cast<double>(f.span(kAtom_fy)[i]);
+        const double fzi = static_cast<double>(f.span(kAtom_fz)[i]);
+        EXPECT_TRUE(std::isfinite(fxi));
+        EXPECT_TRUE(std::isfinite(fyi));
+        EXPECT_TRUE(std::isfinite(fzi));
+        f2 += fxi * fxi + fyi * fyi + fzi * fzi;
+        net[0] += fxi;
+        net[1] += fyi;
+        net[2] += fzi;
+    }
+    EXPECT_GT(f2, 1e-8);
+    for (int d = 0; d < 3; ++d)
+        EXPECT_NEAR(net[d], 0.0, 1e-6);
+
+    constexpr double h = 1e-4;
+    // Fixed-Δq analytic vs re-SCC FD residual (charge response); 1.0 eV/Å gate.
+    constexpr double tol = 1.0;
+
+    {
+        auto fp = make_water_offeq();
+        fp.span(kAtom_x)[0] += static_cast<StorageReal>(h);
+        auto fm = make_water_offeq();
+        fm.span(kAtom_x)[0] -= static_cast<StorageReal>(h);
+        const double fd = -(energy_3ob_only(fp) - energy_3ob_only(fm)) / (2.0 * h);
+        const double fx0 = static_cast<double>(f.span(kAtom_fx)[0]);
+        EXPECT_NEAR(fx0, fd, tol) << "F_O_x analytic=" << fx0 << " fd=" << fd;
+    }
+    {
+        auto fp = make_water_offeq();
+        fp.span(kAtom_y)[1] += static_cast<StorageReal>(h);
+        auto fm = make_water_offeq();
+        fm.span(kAtom_y)[1] -= static_cast<StorageReal>(h);
+        const double fd = -(energy_3ob_only(fp) - energy_3ob_only(fm)) / (2.0 * h);
+        const double fy1 = static_cast<double>(f.span(kAtom_fy)[1]);
+        EXPECT_NEAR(fy1, fd, tol) << "F_H1_y analytic=" << fy1 << " fd=" << fd;
+    }
+}

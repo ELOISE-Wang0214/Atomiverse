@@ -43,15 +43,17 @@ tools/tb_oracle/
 | `inputs/dftbplus/h2_mio_scc/` | DFTB+ | H₂ mio-1-1 absolute E pin twin (`reg_dftb2-dftbplus-energy-pin`) |
 | `inputs/dftbplus/dftb2-periodic-gamma/` | DFTB+ | Γ-PBC C-chain geometry twin (ATV Hamiltonian pin) |
 | `inputs/dftbplus/dftb0_h2.note` | DFTB+ | H₂ non-SCC DFTB0 pin twin (`reg_dftb0-h2`; shares the mio-1-1 H₂ transcript) |
-| `inputs/dftbplus/dftb2_analytic_forces_note.md` | DFTB+ | Formula-level force module boundary (no host binary) |
+| `inputs/dftbplus/dftb2_analytic_forces_note.md` | DFTB+ | Formula-level force module boundary (MioSketch) |
 | `inputs/dftbplus/dftb2_spin_analytic_forces_note.md` | DFTB+ | Collinear open-shell force module boundary (O₂) |
+| `inputs/dftbplus/dftb2_analytic_forces_threeob_note.md` | DFTB+ | ThreeOb closed-form F vs re-SCC FD (formula) |
+| `inputs/dftbplus/dftb2_analytic_stress_note.md` | DFTB+ | Cell-stress module boundary (pair virial; formula) |
 | `inputs/dftbplus/dftb2-dispersion-d3/` | s-dftd3 | Water-dimer D3(BJ) geometry twin (`reg_dftb2-dispersion-d3`) |
 | `inputs/mopac/` | OpenMOPAC | **empty on `dev`** — seed with AM1/RM1/PM* pins (Phase B) |
 | `inputs/xtb/` | xtb | **empty on `dev`** — seed with GFN pins (Phase C, late) |
 
-The DFTB0, D3 water-dimer and spin-force twins listed above landed on `dev`
-with the 2026-07-28 merge wave. Twins for still-unmerged `wf/*` tips (DFTB3
-water, ThreeOb force notes, stress notes) arrive when those branches merge.
+Every twin above is on `dev` as of the 2026-07-28 merge wave (DFTB0, D3
+water-dimer, spin force, ThreeOb force, stress). The one still-unmerged tip is
+`wf/dftb3-water-mio`, whose DFTB3 water twin arrives if/when that branch lands.
 
 ## How to pin (operator / worker)
 
