@@ -1,7 +1,8 @@
 # Oracle capability loop — abstract pattern
 
-Shared design for **PySCF / CP2K / MetalWalls** (and future oracle-backed)
-unattended method loops. Concrete scripts live under `.grok/workflows/*-method-loop.rhai`.
+Shared design for **PySCF / CP2K / MetalWalls / TB (tight-binding)** (and future
+oracle-backed) unattended method loops. Concrete scripts live under
+`.grok/workflows/*-method-loop.rhai`.
 **Instantiate new loops with skill** `.agents/skills/create-oracle-loop/`.
 
 ## Intent (binding)
@@ -107,16 +108,16 @@ Clearup reports `worktrees_removed`, `branches_pruned`, `builds_wiped` (see temp
 
 ## Per-oracle configuration (fill when creating a loop)
 
-| Knob | PySCF | CP2K | MetalWalls |
-| ---- | ----- | ---- | ---------- |
-| Oracle | offline PySCF | offline CP2K | LAMMPS-first, else MetalWalls |
-| Queue | `pyscf-method-queue.md` | `cp2k-method-queue.md` | `metalwalls-method-queue.md` |
-| Regression root | `regressions/scf/` | `regressions/{gpw,pw,scf}/` | `regressions/{md,forcefield}/` |
-| Build flags | HF ON; CUDA OFF | HF+PW+GPW ON; CUDA OFF | MD+KSPACE ON; HF/PW/GPW/CUDA OFF |
-| Test filter | `^test_cpu_(scf\|linalg)_` + molecular extras | `^test_cpu_(gpw\|pw\|scf\|xc)_` | `^test_cpu_(md\|mc\|pair\|fix\|observer\|…)` |
-| Scope IN | molecular Gaussian / post-HF / continuum | GPW / PW / periodic | classical electrochem MD |
-| Scope OUT | classical MD, GPW/PW | molecular post-HF, pure PySCF | SCF, GPW/PW, CUDA, PLUMED, 2D product, cross-lang product |
-| Map note | roadmap chapters | `docs/roadmap/dft.md` | `.claude/notes/metalwalls-capability-map.md` |
+| Knob | PySCF | CP2K | MetalWalls | SE / tight-binding |
+| ---- | ----- | ---- | ---------- | ------------------ |
+| Oracle | offline PySCF | offline CP2K | LAMMPS-first, else MetalWalls | **Family-locked:** OpenMOPAC (NDDO), DFTB+ (DFTB), xtb (GFN); Sparrow/CP2K arch-only |
+| Queue | `pyscf-method-queue.md` | `cp2k-method-queue.md` | `metalwalls-method-queue.md` | `tb-method-queue.md` |
+| Regression root | `regressions/scf/` | `regressions/{gpw,pw,scf}/` | `regressions/{md,forcefield}/` | `regressions/semiempirical/` |
+| Build flags | HF ON; CUDA OFF | HF+PW+GPW ON; CUDA OFF | MD+KSPACE ON; HF/PW/GPW/CUDA OFF | **SE-only**: SEMIEMPIRICAL+EVALUATE ON; HF/PW/GPW/MD/MC/MINIMIZER/VIB/PATH/KSPACE/CUDA OFF |
+| Test filter | `^test_cpu_(scf\|linalg)_` + molecular extras | `^test_cpu_(gpw\|pw\|scf\|xc)_` | `^test_cpu_(md\|mc\|pair\|fix\|observer\|…)` | `^test_cpu_(am1\|rm1\|dftb2\|xtb_gfn0\|nddo_)` |
+| Scope IN | molecular Gaussian / post-HF / continuum | GPW / PW / periodic | classical electrochem MD | DFTB0→3 ladder, NDDO PM depth, late GFN-xTB |
+| Scope OUT | classical MD, GPW/PW | molecular post-HF, pure PySCF | SCF, GPW/PW, CUDA, PLUMED, 2D product, cross-lang product | SCF product, GPW/PW product, classical MD, CUDA; cross-family oracle misuse |
+| Map note | roadmap chapters | `docs/roadmap/dft.md` | `.claude/notes/metalwalls-capability-map.md` | `docs/roadmap/semiempirical.md` + `tools/tb_oracle/` |
 
 ## Template & skill
 
@@ -124,7 +125,7 @@ Clearup reports `worktrees_removed`, `branches_pruned`, `builds_wiped` (see temp
 | ---- | ---- |
 | Rhai skeleton | `.grok/workflows/_templates/oracle-capability-loop-template.rhai` |
 | Skill | `.agents/skills/create-oracle-loop/SKILL.md` |
-| Instances | `pyscf-method-loop.rhai`, `cp2k-method-loop.rhai`, `metalwalls-method-loop.rhai` |
+| Instances | `pyscf-method-loop.rhai`, `cp2k-method-loop.rhai`, `metalwalls-method-loop.rhai`, `tb-method-loop.rhai` |
 
 Rhai has **no include** — instances are full scripts copied from the template.
 Specialize only:

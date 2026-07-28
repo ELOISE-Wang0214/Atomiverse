@@ -224,7 +224,7 @@ not nest long-lived subagents; do not hold N full trees until shift end.
 - Design: `docs/developer/oracle-capability-loop.md`
 - Template: `.grok/workflows/_templates/oracle-capability-loop-template.rhai`
 - Skill: `.agents/skills/create-oracle-loop/` (`/create-oracle-loop`)
-- Instances: `pyscf-method-loop`, `cp2k-method-loop`, `metalwalls-method-loop`
+- Instances: `pyscf-method-loop`, `cp2k-method-loop`, `metalwalls-method-loop`, `tb-method-loop`
 
 
 # AGENTS.md
