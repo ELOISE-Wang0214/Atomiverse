@@ -14,13 +14,19 @@ namespace semiempirical {
 /// @brief Non-SCC DFTB / DFTB0 energy (+ optional forces) for H/C/N/O.
 ///
 /// Electronic tight-binding without self-consistent charge: Slater–Koster
-/// H0/S from static mio-style tables, generalized eigen, band energy + pair
+/// H0/S from static in-tree tables, generalized eigen, band energy + pair
 /// repulsive. No Hubbard / γ / Δq iteration (contrast @ref DFTB2). Tables:
-/// `basis_data/dftb_mio_tables.h` (not bit-identical to DFTB.org mio-1-1).
-/// Supported Z: 1, 6, 7, 8; any other element or missing pair throws.
+/// H–H from transcribed DFTB.org mio-1-1 (`basis_data/dftb_mio_hh_sk.h`, read
+/// through `internal/mio_hh_table.h` — the same grid and interpolation the
+/// SCC path uses); other H/C/N/O pairs from the mio-style sketches in
+/// `basis_data/dftb_mio_tables.h`. Supported Z: 1, 6, 7, 8; any other element
+/// or missing pair throws.
 ///
-/// Family oracle for pins: **DFTB+** (non-SCC / DFTB0 path). Units on the
-/// public surface: energy [eV], positions [Å], forces [eV/Å].
+/// Oracle for pins: **DFTB+** 24.1 (non-SCC / DFTB0 path). For a homonuclear
+/// diatomic the Mulliken fluctuations vanish by symmetry, so DFTB2 reduces to
+/// DFTB0 and both pin the same DFTB+ number — see
+/// `regressions/semiempirical/dftb0-h2/`. Units on the public surface:
+/// energy [eV], positions [Å], forces [eV/Å].
 ///
 /// @code
 ///   cpu::semiempirical::DFTB0 dftb0;

@@ -1,5 +1,8 @@
 /// @file regressions/semiempirical/dftb0-h2/reg_dftb0-h2.cpp
-/// H2 non-SCC DFTB0 energy pin (Evaluate + DFTB0; offline DFTB+ family).
+/// @brief H2 non-SCC DFTB0 total energy vs offline DFTB+ 24.1 / mio-1-1 pin.
+///
+/// oracle: dftb+  oracle_version: 24.1
+/// Public API only. Exit non-zero on failure. <= 60 s.
 #include <cmath>
 #include <cstdio>
 
@@ -11,11 +14,16 @@
 
 using namespace ATV;
 
-// Pins from REFERENCE.md (Hamiltonian twin under static mio-style tables).
-// Updated once after first ATV DFTB0 evaluation on this geometry.
-// Hamiltonian twin under static mio-style H–H tables (see REFERENCE.md).
-static constexpr double kE_H2_074_eV = -18.1376035790;
-static constexpr double kE_tol_eV = 1e-4;
+// Offline DFTB+ 24.1 + mio-1-1 Total energy [eV] at r=0.74 Å
+// (detailed.out: -0.6749509324 H × 27.211386245988; band -0.6807883427 H,
+// repulsive +0.0058374104 H, SCC 0 because Δq = 0).
+//
+// This is an SCC-DFTB2 run used as a **DFTB0** oracle: H2 is homonuclear, so
+// the Mulliken fluctuations vanish by symmetry (q_A = q_B = 0), the DFTB2
+// second-order term is identically zero, and DFTB2 reduces exactly to
+// E = Σ_i 2ε_i + E_rep — the DFTB0 expression. See REFERENCE.md.
+static constexpr double kE_H2_074_eV = -18.36635052;
+static constexpr double kE_tol_eV = 1.0e-3;
 
 static double energy_at(double r, bool forces) {
     cpu::Frame f(2);
@@ -56,6 +64,8 @@ int main() {
         std::printf("FAIL energies identical at two separations\n");
         return 1;
     }
+    std::printf("DFTB0 H2 r=0.74 A: E_ATV=%.10f eV  E_pin=%.8f eV  |dE|=%.3e eV\n",
+                e_eq, kE_H2_074_eV, std::fabs(e_eq - kE_H2_074_eV));
     if (std::fabs(e_eq - kE_H2_074_eV) > kE_tol_eV) {
         std::printf("FAIL energy pin: got %.10f expected %.10f ± %.1e eV\n",
                     e_eq, kE_H2_074_eV, kE_tol_eV);

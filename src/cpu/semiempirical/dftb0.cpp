@@ -1,7 +1,8 @@
 /// @file src/cpu/semiempirical/dftb0.cpp
-/// Non-SCC DFTB0 (H/C/N/O) with static mio-style SK tables.
+/// Non-SCC DFTB0 (H/C/N/O): transcribed mio-1-1 H–H, mio-style sketch elsewhere.
 #include "atomiverse/cpu/semiempirical/dftb0.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -11,6 +12,7 @@
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/linalg/matrix.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h"
+#include "atomiverse/cpu/semiempirical/internal/mio_hh_table.h"
 
 namespace ATV {
 namespace cpu {
@@ -128,6 +130,8 @@ double energy_non_scc(const Frame& f, const StorageReal* x, const StorageReal* y
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     };
 
+    const internal::MioHHTable mio_hh;
+
     for (int a = 0; a < n_at; ++a) {
         const auto& ea = *el[static_cast<std::size_t>(a)];
         const int ia = ao0[static_cast<std::size_t>(a)];
@@ -141,13 +145,24 @@ double energy_non_scc(const Frame& f, const StorageReal* x, const StorageReal* y
         }
         for (int b = a + 1; b < n_at; ++b) {
             const auto& eb = *el[static_cast<std::size_t>(b)];
+            const bool hh = (ea.z == 1 && eb.z == 1);
             double dx, dy, dz;
             const double r = dist_vec(a, b, dx, dy, dz);
-            if (r > std::max(ea.r_cut, eb.r_cut))
+            if (r > (hh ? mio_hh.cutoff() : std::max(ea.r_cut, eb.r_cut)))
                 continue;
+            const int ib = ao0[static_cast<std::size_t>(b)];
+            if (hh) {
+                // mio-1-1 H–H (s only): tabulated H0/S, no sketch radial form.
+                const double Hss = mio_hh.hopping_ss(r);
+                const double Sss = mio_hh.overlap_ss(r);
+                H0(ia, ib) = Hss;
+                H0(ib, ia) = Hss;
+                S(ia, ib) = Sss;
+                S(ib, ia) = Sss;
+                continue;
+            }
             const auto& sk = pair_sk(type[a], type[b]);
-            fill_sk_block(ea, eb, sk, dx, dy, dz, r, H0, S, ia,
-                          ao0[static_cast<std::size_t>(b)]);
+            fill_sk_block(ea, eb, sk, dx, dy, dz, r, H0, S, ia, ib);
         }
     }
 
@@ -163,6 +178,11 @@ double energy_non_scc(const Frame& f, const StorageReal* x, const StorageReal* y
         for (int b = a + 1; b < n_at; ++b) {
             double dx, dy, dz;
             const double r = dist_vec(a, b, dx, dy, dz);
+            if (type[a] == 1 && type[b] == 1) {
+                // mio-1-1 H–H repulsive spline (zero past its own cutoff).
+                e_repulsive += mio_hh.repulsive(r);
+                continue;
+            }
             const auto& rep = pair_rep(type[a], type[b]);
             e_repulsive += rep.a * std::exp(-rep.b * r);
         }
