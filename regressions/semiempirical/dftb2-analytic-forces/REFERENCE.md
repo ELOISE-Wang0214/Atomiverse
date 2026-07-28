@@ -38,50 +38,60 @@ Isolated molecule, cubic box 20 Å. `scc_tol = 1e-10`.
 2. **Forces:** all components finite; \(|F|^2 > 10^{-8}\) at off-eq geometry.
 3. **Translation:** \(|\sum_i F_i| \le 10^{-6}\) eV/Å per Cartesian.
 4. **FD identity:** analytic \(F\) vs central **re-SCC** FD of the same \(E\)
-   (\(h=10^{-4}\) Å) on \(F_{O,x}\) and \(F_{H1,y}\) within **1.0 eV/Å**.
-   (H2 matches to \(5\times10^{-3}\) eV/Å in unit tests; multi-element residual is
-   Mulliken charge response beyond fixed-\(\Delta q\) HF on sketch SK.)
+   (\(h=10^{-4}\) Å) on \(F_{O,x}\) and \(F_{H1,y}\) within **1×10⁻⁵ eV/Å**
+   (measured 2.5e-07 / 4.9e-09 eV/Å). A converged SCC-DFTB2 gradient is
+   stationary, so this is FD-exact to the central-difference truncation error.
 
 Offline pin note: `tools/tb_oracle/inputs/dftbplus/dftb2_analytic_forces_note.md`.
 
-## Gaps — the 1.0 eV/Å tolerance is masking a defect (found 2026-07-28)
+## Closed — the polar-gradient defect (found 2026-07-28, fixed 2026-07-28)
 
-Gate 4 passes at \(|d| = 0.23\) eV/Å (\(F_{O,x}\)) and \(0.75\) eV/Å
-(\(F_{H1,y}\)) against a tolerance of **1.0**, i.e. the gate is ~4x looser than
-the error it is meant to catch. The standing explanation — "Mulliken charge
-response beyond fixed-\(\Delta q\) HF" — does not hold: a converged SCC-DFTB2
-gradient is **stationary**, so the analytic force is FD-exact and needs no
-coupled-perturbed correction (this is why DFTB+ reproduces its own FD to
-~1e-8).
+The gate used to read **1.0 eV/Å** and pass at \(|d| = 0.23\) / \(0.75\)
+eV/Å, i.e. ~4× looser than the error it was meant to catch, with the standing
+explanation "Mulliken charge response beyond fixed-\(\Delta q\) HF". That
+explanation was wrong — a converged SCC-DFTB2 gradient is stationary and needs
+no coupled-perturbed correction. Three real defects were stacked on top of each
+other, which is why the earlier A/B on the \(\gamma\) term alone
+(shipped 0.228, term dropped 1.020, sign flipped 2.268 eV/Å) concluded the
+shipped form was "best of three" and closed the wrong door:
 
-Evidence that the charge-dependent term specifically is at fault:
+1. **The SCC never converged.** The undamped Picard iteration was a period-2
+   limit cycle, so both the analytic force and the FD reference were sampled
+   off different branches of a cycle. Fixed by Anderson charge mixing
+   (`internal::ChargeMixer`, public `mix_beta`, default 0.3); a budget-exhausted
+   SCC now throws.
+2. **The reported energy was not the functional the gradient differentiates.**
+   `E = E_band − E_dc` carried a spurious \(\sum_A V_A q^0_A\) (**7.85 eV**
+   on this geometry) because \(E_{\mathrm{band}}\) contracts \(V_A\) with the
+   **gross** Mulliken population. Now
+   \(E = \mathrm{Tr}(\rho H^0) + E^{(2)} + E_{\mathrm{rep}}\).
+3. **The \(\gamma\) gradient term had the wrong sign.** With
+   \(E^{(2)} = \tfrac12\sum_{AB}\gamma_{AB}\Delta q_A\Delta q_B\) and
+   bond \(= R_B - R_A\), the ordered double sum gives the pair term
+   \(\gamma_{AB}\Delta q_A\Delta q_B\) and \(\partial r/\partial\) bond
+   \(= +\hat r\), so \(\partial E^{(2)}/\partial\) bond
+   \(= +\Delta q_A\Delta q_B\,d\gamma/dr\). The code carried a minus.
+   Present in all three assemblies (`analytic_forces_restricted`,
+   `analytic_forces_unrestricted`, `analytic_forces_3ob`).
 
-| case | \(\Delta q\) | analytic vs re-SCC FD |
-| ---- | ------------ | --------------------- |
-| O₂ triplet (`reg_dftb2-spin-analytic-forces`) | 0 | **3.0e-07** eV/Å |
-| H₂ (unit test) | 0 | 5e-03 eV/Å |
-| H₂O (this case) | ≈ ±1.9 e | **0.23 / 0.75** eV/Å |
+Residual after the fix, measured on this case:
 
-Every \(\Delta q = 0\) system is essentially exact; only the polar one is off.
-The culprit is therefore the \(-\Delta q_A \Delta q_B\,
-\partial\gamma_{AB}/\partial R\) contribution (and/or the shift term riding on
-\(\partial S\)), not a missing response term.
+| case | \(\Delta q\) | analytic vs re-SCC FD (before → after) |
+| ---- | ------------ | -------------------------------------- |
+| O₂ triplet (`reg_dftb2-spin-analytic-forces`) | 0 | 3.0e-07 → 3.0e-07 eV/Å |
+| H₂O MioSketch (this case) | ≠ 0 | 0.23 / 0.75 → **2.5e-07 / 4.9e-09** eV/Å |
+| H₂O 3ob (`reg_dftb2-analytic-forces-threeob`) | ≠ 0 | 0.84 / 0.24 → **4.4e-07 / 2.0e-09** eV/Å |
+| H₂O stress (`reg_dftb2-analytic-stress`) | ≠ 0 | 1.3e-04 → **1.1e-10** eV/Å³ |
 
-The cheap explanations were ruled out by A/B on `dev` (2026-07-28), rebuilding
-`analytic_forces_restricted` with the term perturbed:
+The energy of this case moved from −44.60971806 to **−91.70909683 eV** as a
+consequence of (1) and (2): the old number was a limit-cycle snapshot over a
+double-counting route that was wrong at second order. It is not an oracle
+value and no DFTB+ identity is claimed for it.
 
-| variant of the \(\gamma\) gradient term | \(\|d\|\) on \(F_{O,x}\) |
-| --------------------------------------- | ------------------------ |
-| as shipped, \(-\Delta q_A \Delta q_B \, d\gamma/dR\) | **0.228** eV/Å |
-| term dropped (coefficient 0) | 1.020 eV/Å |
-| sign flipped (\(+\Delta q_A \Delta q_B\)) | 2.268 eV/Å |
-
-So the shipped sign and magnitude are the best of the three — it is **not** a
-sign slip or a missing factor of 2, and the fix needs a real re-derivation.
-Route: `/mol:fix` on the DFTB2 restricted gradient; do **not** widen the
-tolerance further, and tighten it to the O₂ class (≤1e-5 eV/Å) once fixed.
-Until then the `MioSketch` analytic forces are quantitatively unreliable for
-polar systems, and `reg_dftb2-spin-analytic-forces` inherits the same formula.
+**Still open:** the open-shell gradient is only exercised at \(\Delta q = 0\)
+(O₂ is homonuclear), so `analytic_forces_unrestricted`'s \(\gamma\) term
+carries the corrected sign but no gate. An open-shell \(\Delta q \ne 0\)
+case is owed.
 
 ## Perf
 

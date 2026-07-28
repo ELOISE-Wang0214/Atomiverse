@@ -107,9 +107,11 @@ int main() {
     const double fd = -(energy_only(fp) - energy_only(fm)) / (2.0 * h);
     const double fx0 = static_cast<double>(frame.span(kAtom_fx)[0]);
     std::printf("  F_O_x analytic=%.6f  fd=%.6f eV/A\n", fx0, fd);
-    // Fixed-Δq Hellmann–Feynman vs re-SCC FD residual (H–H mio-1-1 + H U);
-    // same class as reg_dftb2-analytic-forces (tol 1 eV/Å).
-    constexpr double kForceTol = 1.5;
+    // A converged SCC-DFTB2 gradient is stationary, so fixed-Δq analytic is
+    // FD-exact to the central-difference truncation error. Measured residual
+    // 4.5e-08 eV/Å (2026-07-28); the old 1.5 eV/Å window was masking the
+    // γ-gradient sign bug and the double-counting error.
+    constexpr double kForceTol = 1e-5;
     if (std::fabs(fx0 - fd) > kForceTol) {
         std::printf("FAIL force vs FD (tol %.1f eV/A)\n", kForceTol);
         return 1;

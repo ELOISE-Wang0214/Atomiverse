@@ -33,5 +33,26 @@ Cubic box 20 Å (isolated).
 
 - Finite, non-zero total energy [eV] on `frame.meta[kEnergy]`
 - Finite analytic forces [eV/Å] with |F|² > 0
-- One Cartesian component matches central FD to **1.5 eV/Å** (fixed-Δq HF vs
-  re-SCC residual after mio-1-1 H–H / H U)
+- One Cartesian component matches central FD to **1×10⁻⁵ eV/Å** (measured
+  4.5e-08 eV/Å). A converged SCC-DFTB2 gradient is stationary, so the analytic
+  force is FD-exact; the old 1.5 eV/Å window was masking a real defect.
+
+## The reported energy moved (2026-07-28)
+
+`E = −42.11915111 eV` → **−94.27162200 eV** at this geometry. The old value was
+a snapshot of a **non-convergent Picard limit cycle** — `scc_tol` was never
+met, the loop always burned `max_scc`, and which branch of the period-2 cycle
+got reported was decided by the parity of the budget — taken over a
+double-counting route that was wrong at second order (`E = E_band − E²`
+carries a spurious `Σ_A V_A q⁰_A`, **7.85 eV** here, because the band energy
+contracts `V_A` with the *gross* Mulliken population).
+
+The new value is a **converged** SCC solution: residual < `scc_tol` after ~6
+Anderson-mixed iterations, identical for `max_scc` = 49 / 50 / 51, on the route
+`E = Tr(ρH⁰) + E² + E_rep`. This case has **no absolute energy pin** and none is
+added: it is not an oracle number. DFTB+ oracle identity for the MioSketch
+multi-element path is still **owed** — no DFTB+ binary exists on this host
+(`module spider dftb` → nothing). The one DFTB+-pinned MioSketch number,
+H₂ at 0.74 Å (`dftb2-dftbplus-energy-pin`, −18.36635052 eV), is **unmoved**:
+H₂ has Δq ≡ 0, so neither the mixing nor the double-counting change can touch
+it.

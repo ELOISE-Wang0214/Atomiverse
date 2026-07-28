@@ -43,6 +43,18 @@ the H onsite/U rows from sketch values to transcribed mio-1-1 does not move this
 pin. Measured after the port: `E_disp = −0.045967885155 eV` against the
 s-dftd3 pin `−0.045967885157 eV`, `|Δ| = 1.5e-12 eV`.
 
+**The pinned quantity is unmoved by the 2026-07-28 SCC repair** (D3 is a purely
+geometric additive term): `E_disp = −0.045967885155 eV`, `|Δ| = 1.5e-12 eV`.
+The printed *total* energies did move — `E(no D3) = −83.6622617788` →
+**−188.7287268170 eV**, `E(D3) = −83.7082296640` → **−188.7746947021 eV** —
+because the electronic MioSketch part was a non-convergent Picard limit-cycle
+snapshot over a double-counting route that was wrong at second order. Neither
+total is pinned or claimed against an oracle; the gate is on `E_disp` and on
+`E_tot(d3) − E_tot(off) = E_disp` (still 1e-8 eV), both of which held.
+Before the repair this water dimer did not converge at all: with linear
+damping it needed >50 iterations, which is what drove the switch to Anderson
+mixing (it now converges in 14 at `mix_beta = 0.3`).
+
 ## Gaps
 
 - **D3 forces are ungated.** Both gates run with `with_forces = false`; the

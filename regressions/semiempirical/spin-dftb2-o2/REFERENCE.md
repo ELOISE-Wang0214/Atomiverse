@@ -59,6 +59,14 @@ SCC tol \(10^{-10}\), max 80 iterations. Forces off (energy + spin gate).
 
 Observed (ATV twin, 2026-07-27): \(m = [1.0, 1.0]\), \(\Delta q = [0, 0]\).
 
+## Unmoved by the 2026-07-28 SCC repair
+
+Pin **−142.1382039484 eV** is byte-unchanged (|E − pin| = 1.0e-12 eV) across
+the charge-mixing, double-counting and γ-gradient fixes. Homonuclear O₂ has
+Δq ≡ 0 by symmetry, so E² = 0, the spurious Σ_A V_A q⁰_A term vanishes, and
+the SCC has nothing to mix. This case is a **control**, not a check: it cannot
+see any Δq-dependent defect — an open-shell Δq ≠ 0 gate is still owed.
+
 ## Perf
 
 ```text

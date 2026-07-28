@@ -60,6 +60,19 @@ DFTB+ detailed components (documentation only):
 - Assert `|E_ATV − (−87.86856831)| ≤ 0.05` eV (linear SK interp + Ohno–Klopman
   γ vs DFTB+ poly-interp / γ implementation residual).
 
+## Unmoved by the 2026-07-28 SCC repair — this is the control
+
+`E = −87.84300546 eV` vs the DFTB+ 24.1 pin `−87.86856831 eV`
+(|ΔE| = 2.6e-02 eV) is byte-unchanged across the charge-mixing and
+double-counting fixes. That is the point: the 3ob path **already** assembled
+`E = Tr(ρH⁰) + E² + E_rep` (the correct route) and its SCC **already**
+converged, so the only in-tree DFTB2 number with a real DFTB+ oracle behind it
+is the one number that must not move — and did not. Only the MioSketch path,
+which was on the `E_band − E²` route, moved. The 3ob analytic *gradient* did
+change (wrong-sign γ term; see
+`regressions/semiempirical/dftb2-analytic-forces-threeob/REFERENCE.md`), but
+this case runs with `with_forces = false`.
+
 ## Perf (optional, not ctest)
 
 DFTB+ wall for this molecule: ~0.12 s (single core, release). ATV expected

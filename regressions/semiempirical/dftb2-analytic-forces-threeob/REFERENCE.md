@@ -40,56 +40,63 @@ Isolated molecule, cubic box 20 Å. `scc_tol = 1e-10`, `max_scc = 80`.
 2. **Forces:** all components finite; \(|F|^2 > 10^{-8}\) at off-eq geometry.
 3. **Translation:** \(|\sum_i F_i| \le 10^{-6}\) eV/Å per Cartesian.
 4. **FD identity:** analytic \(F\) vs central **re-SCC** FD of the same \(E\)
-   (\(h=10^{-4}\) Å) on \(F_{O,x}\) and \(F_{H1,y}\) within **1.0 eV/Å**.
+   (\(h=10^{-4}\) Å) on \(F_{O,x}\) and \(F_{H1,y}\) within **1×10⁻⁵ eV/Å**.
 
 Offline pin note:
 `tools/tb_oracle/inputs/dftbplus/dftb2_analytic_forces_threeob_note.md`.
 
-Measured at merge onto `dev` (2026-07-28):
+Measured after the gradient fix (2026-07-28):
 
 ```text
-E = -110.03663082 eV
-F_O_x  analytic 1.52154493  re-SCC FD 2.36539390  |d| 8.438e-01 eV/A
-F_H1_y analytic 0.26705128  re-SCC FD 0.03167127  |d| 2.354e-01 eV/A
+E = -110.03663082 eV                      (unchanged — see below)
+F_O_x  analytic 2.36539434  re-SCC FD 2.36539390  |d| 4.374e-07 eV/A
+F_H1_y analytic 0.03167127  re-SCC FD 0.03167127  |d| 1.968e-09 eV/A
 ```
 
-## Gaps — the gate passes, the numbers do not agree
+## Closed — the polar-gradient defect (fixed 2026-07-28)
 
-Gate 4's tolerance is **1.0 eV/Å** and the residuals are 0.84 and 0.24 eV/Å;
-on `F_H1_y` that is an **8x relative** disagreement (0.267 vs 0.032). This is
-not "closed-form vs re-SCC FD at stationarity" — a converged SCC-DFTB2 gradient
-is stationary and therefore FD-exact.
-
-It is the **same defect** already recorded for the MioSketch path in
-`regressions/semiempirical/dftb2-analytic-forces/REFERENCE.md`, now reproduced
-independently on the 3ob tables. The fixed-Δq expression
+The gate used to read **1.0 eV/Å** and pass at 0.84 / 0.24 eV/Å — an **8×
+relative** disagreement on \(F_{H1,y}\) (0.267 vs 0.032). Cause: the SCC pair
+gradient
 
 ```text
-dE/dR |_gamma  =  -dq_A dq_B  d(gamma_AB)/dR
+dE/dbond |_gamma  =  -dq_A dq_B  d(gamma_AB)/dr        // WRONG SIGN
 ```
 
-now exists in three places — `analytic_forces_restricted`,
-`analytic_forces_unrestricted` and `analytic_forces_3ob` — each with its own
-γ implementation (`gamma_ab` / `gamma_ab_ha`), and every polar case is wrong
-while every Δq = 0 case is exact:
+carried a minus in all three assemblies (`analytic_forces_restricted`,
+`analytic_forces_unrestricted`, `analytic_forces_3ob`). With
+\(E^{(2)} = \tfrac12\sum_{AB}\gamma_{AB}\Delta q_A\Delta q_B\) and
+bond \(= R_B - R_A\), the ordered double sum contributes
+\(\gamma_{AB}\Delta q_A\Delta q_B\) to the A–B pair and
+\(\partial r/\partial\) bond \(= +\hat r\), so the correct term is
+\(+\Delta q_A\Delta q_B\,d\gamma/dr\). Three copies of one wrong formula,
+which is why every \(\Delta q = 0\) case (O₂ 3.0e-07 eV/Å) was exact while
+every polar case was off.
 
-| case | Δq | analytic vs re-SCC FD |
-| ---- | -- | --------------------- |
-| O₂ triplet (`reg_dftb2-spin-analytic-forces`) | 0 | 3.0e-07 eV/Å |
-| H₂ (unit test) | 0 | 5e-03 eV/Å |
-| H₂O MioSketch (`reg_dftb2-analytic-forces`) | ≈ ±1.9 e | 0.23 / 0.75 eV/Å |
-| H₂O 3ob (this case) | ≠ 0 | **0.84 / 0.24** eV/Å |
+An earlier A/B that flipped the sign measured 2.268 eV/Å and concluded the
+shipped sign was right; that A/B was run on top of two other defects (a
+non-convergent Picard SCC and a double-counting route that carried a spurious
+\(\sum_A V_A q^0_A\)) and was therefore not measuring the gradient at all.
 
-Three independent implementations agreeing on the same wrong answer points at a
-shared error in the **formula**, not a transcription slip in one of them. Route:
-`/mol:fix` on the DFTB2 charge-dependent gradient term, covering all three
-functions at once; tighten every gate to the Δq = 0 class (≤1e-5 eV/Å)
-afterwards. Do not widen these tolerances.
+| case | Δq | analytic vs re-SCC FD (before → after) |
+| ---- | -- | -------------------------------------- |
+| O₂ triplet (`reg_dftb2-spin-analytic-forces`) | 0 | 3.0e-07 → 3.0e-07 eV/Å |
+| H₂O MioSketch (`reg_dftb2-analytic-forces`) | ≠ 0 | 0.23 / 0.75 → 2.5e-07 / 4.9e-09 eV/Å |
+| H₂O 3ob (this case) | ≠ 0 | **0.84 / 0.24 → 4.4e-07 / 2.0e-09** eV/Å |
 
-Also owed: ThreeOb now has an analytic SK derivative path
+**The 3ob energy did not move** (−110.03663082 eV before and after), and
+neither did the DFTB+ 24.1 pin of `reg_dftb2-3ob-organic` (CH₄,
+−87.84300546 eV vs pin −87.86856831 eV). That is the control for the
+double-counting change: the 3ob path already assembled
+\(E = \mathrm{Tr}(\rho H^0) + E^{(2)} + E_{\mathrm{rep}}\), so only the
+MioSketch path's energies moved. Its SCC also already converged
+(same value with and without mixing).
+
+**Still owed:** ThreeOb has an analytic SK derivative path
 (`fill_sk_block_deriv_3ob`, `rep_3ob_dr`), so its `with_stress` fallback to
 multi-SCC affine strain-FD is no longer necessary — a closed-form 3ob pair
-virial is derivable and not implemented.
+virial is derivable and not implemented. An open-shell \(\Delta q \ne 0\)
+gate is also owed (O₂ is homonuclear, so it cannot see this class of bug).
 
 ## Perf
 

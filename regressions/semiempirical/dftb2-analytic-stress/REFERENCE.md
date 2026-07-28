@@ -43,43 +43,52 @@ Isolated molecule, cubic box 20 Å. `scc_tol = 1e-10`. `with_stress = true`.
 
 1. **Energy:** finite, \(|E| > 10^{-3}\) eV.
 2. **Stress:** all six Voigt components finite.
-3. **Strain-FD identity:** analytic \(\sigma_{xx}\), \(\sigma_{yy}\) vs multi-SCC
-   affine strain-FD of the same \(E\) (\(h=2\times10^{-4}\)) within **5×10⁻³ eV/Å³**
-   (fixed-\(\Delta q\) vs re-SCC residual on multi-element sketch SK; H2 unit test
-   is tighter).
+3. **Strain-FD identity:** analytic \(\sigma_{xx}\), \(\sigma_{yy}\) vs
+   multi-SCC affine strain-FD of the same \(E\) (\(h=2\times10^{-4}\)) within
+   **1×10⁻⁸ eV/Å³**. The stress is the pair virial of the same bond terms as
+   the analytic force, and a converged SCC-DFTB2 gradient is stationary, so
+   this is FD-exact to the strain-FD truncation error.
 
 Offline pin note: `tools/tb_oracle/inputs/dftbplus/dftb2_analytic_stress_note.md`.
 
-Measured at merge onto `dev` (2026-07-28), on dev's mio-1-1 H–H tables:
+Measured after the gradient + double-counting fixes (2026-07-28):
 
 ```text
-E = -44.60971806 eV
-sigma = (1.76174259e-03, 1.66840261e-03, 0.0,
-        -4.62267469e-04, -1.7e-18, 1.2e-18) eV/A^3
-sigma_xx: analytic 1.76174259e-03  strain-FD 1.89593569e-03  |d| 1.342e-04
-sigma_yy: analytic 1.66840261e-03  strain-FD 1.77276608e-03  |d| 1.044e-04
+E = -91.70909683 eV
+sigma = (-1.93986571e-03, -1.71915651e-03, 0.0,
+          1.02900333e-03, -7.8e-20, 3.6e-20) eV/A^3
+sigma_xx: analytic -1.93986571e-03  strain-FD -1.93986582e-03  |d| 1.147e-10
+sigma_yy: analytic -1.71915651e-03  strain-FD -1.71915660e-03  |d| 8.937e-11
 ```
 
-\(\sigma_{zz}=0\) exactly and the \(xz,yz\) shears are ~1e-18 — correct for a
+\(\sigma_{zz}=0\) exactly and the \(xz,yz\) shears are ~1e-20 — correct for a
 planar molecule in the \(xy\) plane.
 
-## Gaps
+## Closed — the 1.3e-4 eV/Å³ residual was the force defect (fixed 2026-07-28)
 
-1. **The 1.3e-4 eV/Å³ residual is the force defect, not strain-FD noise.**
-   This stress is by construction the pair virial of the *same* bond terms as
-   `analytic_forces_restricted`, so it inherits that function's disagreement
-   with FD — 0.23 / 0.75 eV/Å on this very geometry (see the Gaps section of
-   `regressions/semiempirical/dftb2-analytic-forces/REFERENCE.md`, where an A/B
-   rules out a sign slip or missing factor). Relative error here is ~7%. Do not
-   read the passing gate as "analytic stress verified": it is verified only to
-   the accuracy of a gradient that is itself known to be wrong for polar
-   systems. Tighten this gate to ~1e-8 once the gradient is fixed.
-2. **D3 dispersion is absent from the stress.** `DFTB2::d3` contributes to the
+The gate used to read **5×10⁻³ eV/Å³** and pass at 1.3e-4 / 1.0e-4, i.e. ~7%
+relative, described as a "fixed-\(\Delta q\) vs re-SCC residual". It was not:
+this stress is by construction the pair virial of the same bond terms as
+`analytic_forces_restricted`, and it inherited that function's wrong-sign
+\(\gamma\) gradient. With the sign corrected (and the SCC actually converged,
+and the energy on the \(\mathrm{Tr}(\rho H^0) + E^{(2)} + E_{\mathrm{rep}}\)
+route) the residual is **1.1e-10 / 8.9e-11 eV/Å³** — six orders of magnitude
+tighter, and the gate is tightened to 1e-8 to match.
+
+Both \(E\) and \(\sigma\) moved (the stress even changed sign): the old
+numbers were a limit-cycle snapshot over a double-counting route that was wrong
+at second order, differentiated by a gradient with a sign error. Neither the old
+nor the new value is an oracle number — no DFTB+ binary exists on this host
+(`module spider dftb` → nothing) and no DFTB+ identity is claimed.
+
+## Gaps (still open)
+
+1. **D3 dispersion is absent from the stress.** `DFTB2::d3` contributes to the
    energy and forces but not to `kStress` — neither the analytic pair virial nor
    the open-shell strain-FD path (which differentiates `scc_total`, excluding
    dispersion) sees it. Setting `d3 = true` with `with_stress = true` silently
    yields an electronic+repulsive-only stress. A D3 virial is owed.
-3. **No periodic case.** Both this gate and the geometry are a molecule in a
+2. **No periodic case.** Both this gate and the geometry are a molecule in a
    20 Å box, so the stress is never checked against the Γ-point lattice-summed
    energy path, where the min-image force/virial expression is not the gradient
    of the lattice-summed energy (`dftb2-periodic-forces` remains ○).

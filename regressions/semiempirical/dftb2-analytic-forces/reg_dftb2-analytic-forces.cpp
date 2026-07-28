@@ -106,7 +106,11 @@ int main() {
     }
 
     constexpr double h = 1e-4;
-    constexpr double tol = 1.0; // eV/Å — HF vs re-SCC (charge-response residual)
+    // A converged SCC-DFTB2 gradient is stationary ⇒ fixed-Δq analytic is
+    // FD-exact to the central-difference truncation error. Measured residual
+    // 2.5e-07 / 4.9e-09 eV/Å (2026-07-28); the old 1.0 eV/Å "charge-response"
+    // gate was masking the γ-gradient sign bug.
+    constexpr double tol = 1e-5; // eV/Å
 
     // F_O,x
     {

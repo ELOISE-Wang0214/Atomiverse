@@ -56,6 +56,14 @@ images; lattice-sum H/S differs from a single min-image molecular dimer.
 Also required: \(|E - E_\mathrm{mol}| > 0.05\) eV where \(E_\mathrm{mol}\) is
 the same dimer in a 20 Å cubic box (molecular limit).
 
+## Unmoved by the 2026-07-28 SCC repair
+
+`E = −113.5976598145 eV` (Γ-PBC) and `−90.9958822966 eV` (isolated dimer) are
+byte-unchanged across the charge-mixing, double-counting and γ-gradient fixes.
+The homonuclear C chain has Δq ≡ 0 by symmetry, so E² = 0 and the spurious
+Σ_A V_A q⁰_A term vanishes. Like `spin-dftb2-o2` this is a control, not a check
+of the Δq-dependent machinery.
+
 ## Perf
 
 ```text

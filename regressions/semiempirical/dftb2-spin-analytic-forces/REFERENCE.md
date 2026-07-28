@@ -83,6 +83,15 @@ section of `regressions/semiempirical/dftb2-analytic-forces/REFERENCE.md`.
 An open-shell case with \(\Delta q \neq 0\) (e.g. NO, or charged O₂⁻) is owed
 before this path can be trusted for polar open-shell systems.
 
+## Unmoved by the 2026-07-28 SCC repair
+
+`E = −141.69354377 eV` and `|F_analytic − F_FD| = 3.0e-07 eV/Å` are unchanged.
+Homonuclear O₂ has Δq ≡ 0, so the wrong-sign γ gradient term found in
+`analytic_forces_unrestricted` (and fixed in the same wave) is multiplied by
+zero here. **This gate cannot see that class of bug** — it is exactly why the
+defect survived in three functions. The open-shell γ term now carries the
+corrected sign but has no gate; an open-shell Δq ≠ 0 case is owed.
+
 ## Perf
 
 ```text

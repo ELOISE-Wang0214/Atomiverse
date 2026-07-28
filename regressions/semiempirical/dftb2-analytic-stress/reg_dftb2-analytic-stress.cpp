@@ -137,7 +137,9 @@ int main() {
     }
 
     constexpr double h = 2e-4;
-    constexpr double tol = 5e-3; // eV/Å³ — fixed-Δq vs re-SCC residual
+    // Same stationarity argument as the force gate: measured residual
+    // 1.1e-10 / 8.9e-11 eV/Å³ (2026-07-28).
+    constexpr double tol = 1e-8; // eV/Å³
     const double vol = frame.box.volume();
 
     // Gate σ_xx and σ_yy (leading in-plane components for planar H2O).
