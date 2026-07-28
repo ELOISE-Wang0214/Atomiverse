@@ -183,7 +183,15 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   and PASS from the repo root (verified both ways on `reg_bands-dos-si`,
   `reg_dos-spin-si`). Harness defect, not physics. Fix = resolve the data path
   from a compiled-in root or set the target's WORKING_DIRECTORY.
-- **Five genuinely failing regressions, attribution proven pre-existing**
+- ~~**Five genuinely failing regressions**~~ **FIXED 2026-07-28** (`fdc2f6d4`)
+  — three were real library bugs, not case bugs: SETTLE was not SETTLE (it
+  rebuilt the ideal triangle from the unconstrained geometry and never read
+  its own reference snapshot, so it could MIRROR a molecule — a 1e-4 A
+  perturbation teleported an H 1.84 A while every bond stayed exact to 12
+  digits); `mc::Transaction` rollback was corrupted by a mid-trial row
+  reorder (the NPT chain froze silently at trial 15 000 of 340 000 against a
+  +20 keV overlap); and REMD had no thermostat at all, so Sugita-Okamoto ran
+  between non-canonical ensembles and accepted 60/60. Original text:
   (rebuilt and re-run at `2b350442`, i.e. before the esmm contract wave, with
   byte-identical failure messages): `rigid_water`, `settle_tip3p` (no verdict
   line — SETTLE Frame-lookup budget), `npt_lj` ("<V> off the NPT ensemble
@@ -208,6 +216,33 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   2026-07-28** (`6aba6114`): five sites each replaced with the real
   `DriverNode` nesting API (`outer.on(phase).add_ref(inner, order, budget)`),
   plus a deleted-overload `add(lvalue)` in the same example.
+
+
+## Ticket — /mol:fix owed (named 2026-07-28, classical virial sweep)
+
+- **`PairLJCut`'s SIMD virial was silently wrong at the shipped Release
+  flags** — FIXED in `49af746a`, but recorded because the failure mode is
+  worth remembering: energy exact to 5.6e-16 and forces to 1.6e-17 against a
+  brute-force image sum, while `tr(sigma)` was **37 % short**. Correct at
+  `-O2 -march=native`, at `-O3`, and at `-O3 -march=native
+  -fno-tree-vectorize`; wrong ONLY at `-O3 -march=native`, which is what we
+  ship. GCC 14.3 reassociated the six virial reduction chains because they
+  sat inside a loop-invariant `if (do_virial)` guard while the unguarded
+  force/energy accumulators beside them survived. Removing the branch cost
+  0.4 %, not the 20-25 % the header claimed. Lesson: never put a SIMD
+  reduction behind a loop-invariant branch, and never validate a virial only
+  at low optimisation. The durable guard is
+  `tests/cpu/potentials/test_pair_virial.cpp`, which checks
+  `tr(sigma) = -3V dE/dV` and is flag-independent.
+- **Seven pair styles write no `kStress` at all** (`pair_buck`, `pair_dpd`,
+  `pair_gaussian_coul`, `pair_lj_cut_tip4p_cut`, `pair_morse`, `pair_wca`,
+  `pair_yukawa`) — any NPT / barostat / `VirialStress` / cell relaxation using
+  them integrates an incomplete pressure. IN PROGRESS 2026-07-28.
+- **The GCC-vs-UB question is unresolved**: three independent perturbations
+  (drop the branch, `#pragma GCC novector`, scalar-reduce per batch) each fix
+  the LJ virial, which is a fragile-optimizer signature. Whether it is a
+  compiler bug or latent UB in the ket loop was not determined; the
+  flag-independent unit test is the guarantee, not the diagnosis.
 
 ## Live — deferred PySCF engine gaps (2026-07-24)
 
