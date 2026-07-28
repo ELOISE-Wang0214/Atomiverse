@@ -1,17 +1,20 @@
 /// @file cpu/semiempirical/basis_data/dftb_mio_tables.h
-/// @brief Static multi-element SK parameter tables for SCC-DFTB2 (H/C/N/O).
+/// @brief Static multi-element SK parameter tables for SCC-DFTB2/3 (H/C/N/O).
 ///
 /// In-tree data only — nothing is parsed at build or run time (GPW
 /// `gpw_tables.h` pattern). Values are **mio-style** order-of-magnitude
-/// hoppings / Hubbard U / repulsive pairs for product-path multi-element
-/// DFTB2 (Elstner et al., Phys. Rev. B 58, 7260 (1998),
-/// DOI 10.1103/PhysRevB.58.7260). They are not bit-identical to a full
-/// DFTB.org mio-1-1 dump for every pair. **H** onsite/U and the **H–H** pair
-/// use transcribed mio-1-1 data (`dftb_mio_hh_sk.h`); other pairs remain
-/// mio-style sketches. Unsupported Z throws at lookup.
+/// hoppings / Hubbard U / Hubbard derivatives / repulsive pairs for
+/// product-path multi-element DFTB2 (Elstner et al., Phys. Rev. B 58, 7260
+/// (1998), DOI 10.1103/PhysRevB.58.7260) and DFTB3 (Gaus et al., J. Chem.
+/// Theory Comput. 7, 931 (2011), DOI 10.1021/ct100684s). They are not
+/// bit-identical to a full DFTB.org mio-1-1 dump for every pair. **H**
+/// onsite/U and the **H–H** pair use transcribed mio-1-1 data
+/// (`dftb_mio_hh_sk.h`); other pairs, the Hubbard derivatives, and the spin
+/// constants remain sketches. Unsupported Z throws at lookup.
 ///
-/// Units in this header: energy [eV], length [Å], Hubbard U [eV],
-/// spin constant W [eV], valence electron count dimensionless.
+/// Units in this header: energy [eV], length [Å], Hubbard U [eV], Hubbard
+/// derivative \(U^{\mathrm{d}}\) [eV], spin constant W [eV], valence electron
+/// count dimensionless.
 #pragma once
 
 #include <cstddef>
@@ -30,6 +33,7 @@ struct DftbElementRow {
     double e_s;       ///< onsite s energy [eV]
     double e_p;       ///< onsite p energy [eV] (unused when n_ao==1)
     double hubbard_u; ///< Hubbard U [eV]
+    double hubbard_du; ///< Hubbard derivative \(U^{\mathrm{d}}=dU/dq\) [eV] (DFTB3)
     double r_cut;     ///< pair cutoff [Å]
     double spin_w;    ///< atom-averaged collinear spin constant W [eV]
 };
@@ -68,13 +72,17 @@ struct DftbPairRepRow {
 };
 
 // ── Element rows (H, C, N, O) ──────────────────────────────────────────
-// H Es / Hubbard U: mio-1-1 (Ha→eV). Spin W is atom-averaged sketch scale
-// (negative → high-spin preference in the collinear channel).
+// H onsite / Hubbard U: transcribed mio-1-1 (Ha→eV) — these are the values the
+// DFTB+ 24.1 energy pin reproduces; C/N/O stay mio-order sketches.
+// Hubbard derivatives U^d are 3ob/mio-order sketch values (negative; eV) for
+// the DFTB3 product path — NOT bit-identical to DFTB.org parameter sets.
+// Spin W is an atom-averaged sketch scale (negative → high-spin preference in
+// the collinear channel).
 inline constexpr DftbElementRow kDftbElements[] = {
-    {1, "H", 1, 1.0, -6.492647642847, 0.0, 11.415176530192, 3.5, -0.50},
-    {6, "C", 4, 4.0, -12.50, -3.99, 10.0, 4.5, -0.80},
-    {7, "N", 4, 5.0, -16.0, -5.5, 11.5, 4.5, -0.90},
-    {8, "O", 4, 6.0, -18.5, -7.0, 13.4, 4.5, -1.00},
+    {1, "H", 1, 1.0, -6.492647642847, 0.0, 11.415176530192, -1.36, 3.5, -0.50},
+    {6, "C", 4, 4.0, -12.50, -3.99, 10.0, -2.50, 4.5, -0.80},
+    {7, "N", 4, 5.0, -16.0, -5.5, 11.5, -3.20, 4.5, -0.90},
+    {8, "O", 4, 6.0, -18.5, -7.0, 13.4, -3.81, 4.5, -1.00},
 };
 inline constexpr std::size_t kDftbNElements =
     sizeof(kDftbElements) / sizeof(kDftbElements[0]);
