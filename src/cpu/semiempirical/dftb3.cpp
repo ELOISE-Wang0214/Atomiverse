@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <functional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -13,6 +12,7 @@
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/linalg/matrix.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h"
+#include "atomiverse/cpu/semiempirical/internal/dftb3_scc.h"
 
 namespace ATV {
 namespace cpu {
@@ -59,24 +59,6 @@ double h_radial(double v0, double r, double r0, double d) {
 double s_radial(double s0, double r, double r0, double w) {
     const double t = (r - r0) / w;
     return s0 * std::exp(-0.5 * t * t);
-}
-
-/// γ_AB(R) = 1 / sqrt(R^2 + (0.5(1/U_A + 1/U_B))^2)  (eV, Å; Ohno–Klopman-like)
-double gamma_ab(double r, double ua, double ub) {
-    const double tau = 0.5 * (1.0 / ua + 1.0 / ub);
-    return 1.0 / std::sqrt(r * r + tau * tau);
-}
-
-/// Γ_AB = (∂γ_AB/∂U_A) * U_A^d  [eV]; on-site Γ_AA = U_A^d.
-double gamma_deriv_ab(double r, double ua, double ub, double ua_d) {
-    if (r < 1e-14)
-        return ua_d;
-    // τ = 0.5 (1/U_A + 1/U_B); γ = 1/sqrt(R²+τ²)
-    // ∂γ/∂U_A = (τ / (R²+τ²)^{3/2}) * (0.5 / U_A²)
-    const double tau = 0.5 * (1.0 / ua + 1.0 / ub);
-    const double den = r * r + tau * tau;
-    const double dgamma_dua = (tau / std::pow(den, 1.5)) * (0.5 / (ua * ua));
-    return dgamma_dua * ua_d;
 }
 
 void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
@@ -131,57 +113,6 @@ void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
     }
 }
 
-/// Atomic potential V_A including second- and third-order SCC (Gaus 2011).
-void scc_potential(const std::vector<const DftbElementRow*>& el,
-                   const std::vector<double>& dq, int n_at,
-                   const std::function<double(int, int)>& r_ab,
-                   std::vector<double>& dV) {
-    dV.assign(static_cast<std::size_t>(n_at), 0.0);
-    for (int a = 0; a < n_at; ++a) {
-        const double ua = el[static_cast<std::size_t>(a)]->hubbard_u;
-        const double ua_d = el[static_cast<std::size_t>(a)]->hubbard_du;
-        const double dqa = dq[static_cast<std::size_t>(a)];
-        double shift = 0;
-        for (int b = 0; b < n_at; ++b) {
-            const double ub = el[static_cast<std::size_t>(b)]->hubbard_u;
-            const double ub_d = el[static_cast<std::size_t>(b)]->hubbard_du;
-            const double dqb = dq[static_cast<std::size_t>(b)];
-            const double r = r_ab(a, b);
-            const double g = (a == b) ? ua : gamma_ab(r, ua, ub);
-            const double Gab = (a == b) ? ua_d : gamma_deriv_ab(r, ua, ub, ua_d);
-            const double Gba = (a == b) ? ub_d : gamma_deriv_ab(r, ub, ua, ub_d);
-            // V2 + V3
-            shift += g * dqb;
-            shift += (1.0 / 3.0) * (Gab + Gba) * dqb * dqb;
-            shift += (1.0 / 3.0) * (Gba - Gab) * dqa * dqb;
-        }
-        dV[static_cast<std::size_t>(a)] = shift;
-    }
-}
-
-void scc_energy_terms(const std::vector<const DftbElementRow*>& el,
-                      const std::vector<double>& dq, int n_at,
-                      const std::function<double(int, int)>& r_ab, double& e2,
-                      double& e3) {
-    e2 = 0;
-    e3 = 0;
-    for (int a = 0; a < n_at; ++a) {
-        const double ua = el[static_cast<std::size_t>(a)]->hubbard_u;
-        const double ua_d = el[static_cast<std::size_t>(a)]->hubbard_du;
-        const double dqa = dq[static_cast<std::size_t>(a)];
-        for (int b = 0; b < n_at; ++b) {
-            const double ub = el[static_cast<std::size_t>(b)]->hubbard_u;
-            const double dqb = dq[static_cast<std::size_t>(b)];
-            const double r = r_ab(a, b);
-            const double g = (a == b) ? ua : gamma_ab(r, ua, ub);
-            const double Gab =
-                (a == b) ? ua_d : gamma_deriv_ab(r, ua, ub, ua_d);
-            e2 += 0.5 * g * dqa * dqb;
-            e3 += (1.0 / 3.0) * Gab * dqa * dqa * dqb;
-        }
-    }
-}
-
 } // namespace
 
 void DFTB3::build(const BuildContext& /*ctx*/) {}
@@ -227,12 +158,30 @@ void DFTB3::launch(const LaunchContext& ctx) {
         f.box.min_image(dx, dy, dz);
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     };
-    auto r_ab = [&](int a, int b) -> double {
-        if (a == b)
-            return 0.0;
-        double dx, dy, dz;
-        return dist_vec(a, b, dx, dy, dz);
+    // Row-major n×n minimum-image distances of the current geometry [Å].
+    auto distance_matrix = [&]() {
+        const std::size_t n = static_cast<std::size_t>(n_at);
+        std::vector<double> d(n * n, 0.0);
+        for (int a = 0; a < n_at; ++a)
+            for (int b = a + 1; b < n_at; ++b) {
+                double dx, dy, dz;
+                const double r = dist_vec(a, b, dx, dy, dz);
+                const std::size_t ia = static_cast<std::size_t>(a);
+                const std::size_t ib = static_cast<std::size_t>(b);
+                d[ia * n + ib] = r;
+                d[ib * n + ia] = r;
+            }
+        return d;
     };
+
+    std::vector<double> hubbard_u(static_cast<std::size_t>(n_at));
+    std::vector<double> hubbard_du(static_cast<std::size_t>(n_at));
+    for (int a = 0; a < n_at; ++a) {
+        hubbard_u[static_cast<std::size_t>(a)] =
+            el[static_cast<std::size_t>(a)]->hubbard_u;
+        hubbard_du[static_cast<std::size_t>(a)] =
+            el[static_cast<std::size_t>(a)]->hubbard_du;
+    }
 
     linalg::RealMatrix H0 = xt::zeros<double>({n_ao, n_ao});
     linalg::RealMatrix S = xt::zeros<double>({n_ao, n_ao});
@@ -269,9 +218,10 @@ void DFTB3::launch(const LaunchContext& ctx) {
     e2_ = 0;
     e3_ = 0;
 
+    const internal::Dftb3Scc scc(hubbard_u, hubbard_du, distance_matrix());
+
     for (int it = 0; it < max_scc; ++it) {
-        std::vector<double> dV;
-        scc_potential(el, dq, n_at, r_ab, dV);
+        const std::vector<double> dV = scc.potential(dq);
 
         linalg::RealMatrix H = H0;
         for (int a = 0; a < n_at; ++a) {
@@ -316,7 +266,8 @@ void DFTB3::launch(const LaunchContext& ctx) {
         e_band = 0;
         for (int o = 0; o < n_occ; ++o)
             e_band += 2.0 * eps(o);
-        scc_energy_terms(el, dq, n_at, r_ab, e2_, e3_);
+        e2_ = scc.second_order_energy(dq);
+        e3_ = scc.third_order_energy(dq);
         if (max_dq < scc_tol)
             break;
     }
@@ -330,8 +281,10 @@ void DFTB3::launch(const LaunchContext& ctx) {
             e_repulsive += rep.a * std::exp(-rep.b * r);
         }
 
-    // E = sum n ε - E^(2) - E^(3) + E_rep
-    energy_ = e_band - e2_ - e3_ + e_repulsive;
+    // The band energy is built from V = ∂(E² + E³)/∂Δq, and E²/E³ are
+    // homogeneous of degree 2/3 in Δq, so Σ_A Δq_A V_A = 2E² + 3E³: the
+    // double-counting correction is E² + 2E³, not E² + E³.
+    energy_ = e_band - (e2_ + 2.0 * e3_) + e_repulsive;
     energy_meta += energy_;
 
     if (with_forces) {
@@ -367,15 +320,10 @@ void DFTB3::launch(const LaunchContext& ctx) {
             }
             std::vector<double> dql(static_cast<std::size_t>(n_at), 0.0);
             double e_band_l = 0, e2_l = 0, e3_l = 0;
-            auto r_ab_l = [&](int a, int b) -> double {
-                if (a == b)
-                    return 0.0;
-                double dx, dy, dz;
-                return dist_vec(a, b, dx, dy, dz);
-            };
+            const internal::Dftb3Scc scc_l(hubbard_u, hubbard_du,
+                                           distance_matrix());
             for (int it = 0; it < max_scc; ++it) {
-                std::vector<double> dV;
-                scc_potential(el, dql, n_at, r_ab_l, dV);
+                const std::vector<double> dV = scc_l.potential(dql);
                 linalg::RealMatrix H = H0b;
                 for (int a = 0; a < n_at; ++a) {
                     const int ia = ao0[static_cast<std::size_t>(a)];
@@ -418,7 +366,8 @@ void DFTB3::launch(const LaunchContext& ctx) {
                 e_band_l = 0;
                 for (int o = 0; o < n_occ; ++o)
                     e_band_l += 2.0 * eps_l(o);
-                scc_energy_terms(el, dql, n_at, r_ab_l, e2_l, e3_l);
+                e2_l = scc_l.second_order_energy(dql);
+                e3_l = scc_l.third_order_energy(dql);
                 if (max_dq < scc_tol)
                     break;
             }
@@ -430,7 +379,7 @@ void DFTB3::launch(const LaunchContext& ctx) {
                     const auto& rep = pair_rep(type[a], type[b]);
                     e_rep_l += rep.a * std::exp(-rep.b * r);
                 }
-            return e_band_l - e2_l - e3_l + e_rep_l;
+            return e_band_l - (e2_l + 2.0 * e3_l) + e_rep_l;
         };
 
         for (int a = 0; a < n_at; ++a) {

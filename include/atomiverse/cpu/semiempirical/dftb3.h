@@ -22,6 +22,12 @@ namespace semiempirical {
 /// parser, no public factory). Supported Z: 1, 6, 7, 8; any other element
 /// or missing pair throws.
 ///
+/// The SCC potential is the exact derivative
+/// \f$V_A=\partial(E^{(2)}+E^{(3)})/\partial\Delta q_A\f$, so the band
+/// energy double-counts by \f$E^{(2)}+2E^{(3)}\f$ (Euler:
+/// \f$\sum_A\Delta q_A V_A = 2E^{(2)}+3E^{(3)}\f$). Both live in
+/// `internal/dftb3_scc.h`.
+///
 /// Units on the public surface: energy [eV], positions [Å], forces [eV/Å].
 ///
 /// @code

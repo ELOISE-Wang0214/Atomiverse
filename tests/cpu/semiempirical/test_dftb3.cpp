@@ -35,7 +35,45 @@ cpu::Frame make_water() {
     return f;
 }
 
+cpu::Frame make_h2(double bond) {
+    cpu::Frame f(2);
+    for (int i = 0; i < 2; ++i) {
+        f.span(kAtom_type)[i] = 1;
+        f.span(kAtom_x)[i] = i * bond;
+        f.span(kAtom_y)[i] = 0.0;
+        f.span(kAtom_z)[i] = 0.0;
+        f.span(kAtom_mass)[i] = 1.008;
+        f.span(kAtom_tag)[i] = i + 1;
+        f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
+    }
+    f.box = cpu::Box::cubic(20.0);
+    f.meta.get(kEnergy) = 0;
+    return f;
+}
+
 } // namespace
+
+TEST(DFTB3, ReducesToDftb2ForHomonuclearH2) {
+    // H2 is homonuclear: the Mulliken fluctuations vanish by symmetry, so
+    // E² = E³ = 0 identically and DFTB3 must reduce EXACTLY to DFTB2.
+    auto f3 = make_h2(0.74);
+    auto f2 = make_h2(0.74);
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB3 d3;
+    d3.with_forces = false;
+    d3.scc_tol = 1e-10;
+    d3.build({ctx, f3});
+    d3.launch({ctx, f3, 0, 0});
+    cpu::semiempirical::DFTB2 d2;
+    d2.with_forces = false;
+    d2.scc_tol = 1e-10;
+    d2.build({ctx, f2});
+    d2.launch({ctx, f2, 0, 0});
+
+    EXPECT_NEAR(d3.last_e2(), 0.0, 1e-20);
+    EXPECT_NEAR(d3.last_e3(), 0.0, 1e-20);
+    EXPECT_NEAR(d3.last_energy(), d2.last_energy(), 1e-12);
+}
 
 TEST(DFTB3, H2OEnergyFinite) {
     auto f = make_water();

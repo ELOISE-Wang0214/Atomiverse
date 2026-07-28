@@ -18,9 +18,14 @@ using namespace ATV;
 
 namespace {
 
-// Offline ATV Hamiltonian-twin pin [eV] at the geometry below (scc_tol=1e-10).
-// Measured 2026-07-27 SE-only Release; not DFTB.org mio-1-1 absolute energy.
-constexpr double kPinEnergyEV = -84.561719022489;
+// Provisional ATV Hamiltonian-twin pin [eV] at the geometry below
+// (scc_tol=1e-10, max_scc=50). Measured 2026-07-28 Release. NOT a DFTB.org
+// mio-1-1 absolute energy and NOT a self-consistent energy — see REFERENCE.md:
+// the SCC Picard loop is a period-2 limit cycle here, so this value is the
+// iteration-`max_scc` branch of that cycle. DFTB+ oracle owed.
+// Supersedes -84.561719022489, which was recorded under a third-order SCC
+// potential that was not the derivative of the reported E^(3).
+constexpr double kPinEnergyEV = -107.618793920072;
 constexpr double kPinTolEV = 1e-6;
 
 cpu::Frame make_water() {
