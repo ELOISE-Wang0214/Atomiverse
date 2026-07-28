@@ -2,6 +2,7 @@
 /// @brief SCC-DFTB2 multi-element method (static in-tree SK tables, CPU).
 #pragma once
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -23,8 +24,8 @@ enum class DftbSkSet {
     ThreeOb = 1,
 };
 
-/// @brief SCC-DFTB2 energy (+ optional D3 dispersion + nuclear forces) for
-///        H/C/N/O.
+/// @brief SCC-DFTB2 energy (+ optional D3 dispersion, nuclear forces, cell
+///        stress) for H/C/N/O.
 ///
 /// Self-consistent-charge DFTB2 (Elstner et al., Phys. Rev. B **58**, 7260
 /// (1998), DOI 10.1103/PhysRevB.58.7260) with optional **collinear** spin
@@ -40,10 +41,14 @@ enum class DftbSkSet {
 ///   shell **and** collinear open shell (HF + Pulay + SCC γ + repulsive; spin
 ///   shifts on ∂S) under the min-image molecular limit — fixed-Δq/m
 ///   Hellmann–Feynman (see `reg_dftb2-analytic-forces`,
-///   `reg_dftb2-spin-analytic-forces`).
+///   `reg_dftb2-spin-analytic-forces`). Closed shell also offers an analytic
+///   intensive cell stress on `kStress` [eV/Å³] — the pair virial of those same
+///   bond terms (`reg_dftb2-analytic-stress`); open shell falls back to
+///   multi-SCC affine strain-FD.
 /// - `sk_set = ThreeOb`: `basis_data/dftb_3ob_tables.h` 3ob-3-1 radial H/S +
 ///   repulsive (Gaus et al., JCTC 2013; organic CHNO). Closed-shell energy;
-///   forces are re-SCC FD. Spin channel is MioSketch-only.
+///   forces are re-SCC FD; stress is multi-SCC strain-FD when requested. Spin
+///   channel is MioSketch-only.
 ///
 /// Optional **Grimme DFT-D3(BJ)** (`d3 = true`) is a geometry-only additive
 /// correction using in-tree Grimme tables and the published DFTB3-D3(BJ)
@@ -56,7 +61,9 @@ enum class DftbSkSet {
 /// sum for DFTB2 is not implemented.
 ///
 /// Open shell uses `charge` and `multiplicity` to set nα, nβ. Units: energy
-/// [eV], positions [Å], forces [eV/Å].
+/// [eV], positions [Å], forces [eV/Å], stress [eV/Å³] Voigt
+/// `(xx,yy,zz,xy,xz,yz)` with mechanical convention
+/// \(\sigma=-(1/\Omega)\partial E/\partial\varepsilon\).
 ///
 /// @code
 ///   cpu::semiempirical::DFTB2 dftb;
@@ -64,6 +71,7 @@ enum class DftbSkSet {
 ///   dftb.multiplicity = 3;   // O2 triplet (MioSketch)
 ///   dftb.d3 = true;
 ///   dftb.with_forces = true;
+///   dftb.with_stress = true;
 ///   eval.on(evaluate::Phase::evaluate).add(std::move(dftb));
 /// @endcode
 class DFTB2 : public cpu::Semiempirical {
@@ -74,6 +82,13 @@ class DFTB2 : public cpu::Semiempirical {
     int max_scc = 50;
     /// @brief When true, write F=−∇E [eV/Å] on launch.
     bool with_forces = true;
+    /// @brief When true, write intensive cell stress to `kStress` [eV/Å³].
+    ///
+    /// Restricted MioSketch: closed-form pair virial of the analytic force
+    /// terms. Open-shell / ThreeOb: multi-SCC affine strain-FD of total E.
+    /// **Excludes the `d3` dispersion term on both paths** — see
+    /// `regressions/semiempirical/dftb2-analytic-stress/REFERENCE.md` Gaps.
+    bool with_stress = false;
     /// @brief Static SK parameter set (member — not a Config bag).
     DftbSkSet sk_set = DftbSkSet::MioSketch;
     /// @brief Net molecular charge [e] (subtracted from valence electron count).
@@ -103,6 +118,9 @@ class DFTB2 : public cpu::Semiempirical {
     /// @brief Last D3(BJ) dispersion energy [eV] (0 when `d3` is false).
     double last_e_disp() const { return e_disp_; }
 
+    /// @brief Last intensive Voigt stress [eV/Å³] (zero if stress not requested).
+    const std::array<double, 6>& last_stress() const { return last_stress_; }
+
     /// @brief Per-atom Mulliken charge fluctuation Δq_A [e] after last launch.
     const std::vector<double>& last_mulliken_dq() const { return last_dq_; }
 
@@ -112,6 +130,7 @@ class DFTB2 : public cpu::Semiempirical {
   private:
     double energy_ = 0;
     double e_disp_ = 0;
+    std::array<double, 6> last_stress_{};
     std::vector<double> last_dq_;
     std::vector<double> last_spin_;
 };

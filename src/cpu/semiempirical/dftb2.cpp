@@ -1036,13 +1036,16 @@ void analytic_forces_unrestricted(
     }
 }
 
-/// Closed-form nuclear gradient for **restricted** SCC-DFTB2 (fixed Δq).
+/// Closed-form nuclear gradient (+ optional intensive stress) for **restricted**
+/// SCC-DFTB2 (fixed Δq). Forces: F=−∇E [eV/Å]. Stress: σ=−(1/Ω)∂E/∂ε [eV/Å³]
+/// Voigt (xx,yy,zz,xy,xz,yz) via pair virial of the same bond terms.
 void analytic_forces_restricted(
     int n_at, int n_ao, int n_occ, const std::vector<const DftbElementRow*>& el,
     const std::vector<int>& ao0, const int* type, const StorageReal* x,
     const StorageReal* y, const StorageReal* z, const cpu::Box& box,
     const std::vector<double>& dq, const linalg::RealMatrix& C,
-    const linalg::RealVector& eps, AccReal* fx, AccReal* fy, AccReal* fz) {
+    const linalg::RealVector& eps, AccReal* fx, AccReal* fy, AccReal* fz,
+    bool want_forces, double* stress_voigt /* nullable, length 6 */) {
     auto dist_vec = [&](int i, int j, double& dx, double& dy, double& dz) {
         dx = static_cast<double>(x[j] - x[i]);
         dy = static_cast<double>(y[j] - y[i]);
@@ -1076,6 +1079,9 @@ void analytic_forces_restricted(
                                 xt::zeros<double>({n_ao, n_ao}),
                                 xt::zeros<double>({n_ao, n_ao})};
 
+    // Accumulate ∂E/∂ε (before −1/Ω) in Voigt order.
+    double dE_de[6] = {0, 0, 0, 0, 0, 0};
+
     for (int a = 0; a < n_at; ++a) {
         const auto& ea = *el[static_cast<std::size_t>(a)];
         const int ia = ao0[static_cast<std::size_t>(a)];
@@ -1087,7 +1093,8 @@ void analytic_forces_restricted(
                 continue;
             const int ib = ao0[static_cast<std::size_t>(b)];
             const double dir[3] = {dx / r, dy / r, dz / r};
-            double dE_dbond[3] = {0, 0, 0};
+            // Pair force contribution on atom a (F_b = −F_a); same as nuclear F.
+            double F_a[3] = {0, 0, 0};
 
             if (r <= pair_rcut_A(ea, eb, type[a], type[b])) {
                 const auto& sk = pair_sk(type[a], type[b]);
@@ -1111,7 +1118,7 @@ void analytic_forces_restricted(
                             const double ds = dS[k](ia + i, ib + j);
                             acc += p * (dh + shift * ds) - w * ds;
                         }
-                    dE_dbond[k] += 2.0 * acc;
+                    F_a[k] += 2.0 * acc;
                 }
             }
 
@@ -1119,19 +1126,42 @@ void analytic_forces_restricted(
             const double dqa = dq[static_cast<std::size_t>(a)];
             const double dqb = dq[static_cast<std::size_t>(b)];
             for (int k = 0; k < 3; ++k)
-                dE_dbond[k] += -dqa * dqb * dgdR * dir[k];
+                F_a[k] += -dqa * dqb * dgdR * dir[k];
 
             const double dErep_dr = pair_repulsive_dE_dr(type[a], type[b], r);
             for (int k = 0; k < 3; ++k)
-                dE_dbond[k] += dErep_dr * dir[k];
+                F_a[k] += dErep_dr * dir[k];
 
-            fx[a] += static_cast<AccReal>(dE_dbond[0]);
-            fy[a] += static_cast<AccReal>(dE_dbond[1]);
-            fz[a] += static_cast<AccReal>(dE_dbond[2]);
-            fx[b] -= static_cast<AccReal>(dE_dbond[0]);
-            fy[b] -= static_cast<AccReal>(dE_dbond[1]);
-            fz[b] -= static_cast<AccReal>(dE_dbond[2]);
+            if (want_forces && fx && fy && fz) {
+                fx[a] += static_cast<AccReal>(F_a[0]);
+                fy[a] += static_cast<AccReal>(F_a[1]);
+                fz[a] += static_cast<AccReal>(F_a[2]);
+                fx[b] -= static_cast<AccReal>(F_a[0]);
+                fy[b] -= static_cast<AccReal>(F_a[1]);
+                fz[b] -= static_cast<AccReal>(F_a[2]);
+            }
+
+            if (stress_voigt) {
+                const double R[3] = {dx, dy, dz};
+                // Diagonal: ∂E/∂ε_αα = F_α R_α
+                dE_de[0] += F_a[0] * R[0];
+                dE_de[1] += F_a[1] * R[1];
+                dE_de[2] += F_a[2] * R[2];
+                // Off-diag (symmetric strain ε_αβ=ε_βα=h):
+                // ∂E/∂h = F_α R_β + F_β R_α
+                dE_de[3] += F_a[0] * R[1] + F_a[1] * R[0]; // xy
+                dE_de[4] += F_a[0] * R[2] + F_a[2] * R[0]; // xz
+                dE_de[5] += F_a[1] * R[2] + F_a[2] * R[1]; // yz
+            }
         }
+    }
+
+    if (stress_voigt) {
+        const double vol = box.volume();
+        if (vol <= 0.0)
+            throw std::runtime_error("DFTB2: non-positive box volume for stress");
+        for (int v = 0; v < 6; ++v)
+            stress_voigt[v] = -dE_de[v] / vol;
     }
 }
 
@@ -1150,9 +1180,62 @@ SccResult scc_total(int n_at, int n_ao, const Occupancy& occ,
 }
 
 
+/// Affine strain of box + coordinates (mechanical ε; matches PW/GPW stress FD).
+void apply_affine_strain(cpu::Frame& frame, int voigt, double h) {
+    // Voigt: 0=xx,1=yy,2=zz,3=xy,4=xz,5=yz. Off-diag: ε_αβ = ε_βα = h.
+    Mat3 F{};
+    for (int a = 0; a < 3; ++a)
+        for (int b = 0; b < 3; ++b)
+            F(a, b) = (a == b) ? 1.0 : 0.0;
+    if (voigt == 0)
+        F(0, 0) += h;
+    else if (voigt == 1)
+        F(1, 1) += h;
+    else if (voigt == 2)
+        F(2, 2) += h;
+    else if (voigt == 3) {
+        F(0, 1) += h;
+        F(1, 0) += h;
+    } else if (voigt == 4) {
+        F(0, 2) += h;
+        F(2, 0) += h;
+    } else if (voigt == 5) {
+        F(1, 2) += h;
+        F(2, 1) += h;
+    }
+
+    Mat3 cell = frame.box.cell();
+    Mat3 cell_new;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) {
+            double s = 0;
+            for (int k = 0; k < 3; ++k)
+                s += F(i, k) * static_cast<double>(cell(k, j));
+            cell_new(i, j) = static_cast<AccReal>(s);
+        }
+    frame.box.set_cell(cell_new);
+
+    auto x = frame.span(kAtom_x);
+    auto y = frame.span(kAtom_y);
+    auto z = frame.span(kAtom_z);
+    const int n = frame.nlocal();
+    for (int a = 0; a < n; ++a) {
+        const double rx = static_cast<double>(x[a]);
+        const double ry = static_cast<double>(y[a]);
+        const double rz = static_cast<double>(z[a]);
+        x[a] = static_cast<StorageReal>(F(0, 0) * rx + F(0, 1) * ry
+                                        + F(0, 2) * rz);
+        y[a] = static_cast<StorageReal>(F(1, 0) * rx + F(1, 1) * ry
+                                        + F(1, 2) * rz);
+        z[a] = static_cast<StorageReal>(F(2, 0) * rx + F(2, 1) * ry
+                                        + F(2, 2) * rz);
+    }
+}
+
 double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, bool with_forces,
-                  int charge, int multiplicity, std::vector<double>& out_dq,
-                  std::vector<double>& out_spin) {
+                  bool with_stress, int charge, int multiplicity,
+                  std::vector<double>& out_dq, std::vector<double>& out_spin,
+                  std::array<double, 6>& out_stress) {
     const int n_at = f.nlocal();
     const int* type = f.span(kAtom_type).data();
     StorageReal* x = f.span(kAtom_x);
@@ -1162,6 +1245,7 @@ double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, bool with_forces,
     AccReal* fy = f.span(kAtom_fy);
     AccReal* fz = f.span(kAtom_fz);
     double& energy_meta = f.meta.get(kEnergy);
+    out_stress.fill(0.0);
 
     std::vector<const DftbElementRow*> el(static_cast<std::size_t>(n_at));
     std::vector<int> ao0(static_cast<std::size_t>(n_at) + 1, 0);
@@ -1188,18 +1272,81 @@ double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, bool with_forces,
     // (esmm-contract-05): DFTB2 already accumulated into kEnergy.
     f.meta.get(kEnergyElectronic) += energy;
 
-    if (with_forces) {
-        if (occ.unrestricted && res.Ca.shape(0) > 0) {
+    // Restricted closed shell has a closed-form gradient AND a closed-form pair
+    // virial; collinear open shell has the closed-form gradient only, so its
+    // stress still falls back to multi-SCC affine strain-FD.
+    const bool analytic =
+        !occ.unrestricted && res.n_occ > 0 && res.C.shape(0) > 0;
+    const bool analytic_open = occ.unrestricted && res.Ca.shape(0) > 0;
+
+    if ((with_forces || with_stress) && analytic) {
+        double stress_buf[6] = {0, 0, 0, 0, 0, 0};
+        analytic_forces_restricted(
+            n_at, n_ao, res.n_occ, el, ao0, type, x, y, z, f.box, res.dq,
+            res.C, res.eps, fx, fy, fz, with_forces,
+            with_stress ? stress_buf : nullptr);
+        if (with_stress) {
+            for (int v = 0; v < 6; ++v)
+                out_stress[static_cast<std::size_t>(v)] = stress_buf[v];
+            auto& st = f.meta.get(kStress);
+            for (int v = 0; v < 6; ++v)
+                st[static_cast<std::size_t>(v)] += stress_buf[v];
+        }
+    } else {
+        if (with_forces && analytic_open) {
+            // Collinear open shell: closed-form dual α/β gradient.
             analytic_forces_unrestricted(
                 n_at, n_ao, res.n_alpha, res.n_beta, el, ao0, type, x, y, z,
                 f.box, res.dq, res.spin, res.Ca, res.Cb, res.eps_a, res.eps_b,
                 fx, fy, fz);
-        } else if (!occ.unrestricted && res.n_occ > 0 && res.C.shape(0) > 0) {
-            analytic_forces_restricted(n_at, n_ao, res.n_occ, el, ao0, type, x,
-                                       y, z, f.box, res.dq, res.C, res.eps, fx,
-                                       fy, fz);
         }
         // else: no orbitals (empty system) — leave forces unchanged
+        if (with_stress) {
+            // Multi-SCC affine strain-FD of E (open-shell fallback).
+            constexpr double h_s = 2.0e-4;
+            const double vol0 = f.box.volume();
+            if (vol0 <= 0.0)
+                throw std::runtime_error(
+                    "DFTB2: non-positive box volume for stress");
+            // Snapshot geometry
+            std::vector<StorageReal> x0(static_cast<std::size_t>(n_at));
+            std::vector<StorageReal> y0(static_cast<std::size_t>(n_at));
+            std::vector<StorageReal> z0(static_cast<std::size_t>(n_at));
+            for (int a = 0; a < n_at; ++a) {
+                x0[static_cast<std::size_t>(a)] = x[a];
+                y0[static_cast<std::size_t>(a)] = y[a];
+                z0[static_cast<std::size_t>(a)] = z[a];
+            }
+            const Mat3 cell0 = f.box.cell();
+            auto& st = f.meta.get(kStress);
+            for (int v = 0; v < 6; ++v) {
+                auto restore = [&]() {
+                    for (int a = 0; a < n_at; ++a) {
+                        x[a] = x0[static_cast<std::size_t>(a)];
+                        y[a] = y0[static_cast<std::size_t>(a)];
+                        z[a] = z0[static_cast<std::size_t>(a)];
+                    }
+                    f.box.set_cell(cell0);
+                };
+                restore();
+                apply_affine_strain(f, v, h_s);
+                const double ep =
+                    scc_total(n_at, n_ao, occ, el, ao0, type, x, y, z, f.box,
+                              scc_tol, max_scc)
+                        .energy;
+                restore();
+                apply_affine_strain(f, v, -h_s);
+                const double em =
+                    scc_total(n_at, n_ao, occ, el, ao0, type, x, y, z, f.box,
+                              scc_tol, max_scc)
+                        .energy;
+                restore();
+                const double dE_de = (ep - em) / (2.0 * h_s);
+                const double sig = -dE_de / vol0;
+                out_stress[static_cast<std::size_t>(v)] = sig;
+                st[static_cast<std::size_t>(v)] += sig;
+            }
+        }
     }
     return energy;
 }
@@ -1488,7 +1635,8 @@ double energy_3ob_ha(const std::vector<const Dftb3obElement*>& el,
 }
 
 double launch_3ob(DFTB2& self, cpu::Frame& f, double scc_tol, int max_scc,
-                  bool with_forces) {
+                  bool with_forces, bool with_stress,
+                  std::array<double, 6>& out_stress) {
     const int n_at = f.nlocal();
     const auto type = f.span(kAtom_type);
     StorageReal* x = f.span(kAtom_x);
@@ -1498,6 +1646,7 @@ double launch_3ob(DFTB2& self, cpu::Frame& f, double scc_tol, int max_scc,
     AccReal* fy = f.span(kAtom_fy);
     AccReal* fz = f.span(kAtom_fz);
     double& energy_meta = f.meta.get(kEnergy);
+    out_stress.fill(0.0);
 
     std::vector<const Dftb3obElement*> el(static_cast<std::size_t>(n_at));
     std::vector<int> ao0(static_cast<std::size_t>(n_at) + 1, 0);
@@ -1566,6 +1715,67 @@ double launch_3ob(DFTB2& self, cpu::Frame& f, double scc_tol, int max_scc,
             }
         }
     }
+    if (with_stress) {
+        // Multi-SCC affine strain-FD of E (ThreeOb: no analytic SK deriv path).
+        constexpr double h_s = 2.0e-4;
+        const double vol0 = f.box.volume();
+        if (vol0 <= 0.0)
+            throw std::runtime_error(
+                "DFTB2(ThreeOb): non-positive box volume for stress");
+        std::vector<StorageReal> x0(static_cast<std::size_t>(n_at));
+        std::vector<StorageReal> y0(static_cast<std::size_t>(n_at));
+        std::vector<StorageReal> z0(static_cast<std::size_t>(n_at));
+        for (int a = 0; a < n_at; ++a) {
+            x0[static_cast<std::size_t>(a)] = x[a];
+            y0[static_cast<std::size_t>(a)] = y[a];
+            z0[static_cast<std::size_t>(a)] = z[a];
+        }
+        const Mat3 cell0 = f.box.cell();
+        auto& st = f.meta.get(kStress);
+        for (int v = 0; v < 6; ++v) {
+            auto restore = [&]() {
+                for (int a = 0; a < n_at; ++a) {
+                    x[a] = x0[static_cast<std::size_t>(a)];
+                    y[a] = y0[static_cast<std::size_t>(a)];
+                    z[a] = z0[static_cast<std::size_t>(a)];
+                }
+                f.box.set_cell(cell0);
+            };
+            restore();
+            apply_affine_strain(f, v, h_s);
+            for (int a = 0; a < n_at; ++a) {
+                xb[static_cast<std::size_t>(a)] =
+                    static_cast<double>(x[a]) * kA2Bohr;
+                yb[static_cast<std::size_t>(a)] =
+                    static_cast<double>(y[a]) * kA2Bohr;
+                zb[static_cast<std::size_t>(a)] =
+                    static_cast<double>(z[a]) * kA2Bohr;
+            }
+            const double ep =
+                energy_3ob_ha(el, ao0, Z, xb, yb, zb, n_at, n_ao, n_occ,
+                              scc_tol, max_scc)
+                * kHa2eV;
+            restore();
+            apply_affine_strain(f, v, -h_s);
+            for (int a = 0; a < n_at; ++a) {
+                xb[static_cast<std::size_t>(a)] =
+                    static_cast<double>(x[a]) * kA2Bohr;
+                yb[static_cast<std::size_t>(a)] =
+                    static_cast<double>(y[a]) * kA2Bohr;
+                zb[static_cast<std::size_t>(a)] =
+                    static_cast<double>(z[a]) * kA2Bohr;
+            }
+            const double em =
+                energy_3ob_ha(el, ao0, Z, xb, yb, zb, n_at, n_ao, n_occ,
+                              scc_tol, max_scc)
+                * kHa2eV;
+            restore();
+            const double dE_de = (ep - em) / (2.0 * h_s);
+            const double sig = -dE_de / vol0;
+            out_stress[static_cast<std::size_t>(v)] = sig;
+            st[static_cast<std::size_t>(v)] += sig;
+        }
+    }
     (void)self;
     return energy;
 }
@@ -1580,16 +1790,19 @@ void DFTB2::launch(const LaunchContext& ctx) {
     if (f.nlocal() < 1)
         throw std::invalid_argument("DFTB2: empty frame");
 
+    last_stress_.fill(0.0);
     if (sk_set == DftbSkSet::ThreeOb) {
         if (multiplicity != 1 || charge != 0)
             throw std::runtime_error(
                 "DFTB2(ThreeOb): open-shell/charge not supported on this path");
-        energy_ = launch_3ob(*this, f, scc_tol, max_scc, with_forces);
+        energy_ = launch_3ob(*this, f, scc_tol, max_scc, with_forces,
+                             with_stress, last_stress_);
         last_dq_.clear();
         last_spin_.assign(static_cast<std::size_t>(f.nlocal()), 0.0);
     } else {
-        energy_ = launch_mio(f, scc_tol, max_scc, with_forces, charge,
-                             multiplicity, last_dq_, last_spin_);
+        energy_ = launch_mio(f, scc_tol, max_scc, with_forces, with_stress,
+                             charge, multiplicity, last_dq_, last_spin_,
+                             last_stress_);
     }
 
     // Optional Grimme D3(BJ): a purely geometric additive correction, so it

@@ -79,20 +79,22 @@ multipole derivatives stay ○. Analytic Hessian remains finite-difference via
 | Spin-orbit DFTB           |  ○  |   ○  |   ○  |
 | Periodic DFTB             |  ✓  |   ○  |   ○  |
 | DFTB analytic gradient    |  ✓  |   ○  |   ○  |
-| DFTB analytic stress      |  ○  |   ○  |   ○  |
+| DFTB analytic stress      |  ✓  |   ○  |   ○  |
 | TD-DFTB                   |  ○  |   ○  |   ○  |
 
 DFTB2 is multi-element H/C/N/O with static SK tables (`dftb_mio_tables.h` sketch
 + `dftb_mio_hh_sk.h` mio-1-1 H–H + `dftb_3ob_tables.h` 3ob-3-1 organics).
 Collinear spin (`multiplicity`) and **analytic nuclear forces**
 (HF+Pulay+γ+rep; **open shell included**) ship on MioSketch; ThreeOb forces
-remain re-SCC FD. Offline **DFTB+** absolute energy identity on mio-1-1 H–H
-ships (`reg_dftb2-dftbplus-energy-pin`); 3ob CH4 has a DFTB+ pin under pure
+remain re-SCC FD. **Restricted MioSketch analytic stress** ships as the pair
+virial of those same terms (`reg_dftb2-analytic-stress`); open-shell and
+ThreeOb stress fall back to multi-SCC affine strain-FD. Offline **DFTB+**
+absolute energy identity on mio-1-1 H–H ships
+(`reg_dftb2-dftbplus-energy-pin`); 3ob CH4 has a DFTB+ pin under pure
 SCC-DFTB2. **Γ-point PBC** lattice-sum energy ships (`reg_dftb2-periodic-gamma`);
-lattice-consistent **PBC forces**, analytic **stress**, **k-mesh** beyond Γ,
-**DFTB3** forces, and **TD-DFTB** remain ○. Oracle for all DFTB rows:
-**DFTB+** (never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 → spin
-product depth → …
+lattice-consistent **PBC forces**, **k-mesh** beyond Γ, **DFTB3** forces, and
+**TD-DFTB** remain ○. Oracle for all DFTB rows: **DFTB+** (never OpenMOPAC).
+Ladder: DFTB0 → DFTB2 depth → DFTB3 → spin product depth → …
 
 ## 3. Extended Tight-Binding Methods
 
