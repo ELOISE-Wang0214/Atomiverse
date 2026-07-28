@@ -85,7 +85,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.set_evaluator_ref(eval, /*order=*/0);
+    sim.set_evaluator_ref(eval);
     sim.enable_timing(false);
     sim.build();
 
@@ -129,7 +129,7 @@ int main() {
     // Multi-k UKS stores the integer seed formula
     // S² = s_z(s_z+1)+N_β with s_z=(N_α−N_β)/2 — for N_α=N_β=1 that is 1
     // (not a full Löwdin diagnostic). Just require finite non-negative.
-    const double s2_0 = eval.last_s2();
+    const double s2_0 = eval.method().last_s2();
     if (!std::isfinite(s2_0) || s2_0 < 0.0) {
         std::printf("FAIL: ⟨S²⟩ non-finite or negative after warm-up: %g\n",
                     s2_0);
@@ -193,7 +193,7 @@ int main() {
 
     const double pe_f = frame.meta.get(kEnergy);
     const double ke_f = frame.meta.get(kKinetic);
-    const double s2_f = eval.last_s2();
+    const double s2_f = eval.method().last_s2();
     std::printf("XL-BOMD multi-k UKS H2 NVE (K=5, nk=%d, Na=1 Nb=1): steps=%d  "
                 "E0=%.6g eV  Ef=%.6g eV  worst |dE|/scale=%.3e  tol=%.2f  "
                 "rHH=%.3f Å  S2=%.4f→%.4f\n",

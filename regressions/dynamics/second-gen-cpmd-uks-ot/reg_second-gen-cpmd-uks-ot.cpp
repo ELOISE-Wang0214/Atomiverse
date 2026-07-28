@@ -99,7 +99,7 @@ int main() {
             std::printf("FAIL: PE not bound after seed PE=%g eV\n", pe_w);
             return 1;
         }
-        const double s2_w = eval.last_s2();
+        const double s2_w = eval.method().last_s2();
         if (!std::isfinite(s2_w) || s2_w < 1.5 || s2_w > 2.5) {
             std::printf("FAIL: ⟨S²⟩ out of triplet window after seed: %g\n",
                         s2_w);
@@ -129,7 +129,7 @@ int main() {
     }
     const double e0 = pe0 + ke0;
     const double e_scale = std::max(1.0, std::fabs(e0));
-    const double s2_0 = eval.last_s2();
+    const double s2_0 = eval.method().last_s2();
 
     double worst_drift = 0.0;
     int max_prod_iters = iters_first;
@@ -189,7 +189,7 @@ int main() {
 
     const double pe_f = frame.meta.get(kEnergy);
     const double ke_f = frame.meta.get(kKinetic);
-    const double s2_f = eval.last_s2();
+    const double s2_f = eval.method().last_s2();
     std::printf(
         "SGCP-OT O2 triplet NVE (ASPC K=1, OT corrector=%d, UKS): seed=%d "
         "prod=%d  E0=%.6g eV  Ef=%.6g eV  worst |dE|/scale=%.3e  tol=%.2f  "

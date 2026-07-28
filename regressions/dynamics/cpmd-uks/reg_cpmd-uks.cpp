@@ -70,7 +70,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.set_evaluator_ref(eval, /*order=*/0);
+    sim.set_evaluator_ref(eval);
     sim.enable_timing(false);
     sim.build();
 
@@ -102,7 +102,7 @@ int main() {
                         eval.last_result().iters);
             return 1;
         }
-        const double s2_0 = eval.last_s2();
+        const double s2_0 = eval.method().last_s2();
         if (!std::isfinite(s2_0) || s2_0 < 1.5 || s2_0 > 2.5) {
             std::printf("FAIL: ⟨S²⟩ out of triplet window after warm-up: %g\n",
                         s2_0);

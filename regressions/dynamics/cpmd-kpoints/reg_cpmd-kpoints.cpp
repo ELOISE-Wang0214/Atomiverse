@@ -61,7 +61,10 @@ int main() {
     gpw.k_mesh[1] = 1;
     gpw.k_mesh[2] = 2;
     gpw.k_time_reversal = false;
-    cpu::electronic::CarParrinello eval{std::move(gpw), 400.0};
+    // Fictitious electron mass [a.u.]; a constructor argument on the CP
+    // wrapper (no public `cpmd_mu` flag), so the case owns the value it prints.
+    constexpr double mu_au = 400.0;
+    cpu::electronic::CarParrinello eval{std::move(gpw), mu_au};
 
     constexpr int n_prod = 4;
     constexpr int n_chunks = 2;
@@ -72,7 +75,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.set_evaluator_ref(eval, /*order=*/0);
+    sim.set_evaluator_ref(eval);
     sim.enable_timing(false);
     sim.build();
 
@@ -193,7 +196,7 @@ int main() {
     std::printf(
         "CPMD multi-k H2 NVE (mu=%.0f, nk=%d): steps=%d  E0=%.6g eV  "
         "Ef=%.6g eV  worst |dE_cons|/scale=%.3e  tol=%.2f  rHH=%.3f Å\n",
-        eval.cpmd_mu, eval.last_result().n_kpts, n_prod, e0,
+        mu_au, eval.last_result().n_kpts, n_prod, e0,
         pe_f + ke_f + te_f, worst_drift, drift_tol, rhh);
     std::printf("  PE0=%.6g  KE0=%.6g  Te0=%.6g  PEf=%.6g  KEf=%.6g  "
                 "Tef=%.6g eV\n",

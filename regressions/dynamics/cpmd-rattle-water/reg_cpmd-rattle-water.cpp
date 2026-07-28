@@ -59,9 +59,9 @@ int main() {
         /*kinds*/ {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
         /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
         /*compute_forces*/ true);
-    cpu::electronic::CarParrinello eval{std::move(gpw_base), 400.0};
-    // Same μ as Löwdin foothold pin for fair envelope comparison.
-    eval.cpmd_mu = 2000.0;
+    // Same μ [a.u.] as the Löwdin foothold pin for fair envelope comparison —
+    // a constructor argument on the CP wrapper, not a public flag.
+    cpu::electronic::CarParrinello eval{std::move(gpw_base), /*mu=*/2000.0};
     // dt is pushed in from `VelocityVerlet` by MD at build (TimestepProvider).
 
     // Drift production after the baseline CP step that engages Te.
@@ -73,7 +73,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.set_evaluator_ref(eval, /*order=*/0);
+    sim.set_evaluator_ref(eval);
     sim.enable_timing(false);
     sim.build();
 

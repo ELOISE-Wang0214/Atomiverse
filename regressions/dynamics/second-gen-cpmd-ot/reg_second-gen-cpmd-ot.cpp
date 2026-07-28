@@ -60,10 +60,11 @@ int main() {
         /*kinds*/ {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
         /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
         /*compute_forces*/ true);
-    cpu::electronic::SecondGenCp eval{std::move(gpw_base), 3, 5};
-    eval.second_gen_cp_k = 1; // Kolafa ASPC order (K+1=2 seed densities)
-    eval.second_gen_cp_max_iter = corrector_budget;
-    eval.use_ot = true; // OT partial-SCF corrector (this slug)
+    gpw_base.use_ot = true; // OT partial-SCF corrector (this slug)
+    // Kolafa ASPC order K=1 (K+1=2 seed densities) + the corrector budget —
+    // both constructor arguments on the SGCP wrapper, not public flags.
+    cpu::electronic::SecondGenCp eval{std::move(gpw_base), /*aspc_k=*/1,
+                                      corrector_budget};
 
     constexpr int n_seed = 2; // warm ASPC history (order K=1 needs K+1)
     constexpr int n_prod = 2;
@@ -74,7 +75,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
-    sim.set_evaluator_ref(eval, /*order=*/0);
+    sim.set_evaluator_ref(eval);
     sim.enable_timing(false);
     sim.build();
 
