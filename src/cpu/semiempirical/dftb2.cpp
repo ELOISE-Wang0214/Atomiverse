@@ -22,8 +22,8 @@
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/linalg/matrix.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_3ob_tables.h"
-#include "atomiverse/cpu/semiempirical/basis_data/dftb_mio_hh_sk.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h"
+#include "atomiverse/cpu/semiempirical/internal/mio_hh_table.h"
 
 namespace ATV {
 namespace cpu {
@@ -39,21 +39,6 @@ using basis_data::kDftbNPairRep;
 using basis_data::kDftbNPairSk;
 using basis_data::kDftbPairRep;
 using basis_data::kDftbPairSk;
-using basis_data::kAToBohr;
-using basis_data::kBohrToA;
-using basis_data::kHaToEV;
-using basis_data::kMioHH_Hss_Ha;
-using basis_data::kMioHH_Sss;
-using basis_data::kMioHH_distFudge_Bohr;
-using basis_data::kMioHH_expCoeffs;
-using basis_data::kMioHH_gridDist_Bohr;
-using basis_data::kMioHH_nGrid;
-using basis_data::kMioHH_nSpline;
-using basis_data::kMioHH_repCutoff_Bohr;
-using basis_data::kMioHH_spCoeffs;
-using basis_data::kMioHH_spLastCoeffs;
-using basis_data::kMioHH_xStart_Bohr;
-
 using basis_data::Dftb3obElement;
 using basis_data::Dftb3obPair;
 using basis_data::Dftb3obSkPoint;
@@ -105,194 +90,24 @@ double gamma_ab(double r, double ua, double ub) {
     return 1.0 / std::sqrt(r * r + tau * tau);
 }
 
-/// Neville polynomial interpolation on a uniform abscissa (DFTB+ polyInterU1).
-double poly_interp(const double* xp, const double* yp, int nn, double xx) {
-    std::vector<double> X(static_cast<std::size_t>(nn + 1));
-    std::vector<double> C(static_cast<std::size_t>(nn + 1));
-    std::vector<double> D(static_cast<std::size_t>(nn + 1));
-    for (int i = 1; i <= nn; ++i) {
-        X[static_cast<std::size_t>(i)] = xp[i - 1];
-        C[static_cast<std::size_t>(i)] = yp[i - 1];
-        D[static_cast<std::size_t>(i)] = yp[i - 1];
-    }
-    int iCl = static_cast<int>(
-        std::ceil((xx - X[1]) / std::abs(X[2] - X[1])));
-    if (iCl < 1)
-        iCl = 1;
-    if (iCl > nn)
-        iCl = nn;
-    double yy = yp[iCl - 1];
-    iCl = iCl - 1;
-    for (int mm = 1; mm <= nn - 1; ++mm) {
-        for (int ii = 1; ii <= nn - mm; ++ii) {
-            double rTmp = X[static_cast<std::size_t>(ii)]
-                          - X[static_cast<std::size_t>(ii + mm)];
-            rTmp = (C[static_cast<std::size_t>(ii + 1)]
-                    - D[static_cast<std::size_t>(ii)])
-                   / rTmp;
-            C[static_cast<std::size_t>(ii)] =
-                (X[static_cast<std::size_t>(ii)] - xx) * rTmp;
-            D[static_cast<std::size_t>(ii)] =
-                (X[static_cast<std::size_t>(ii + mm)] - xx) * rTmp;
-        }
-        double dyy;
-        if (2 * iCl < nn - mm) {
-            dyy = C[static_cast<std::size_t>(iCl + 1)];
-        } else {
-            dyy = D[static_cast<std::size_t>(iCl)];
-            iCl = iCl - 1;
-        }
-        yy += dyy;
-    }
-    return yy;
-}
-
-/// DFTB+ “new” SK grid interpolation for one integral column (Ha or dimless).
-double mio_hh_interp(const double* tab, double r_bohr) {
-    constexpr int nInterNew = 8;
-    constexpr int nRightInterNew = 4;
-    constexpr double deltaR = 1.0e-5;
-    const int leng = static_cast<int>(kMioHH_nGrid);
-    const double incr = kMioHH_gridDist_Bohr;
-    const double rMax =
-        static_cast<double>(leng) * incr + kMioHH_distFudge_Bohr;
-    const int ind = static_cast<int>(std::floor(r_bohr / incr));
-    if (r_bohr >= rMax)
-        return 0.0;
-    if (ind < leng) {
-        int iLast = std::min(leng, ind + nRightInterNew);
-        iLast = std::max(iLast, nInterNew);
-        double xa[nInterNew];
-        double ya[nInterNew];
-        for (int ii = 1; ii <= nInterNew; ++ii) {
-            xa[ii - 1] =
-                static_cast<double>(iLast - nInterNew + ii) * incr;
-            ya[ii - 1] = tab[iLast - nInterNew + ii - 1];
-        }
-        return poly_interp(xa, ya, nInterNew, r_bohr);
-    }
-    // Beyond last grid point: 5th-order taper to zero over distFudge.
-    const double dr = r_bohr - rMax;
-    const int iLast = leng;
-    double xa[nInterNew];
-    double ya[nInterNew];
-    for (int ii = 1; ii <= nInterNew; ++ii) {
-        xa[ii - 1] = static_cast<double>(iLast - nInterNew + ii) * incr;
-        ya[ii - 1] = tab[iLast - nInterNew + ii - 1];
-    }
-    const double y0 =
-        poly_interp(xa, ya, nInterNew, xa[nInterNew - 1] - deltaR);
-    const double y2 =
-        poly_interp(xa, ya, nInterNew, xa[nInterNew - 1] + deltaR);
-    const double y1 = ya[nInterNew - 1];
-    const double y1p = (y2 - y0) / (2.0 * deltaR);
-    const double y1pp = (y2 + y0 - 2.0 * y1) / (deltaR * deltaR);
-    const double dx = -kMioHH_distFudge_Bohr;
-    const double invdx = -1.0 / kMioHH_distFudge_Bohr;
-    const double dx1 = y1p * dx;
-    const double dx2 = y1pp * dx * dx;
-    const double dd = 10.0 * y1 - 4.0 * dx1 + 0.5 * dx2;
-    const double ee = -15.0 * y1 + 7.0 * dx1 - 1.0 * dx2;
-    const double ff = 6.0 * y1 - 3.0 * dx1 + 0.5 * dx2;
-    const double xr = dr * invdx;
-    return ((ff * xr + ee) * xr + dd) * xr * xr * xr;
-}
-
-/// mio-1-1 H–H repulsive energy [eV] at separation r [Å].
-double mio_hh_repulsive_eV(double r_A) {
-    const double rr = r_A * kAToBohr;
-    if (rr < 1e-12 || rr >= kMioHH_repCutoff_Bohr)
-        return 0.0;
-    if (rr < kMioHH_xStart_Bohr[0]) {
-        const double e_ha = std::exp(-kMioHH_expCoeffs[0] * rr
-                                     + kMioHH_expCoeffs[1])
-                            + kMioHH_expCoeffs[2];
-        return e_ha * kHaToEV;
-    }
-    std::size_t lo = 0;
-    std::size_t hi = kMioHH_nSpline;
-    while (hi - lo > 1) {
-        const std::size_t mid = (lo + hi) / 2;
-        if (kMioHH_xStart_Bohr[mid] <= rr)
-            lo = mid;
-        else
-            hi = mid;
-    }
-    const std::size_t iMatch = lo;
-    const double dr = rr - kMioHH_xStart_Bohr[iMatch];
-    double e_ha = 0.0;
-    if (iMatch + 1 < kMioHH_nSpline) {
-        const double* c = &kMioHH_spCoeffs[4 * iMatch];
-        e_ha = c[0] + c[1] * dr + c[2] * dr * dr + c[3] * dr * dr * dr;
-    } else {
-        double xh = 1.0;
-        for (int ii = 0; ii < 6; ++ii) {
-            e_ha += kMioHH_spLastCoeffs[ii] * xh;
-            xh *= dr;
-        }
-    }
-    return e_ha * kHaToEV;
-}
-
-/// dE_rep/dr [eV/Å] for mio-1-1 H–H.
-double mio_hh_repulsive_dE_dr(double r_A) {
-    const double rr = r_A * kAToBohr;
-    if (rr < 1e-12 || rr >= kMioHH_repCutoff_Bohr)
-        return 0.0;
-    double de_drr_ha = 0.0;
-    if (rr < kMioHH_xStart_Bohr[0]) {
-        de_drr_ha = -kMioHH_expCoeffs[0]
-                    * std::exp(-kMioHH_expCoeffs[0] * rr
-                               + kMioHH_expCoeffs[1]);
-    } else {
-        std::size_t lo = 0;
-        std::size_t hi = kMioHH_nSpline;
-        while (hi - lo > 1) {
-            const std::size_t mid = (lo + hi) / 2;
-            if (kMioHH_xStart_Bohr[mid] <= rr)
-                lo = mid;
-            else
-                hi = mid;
-        }
-        const std::size_t iMatch = lo;
-        const double dr = rr - kMioHH_xStart_Bohr[iMatch];
-        if (iMatch + 1 < kMioHH_nSpline) {
-            const double* c = &kMioHH_spCoeffs[4 * iMatch];
-            de_drr_ha = c[1] + 2.0 * c[2] * dr + 3.0 * c[3] * dr * dr;
-        } else {
-            // d/dr (c0 + c1 dr + ... + c5 dr^5)
-            de_drr_ha = kMioHH_spLastCoeffs[1]
-                        + 2.0 * kMioHH_spLastCoeffs[2] * dr
-                        + 3.0 * kMioHH_spLastCoeffs[3] * dr * dr
-                        + 4.0 * kMioHH_spLastCoeffs[4] * dr * dr * dr
-                        + 5.0 * kMioHH_spLastCoeffs[5] * dr * dr * dr * dr;
-        }
-    }
-    return de_drr_ha * kHaToEV * kAToBohr;
-}
-
 /// H–H mio cutoff [Å]; sketch pairs use element r_cut.
 double pair_rcut_A(const DftbElementRow& ea, const DftbElementRow& eb, int za,
                    int zb) {
-    if (za == 1 && zb == 1) {
-        const double r_bohr = static_cast<double>(kMioHH_nGrid)
-                                  * kMioHH_gridDist_Bohr
-                              + kMioHH_distFudge_Bohr;
-        return r_bohr * kBohrToA;
-    }
+    if (za == 1 && zb == 1)
+        return internal::MioHHTable{}.cutoff();
     return std::max(ea.r_cut, eb.r_cut);
 }
 
 double pair_repulsive_eV(int za, int zb, double r_A) {
     if (za == 1 && zb == 1)
-        return mio_hh_repulsive_eV(r_A);
+        return internal::MioHHTable{}.repulsive(r_A);
     const auto& rep = pair_rep(za, zb);
     return rep.a * std::exp(-rep.b * r_A);
 }
 
 double pair_repulsive_dE_dr(int za, int zb, double r_A) {
     if (za == 1 && zb == 1)
-        return mio_hh_repulsive_dE_dr(r_A);
+        return internal::MioHHTable{}.d_repulsive_dr(r_A);
     const auto& rep = pair_rep(za, zb);
     return -rep.a * rep.b * std::exp(-rep.b * r_A);
 }
@@ -308,13 +123,11 @@ void fill_sk_block_directed(const DftbElementRow& ea, const DftbElementRow& eb,
     if (r < 1e-12)
         return;
 
-    // mio-1-1 H–H (s only): table interpolation in Bohr / Hartree.
+    // mio-1-1 H–H (s only): shared transcribed table, not the sketch radial.
     if (ea.z == 1 && eb.z == 1) {
-        const double r_bohr = r * kAToBohr;
-        const double Hss = mio_hh_interp(kMioHH_Hss_Ha, r_bohr) * kHaToEV;
-        const double Sss = mio_hh_interp(kMioHH_Sss, r_bohr);
-        H0(ia0, ib0) += Hss;
-        S(ia0, ib0) += Sss;
+        const internal::MioHHTable mio;
+        H0(ia0, ib0) += mio.hopping_ss(r);
+        S(ia0, ib0) += mio.overlap_ss(r);
         (void)sk;
         return;
     }
@@ -414,12 +227,7 @@ lattice_images_for(const cpu::Box& box,
     for (const auto* e : el)
         max_cut = std::max(max_cut, e->r_cut);
     // mio-1-1 H–H table may extend beyond sketch r_cut.
-    {
-        const double r_bohr = static_cast<double>(kMioHH_nGrid)
-                                  * kMioHH_gridDist_Bohr
-                              + kMioHH_distFudge_Bohr;
-        max_cut = std::max(max_cut, r_bohr * kBohrToA);
-    }
+    max_cut = std::max(max_cut, internal::MioHHTable{}.cutoff());
     if (max_cut < 1e-12)
         max_cut = 1.0;
     return enumerate_lattice(box.cell(), max_cut);
@@ -441,24 +249,16 @@ void fill_sk_block_deriv(const DftbElementRow& ea, const DftbElementRow& eb,
     const double inv_r = 1.0 / r;
     const double dir[3] = {dx * inv_r, dy * inv_r, dz * inv_r};
 
-    // mio-1-1 H–H: d/dr via central FD of table interp, then chain to bond vec.
+    // mio-1-1 H–H: radial derivative of the shared table, chained to bond vec.
     if (ea.z == 1 && eb.z == 1) {
-        constexpr double h = 1.0e-5; // Å
-        const double r_bohr = r * kAToBohr;
-        const double rp = (r + h) * kAToBohr;
-        const double rm = std::max(r - h, 1.0e-8) * kAToBohr;
-        const double dHss =
-            (mio_hh_interp(kMioHH_Hss_Ha, rp) - mio_hh_interp(kMioHH_Hss_Ha, rm))
-            * kHaToEV / (2.0 * h);
-        const double dSss =
-            (mio_hh_interp(kMioHH_Sss, rp) - mio_hh_interp(kMioHH_Sss, rm))
-            / (2.0 * h);
+        const internal::MioHHTable mio;
+        const double dHss = mio.d_hopping_ss_dr(r);
+        const double dSss = mio.d_overlap_ss_dr(r);
         for (int k = 0; k < 3; ++k) {
             dH0[k](ia0, ib0) = dHss * dir[k];
             dS[k](ia0, ib0) = dSss * dir[k];
         }
         (void)sk;
-        (void)r_bohr;
         return;
     }
 

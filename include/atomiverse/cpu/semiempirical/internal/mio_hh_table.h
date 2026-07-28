@@ -49,14 +49,35 @@ class MioHHTable {
     /// @param r_A Nuclear separation [Å].
     /// @return H_ssσ(r) [eV]; zero beyond @ref cutoff.
     double hopping_ss(double r_A) const {
-        return grid_value(basis_data::kMioHH_Hss_Ha, r_A) * basis_data::kHaToEV;
+        return grid_value(basis_data::kMioHH_Hss_Ha, r_A * basis_data::kAToBohr)
+               * basis_data::kHaToEV;
     }
 
     /// @brief Two-centre overlap ssσ integral.
     /// @param r_A Nuclear separation [Å].
     /// @return S_ssσ(r) [dimensionless]; zero beyond @ref cutoff.
     double overlap_ss(double r_A) const {
-        return grid_value(basis_data::kMioHH_Sss, r_A);
+        return grid_value(basis_data::kMioHH_Sss, r_A * basis_data::kAToBohr);
+    }
+
+    /// @brief Radial derivative of the ssσ hopping integral.
+    ///
+    /// The tabulated grid is only piecewise-polynomial, so the derivative is a
+    /// central difference of the same Neville interpolation the value uses —
+    /// differentiating the interpolant, not a second table.
+    ///
+    /// @param r_A Nuclear separation [Å].
+    /// @return dH_ssσ/dr [eV/Å].
+    double d_hopping_ss_dr(double r_A) const {
+        return grid_derivative(basis_data::kMioHH_Hss_Ha, r_A)
+               * basis_data::kHaToEV;
+    }
+
+    /// @brief Radial derivative of the ssσ overlap integral.
+    /// @param r_A Nuclear separation [Å].
+    /// @return dS_ssσ/dr [1/Å].
+    double d_overlap_ss_dr(double r_A) const {
+        return grid_derivative(basis_data::kMioHH_Sss, r_A);
     }
 
     /// @brief Pair repulsive energy from the mio-1-1 spline.
@@ -98,7 +119,55 @@ class MioHHTable {
         return e_ha * basis_data::kHaToEV;
     }
 
+    /// @brief Radial derivative of the mio-1-1 repulsive spline.
+    /// @param r_A Nuclear separation [Å].
+    /// @return dE_rep/dr [eV/Å]; zero at or beyond the spline cutoff.
+    double d_repulsive_dr(double r_A) const {
+        const double rr = r_A * basis_data::kAToBohr;
+        if (rr < 1e-12 || rr >= basis_data::kMioHH_repCutoff_Bohr)
+            return 0.0;
+        double de_drr_ha = 0.0;
+        if (rr < basis_data::kMioHH_xStart_Bohr[0]) {
+            de_drr_ha = -basis_data::kMioHH_expCoeffs[0]
+                        * std::exp(-basis_data::kMioHH_expCoeffs[0] * rr
+                                   + basis_data::kMioHH_expCoeffs[1]);
+        } else {
+            std::size_t lo = 0;
+            std::size_t hi = basis_data::kMioHH_nSpline;
+            while (hi - lo > 1) {
+                const std::size_t mid = (lo + hi) / 2;
+                if (basis_data::kMioHH_xStart_Bohr[mid] <= rr)
+                    lo = mid;
+                else
+                    hi = mid;
+            }
+            const std::size_t i_match = lo;
+            const double dr = rr - basis_data::kMioHH_xStart_Bohr[i_match];
+            if (i_match + 1 < basis_data::kMioHH_nSpline) {
+                const double* c = &basis_data::kMioHH_spCoeffs[4 * i_match];
+                de_drr_ha = c[1] + 2.0 * c[2] * dr + 3.0 * c[3] * dr * dr;
+            } else {
+                const double* c = basis_data::kMioHH_spLastCoeffs;
+                de_drr_ha = c[1] + 2.0 * c[2] * dr + 3.0 * c[3] * dr * dr
+                            + 4.0 * c[4] * dr * dr * dr
+                            + 5.0 * c[5] * dr * dr * dr * dr;
+            }
+        }
+        return de_drr_ha * basis_data::kHaToEV * basis_data::kAToBohr;
+    }
+
   private:
+    /// @brief Central difference of one interpolated column w.r.t. r [Å].
+    /// @param tab Tabulated column on the uniform Bohr grid.
+    /// @param r_A Nuclear separation [Å].
+    /// @return d(column)/dr in the column's own unit per Å.
+    static double grid_derivative(const double* tab, double r_A) {
+        constexpr double h = 1.0e-5; // Å
+        const double rp = (r_A + h) * basis_data::kAToBohr;
+        const double rm = std::max(r_A - h, 1.0e-8) * basis_data::kAToBohr;
+        return (grid_value(tab, rp) - grid_value(tab, rm)) / (2.0 * h);
+    }
+
     /// @brief Neville polynomial interpolation on a uniform abscissa
     ///        (DFTB+ `polyInterU1`).
     static double poly_interp(const double* xp, const double* yp, int nn,
@@ -144,13 +213,12 @@ class MioHHTable {
 
     /// @brief DFTB+ "new" SK grid interpolation of one integral column.
     /// @param tab Tabulated column on the uniform Bohr grid (Ha or dimensionless).
-    /// @param r_A Nuclear separation [Å].
+    /// @param r_bohr Nuclear separation [Bohr] — the grid's own unit.
     /// @return Interpolated value in the column's own unit; zero past the taper.
-    static double grid_value(const double* tab, double r_A) {
+    static double grid_value(const double* tab, double r_bohr) {
         constexpr int nInterNew = 8;
         constexpr int nRightInterNew = 4;
         constexpr double deltaR = 1.0e-5;
-        const double r_bohr = r_A * basis_data::kAToBohr;
         const int leng = static_cast<int>(basis_data::kMioHH_nGrid);
         const double incr = basis_data::kMioHH_gridDist_Bohr;
         const double rMax = static_cast<double>(leng) * incr
