@@ -41,11 +41,26 @@ class DomainRuntime {
     void allocate(Context& ctx);
 
     /// @brief Bind the owned DD to a frame (partition / slab bounds / tag maps).
-    void bind_frame(cpu::Frame& frame, Context& ctx);
+    ///
+    /// @param frame System state to bind.
+    /// @param ctx   Runtime context (rank / size).
+    /// @param tag_index_required True when some component in the driver tree
+    ///        declared `Component::requires_tag_index()`. The tag index is then
+    ///        kept — and, under decomposition, **rebuilt** for the owned rows
+    ///        after the initial partition, because the pre-partition map names
+    ///        different atoms than the rows it points at.
+    void bind_frame(cpu::Frame& frame, Context& ctx,
+                    bool tag_index_required = false);
 
-    /// @brief Free the frame tag index + DD tag map when there is no bonded
-    ///        topology to resolve global tags at run time.
-    void release_tag_maps_if_unused(cpu::Frame& frame);
+    /// @brief Free the frame tag index + DD tag map when nothing resolves
+    ///        global tags at run time.
+    ///
+    /// @param frame System state.
+    /// @param tag_index_required Keep both maps when true. Bonded topology
+    ///        implies the need; a component may also declare it without
+    ///        carrying any topology at all (`FixSettle` names waters by tag).
+    void release_tag_maps_if_unused(cpu::Frame& frame,
+                                    bool tag_index_required = false);
 
     /// @brief Adopt an externally-owned DD (stage hand-off); publishes it.
     void adopt(std::unique_ptr<md::mpi::DomainDecomposition> dd, Context& ctx);

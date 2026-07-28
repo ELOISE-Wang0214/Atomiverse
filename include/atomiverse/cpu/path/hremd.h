@@ -21,6 +21,23 @@ namespace path {
 /// Exchange uses the fixed-T Hamiltonian criterion with dual energy
 /// evaluation U_i(x_j), U_j(x_i) on adjacent λ pairs. Sibling of `Remd`
 /// (temperature ladder); does not replace it. No `HRemdConfig` bag.
+///
+/// ## Every replica is thermostatted, and that is not optional
+///
+/// The exchange test
+/// `P = min(1, exp[−β((U_i(x_j) + U_j(x_i)) − (U_i(x_i) + U_j(x_j)))])`
+/// is the Metropolis rule for swapping configurations between two systems that
+/// are each sampling the **canonical** ensemble at the same β with different
+/// Hamiltonians. Replicas integrated at constant energy sample nothing of the
+/// sort: each holds whatever energy its initial velocity draw gave it, β is a
+/// constant rather than a property of a distribution, and the acceptance ratio
+/// measures nothing. This is the same defect `Remd` carried — see its class
+/// comment — and it is worth stating twice because the two ladders fail
+/// identically and silently, with a plausible-looking acceptance ratio.
+///
+/// So `HRemd` attaches a CSVR thermostat (Bussi–Donadio–Parrinello, *J. Chem.
+/// Phys.* **126**, 014101 (2007)) at `temperature` to every replica;
+/// `thermostat_tau` is its coupling time.
 class HRemd {
   public:
     /// @brief Distinct λ values, size ≥ 2.
@@ -33,6 +50,10 @@ class HRemd {
     int steps_per_exchange = 10;
     /// @brief Master seed.
     std::uint64_t seed = 1;
+    /// @brief CSVR coupling time [fs] for the per-replica thermostat.
+    ///        Must be > 0; the canonical ensemble every replica has to sample
+    ///        for the exchange rule to mean anything depends on it.
+    double thermostat_tau = 100.0;
 
     /// @param lambdas Distinct λ values, size ≥ 2.
     /// @param temperature Fixed T [K] (> 0).

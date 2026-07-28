@@ -119,11 +119,17 @@ class PairLJCut : public Pair {
     /// @brief Enable/disable per-pair virial (stress) accumulation.
     ///
     /// The pair virial (6 Voigt components) feeds the pressure / barostat
-    /// path only; a plain NVE run never consumes it. Computing it costs
-    /// ~20-25% of the inner-loop arithmetic (6 extra batch products + a
-    /// horizontal reduce per atom). Disabling it when no stress consumer is
-    /// active mirrors LAMMPS's per-step `vflag` gating. Forces and energy
-    /// are unaffected — bit-identical either way. Default: enabled.
+    /// path only; a plain NVE run never consumes it. Disabling it when no
+    /// stress consumer is active mirrors LAMMPS's per-step `vflag` gating and
+    /// skips the horizontal reduce per atom, the scalar-tail products and the
+    /// flush to `kStress`. Forces and energy are unaffected — bit-identical
+    /// either way. Default: enabled.
+    ///
+    /// The six **batch** products inside the xsimd ket loop are computed
+    /// regardless: the branch that used to skip them made GCC 14.3 at
+    /// `-O3 -march=native` drop most of the reduction (see the comment at that
+    /// site in `pair_lj_cut.cpp`). A 60 %-short stress is not a trade worth
+    /// six FMAs.
     PairLJCut& set_compute_stress(bool on) &;
     PairLJCut set_compute_stress(bool on) &&;
 

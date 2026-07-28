@@ -58,6 +58,12 @@ class Runtime {
     void load(const Plan<cpu::Component>& plan) { plan_ = &plan; }
 
     /// @brief Set the Frame to operate on (zero-copy) and bind the DD to it.
+    ///
+    /// Also decides the fate of the Frame tag index: the loaded Plan is walked
+    /// for components (and nested loop nodes) that declared
+    /// `Component::requires_tag_index()`, and the answer is handed to
+    /// `DomainRuntime::bind_frame`. This is the only place that knows the whole
+    /// driver tree *and* still runs before the frame is bound.
     void set_frame(cpu::Frame& frame);
 
     /// @brief Build all components in Plan order.

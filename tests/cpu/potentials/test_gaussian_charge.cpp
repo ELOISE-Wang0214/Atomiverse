@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <stdexcept>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -138,6 +139,36 @@ TEST(PairGaussianCoul, GaussianPointCross) {
     pot.build({ctx, f});
     pot.launch({ctx, f, 0, 0});
 
+    EXPECT_NEAR(f.meta.get(kEnergy), U, 1e-12);
+    pot.destroy({ctx, f});
+}
+
+/// A type the width table does not cover is a missing parameter, not a point
+/// charge. Returning 0 for it silently reclassified an electrode site — the
+/// energy, the force and the induced charge all change, and nothing says a
+/// row was left out of the table. House rule: lookup tables throw.
+TEST(PairGaussianCoul, ThrowsOnATypeTheWidthTableDoesNotCover) {
+    auto f = dimer(4.0, 1.0, -1.0, /*t0=*/0, /*t1=*/2); // type 2, table has 0..1
+    f.meta.get(kEnergy) = 0;
+    cpu::Context ctx;
+    cpu::PairGaussianCoul pot(20.0, /*eta_by_type=*/{0.0, 1.0}, true);
+    pot.build({ctx, f});
+    EXPECT_THROW(pot.launch({ctx, f, 0, 0}), std::out_of_range);
+    pot.destroy({ctx, f});
+}
+
+/// The documented "no table ⇒ every atom is a point charge" mode is NOT a
+/// fallback — it is a stated configuration — and must keep working for any
+/// type index.
+TEST(PairGaussianCoul, EmptyTableIsAllPointChargesAtAnyTypeIndex) {
+    const double r = 4.0, q0 = 0.5, q1 = -1.0;
+    const double U = ATV::units::coulomb * q0 * q1 / r;
+    auto f = dimer(r, q0, q1, /*t0=*/7, /*t1=*/9);
+    f.meta.get(kEnergy) = 0;
+    cpu::Context ctx;
+    cpu::PairGaussianCoul pot(20.0, {}, false);
+    pot.build({ctx, f});
+    EXPECT_NO_THROW(pot.launch({ctx, f, 0, 0}));
     EXPECT_NEAR(f.meta.get(kEnergy), U, 1e-12);
     pot.destroy({ctx, f});
 }

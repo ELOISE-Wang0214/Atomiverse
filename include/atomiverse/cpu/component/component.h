@@ -100,6 +100,21 @@ class Component {
     /// ghost rows see the updated charges before the force stages read them
     /// (otherwise ghost q is one solve stale — zero at step 0).
     virtual bool updates_owned_charges() const { return false; }
+    /// @brief Resolves global tags through the Frame tag index at run time.
+    ///
+    /// `DomainRuntime` frees the Frame tag index (and the DD mirror, ~50 B per
+    /// atom each) when nothing needs it. "Nothing needs it" used to mean
+    /// `!frame.has_bonded()`, which is wrong: a component can name atoms by
+    /// **tag** and carry no topology at all. `FixSettle` does exactly that — it
+    /// is handed water triples as tags, and rows are not identity (the spatial
+    /// sort renumbers them at its own cadence). Declaring the need here keeps
+    /// the index alive for the whole run, and under domain decomposition gets
+    /// it rebuilt for the owned rows after the initial partition instead of
+    /// dropped.
+    ///
+    /// A payload-free declaration, so it is a predicate here rather than an
+    /// `as_*` protocol object — same shape as `requires_system_stress()`.
+    virtual bool requires_tag_index() const { return false; }
 
     virtual Scheduling scheduling() const { return Scheduling::blocking; }
     virtual int frequency() const { return 0; }

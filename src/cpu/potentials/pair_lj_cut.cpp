@@ -645,14 +645,39 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 acc_fix = acc_fix + v_fxp;
                 acc_fiy = acc_fiy + v_fyp;
                 acc_fiz = acc_fiz + v_fzp;
-                if (do_virial) {
-                    acc_vxx = acc_vxx + v_dx * v_fxp;
-                    acc_vyy = acc_vyy + v_dy * v_fyp;
-                    acc_vzz = acc_vzz + v_dz * v_fzp;
-                    acc_vxy = acc_vxy + v_dx * v_fyp;
-                    acc_vxz = acc_vxz + v_dx * v_fzp;
-                    acc_vyz = acc_vyz + v_dy * v_fzp;
-                }
+                // UNCONDITIONAL — do NOT put `if (do_virial)` back here.
+                //
+                // These six batch reduction chains used to sit inside that
+                // loop-invariant branch. Under the project's own Release
+                // flags (GCC 14.3, `-O3 -march=native`, AVX-512 ⇒ W = 8) the
+                // optimizer then dropped most of the accumulation: on a 64-ion
+                // jittered lattice the ket loop contributed −0.294 eV to the
+                // virial trace where the same registers, summed lane-serially,
+                // give −4.168 eV. Energy and forces stayed exact to 1e-17, so
+                // nothing looked wrong — the total pair virial was simply 60 %
+                // short, and every pressure, stress and barostat number taken
+                // from the default single-type LJ path with it. `-O2`,
+                // `-Os`, `-O3` without `-march=native`, and
+                // `-O3 -march=native -fno-tree-vectorize` all produced the
+                // correct value; only the shipped combination did not.
+                //
+                // The branch was a micro-optimisation (skip 6 batch FMAs in a
+                // plain NVE run). Correct stress outranks it, and a
+                // branch-free accumulation is the form the auto-vectorizer
+                // cannot reassociate away. `do_virial` still gates the
+                // horizontal reduce, the scalar tail and the flush below — all
+                // of which are outside this innermost loop.
+                //
+                // Pinned by tests/cpu/potentials/test_pair_virial.cpp
+                // (`PairLJCut.SimdKetLoopVirialMatchesLatticeSum`), which
+                // compares against an independent brute-force image sum and so
+                // catches the miscompilation whatever produces it.
+                acc_vxx = acc_vxx + v_dx * v_fxp;
+                acc_vyy = acc_vyy + v_dy * v_fyp;
+                acc_vzz = acc_vzz + v_dz * v_fzp;
+                acc_vxy = acc_vxy + v_dx * v_fyp;
+                acc_vxz = acc_vxz + v_dx * v_fzp;
+                acc_vyz = acc_vyz + v_dy * v_fzp;
                 acc_e = acc_e
                         + xsimd::select(mask,
                                         v_eps4 * (v_r6inv * v_r6inv - v_r6inv)

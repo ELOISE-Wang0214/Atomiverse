@@ -732,6 +732,38 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     /// @brief Default nested budget (presets may override; methods set max_iter in 04b).
     int default_budget() const override { return 0; }
 
+    /// @brief `cpu::DriverNode` — does any component in this loop (or below it)
+    ///        resolve global tags at run time?
+    ///
+    /// Both lists are walked because the answer is needed at a moment when
+    /// either may be the live one: the top-level driver is compiled by the
+    /// user's `build()` before `run()` (so `plan()` holds everything and
+    /// `pending_` is empty), while a nested node is compiled inside
+    /// `Runtime::build_components()` — one step *after* the frame is bound, so
+    /// at question time only its `pending_` exists. Missing the nested case
+    /// would silently drop the index for a `FixSettle` inside a `SubDriver`.
+    bool requires_tag_index() const override {
+        bool needed = false;
+        this->for_each_pending_kind(
+            [&](const cpu::Component& c) {
+                needed = needed || c.requires_tag_index();
+            },
+            [&](const cpu::DriverNode* d) {
+                needed = needed || (d && d->requires_tag_index());
+            });
+        for (const auto& slot : this->plan().slots)
+            for (const auto& op : slot.ops) {
+                if (op.is_driver()) {
+                    const auto* nested =
+                        static_cast<const cpu::DriverNode*>(op.nested_driver);
+                    needed = needed || (nested && nested->requires_tag_index());
+                } else if (op.component) {
+                    needed = needed || op.component->requires_tag_index();
+                }
+            }
+        return needed;
+    }
+
     /// @brief Run this loop on a BORROWED Runtime — the nested entry point.
     ///
     /// The child does not own a Backend. It executes its own Plan on its parent's, so

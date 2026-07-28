@@ -97,18 +97,13 @@ bool FixSettle::try_resolve_rows_(const Frame& f) {
 void FixSettle::resolve_rows_(Frame& f) {
     if (try_resolve_rows_(f))
         return;
-    // SETTLE names its waters by tag and hangs them on no topology, so a rigid
-    // water box can legitimately carry no bonds at all — and
-    // `DomainRuntime::release_tag_maps_if_unused` drops the Frame tag index
-    // whenever `has_bonded()` is false, on the reasoning that nothing then
-    // resolves global tags at run time. This component does. Rebuild the map
-    // it needs: O(N), and only when the engine has just dropped it (once per
-    // frame binding) — never per step.
-    f.clear_tag_index();
-    f.rebuild_tag_index(0, f.nlocal());
-    if (try_resolve_rows_(f)) {
-        return;
-    }
+    // The index is published and maintained by the engine: this component
+    // declares `requires_tag_index()`, so `DomainRuntime` keeps it alive for
+    // the run (and rebuilds it for the owned rows after the initial partition),
+    // and `md::notify_sorted` republishes it after every spatial reorder.
+    // Reaching here therefore means a tag this fix was given is not on this
+    // frame — a registration error, not a bookkeeping gap, and rebuilding the
+    // map would only hide it.
     for (const auto& w : waters_) {
         const TagIndex& tag_index = f.meta.get(kTagIndex);
         if (tag_index.count(w.o) == 0 || tag_index.count(w.h1) == 0
@@ -120,6 +115,10 @@ void FixSettle::resolve_rows_(Frame& f) {
                 + std::to_string(static_cast<long long>(w.h2))
                 + ") names a tag no row of this frame carries");
     }
+    throw std::runtime_error(
+        "FixSettle: the Frame tag index does not resolve a registered water. "
+        "Every tag is present, so the index is stale — whatever renumbered the "
+        "rows did not republish it (see md::notify_sorted).");
 }
 
 void FixSettle::build(const BuildContext& ctx) {

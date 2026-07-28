@@ -7,6 +7,7 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
+#include "atomiverse/cpu/potentials/force_scratch.h"
 
 namespace ATV {
 namespace cpu {
@@ -100,12 +101,30 @@ void PairBorn::compute(const LaunchContext& ctx) {
     const int n = static_cast<int>(f.nlocal());
 
     double energy = 0.0;
+    // Pair virial, Voigt xx yy zz xy xz yz [eV] — LAMMPS sign (Σ Δr ⊗ f,
+    // positive under repulsion). Without it a Born–Mayer–Huggins salt run at
+    // constant pressure is driven by a pressure that is missing its entire
+    // short-range repulsion, and the barostat collapses the cell.
+    md::Voigt6 vir{};
     const StorageReal* __restrict x = f.span(kAtom_x);
     const StorageReal* __restrict y = f.span(kAtom_y);
     const StorageReal* __restrict z = f.span(kAtom_z);
     AccReal* __restrict fx = f.span(kAtom_fx);
     AccReal* __restrict fy = f.span(kAtom_fy);
     AccReal* __restrict fz = f.span(kAtom_fz);
+
+    // Δ = r_i − r_j is `-(dx,dy,dz)` here (callers pass x_j − x_i) and the
+    // force on i is `-fpair·(dx,dy,dz)` = `fpair·Δ`, so every virial component
+    // is `fpair·Δ_a·Δ_b = fpair·d_a·d_b` — independent of the sign convention
+    // the caller used for the separation.
+    auto add_virial = [&](double fpair, double dx, double dy, double dz) {
+        vir.v[0] += fpair * dx * dx;
+        vir.v[1] += fpair * dy * dy;
+        vir.v[2] += fpair * dz * dz;
+        vir.v[3] += fpair * dx * dy;
+        vir.v[4] += fpair * dx * dz;
+        vir.v[5] += fpair * dy * dz;
+    };
 
     auto born_pair = [&](int i, int j, double dx, double dy, double dz,
                          double A, double inv_rho, double sigma, double C,
@@ -128,6 +147,7 @@ void PairBorn::compute(const LaunchContext& ctx) {
         fy[j] += fpair * dy;
         fz[j] += fpair * dz;
         energy += v;
+        add_virial(fpair, dx, dy, dz);
     };
 
     if (ctx.runtime.md.pair_list && !multi_) {
@@ -151,6 +171,8 @@ void PairBorn::compute(const LaunchContext& ctx) {
             }
         }
         f.meta.get(kEnergy) += energy;
+        f.meta.get(kEnergyPair) += energy;
+        vir.flush_to(f.meta.get(kStress));
         return;
     }
 
@@ -202,10 +224,13 @@ void PairBorn::compute(const LaunchContext& ctx) {
                 fy[j] += fpair * dy;
                 fz[j] += fpair * dz;
                 energy += v;
+                add_virial(fpair, dx, dy, dz);
             }
         }
     }
     f.meta.get(kEnergy) += energy;
+    f.meta.get(kEnergyPair) += energy;
+    vir.flush_to(f.meta.get(kStress));
 }
 
 } // namespace cpu

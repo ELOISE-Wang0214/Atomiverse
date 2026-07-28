@@ -75,6 +75,12 @@ class FixSettle : public Constraint, public ConstraintProvider {
 
     const ConstraintProvider* as_constraint() const override { return this; }
 
+    /// @brief SETTLE names its waters by **tag** and hangs them on no topology,
+    /// so a rigid-water box can legitimately carry no bonds at all. The Frame
+    /// tag index is what turns those tags into rows, every step, after the
+    /// spatial sort has renumbered them.
+    bool requires_tag_index() const override { return true; }
+
     int n_constraints(const cpu::Context& /*ctx*/,
                       const cpu::Frame& /*frame*/) const override {
         return 3 * static_cast<int>(waters_.size());

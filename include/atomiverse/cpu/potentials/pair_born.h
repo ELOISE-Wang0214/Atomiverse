@@ -44,7 +44,14 @@ struct BornTypeCoeff {
 ///
 /// Prefer neighbor list when `ctx.md.pair_list` is published (production
 /// bulk path); otherwise O(N²) all-pairs (textbook foothold). Coulomb is a
-/// separate component (`PairCoulCut`).
+/// separate component (`PairCoulCut` / `CoulLong` + a reciprocal partner).
+///
+/// Writes energy to `kEnergy` + `kEnergyPair` and the pair virial
+/// \(\sum \Delta r \otimes f\) to `kStress` (Voigt xx yy zz xy xz yz [eV],
+/// LAMMPS sign). The virial is what makes this style usable under a barostat:
+/// in a molten/crystalline salt the Born–Mayer wall is the entire repulsive
+/// half of the pressure, and a constant-pressure run without it collapses the
+/// cell onto the Madelung attraction.
 class PairBorn : public Pair {
   public:
     /// @param A      Born–Mayer prefactor [eV] (must be ≥ 0).

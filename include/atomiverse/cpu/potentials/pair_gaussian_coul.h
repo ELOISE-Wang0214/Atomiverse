@@ -11,6 +11,7 @@
 /// keeps for the no-list case.
 #pragma once
 
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -29,7 +30,10 @@ class PairGaussianCoul : public Pair {
     /// @param cutoff      Pair cutoff [Å]; must be > 0.
     /// @param eta_by_type Width \(\eta\) [Å⁻¹] indexed by `kAtom_type`.
     ///                    Entry \(\le 0\) means point charge for that type.
-    ///                    Empty vector ⇒ every atom is a point charge.
+    ///                    Empty vector ⇒ every atom is a point charge. A
+    ///                    non-empty table must cover **every** type present in
+    ///                    the frame — a type past the end throws rather than
+    ///                    quietly becoming a point charge.
     /// @param include_self If true (default), add Gaussian self-energy
     ///                     \(\frac12\texttt{coulomb}\,q_i^2 G_{ii}\) for
     ///                     Gaussian types.
@@ -55,9 +59,27 @@ class PairGaussianCoul : public Pair {
     std::vector<double> eta_by_type_;
     bool include_self_ = true;
 
+    /// @brief Width for one atom type [Å⁻¹].
+    ///
+    /// An **empty** table is the documented "every atom is a point charge"
+    /// mode, so it answers 0 for every type. A **non-empty** table that does
+    /// not cover the type is a specification error and throws: the fallback it
+    /// used to return silently reclassified an electrode site as a point
+    /// charge, which changes the energy, the force and the induced charge
+    /// without any sign that a parameter was missing.
+    /// @throws std::out_of_range if the table is non-empty and @p type is
+    ///         outside it.
     double eta_of(int type) const {
+        if (eta_by_type_.empty())
+            return 0.0;
         if (type < 0 || static_cast<std::size_t>(type) >= eta_by_type_.size())
-            return 0.0; // unknown type ⇒ point
+            throw std::out_of_range(
+                "PairGaussianCoul: atom type " + std::to_string(type)
+                + " has no Gaussian width. The table passed to the constructor "
+                  "covers types 0.."
+                + std::to_string(eta_by_type_.size() - 1)
+                + "; list every type (use eta <= 0 for a point charge), or "
+                  "pass an empty table to make every atom a point charge.");
         return eta_by_type_[static_cast<std::size_t>(type)];
     }
 };

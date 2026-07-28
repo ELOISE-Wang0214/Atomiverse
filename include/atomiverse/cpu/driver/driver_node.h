@@ -44,6 +44,15 @@ class DriverNode {
     /// @brief Default nested-run budget when the caller passes budget < 0.
     /// @return Preset-specific default (0 unless overridden).
     virtual int default_budget() const { return 0; }
+
+    /// @brief Does anything in this loop resolve global tags at run time?
+    ///
+    /// Asked once, before the frame is bound, so `DomainRuntime` can decide
+    /// whether the Frame tag index may be released. A nested node has to be
+    /// able to answer for its own components: the release happens at
+    /// `Runtime::set_frame`, which is one call above the whole tree.
+    /// @see cpu::Component::requires_tag_index
+    virtual bool requires_tag_index() const { return false; }
 };
 
 } // namespace cpu

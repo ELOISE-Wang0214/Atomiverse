@@ -3,9 +3,11 @@
 
 #include <cmath>
 #include <stdexcept>
+#include <unordered_map>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/dynamics/fix_csvr.h"
 #include "atomiverse/cpu/dynamics/init.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
 
@@ -27,6 +29,8 @@ HRemd::HRemd(std::vector<double> lambdas_, double temperature_, double dt_,
         throw std::invalid_argument("HRemd: temperature must be > 0");
     if (steps_per_exchange < 1)
         throw std::invalid_argument("HRemd: steps_per_exchange must be ≥ 1");
+    if (!(thermostat_tau > 0.0))
+        throw std::invalid_argument("HRemd: thermostat_tau must be > 0 fs");
     expansion_ = std::make_unique<IdentityReplication>(lambdas);
     exchange_rng_.seed(seed);
 }
@@ -54,11 +58,21 @@ void HRemd::ensure_built_(cpu::Frame& frame) {
     const int n = band_->size();
     programs_.clear();
     programs_.reserve(static_cast<std::size_t>(n));
+    if (!(thermostat_tau > 0.0))
+        throw std::invalid_argument("HRemd: thermostat_tau must be > 0 fs");
     for (int i = 0; i < n; ++i) {
         auto md = std::make_unique<cpu::md::MD>();
         md->set_integrator(cpu::md::VelocityVerlet{dt});
         md->set_observer(cpu::md::InitVelocity{temperature,
                                       static_cast<unsigned>(seed ^ (i + 1u))});
+        // The exchange test is the Metropolis rule for swapping between two
+        // CANONICAL ensembles that differ only in their Hamiltonian. Without a
+        // thermostat each replica is an NVE trajectory carrying whatever its
+        // velocity draw gave it, β is a constant rather than a distribution,
+        // and the accept ratio measures nothing.
+        md->set_thermostat(cpu::md::FixCSVR{
+            temperature, thermostat_tau, dt,
+            static_cast<std::uint32_t>((seed * 2654435761u) ^ (i + 1u))});
         builder_(*md, lambdas[static_cast<std::size_t>(i)], builder_user_);
         md->enable_timing(false);
         md->build();
@@ -100,13 +114,36 @@ void HRemd::exchange_round_(bool even_edges) {
             ++accepts_;
             // Swap configurations only (fixed T — no velocity rescale).
             const int nloc = fi.nlocal();
+            if (fj.nlocal() != nloc)
+                throw std::runtime_error(
+                    "HRemd: replicas hold different atom counts — an exchange "
+                    "swaps one configuration for another, so the two must be "
+                    "the same system");
+            // Pair the atoms by TAG, not by row. Each replica runs its own MD
+            // program with its own neighbour list, and `atom_modify sort`
+            // spatially reorders owned rows at its own cadence in each — so
+            // two replicas that started identical do not stay row-aligned. A
+            // row-wise swap would then hand replica i atom 7's coordinates
+            // under atom 3's tag. (Same defect, same fix, as `Remd`.)
+            const auto tag_i = fi.span(kAtom_tag);
+            const auto tag_j = fj.span(kAtom_tag);
+            std::unordered_map<TagInt, int> row_of_j;
+            row_of_j.reserve(static_cast<std::size_t>(nloc));
+            for (int b = 0; b < nloc; ++b)
+                row_of_j.emplace(tag_j[b], b);
             for (int a = 0; a < nloc; ++a) {
-                std::swap(fi.span(kAtom_x)[a], fj.span(kAtom_x)[a]);
-                std::swap(fi.span(kAtom_y)[a], fj.span(kAtom_y)[a]);
-                std::swap(fi.span(kAtom_z)[a], fj.span(kAtom_z)[a]);
-                std::swap(fi.span(kAtom_vx)[a], fj.span(kAtom_vx)[a]);
-                std::swap(fi.span(kAtom_vy)[a], fj.span(kAtom_vy)[a]);
-                std::swap(fi.span(kAtom_vz)[a], fj.span(kAtom_vz)[a]);
+                const auto it = row_of_j.find(tag_i[a]);
+                if (it == row_of_j.end())
+                    throw std::runtime_error(
+                        "HRemd: replicas do not carry the same tags — an "
+                        "exchange is a swap between two copies of ONE system");
+                const int b = it->second;
+                std::swap(fi.span(kAtom_x)[a], fj.span(kAtom_x)[b]);
+                std::swap(fi.span(kAtom_y)[a], fj.span(kAtom_y)[b]);
+                std::swap(fi.span(kAtom_z)[a], fj.span(kAtom_z)[b]);
+                std::swap(fi.span(kAtom_vx)[a], fj.span(kAtom_vx)[b]);
+                std::swap(fi.span(kAtom_vy)[a], fj.span(kAtom_vy)[b]);
+                std::swap(fi.span(kAtom_vz)[a], fj.span(kAtom_vz)[b]);
             }
             std::swap(fi.meta.get(kEnergy), fj.meta.get(kEnergy));
         }

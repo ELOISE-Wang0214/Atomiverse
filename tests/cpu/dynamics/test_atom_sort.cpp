@@ -107,3 +107,36 @@ TEST(AtomSort, NotifyRepublishesTheFrameTagIndex) {
     for (int row = 0; row < n; ++row)
         EXPECT_EQ(index.at(f.span(kAtom_tag)[row]), row);
 }
+
+/// …and it must do so **without** a decomposition. `notify_sorted` used to
+/// early-return on `dd == nullptr` before touching the Frame index, so a
+/// pipeline with sorting on and no DD would have kept a map naming the
+/// pre-sort rows: no error, no NaN, every tag silently pointing at the wrong
+/// atom. Unreachable today (`DomainRuntime::allocate` always makes a `dd`) —
+/// which is precisely why it needs a gate rather than a comment.
+TEST(AtomSort, NotifyRepublishesTheFrameTagIndexWithoutADecomposition) {
+    constexpr int n = 8;
+    cpu::Frame f(n);
+    const double coords[n][3] = {
+        {9.0, 0.1, 0.1}, {0.1, 0.1, 0.1}, {9.0, 9.0, 0.1}, {0.1, 9.0, 0.1},
+        {0.1, 0.1, 9.0}, {9.0, 0.1, 9.0}, {0.1, 9.0, 9.0}, {9.0, 9.0, 9.0},
+    };
+    for (int i = 0; i < n; ++i) {
+        f.span(kAtom_x)[i] = coords[i][0];
+        f.span(kAtom_y)[i] = coords[i][1];
+        f.span(kAtom_z)[i] = coords[i][2];
+        f.span(kAtom_tag)[i] = i + 1;
+        f.span(kAtom_type)[i] = i;
+        f.span(kAtom_mass)[i] = 1.0;
+    }
+    f.box = cpu::Box::cubic(10.0);
+    f.rebuild_tag_index(0, n);
+
+    ASSERT_TRUE(cpu::md::sort_owned_atoms(f, n, /*binsize=*/5.0));
+    cpu::md::notify_sorted(/*dd=*/nullptr, f);
+
+    const auto& index = f.meta.get(cpu::kTagIndex);
+    ASSERT_EQ(index.size(), static_cast<std::size_t>(n));
+    for (int row = 0; row < n; ++row)
+        EXPECT_EQ(index.at(f.span(kAtom_tag)[row]), row);
+}

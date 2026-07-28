@@ -107,36 +107,49 @@ bool sort_owned_atoms(Frame& f, int n_local, double binsize);
 /// when there are no ghosts (serial). Zeroing `n_ghost` without clearing
 /// `recv_counts`/`send_lists` makes HaloRecv layout checks fail.
 ///
-/// @param dd Domain decomposition (may be null — no-op).
+/// A reorder invalidates every cached row index in the process, and the two
+/// places that hold them are the DD's `tag_to_local` and the **Frame's own tag
+/// index**. Those are not the same lifetime: the Frame index is published even
+/// when no decomposition exists, and a component that resolves tags per step
+/// (`FixSettle`) reads it, not the DD's. So the Frame side is republished
+/// unconditionally — an early return on `dd == nullptr` left it naming the
+/// pre-sort rows, which is silent corruption rather than a failure. (No
+/// in-tree pipeline reaches here with a null `dd` today; that is exactly why
+/// it would not have been noticed.)
+///
+/// @param dd Domain decomposition (may be null — the DD half is then skipped).
 /// @param f  Frame after sort.
 /// @param clear_ghosts If true, drop ghost bookkeeping (pre-borders path).
 inline void notify_sorted(DomainDecomposition* dd, Frame& f,
                           bool clear_ghosts = true) {
-    if (!dd)
-        return;
-    // Rebuild owner half of tag_to_local; drop ghost half when borders redo it.
-    dd->tag_to_local.clear();
-    if (clear_ghosts) {
-        dd->ghost_tags.clear();
-        dd->n_ghost = 0;
-        f.set_nghost(0);
-        for (auto& sl : dd->send_lists)
-            sl.clear();
-        dd->recv_counts.fill(0);
-        ++dd->halo_generation; // ghost slots invalid
-    }
-    {
+    if (dd) {
+        // Rebuild owner half of tag_to_local; drop the ghost half when borders
+        // redo it.
+        dd->tag_to_local.clear();
+        if (clear_ghosts) {
+            dd->ghost_tags.clear();
+            dd->n_ghost = 0;
+            f.set_nghost(0);
+            for (auto& sl : dd->send_lists)
+                sl.clear();
+            dd->recv_counts.fill(0);
+            ++dd->halo_generation; // ghost slots invalid
+        }
         const int n = dd->n_local > 0 ? dd->n_local : f.nlocal();
         // Always rebuild owner tag map after reorder (bonded + gather).
         dd->tag_to_local.reserve(static_cast<std::size_t>(n));
         const TagInt* tag = f.span(kAtom_tag);
         for (int i = 0; i < n; ++i)
             dd->tag_to_local.emplace(tag[i], i);
+        // Invalidate BondedTupleCache and any other local-index caches.
+        ++dd->neighbor_generation;
+    } else if (clear_ghosts) {
+        f.set_nghost(0);
     }
-    // Invalidate BondedTupleCache and any other local-index caches.
-    ++dd->neighbor_generation;
+    const int n_owned =
+        f.nlocal() > 0 ? f.nlocal() : (dd ? dd->n_local : f.nlocal());
     f.clear_tag_index();
-    f.rebuild_tag_index(0, f.nlocal() > 0 ? f.nlocal() : dd->n_local);
+    f.rebuild_tag_index(0, n_owned);
 }
 
 } // namespace md

@@ -54,7 +54,8 @@ DomainRuntime::release(Context& ctx) {
     return std::move(dd_);
 }
 
-void DomainRuntime::bind_frame(cpu::Frame& frame, Context& ctx) {
+void DomainRuntime::bind_frame(cpu::Frame& frame, Context& ctx,
+                               bool tag_index_required) {
     if (!dd_)
         return;
 
@@ -77,7 +78,16 @@ void DomainRuntime::bind_frame(cpu::Frame& frame, Context& ctx) {
             // authoritative tag->row map is `dd->tag_to_local`; the local index
             // still holds the PRE-partition identity mapping, so every entry now
             // points at a different atom than the one it names.
+            //
+            // A component that declared `requires_tag_index()` still needs one,
+            // and needs it CORRECT — so rebuild it over this rank's owned rows
+            // rather than leaving it absent. Dropping it and letting the
+            // consumer notice is what forced `FixSettle` to carry its own O(N)
+            // re-establish pass.
             frame.release_tag_index();
+            if (tag_index_required)
+                frame.rebuild_tag_index(0, dd_->n_local > 0 ? dd_->n_local
+                                                            : frame.nlocal());
         } else {
             dd_->compute_sublo_subhi(frame.box);
             // Carry-over preserves the partition, but the allocation bound must
@@ -86,7 +96,7 @@ void DomainRuntime::bind_frame(cpu::Frame& frame, Context& ctx) {
             if (frame.nlocal() > dd_->capacity)
                 dd_->capacity = frame.nlocal();
         }
-        release_tag_maps_if_unused(frame);
+        release_tag_maps_if_unused(frame, tag_index_required);
         return;
     }
 #else
@@ -94,15 +104,21 @@ void DomainRuntime::bind_frame(cpu::Frame& frame, Context& ctx) {
 #endif
     dd_->bind(frame);
     dd_->compute_sublo_subhi(frame.box);
-    release_tag_maps_if_unused(frame);
+    release_tag_maps_if_unused(frame, tag_index_required);
 }
 
-void DomainRuntime::release_tag_maps_if_unused(cpu::Frame& frame) {
-    if (frame.has_bonded())
+void DomainRuntime::release_tag_maps_if_unused(cpu::Frame& frame,
+                                               bool tag_index_required) {
+    // `has_bonded()` alone was the predicate, and it is not the question. A
+    // component can name atoms by global tag and carry no topology whatsoever
+    // — `FixSettle` is handed water triples as tags — so "no bonds" does not
+    // imply "nothing resolves tags". Ask the driver tree instead; bonded
+    // topology remains a sufficient reason on its own.
+    if (tag_index_required || frame.has_bonded())
         return;
-    // No bonded topology → nothing resolves global tags at run time. The
-    // loaders may have populated the local index before topology turned out
-    // empty; drop it and the DD mirror (~50 B/atom each).
+    // Nothing resolves global tags at run time. The loaders may have populated
+    // the local index before topology turned out empty; drop it and the DD
+    // mirror (~50 B/atom each).
     frame.release_tag_index();
     if (dd_) {
         std::unordered_map<TagInt, int>{}.swap(dd_->tag_to_local);

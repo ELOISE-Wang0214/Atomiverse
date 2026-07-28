@@ -78,7 +78,27 @@ void Runtime::init() {
 
 void Runtime::set_frame(cpu::Frame& frame) {
     frame_ = &frame;
-    domain_.bind_frame(frame, context_);
+    bool needs_tag_index = false;
+    if (plan_) {
+        for (const auto& slot : plan_->slots) {
+            for (const auto& op : slot.ops) {
+                if (op.is_driver()) {
+                    const auto* nested =
+                        static_cast<const cpu::DriverNode*>(op.nested_driver);
+                    needs_tag_index =
+                        needs_tag_index || (nested && nested->requires_tag_index());
+                } else if (op.component) {
+                    needs_tag_index =
+                        needs_tag_index || op.component->requires_tag_index();
+                }
+                if (needs_tag_index)
+                    break;
+            }
+            if (needs_tag_index)
+                break;
+        }
+    }
+    domain_.bind_frame(frame, context_, needs_tag_index);
 }
 
 void Runtime::adopt_dd(std::unique_ptr<md::mpi::DomainDecomposition> dd) {
