@@ -81,17 +81,21 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   exposed. Fix options: per-case `set_threads` sweep, or the regressions
   CMake target exporting `OMP_NUM_THREADS=1` by default with per-case
   opt-out. Route /mol:fix (mechanical, wide).
-- **13 GPW-gated dynamics regressions do not compile at pristine HEAD**
-  (named 2026-07-27, esmm-contract-05 GREEN; proven pre-existing by
-  stash-baseline): xl-bomd-{water,uks,kpoints,linearized-forces,
-  uks-kpoints}, cpmd-{kpoints,rattle-water,uks,electronic-thermostat},
-  second-gen-cpmd-{water,uks,ot,uks-ot} still call `MD::set_evaluator_ref`,
-  `.cpmd_mu`, `.last_s2`, `.second_gen_cp_k/_max_iter`, `.use_ot` — all
-  removed by the operator's no-compat migration 17f52238; invisible because
-  GPW was OFF in that sweep's builds. Migration target: the
-  `electronic::CarParrinello` / wrapper API (see the 5 already-migrated
-  siblings cpmd-rhf-h2 / cpmd-rks-water / cpmd-uhf-o2 / xl-bomd-rhf-water /
-  cpmd-water). Route /mol:fix (mechanical, 13 TUs).
+- ~~**13 GPW-gated dynamics regressions do not compile at pristine HEAD**~~
+  **FIXED 2026-07-28 (e30ea9a3)** — was 14, not 13 (`second-gen-cpmd-kpoints`
+  was missing from the ticket). Call-site migration to the post-17f52238 API:
+  order 0 is the `set_evaluator_ref` default; `cpmd_mu`/`second_gen_cp_k`/
+  `_max_iter` are ctor args; `use_ot` stays a public `GPWEvaluator` member set
+  before the move; `last_s2` via the wrapper's `method()`. `cmake --build`
+  now exits 0 (703 targets, zero errors); all 14 PASS their drift envelopes.
+  No pin or tolerance touched.
+- **Two OT cases exceed the 60 s regression budget** (named 2026-07-28, same
+  sweep): `second-gen-cpmd-ot` 86 s and `second-gen-cpmd-uks-ot` 95 s at the
+  node's default thread count — both PASS; pre-existing case cost that was
+  invisible while they did not compile. NOTE the fix is **not** `set_threads(1)`
+  (opposite shape to the small-system thread trap below): single-threaded they
+  take 110 s and >180 s. Real options: shrink the case (physics/spec change) or
+  raise the budget for GPW/OT cases. Route /mol:discuss + /mol:fix.
 
 ## Live — deferred PySCF engine gaps (2026-07-24)
 
