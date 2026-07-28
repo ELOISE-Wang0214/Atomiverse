@@ -36,9 +36,11 @@ enum class DftbSkSet {
 ///   `regressions/semiempirical/dftb2-dftbplus-energy-pin/`); other pairs from
 ///   exponential sketch (`dftb_mio_tables.h` + spin_W). **Γ-point PBC:**
 ///   lattice-summed H⁰/S, screened γ, and repulsive within static SK cutoffs
-///   (molecular limit when L ≫ r_cut). Closed shell (`multiplicity == 1`):
-///   analytic nuclear forces (HF + Pulay + SCC γ + repulsive) under the
-///   min-image molecular limit. Open shell: re-SCC central FD.
+///   (molecular limit when L ≫ r_cut). **Analytic** nuclear forces for closed
+///   shell **and** collinear open shell (HF + Pulay + SCC γ + repulsive; spin
+///   shifts on ∂S) under the min-image molecular limit — fixed-Δq/m
+///   Hellmann–Feynman (see `reg_dftb2-analytic-forces`,
+///   `reg_dftb2-spin-analytic-forces`).
 /// - `sk_set = ThreeOb`: `basis_data/dftb_3ob_tables.h` 3ob-3-1 radial H/S +
 ///   repulsive (Gaus et al., JCTC 2013; organic CHNO). Closed-shell energy;
 ///   forces are re-SCC FD. Spin channel is MioSketch-only.
