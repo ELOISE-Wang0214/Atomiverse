@@ -99,8 +99,11 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
 
 ## Ticket — /mol:fix owed (named 2026-07-28, repo-cleanup wave)
 
-- **DFTB3's SCC potential is not the derivative of its energy** (blocking:
-  `wf/dftb3-water-mio` is the ONE branch NOT merged; its tip is kept).
+- ~~**DFTB3's SCC potential is not the derivative of its energy**~~
+  **FIXED 2026-07-28** (`602c7d02` on the branch, merged as `68df18a8`;
+  chain closed by `c0bfffef`..`148a17ed`). Euler identity now 4.4e-16, FD
+  5.0e-10. The branch is merged and pruned. Original diagnosis kept below
+  for the record.
   Measured on the merge candidate: `V_code` vs numerical `∂(E²+E³)/∂Δq` off by
   **0.457 eV** at Δq=(−0.6,0.3,0.3), while with `U_d=0` (pure second order) the
   residual is 4.5e-10 — the defect is isolated to the third-order block. Euler
@@ -112,7 +115,19 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   100% the H-parameter upgrade — but re-pinning was refused: it would bless a
   non-variational solution as dev's reference DFTB3 number. Fix the physics
   first, then re-pin and merge the branch.
-- **DFTB2's charge-dependent gradient is wrong for polar systems**
+- ~~**DFTB2's charge-dependent gradient is wrong for polar systems**~~
+  **FIXED 2026-07-28** — root cause was three-fold and none of it was the
+  gradient formula alone: (a) the SCC never converged (undamped Picard
+  limit cycle; energies were selected by `max_scc` parity), (b) the
+  double-counting route used net instead of gross Mulliken population
+  (a spurious term linear in dq, ~7.85 eV), (c) the analytic gamma gradient
+  carried the wrong SIGN in all three assemblies. The earlier A/B that
+  "ruled out the sign flip" was measuring a non-stationary solution, so it
+  proved nothing. Now: Anderson/Pulay mixing (`mix_beta` public member,
+  budget exhaustion throws), `E = Tr(rho H0) + E2 (+E3) (+E_spin) + E_rep`,
+  and analytic-vs-FD forces at 2.5e-07 / 4.9e-09 eV/A (was 0.228 / 0.748).
+  Gates tightened 1.0 -> 1e-5 eV/A and 5e-3 -> 1e-8 eV/A^3; both DFTB+
+  invariant pins unmoved. Original text kept below.
   (pre-existing, now present in three functions). Every Δq=0 case is exact
   (O2 3.0e-07, H2 5e-03 eV/Å); every polar case is off (H2O mio 0.23/0.75,
   H2O 3ob **0.84/0.24** eV/Å — 8× relative on `F_H1_y`). A converged SCC-DFTB2
@@ -125,10 +140,20 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   ungated in-tree (both D3 gates run `with_forces = false`), and D3 is absent
   from `kStress` on both paths — `d3=true` + `with_stress=true` silently yields
   an electronic+repulsive-only stress. No periodic D3, no periodic stress.
-- **The mio-1-1 H–H reader exists twice**: `internal/mio_hh_table.h` (new,
-  used by DFTB0) and a private copy in `dftb2.cpp`'s anonymous namespace
-  (~lines 102–277). Rewire dftb2 onto the shared header (needs
-  `d_repulsive_dr` added to `MioHHTable`). Route /mol:refactor.
+- ~~**The mio-1-1 H–H reader exists twice**~~ **FIXED 2026-07-28**
+  (`c0bfffef`): dftb2's private copy deleted, both dftb2 and dftb3 now read
+  `internal/mio_hh_table.h`; `d_repulsive_dr` / `d_hopping_ss_dr` /
+  `d_overlap_ss_dr` added. Proven a pure refactor — every DFTB2 number
+  byte-identical across the rewire.
+- **No open-shell Delta-q != 0 force gate** (named 2026-07-28): O2 is
+  homonuclear, so `analytic_forces_unrestricted` carries the corrected gamma
+  sign with nothing testing it — which is exactly how the sign bug survived
+  in three functions. An open-shell polar case is owed.
+- **3ob `with_stress` still falls back to multi-SCC strain-FD** although the
+  analytic 3ob SK derivatives now exist.
+- **MioSketch water charges are physically backwards** (Delta-q = +0.122 on O,
+  -0.061 on each H) — a property of the invented exponential O/H sketch rows,
+  not of the SCC. Real O/H mio-1-1 SK data is owed, like H-H already has.
 - **Seven PW/bands/DOS regressions resolve `tests/data/` relative to CWD**, so
   they FAIL when the `regressions` target runs them from the build directory
   and PASS from the repo root (verified both ways on `reg_bands-dos-si`,
