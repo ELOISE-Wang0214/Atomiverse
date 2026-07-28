@@ -917,10 +917,25 @@ D4Result dftd4(const std::vector<int>& Z,
     return res;
 }
 
-double D4::energy(const Frame& frame) const {
+namespace {
+
+/// @brief The isolated molecular D4 evaluation shared by energy() and forces().
+///
+/// ONE parameter list for both entry points: the energy a caller reports and
+/// the force it reports must be two readings of the same functional, or a mean
+/// field that folds E_disp into its total energy stops being conservative.
+/// @param frame        System geometry (Å, Z).
+/// @param m            The method whose members set the D4 parameters.
+/// @param want_forces  Also fill `forces` (6N extra energy evaluations).
+/// @return Energy [Hartree]; forces [Hartree/Bohr] iff `want_forces`.
+D4Result evaluate_d4(const Frame& frame, const D4& m, bool want_forces) {
+    constexpr double kCnCut = 30.0;    // Bohr (dftd4 default)
+    constexpr double kDisp2Cut = 60.0; // Bohr (dftd4 default)
     const int n = static_cast<int>(frame.nlocal());
+    D4Result res;
+    res.forces.assign(static_cast<std::size_t>(n < 0 ? 0 : n), {0.0, 0.0, 0.0});
     if (n <= 0)
-        return 0.0;
+        return res;
 
     const auto type = frame.span(kAtom_type);
     const auto x = frame.span(kAtom_x);
@@ -937,9 +952,25 @@ double D4::energy(const Frame& frame) const {
         pos[static_cast<std::size_t>(i)] = {x[i] * a2b, y[i] * a2b, z[i] * a2b};
     }
     const double cell[3] = {0.0, 0.0, 0.0};
-    return dftd4_energy(Z, pos, cell, /*periodic=*/false, s6, s8, a1, a2, ga,
-                        gc, wf, charge, /*cn_cut=*/30.0, /*disp2_cut=*/60.0,
-                        s9);
+    if (!want_forces) {
+        res.energy =
+            dftd4_energy(Z, pos, cell, /*periodic=*/false, m.s6, m.s8, m.a1,
+                         m.a2, m.ga, m.gc, m.wf, m.charge, kCnCut, kDisp2Cut,
+                         m.s9);
+        return res;
+    }
+    return dftd4(Z, pos, cell, /*periodic=*/false, m.s6, m.s8, m.a1, m.a2, m.ga,
+                 m.gc, m.wf, m.charge, kCnCut, kDisp2Cut, m.s9);
+}
+
+} // namespace
+
+double D4::energy(const Frame& frame) const {
+    return evaluate_d4(frame, *this, /*want_forces=*/false).energy;
+}
+
+std::vector<std::array<double, 3>> D4::forces(const Frame& frame) const {
+    return evaluate_d4(frame, *this, /*want_forces=*/true).forces;
 }
 
 } // namespace scf

@@ -744,6 +744,13 @@ if(ATV_BUILD_HF)
     # E_cons drift physics is regressions/dynamics/cpmd-{rhf-h2,rks-water,
     # uhf-o2}.
     atv_add_cpp_test(test_cpu_scf_cpmd            cpu/scf/test_scf_cpmd.cpp)
+    # BOMD+d3bj/d4 conservativeness: `MeanFieldMethod` adds E_disp to the total
+    # energy, so `internal::ScfGradient` must add −∂E_disp/∂R to the force. That
+    # reduces to whether D3BJ/D4 `forces()` differentiates their own `energy()`
+    # — measured here by central difference, no SCF (ms). The end-to-end
+    # conservation witness is regressions/scf/bomd-d3bj-ar2-nve.
+    atv_add_cpp_test(test_cpu_scf_dispersion_gradient
+                     cpu/scf/test_dispersion_gradient.cpp)
     # esmm-cpmd-05-scf-xlbomd: XL-BOMD (Niklasson JCP 130, 214109) as the
     # Gaussian-SCF guess — the xl_bomd/xl_bomd_k member surface, the
     # exclusivity gates (ASPC predictor, cpmd, Table-I order K in [3,9]),

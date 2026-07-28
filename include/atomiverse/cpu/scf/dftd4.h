@@ -112,6 +112,22 @@ class D4 {
     /// @param frame System geometry (Å, Z).
     /// @return E_disp [Hartree] (negative when dispersion is attractive).
     double energy(const Frame& frame) const;
+
+    /// @brief Dispersion forces \(F_A = -\partial E_{disp}/\partial R_A\) for
+    ///        the same functional `energy()` evaluates.
+    ///
+    /// Delegates to the free `dftd4()` gradient: central differences of the
+    /// geometry-only D4 energy functional (CN + EEQ charges + BJ pair + ATM all
+    /// move with the nuclei), step `grad_h` = 10⁻⁴ Bohr, dual-gated against
+    /// offline dftd4 3.7.0 `-g`. Same members, same isolated evaluation, same
+    /// tables as `energy()`, so the pair is conservative by construction.
+    /// Cost is 6N energy evaluations — set `d3bj` instead for long dynamics on
+    /// large systems (D3(BJ) has a closed-form analytic gradient).
+    /// Unsupported Z throws.
+    ///
+    /// @param frame System geometry (Å, Z).
+    /// @return One xyz triple per atom [Hartree/Bohr], length `frame.nlocal()`.
+    std::vector<std::array<double, 3>> forces(const Frame& frame) const;
 };
 
 } // namespace scf

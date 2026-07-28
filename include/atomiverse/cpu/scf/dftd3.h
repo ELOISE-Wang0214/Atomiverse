@@ -9,14 +9,18 @@
 /// @code
 ///   cpu::scf::D3BJ d3;                 // PBE-D3(BJ) defaults
 ///   double e_disp = d3.energy(frame);  // [Hartree]
+///   auto f = d3.forces(frame);         // f[A] = −∂E_disp/∂R_A [Hartree/Bohr]
 ///
-///   // Or fold into RKS total energy:
+///   // Or fold into RKS total energy AND its analytic gradient:
 ///   cpu::scf::RKS rks(cpu::scf::XCType::PBE);
 ///   rks.d3bj = true;
 ///   rks.run(frame);
 ///   double ed = rks.energy_disp();     // [Hartree]
 /// @endcode
 #pragma once
+
+#include <array>
+#include <vector>
 
 #include "atomiverse/cpu/frame/frame.h"
 
@@ -47,6 +51,19 @@ class D3BJ {
     /// @param frame System geometry (Å, Z).
     /// @return E_disp [Hartree] (negative when dispersion is attractive).
     double energy(const Frame& frame) const;
+
+    /// @brief Analytic dispersion forces \(F_A = -\partial E_{disp}/\partial
+    ///        R_A\) for the same functional `energy()` evaluates.
+    ///
+    /// Two-body C6/C8 BJ terms **plus** the coordination-number chain
+    /// \(\partial E/\partial C_n \cdot dC_n/dCN \cdot dCN/dR\) — the term that
+    /// makes the gradient exact rather than merely dominant. Same members, same
+    /// isolated (non-periodic) evaluation, same table lookups as `energy()`, so
+    /// the pair is conservative by construction. Unsupported Z throws.
+    ///
+    /// @param frame System geometry (Å, Z).
+    /// @return One xyz triple per atom [Hartree/Bohr], length `frame.nlocal()`.
+    std::vector<std::array<double, 3>> forces(const Frame& frame) const;
 };
 
 } // namespace scf

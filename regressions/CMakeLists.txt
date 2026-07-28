@@ -496,6 +496,10 @@ if(ATV_BUILD_HF)
         # coefficients. RHF/STO-3G H2O — warm-step iteration reduction vs a
         # cold-start twin and a plain-BOMD (last-density reuse) twin.
         atv_add_regression(dynamics xl-bomd-rhf-water)
+        # Born–Oppenheimer NVE on a purely dispersion-bound dimer: the witness
+        # that `e_total_ += e_disp_` and the ScfGradient dispersion leg
+        # describe ONE surface. Before the leg existed this case dissociated.
+        atv_add_regression(scf bomd-d3bj-ar2-nve)
     endif()
 endif()
 if(ATV_BUILD_PATH)

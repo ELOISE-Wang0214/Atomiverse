@@ -40,7 +40,9 @@ cpu::scf::internal::ScfGradient make_grad(cpu::scf::SpinType spin) {
                                            cpu::scf::GridLevel::SG0,
                                            0,
                                            0,
-                                           false};
+                                           false,
+                                           /*d3bj=*/false,
+                                           /*d4=*/false};
 }
 
 } // namespace

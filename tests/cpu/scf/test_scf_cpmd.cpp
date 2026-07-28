@@ -229,7 +229,9 @@ cpu::scf::internal::ScfGradient make_grad(cpu::scf::SpinType spin) {
                                            cpu::scf::GridLevel::SG0,
                                            0,
                                            0,
-                                           false};
+                                           false,
+                                           /*d3bj=*/false,
+                                           /*d4=*/false};
 }
 
 /// @brief Dense C = A·B for the tiny (2×2) AO matrices in this file.
@@ -455,13 +457,15 @@ TEST(MeanFieldMethodCpmd, RefusesExternalField) {
     EXPECT_THROW(drive_nested_md_step(std::move(m), f), std::invalid_argument);
 }
 
-// ─── ac-004: refusal lattice — energy terms with no force counterpart ───
+// ─── ac-004: refusal lattice — force terms with no energy counterpart ───
 //
-// `ScfGradient` carries no dispersion force terms while `e_total_` includes
-// E_disp (verified 2026-07-27, spec task 1). Under BOMD that is a
-// pre-existing non-conservative force debt; under CPMD it would silently
-// destroy the E_cons gate that makes the method verifiable, so both flags are
-// refused outright.
+// `ScfGradient` gained analytic D3(BJ)/D4 legs (2026-07-28), so BOMD is now
+// conservative with either flag. CPMD is still refused, for the mirrored
+// reason: the CP step's energy functional
+// (`internal::mean_field_energy_at_density`) folds in no E_disp, so a
+// dispersion force under CP would be work done against an energy the
+// conserved quantity never sees. Lifting the refusal means adding E_disp to
+// the CP total and to the E_cons bookkeeping — not deleting these rows.
 
 TEST(MeanFieldMethodCpmd, RefusesD3Bj) {
     auto f = make_h2();

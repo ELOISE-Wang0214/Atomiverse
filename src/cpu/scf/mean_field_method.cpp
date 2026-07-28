@@ -26,13 +26,12 @@
 #include "atomiverse/cpu/electronic/aspc_predictor.h"
 #include "atomiverse/cpu/linalg/density.h" // build_density_matrix (CPMD fixed-density step)
 #include "atomiverse/cpu/linalg/eigensolve.h" // CanonicalOrth, build_orthogonalization_matrix
-#include "atomiverse/cpu/scf/dftd3.h"
-#include "atomiverse/cpu/scf/dftd4.h"
 #include "atomiverse/cpu/scf/ecp_potential.h"
 #include "atomiverse/cpu/scf/internal/casci_pack.h"
 #include "atomiverse/cpu/scf/internal/casscf_pack.h"
 #include "atomiverse/cpu/scf/internal/ccsd_gradient.h"
 #include "atomiverse/cpu/scf/internal/ccsd_pack.h"
+#include "atomiverse/cpu/scf/internal/dispersion.h"
 #include "atomiverse/cpu/scf/internal/external_field.h"
 #include "atomiverse/cpu/scf/internal/fci_pack.h"
 #include "atomiverse/cpu/scf/internal/gradient.h"
@@ -1221,15 +1220,13 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
 
     *has_result_sp_ = true;
 
-    // Geometry-only DFT-D3(BJ) / DFT-D4 additive correction (after SCF; not in Fock).
-    e_disp_ = 0.0;
-    if (d4) {
-        e_disp_ = D4{}.energy(frame);
-        e_total_ += e_disp_;
-    } else if (d3bj) {
-        e_disp_ = D3BJ{}.energy(frame);
-        e_total_ += e_disp_;
-    }
+    // Geometry-only DFT-D3(BJ) / DFT-D4 additive correction (after SCF; not in
+    // Fock). Every gradient this class publishes carries the matching
+    // −∂E_disp/∂R for the SAME flag pair — `ScfGradient` below for the mean
+    // field, `add_dispersion_forces` in mp2_forces/ccsd_forces — all four
+    // routed through `internal/dispersion.h` so the choice is made once.
+    e_disp_ = internal::dispersion_energy(frame, d3bj, d4);
+    e_total_ += e_disp_;
 
     if (opts.forces) {
         if (ri != RI::None)
@@ -1238,13 +1235,17 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
                 "(density fitting) — the gradient of the fitted energy "
                 "needs the 2-/3-center derivative integrals (a later "
                 "link). Use ri = RI::None for forces.");
+        // The dispersion flags carry into the gradient: `e_total_` above
+        // already includes E_disp, so the force must include −∂E_disp/∂R.
         internal::ScfGradient gradient{method_,
                                        spin_,
                                        xc_type_,
                                        grid_level,
                                        n_radial,
                                        n_angular,
-                                       xc_grad_project_translation};
+                                       xc_grad_project_translation,
+                                       d3bj,
+                                       d4};
         last_grad_ = gradient.compute(frame, ints, *det_sp_, e_total_);
         const int natm = static_cast<int>(frame.nlocal());
         AccReal* __restrict fx = frame.span(kAtom_fx);
@@ -1370,17 +1371,19 @@ void MeanFieldMethod<D>::validate_cpmd_config_() const {
             "MeanFieldMethod: cpmd with a uniform external field is not "
             "productized — clear external_field.");
 
-    // Energy terms with no force counterpart. `e_total_` includes E_disp
-    // while ScfGradient carries no dispersion gradient, so a CP run would
-    // silently break the conserved-energy gate that makes the method
-    // verifiable (under BOMD this is a pre-existing non-conservative force).
+    // Energy terms the CP functional does not carry. `ScfGradient` now has
+    // analytic D3(BJ)/D4 legs (BOMD is conservative with them), but the CP
+    // step evaluates `mean_field_energy_at_density`, which folds in no E_disp
+    // — so under CP the dispersion would be a force with no energy, the exact
+    // mirror of the BOMD defect this refusal was written for. Lifting it means
+    // adding E_disp to the CP total and to the conserved-energy bookkeeping,
+    // not deleting these lines.
     if (d3bj || d4)
         throw std::invalid_argument(
-            "MeanFieldMethod: cpmd with d3bj/d4 is refused — the dispersion "
-            "energy enters the total energy but ScfGradient has no "
-            "dispersion force term, so the Car-Parrinello conserved energy "
-            "would drift for a reason the trajectory cannot show. Clear "
-            "d3bj/d4.");
+            "MeanFieldMethod: cpmd with d3bj/d4 is refused — the "
+            "Car-Parrinello energy functional carries no E_disp, so a "
+            "dispersion force would be work done against an energy the "
+            "conserved quantity never sees. Clear d3bj/d4.");
 
     // Propagator parameters (validated here so a bad mu is reported before a
     // full seed SCF is spent).
@@ -1547,13 +1550,22 @@ void MeanFieldMethod<D>::cpmd_step_(Frame& frame) {
     //    weight is the full Lagrange-multiplier form, not sum_i eps_i c_i c_i^T.
     //    Accumulate with `+=`: MD zeroes forces and energy at pre_force, so
     //    this method is one contributor among however many the loop binds.
+    // No dispersion legs here (`false, false`): the Car-Parrinello energy
+    // functional evaluated at step 5 — `mean_field_energy_at_density` — carries
+    // no E_disp (e_disp_ is zeroed above), so its gradient must not carry one
+    // either. `validate_cpmd_config_` rejects d3bj/d4 before this point, so
+    // the flags are false anyway; the literal is what keeps force and energy
+    // describing the same surface if that refusal is ever lifted without also
+    // folding E_disp into the CP total.
     internal::ScfGradient gradient{method_,
                                    spin_,
                                    xc_type_,
                                    grid_level,
                                    n_radial,
                                    n_angular,
-                                   xc_grad_project_translation};
+                                   xc_grad_project_translation,
+                                   /*d3bj=*/false,
+                                   /*d4=*/false};
     const RealMatrix empty;
     last_grad_ = gradient.compute_at_density(
         frame, ints, C_a, F_alpha_,
@@ -1721,6 +1733,10 @@ GradientResult MeanFieldMethod<D>::mp2_forces(Frame& frame,
         gr = internal::mp2_analytic_forces(frame, *integrals_sp_, *det_sp_,
                                            e_total_, corr.e_corr);
     }
+    // `e_total_` (and therefore `gr.energy`) already carries E_disp; the MP2
+    // gradient routines know nothing about dispersion, so the leg is added
+    // here. Same switch as the energy — see internal/dispersion.h.
+    internal::add_dispersion_forces(frame, d3bj, d4, gr);
     last_grad_ = gr;
 
     // Publish force / energy on Frame (same contract as forces()).
@@ -1943,6 +1959,9 @@ GradientResult MeanFieldMethod<D>::ccsd_forces(Frame& frame,
     const CCSDResult corr = ccsd_energy(*integrals_sp_, *det_sp_, e_total_);
     GradientResult gr = internal::ccsd_analytic_forces(
         frame, *integrals_sp_, *det_sp_, e_total_, corr.e_corr);
+    // Same reason as mp2_forces: the reference energy folded in E_disp, so the
+    // published force must fold in −∂E_disp/∂R (internal/dispersion.h).
+    internal::add_dispersion_forces(frame, d3bj, d4, gr);
     last_grad_ = gr;
 
     AccReal* __restrict fx = frame.span(kAtom_fx);

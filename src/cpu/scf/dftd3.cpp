@@ -1,9 +1,19 @@
 /// @file cpu/scf/dftd3.cpp
-/// @brief Molecular D3BJ::energy — Frame (Å) → PBE-D3(BJ) energy [Hartree].
+/// @brief Molecular D3BJ — Frame (Å) → PBE-D3(BJ) energy [Hartree] and forces
+///        [Hartree/Bohr].
+///
+/// Both entry points funnel through ONE call to `gpw::dftd3_pbe_bj` with the
+/// same members, so the energy this class reports and the force it reports are
+/// two fields of one evaluation of one functional. That is the invariant the
+/// mean-field gradient depends on: `e_total_ += e_disp_` and the dispersion
+/// gradient leg must never be able to describe different surfaces. The D3 math
+/// itself (C6 interpolation, BJ damping, the dCN chain) lives once, in
+/// `cpu/gpw/internal/dftd3.cpp`; there is no molecular copy of it.
 
 #include "atomiverse/cpu/scf/dftd3.h"
 
 #include <array>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -17,10 +27,22 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-double D3BJ::energy(const Frame& frame) const {
+namespace {
+
+/// @brief Frame (Å, Z) → the isolated PBE-D3(BJ) evaluation [a.u.].
+///
+/// Shared by `D3BJ::energy` and `D3BJ::forces` so neither can drift into a
+/// different geometry marshalling, element check, or parameter set.
+/// @param frame System geometry (Å, Z).
+/// @param s6,s8,a1,a2 BJ scales (a2 [Bohr]).
+/// @param rcut_bohr Pair cutoff [Bohr].
+/// @return Energy [Hartree] + forces [Hartree/Bohr]; empty for an empty frame.
+gpw::D3Result evaluate_d3bj(const Frame& frame, double s6, double s8, double a1,
+                            double a2, double rcut_bohr) {
     const int n = static_cast<int>(frame.nlocal());
+    gpw::D3Result empty;
     if (n <= 0)
-        return 0.0;
+        return empty;
 
     const auto type = frame.span(kAtom_type);
     const auto x = frame.span(kAtom_x);
@@ -43,8 +65,17 @@ double D3BJ::energy(const Frame& frame) const {
     const double cell[3] = {0.0, 0.0, 0.0};
     const gpw::D3Params params{};
     return gpw::dftd3_pbe_bj(Z, pos, cell, /*periodic=*/false, params,
-                             rcut_bohr, s6, s8, a1, a2)
-        .energy;
+                             rcut_bohr, s6, s8, a1, a2);
+}
+
+} // namespace
+
+double D3BJ::energy(const Frame& frame) const {
+    return evaluate_d3bj(frame, s6, s8, a1, a2, rcut_bohr).energy;
+}
+
+std::vector<std::array<double, 3>> D3BJ::forces(const Frame& frame) const {
+    return evaluate_d3bj(frame, s6, s8, a1, a2, rcut_bohr).forces;
 }
 
 } // namespace scf

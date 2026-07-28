@@ -12,6 +12,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/grid.h"
+#include "atomiverse/cpu/scf/internal/dispersion.h"
 #include "atomiverse/cpu/scf/internal/ecp_integrals.h"
 #include "atomiverse/cpu/scf/internal/external_field.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
@@ -462,10 +463,11 @@ namespace internal {
 
 ScfGradient::ScfGradient(MeanFieldType method, SpinType spin, XCType xc_type,
                          GridLevel grid_level, int n_radial, int n_angular,
-                         bool xc_grad_project_translation)
+                         bool xc_grad_project_translation, bool d3bj, bool d4)
     : method_(method), spin_(spin), xc_type_(xc_type), grid_level_(grid_level),
       n_radial_(n_radial), n_angular_(n_angular),
-      xc_grad_project_translation_(xc_grad_project_translation) {}
+      xc_grad_project_translation_(xc_grad_project_translation), d3bj_(d3bj),
+      d4_(d4) {}
 
 GradientResult ScfGradient::compute(const Frame& frame,
                                     const IntegralPack& integrals,
@@ -1021,6 +1023,41 @@ GradientResult ScfGradient::assemble_(
         ATV_INFO(
             "[gradient] xc_terms max_abs_hb={:.6f} max_atom_norm_hb={:.6f}",
             xc_max_abs, xc_max_atom_norm);
+    }
+
+    // ── DFT-D3(BJ) / DFT-D4 dispersion gradient ──────────────────────────
+    // The geometry-only twin of `e_total_ += e_disp_` in the method: E_disp
+    // depends on the nuclei alone (no density, no Fock), but it depends on
+    // them, so its gradient belongs to the reported force exactly as much as
+    // its energy belongs to the reported energy. Without this leg a d3bj/d4
+    // BOMD integrates a surface that is not the one it prints, and NVE energy
+    // drifts by the dispersion work done along the trajectory.
+    //
+    // D3(BJ): closed-form analytic (two-body C6/C8 + the dC6/dCN·dCN/dR chain),
+    // shared with GPW — `cpu/gpw/internal/dftd3.cpp` is the only copy of the D3
+    // math in the tree. D4: central differences of the same D4 energy
+    // functional (`scf::dftd4`, gated against dftd4 3.7.0 `-g`).
+    // d4 wins when both flags are set — the SAME precedence the energy uses.
+    if (d4_ || d3bj_) {
+        const std::vector<std::array<double, 3>> f_disp =
+            dispersion_forces(frame, d3bj_, d4_);
+        if (static_cast<int>(f_disp.size()) != natm)
+            throw std::runtime_error(
+                "ScfGradient: the dispersion evaluator returned "
+                + std::to_string(f_disp.size()) + " force triples for "
+                + std::to_string(natm) + " atoms");
+        double disp_max_abs = 0.0;
+        for (int A = 0; A < natm; ++A)
+            for (int d = 0; d < 3; ++d) {
+                // stored gradient is dE/dR; the evaluator returns F = −dE/dR
+                const double g = -f_disp[static_cast<std::size_t>(A)]
+                                        [static_cast<std::size_t>(d)];
+                grad(A, d) += g;
+                disp_max_abs = std::max(disp_max_abs, std::abs(g));
+            }
+        ATV_INFO("[gradient] dispersion gradient term added ({}) "
+                 "max_abs_hb={:.6f}",
+                 d4_ ? "d4" : "d3bj", disp_max_abs);
     }
 
     GradientResult out{FromHartreeBohr{}, grad, e_scf_ha};

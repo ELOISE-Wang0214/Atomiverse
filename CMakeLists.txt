@@ -628,6 +628,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/gpw/internal/hirshfeld_volumes.cpp
             src/cpu/scf/dftd3.cpp
             src/cpu/scf/dftd4.cpp
+            # The one flag -> dispersion-evaluator switch every published
+            # mean-field gradient shares (forces / mp2_forces / ccsd_forces).
+            src/cpu/scf/internal/dispersion.cpp
             src/cpu/record/cube.cpp
             src/cpu/record/density_cube_writer.cpp
             src/cpu/record/orbital_cube_writer.cpp

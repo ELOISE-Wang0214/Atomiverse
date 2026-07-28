@@ -13,6 +13,11 @@
 /// weight is the Lagrange-multiplier matrix W = occ·C(CᵀFC)Cᵀ instead of the
 /// energy-weighted density.
 ///
+/// The assembly covers **every** term the method folds into the total energy it
+/// reports — including the geometry-only DFT-D3(BJ)/DFT-D4 dispersion legs,
+/// which have no electronic structure at all but do have a gradient. A term in
+/// the energy without its leg here is a non-conservative force.
+///
 /// References:
 ///   Pulay, Mol. Phys. 17, 197 (1969) -- Pulay forces
 ///   Szabo & Ostlund, Appendix C -- RHF gradient derivation
@@ -56,9 +61,13 @@ class ScfGradient {
     /// @param n_angular Angular grid points per atom (SG0 grid only).
     /// @param xc_grad_project_translation Project out the net translational XC
     ///        gradient (debug / fixed-grid comparison; production leaves false).
+    /// @param d3bj    The method adds PBE-D3(BJ) dispersion to its total
+    ///        energy, so the gradient must carry the matching leg.
+    /// @param d4      The method adds PBE-D4 dispersion to its total energy
+    ///        (wins over `d3bj` when both are set, mirroring the energy).
     ScfGradient(MeanFieldType method, SpinType spin, XCType xc_type,
                 GridLevel grid_level, int n_radial, int n_angular,
-                bool xc_grad_project_translation);
+                bool xc_grad_project_translation, bool d3bj, bool d4);
 
     /// @brief Unified analytic nuclear gradient at the current geometry.
     /// @param frame     System geometry (positions in Angstrom, type_id = Z).
@@ -143,6 +152,8 @@ class ScfGradient {
     int n_radial_;                         ///< Radial grid points (SG0 only).
     int n_angular_;                        ///< Angular grid points (SG0 only).
     bool xc_grad_project_translation_;     ///< Project net translational XC.
+    bool d3bj_;                            ///< Add the D3(BJ) dispersion leg.
+    bool d4_;                              ///< Add the D4 dispersion leg.
 };
 
 } // namespace internal
