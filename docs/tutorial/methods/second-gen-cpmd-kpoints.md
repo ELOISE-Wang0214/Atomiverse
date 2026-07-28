@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `second-gen-cpmd-kpoints` |
 | Regression | `regressions/dynamics/second-gen-cpmd-kpoints/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator` with `k_mesh`, `second_gen_cp`, `second_gen_cp_k`, `second_gen_cp_max_iter` at `md::Phase::force`; predictor `cpu::electronic::ASPCPredictorCplx` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{…, k_mesh}, aspc_k, corrector_max_iter}` bound with `set_evaluator_ref`; predictor `cpu::electronic::ASPCPredictorCplx` |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `second-gen-cpmd-kpoints`; MD AIMD multi-k SGCP residual closed 2026-07-26 |
 | Dual gate | Correctness (NVE drift + corrector budget + multi-k payload); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — harness wave 12 (2026-07-26) |
@@ -64,7 +64,7 @@ E(t) = E_{\mathrm{pot}}(t) + E_{\mathrm{kin}}(t)
 not the classical CP \(E_{\mathrm{cons}} = T_{\mathrm{n}} + T_{\mathrm{e}} +
 E_{\mathrm{KS}}\).
 
-**Not BOMD:** production steps cap SCF at `second_gen_cp_max_iter` once ASPC
+**Not BOMD:** production steps cap SCF at `corrector_max_iter` once ASPC
 is warm — they must not run a full `max_iter` BOMD SCF.  
 **Not classical CPMD:** `cpmd = false`; no electronic RATTLE / \(\mu\).  
 **Not XL-BOMD:** ASPC is Lagrange history extrapolation + Kolafa blend, not
@@ -95,8 +95,8 @@ is recorded for the next step (`ASPCPredictor` / `ASPCPredictorCplx::correct`).
 
 | Symbol | This pin | Role |
 | ------ | -------- | ---- |
-| \(K\) | `second_gen_cp_k = 1` | ASPC Lagrange order |
-| Corrector budget | `second_gen_cp_max_iter = 5` | SCF iters after ASPC warm |
+| \(K\) | `aspc_k = 1` | ASPC Lagrange order |
+| Corrector budget | `corrector_max_iter = 5` | SCF iters after ASPC warm |
 | Cold SCF | `max_iter = 60`, `tol = 1e-5` | Seed steps / insufficient history |
 
 Unit coverage of multi-k ASPC wiring and mutual exclusion with `cpmd` /
@@ -137,7 +137,7 @@ back to full BOMD.
 
 Additional gates (`reg_second-gen-cpmd-kpoints`):
 
-- Production SCF **iters ≤ `second_gen_cp_max_iter`** once ASPC is warm
+- Production SCF **iters ≤ `corrector_max_iter`** once ASPC is warm
   (SGCP signature vs full BOMD)
 - \(n_k \ge 2\) and `P_k.size() == n_kpts` after seed
 - PE finite and bound (\(< -5\) eV after seed)
@@ -165,6 +165,7 @@ Public surface only (`cpu::Frame`, concrete evaluator members; **no**
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/electronic/second_gen_cp.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
@@ -187,24 +188,30 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
-cpu::gpw::GPWEvaluator eval(
-    {H}, /*cutoff_ry*/ 100.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-    /*mix*/ 0.3, cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
+constexpr double dt = 0.5;          // fs
+constexpr int corrector_budget = 5; // SCF iters per warm production step
+constexpr int n_seed = 2;           // ASPC K=1 needs K+1 densities
+
+cpu::gpw::GPWEvaluator gpw(
+    /*kinds*/ {H}, /*cutoff_ry*/ 100.0, /*max_iter*/ 60, /*tol*/ 1e-5,
+    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
     /*compute_forces*/ true);
-eval.k_mesh[0] = 1;
-eval.k_mesh[1] = 1;
-eval.k_mesh[2] = 2;
-eval.k_time_reversal = false;      // n_k = 2
-eval.second_gen_cp = true;         // ASPC on complex P_k + partial SCF
-eval.second_gen_cp_k = 1;          // Lagrange order K (needs K+1 seeds)
-eval.second_gen_cp_max_iter = 5;   // production corrector budget
+gpw.k_mesh[0] = 1;
+gpw.k_mesh[1] = 1;
+gpw.k_mesh[2] = 2;
+gpw.k_time_reversal = false;        // n_k = 2
+// SGCP (ASPC on the complex P_k + partial SCF) is the wrapper TYPE: the
+// Lagrange order K (needs K+1 seeds) and the production corrector budget are
+// its constructor arguments — the evaluator has no public mode flags.
+cpu::electronic::SecondGenCp eval{std::move(gpw), 1, corrector_budget};
 
 cpu::md::MD sim;
-sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/ 0.5});
-sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
+sim.set_integrator(cpu::md::VelocityVerlet{dt});
+sim.set_evaluator_ref(eval);
 sim.build();
-sim.run(frame, 2);   // seed: fill ASPC histories (full SCF OK)
-// production: iters ≤ 5, |E(t)-E0|/scale ≤ 0.10, n_kpts ≥ 2
+sim.run(frame, n_seed);   // seed: fill ASPC histories (full SCF OK)
+// production: eval.last_result().iters <= corrector_budget,
+//             |E(t)-E0|/scale <= 0.10, last_result().n_kpts >= 2
 ```
 
 The complex ASPC primitive is also public (`include/atomiverse/cpu/electronic/aspc_predictor.h`):
@@ -235,7 +242,8 @@ Relevant sources:
 
 | Layer | Path |
 | ----- | ---- |
-| Evaluator flags | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (`second_gen_cp`, `second_gen_cp_k`, `second_gen_cp_max_iter`, `k_mesh`) |
+| SGCP wrapper | `include/atomiverse/cpu/electronic/second_gen_cp.h` (`aspc_k`, `corrector_max_iter`) |
+| Evaluator | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (`k_mesh`, `k_time_reversal`; private SGCP mode bits) |
 | ASPC real / complex | `include/atomiverse/cpu/electronic/aspc_predictor.h` |
 | Multi-k RKS SCF + SGCP payload | `src/cpu/gpw/` (GPW multi-k force path + ASPC seed/correct) |
 | Unit multi-k build / OT refuse | `tests/cpu/gpw/test_gpw_second_gen_cpmd.cpp` |
@@ -260,7 +268,7 @@ pin; never live CP2K in ctest).
 | CUTOFF | 100 Ry (envelope run) |
 | k-mesh | \(1\times1\times2\), `k_time_reversal=false` → \(n_k=2\) |
 | ASPC \(K\) | 1 (needs \(K+1=2\) seed densities) |
-| Corrector SCF | `second_gen_cp_max_iter = 5` after ASPC warm |
+| Corrector SCF | `corrector_max_iter = 5` after ASPC warm |
 | Cold SCF | `tol = 1e-5`, `max_iter = 60`, DIIS diagonalization |
 | Ensemble | NVE; \(\Delta t = 0.5\) fs |
 | \(v_0\) | antisymmetric stretch \(v_x = \pm 0.001\) Å/fs |

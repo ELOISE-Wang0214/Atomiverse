@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `xl-bomd-uks-kpoints` |
 | Regression | `regressions/dynamics/xl-bomd-uks-kpoints/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator` with `n_alpha`/`n_beta`, `k_mesh`, `xl_bomd`, `xl_bomd_k` at `md::Phase::force`; propagator class `cpu::electronic::XlBomdCplx` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{…, n_alpha, n_beta, k_mesh}, k}` bound with `set_evaluator_ref`; propagator class `cpu::electronic::XlBomdCplx` |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `xl-bomd-uks-kpoints`; MD AIMD XL multi-k UKS residual closed 2026-07-26 |
 | Dual gate | Correctness A6 (e2e NVE drift) + unit A1–A5 (`test_cpu_gpw_xl_bomd`); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — harness wave 11 (2026-07-26) |
@@ -17,9 +17,10 @@
 **Extended-Lagrangian Born–Oppenheimer MD (XL-BOMD)** in the dissipative
 Niklasson form, on **multi-k collinear UKS** Gaussian-and-plane-waves (GPW)
 forces. The outer loop is the MD preset (`cpu::md::MD` + NVE
-`VelocityVerlet`); the force slot binds `cpu::gpw::GPWEvaluator` with
-`compute_forces = true`, integer occupations `n_alpha` / `n_beta`, a
-non-Γ `k_mesh`, and `xl_bomd = true`. Independent auxiliary **complex**
+`VelocityVerlet`); the force slot binds a `cpu::electronic::XlBomdForce`
+wrapping a `cpu::gpw::GPWEvaluator` with `compute_forces = true`, integer
+occupations `n_alpha` / `n_beta`, and a
+non-Γ `k_mesh`. Independent auxiliary **complex**
 densities \(P_k^\alpha\) and \(P_k^\beta\) are propagated per sampled \(k\)
 and used as the multi-k UKS SCF initial densities each ionic step.
 
@@ -162,22 +163,23 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
-cpu::gpw::GPWEvaluator eval(
+cpu::gpw::GPWEvaluator gpw(
     {H}, /*cutoff_ry*/ 100.0, /*max_iter*/ 60, /*tol*/ 1e-5,
     /*mix*/ 0.3, cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
     /*compute_forces*/ true);
-eval.n_alpha = 1;               // closed-shell fillings on UKS path
-eval.n_beta  = 1;
-eval.k_mesh[0] = 1;
-eval.k_mesh[1] = 1;
-eval.k_mesh[2] = 2;
-eval.k_time_reversal = false;   // n_k = 2
-eval.xl_bomd = true;            // dual XlBomdCplx per k (α + β)
-eval.xl_bomd_k = 5;             // Niklasson 2009 Table-I order
+gpw.n_alpha = 1;               // closed-shell fillings on UKS path
+gpw.n_beta  = 1;
+gpw.k_mesh[0] = 1;
+gpw.k_mesh[1] = 1;
+gpw.k_mesh[2] = 2;
+gpw.k_time_reversal = false;   // n_k = 2
+// The wrapper engages the dual XlBomdCplx per k (α + β); K = 5 is the
+// Niklasson 2009 Table-I order.
+cpu::electronic::XlBomdForce eval{std::move(gpw), /*k=*/5};
 
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/ 0.5});
-sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
+sim.set_evaluator_ref(eval);
 sim.build();
 sim.run(frame, 1);              // warm-up: seed XL histories
 // production: assert |E(t)-E0|/scale ≤ 0.05, SCF converged, dual P_k payloads
@@ -210,7 +212,8 @@ Relevant sources:
 | Layer | Path |
 | ----- | ---- |
 | Propagator | `include/atomiverse/cpu/electronic/xl_bomd.h`, `src/cpu/electronic/xl_bomd.cpp` |
-| Evaluator flags | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (`xl_bomd`, `xl_bomd_k`, `k_mesh`, `n_alpha`/`n_beta`) |
+| XL wrapper | `include/atomiverse/cpu/electronic/xl_bomd_force.h` (dissipation order \(K\)) |
+| Evaluator | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (`k_mesh`, `n_alpha`/`n_beta`; private XL mode bits) |
 | Multi-k UKS SCF + XL payload | `src/cpu/gpw/gpw_solver.cpp` (`run_gpw_scf_kpoints_uks`) |
 | Unit Table-I / dual-spin | `tests/cpu/gpw/` (`test_cpu_gpw_xl_bomd`) |
 | E2E | `regressions/dynamics/xl-bomd-uks-kpoints/` |

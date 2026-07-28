@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `xl-bomd-rhf-water` |
 | Regression | `regressions/dynamics/xl-bomd-rhf-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + a concrete `cpu::scf::{RHF,UHF,RKS,UKS,…}` with `xl_bomd = true`, `xl_bomd_k`, bound at `md::Phase::force`; witness `xl_advances()`; propagator `cpu::electronic::XlBomd` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdMethod<cpu::scf::{RHF,UHF,RKS,UKS,…}>{method, k}` bound with `set_evaluator_ref`; witness `xl_advances()`; propagator `cpu::electronic::XlBomd` |
 | Spec | `esmm-cpmd-05-scf-xlbomd` (ac-001 ladder, ac-002 exclusivity, ac-003 history integrity, ac-004 the XL signature) |
 | Dual gate | Correctness = `test_cpu_scf_xl_bomd` + `reg_xl-bomd-rhf-water`; speed **`perf_exempt`** |
 | GPW sibling | [xl-bomd-water](xl-bomd-water.md) — same propagator behind GPW forces |
@@ -42,15 +42,18 @@ turns it on, where the guess enters, and when the auxiliary density advances.
 
 ## API
 
-| Member on `cpu::scf::{RHF,UHF,RKS,UKS,…}` | Meaning |
+| Public surface | Meaning |
 | --- | --- |
-| `bool xl_bomd = false` | Engage XL-BOMD auxiliary-density propagation |
-| `int xl_bomd_k = 5` | Dissipation order \(K\) (history depth \(K+1\)). Table I covers \(K \in [3,9]\); anything else throws `std::invalid_argument` (lookup table, no fallback). Changing it between runs re-seats the propagators and drops the history |
+| `cpu::electronic::XlBomdMethod<Method>{Method method, int k = 5}` | Move a configured `RHF` / `UHF` / `RKS` / `UKS` in and engage XL-BOMD auxiliary-density propagation with dissipation order \(K\) (history depth \(K+1\)). Table I covers \(K \in [3,9]\); anything else throws `std::invalid_argument` at build (lookup table, no fallback) |
 | `int xl_advances() const` | Auxiliary propagations taken — one per **converged nested** run; 0 under plain BOMD. The public witness that the history is on the nuclear clock |
 
-There is no `XlConfig`, no `make_xl_*`, and no constructor argument: a plain
-BOMD user ignores all of the above, and an XL user gets the same dissipation
-order the GPW evaluator ships.
+XL-BOMD is a **type**, not a flag: the mode bits live in `protected` storage on
+`MeanFieldMethod`, and the wrapper (`cpu/electronic/aimd_method.h`) is the only
+public way to set them. It publicly inherits `Method`, so `basis` / `tol` /
+`max_iter` are still ordinary members on the object you move in. There is no
+`XlConfig` and no `make_xl_*`: a plain BOMD user constructs the method
+directly, and an XL user gets the same dissipation order the GPW evaluator
+ships.
 
 ### The guess ladder
 
@@ -101,15 +104,16 @@ single 2n-dimensional spinor density.
 ## Usage
 
 ```cpp
-cpu::scf::RHF rhf;                      // or UHF / RKS / UKS
-rhf.basis = cpu::scf::BasisSet::STO3G;
-rhf.tol = 1e-6;                         // Ha, |dE| SCF exit
-rhf.xl_bomd = true;                     // engage the auxiliary-density guess
-rhf.xl_bomd_k = 5;                      // Niklasson 2009 Table-I row
+cpu::scf::RHF rhf_base;                 // or UHF / RKS / UKS
+rhf_base.basis = cpu::scf::BasisSet::STO3G;
+rhf_base.tol = 1e-6;                    // Ha, |dE| SCF exit
+// XL-BOMD is a wrapper TYPE around the method, not an `xl_bomd = true` flag:
+// the dissipation order K (Niklasson 2009 Table I) is a constructor argument.
+cpu::electronic::XlBomdMethod<cpu::scf::RHF> rhf{std::move(rhf_base), /*k=*/5};
 
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{0.25});   // fs — see below
-sim.on(md::Phase::force).add_ref(rhf, /*order=*/0);  // borrow: diagnostics stay
+sim.set_evaluator_ref(rhf);             // borrow: diagnostics stay readable
 sim.build();
 sim.run(frame, 20);                     // frame.meta.get(kEnergy) [eV]
 
@@ -173,7 +177,8 @@ saturates. Warm-step mean over steps 9–20 at Δt = 0.25 fs, `tol` = 1e-6 Ha:
 
 | What | Path |
 | ---- | ---- |
-| Members, ladder, advance hook, exclusivity gates | `include/atomiverse/cpu/scf/mean_field_method.h`, `src/cpu/scf/mean_field_method.cpp` |
+| XL wrapper (`XlBomdMethod`) | `include/atomiverse/cpu/electronic/aimd_method.h` |
+| Mode storage, ladder, advance hook, exclusivity gates | `include/atomiverse/cpu/scf/mean_field_method.h`, `src/cpu/scf/mean_field_method.cpp` |
 | Propagator | `include/atomiverse/cpu/electronic/xl_bomd.h` |
 | Unit tests | `tests/cpu/scf/test_scf_xl_bomd.cpp` |
 | Regression | `regressions/dynamics/xl-bomd-rhf-water/` |

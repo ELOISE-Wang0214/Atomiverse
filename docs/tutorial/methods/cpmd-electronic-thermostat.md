@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `cpmd-electronic-thermostat` |
 | Regression | `regressions/dynamics/cpmd-electronic-thermostat/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu, cpmd_thermostat=true, cpmd_ekin_target_ha, cpmd_tau_e}` at `md::Phase::force`; propagator `cpu::electronic::Cpmd` (RATTLE + NH). The nuclear dt is pushed from the integrator into the evaluator by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{…, compute_forces=true}, mu_au, cpu::electronic::ElectronicThermostat{ekin_target_ha, tau_e_fs}}` bound with `set_evaluator_ref`; propagator `cpu::electronic::Cpmd` (RATTLE + NH). The thermostat is the **three-argument wrapper constructor**, not a set of evaluator flags. The nuclear dt is pushed from the integrator into the wrapper by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `cpmd-electronic-thermostat`; MD AIMD electronic thermostat residual closed |
 | Dual gate | Correctness from REFERENCE (E_ext drift, Te ceiling, fixed-density); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — wave 11 **done** (merged 2026-07-26) |
@@ -114,24 +114,26 @@ keeping \(T_e\) cool relative to nuclear KE, not by nuclear NVT.
 
 ## Implementation
 
-Public surface only (`cpu::Frame`, evaluator members; no `*Config`).
+Public surface only (`cpu::Frame`, constructor arguments; no `*Config`).
 
 ```cpp
 constexpr double dt = 0.1; // fs — nuclear and electronic share one step
-cpu::gpw::GPWEvaluator eval(
+cpu::gpw::GPWEvaluator gpw(
     {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
     /*mix*/ 0.3, cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
     /*compute_forces*/ true);
-eval.cpmd = true;
-eval.cpmd_mu = 2000.0;              // a.u.
-// No electronic dt: MD pushes the integrator's dt into the evaluator at build.
-eval.cpmd_thermostat = true;        // Nosé–Hoover on Te
-eval.cpmd_ekin_target_ha = 1e-5;    // K0 [Hartree]
-eval.cpmd_tau_e = 50.0;             // tau_e [fs]
+// Thermostatted CP is the three-argument wrapper constructor: fictitious mass
+// mu [a.u. electron mass], then the Nosé–Hoover setpoint. The evaluator has no
+// public cpmd_* flags to keep in sync.
+cpu::electronic::CarParrinello eval{
+    std::move(gpw), /*mu_au=*/2000.0,
+    cpu::electronic::ElectronicThermostat{/*ekin_target_ha=*/1e-5, // K0 [Ha]
+                                          /*tau_e_fs=*/50.0}};     // [fs]
+// No electronic dt: MD pushes the integrator's dt into the wrapper at build.
 
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{dt});  // the ONE owner of dt
-sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
+sim.set_evaluator_ref(eval);        // borrow: readbacks stay live after run()
 sim.build();
 sim.run(frame, n_steps);
 

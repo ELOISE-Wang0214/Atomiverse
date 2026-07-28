@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `cpmd-water` |
 | Regression | `regressions/dynamics/cpmd-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu}` at `md::Phase::force`; propagator `cpu::electronic::Cpmd`. The nuclear dt is pushed from the integrator into the evaluator by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{…, compute_forces=true}, mu_au}` bound with `set_evaluator_ref`; propagator `cpu::electronic::Cpmd`. CP mode is the **wrapper type**, not a flag — `cpmd`/`cpmd_mu` are private on `GPWEvaluator`. The nuclear dt is pushed from the integrator into the wrapper by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `cpmd-water`; MD roadmap Car–Parrinello |
 | Dual gate | Correctness A1–A15 of the spec acceptance; speed **`perf_exempt`** |
 | Wave | CP2K capability loop — wave 3 |
@@ -53,18 +53,22 @@ refused loudly at `build()`.
 
 ```cpp
 constexpr double dt = 0.1; // fs — nuclear and electronic share one step
-cpu::gpw::GPWEvaluator eval(
+cpu::gpw::GPWEvaluator gpw(
     {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
     /*mix*/ 0.3, cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
     /*compute_forces*/ true);
-eval.cpmd = true;
-eval.cpmd_mu = 2000.0;  // a.u.; AO residual is stiffer than PW textbook ~400
-// No electronic dt: MD pushes the integrator's dt into the evaluator at build.
+// Car–Parrinello is a wrapper TYPE around the pure GPW evaluator, not a
+// `method.cpmd = true` switch: the fictitious mass mu [a.u. electron mass] is a
+// constructor argument, and the mode bits it sets are private on GPWEvaluator.
+// mu = 2000 here because the AO residual is stiffer than the plane-wave
+// textbook mu ~ 400. No electronic dt: MD pushes the integrator's dt into the
+// wrapper at build.
+cpu::electronic::CarParrinello eval{std::move(gpw), /*mu_au=*/2000.0};
 
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{dt});  // the ONE owner of dt
-sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
-sim.add(cpu::md::CpmdConserved{});                // E_cons -> meta[kConserved]
+sim.set_evaluator_ref(eval);        // borrow: readbacks stay live after run()
+sim.set_observer(cpu::md::CpmdConserved{});       // E_cons -> meta[kConserved]
 sim.build();
 sim.run(frame, n_steps);
 

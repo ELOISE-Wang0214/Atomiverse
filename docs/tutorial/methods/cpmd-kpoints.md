@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `cpmd-kpoints` |
 | Regression | `regressions/dynamics/cpmd-kpoints/` |
-| Public API | `cpu::gpw::GPWEvaluator` with `cpmd = true`, `cpmd_mu`; `CpmdCplx` propagator. The nuclear dt is pushed from the MD integrator into the evaluator (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
+| Public API | `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{…, k_mesh}, mu_au}` bound with `set_evaluator_ref`; `CpmdCplx` propagator. CP mode is the wrapper type — `cpmd`/`cpmd_mu` are private on `GPWEvaluator`. The nuclear dt is pushed from the MD integrator into the wrapper (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
 | Roadmap / queue | `docs/roadmap/dft.md` (AIMD); queue done 2026-07-26 |
 
 ## Summary

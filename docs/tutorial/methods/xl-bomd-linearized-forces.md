@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `xl-bomd-linearized-forces` |
 | Regression | `regressions/dynamics/xl-bomd-linearized-forces/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator` with `xl_bomd`, `xl_bomd_k`, **`xl_bomd_linearized`**, `compute_forces` at `md::Phase::force`; propagator `cpu::electronic::XlBomd` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{…}, k, cpu::electronic::XlBomdLinearized{}}` bound with `set_evaluator_ref`; propagator `cpu::electronic::XlBomd` |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `xl-bomd-linearized-forces`; [molecular-dynamics.md](../../roadmap/molecular-dynamics.md) XL-BOMD residual closed 2026-07-26 |
 | Dual gate | Correctness A1–A4 unit (`test_cpu_gpw_xl_bomd`) + A5 e2e NVE drift; speed **`perf_exempt`** |
 | Wave | CP2K capability loop — harness wave 12 (2026-07-26) |
@@ -17,9 +17,10 @@
 **Zero-SCF linearized-functional XL-BOMD** evaluates nuclear forces of the
 Niklasson **shadow Born–Oppenheimer** potential after each ionic step, with
 **no iterative SCF** on warm MD steps. The outer loop is the MD preset
-(`cpu::md::MD` + NVE `VelocityVerlet`); the force slot binds
-`cpu::gpw::GPWEvaluator` with `compute_forces = true`, `xl_bomd = true`,
-dissipation order `xl_bomd_k`, and **`xl_bomd_linearized = true`**.
+(`cpu::md::MD` + NVE `VelocityVerlet`); the force slot binds a
+`cpu::electronic::XlBomdForce` built from a `cpu::gpw::GPWEvaluator` with a
+dissipation order \(K\) and the **`XlBomdLinearized`** tag that selects the
+shadow-force path.
 
 Cold seed (first step): full Γ-RKS SCF seeds the dissipative XL auxiliary
 density \(n = P_{\mathrm{aux}}\). Warm steps: build \(H[n]\) at fixed
@@ -187,17 +188,18 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-cpu::gpw::GPWEvaluator eval(
+cpu::gpw::GPWEvaluator gpw(
     {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
     /*mix*/ 0.3, cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
     /*compute_forces*/ true);
-eval.xl_bomd = true;
-eval.xl_bomd_k = 5;
-eval.xl_bomd_linearized = true;   // zero-SCF shadow BO forces
+// The third argument is a tag type, not a bool: it selects the zero-SCF
+// shadow-BO force path (and turns forces on) at construction.
+cpu::electronic::XlBomdForce eval{std::move(gpw), /*k=*/5,
+                                  cpu::electronic::XlBomdLinearized{}};
 
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/ 0.5});
-sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
+sim.set_evaluator_ref(eval);
 sim.build();
 sim.run(frame, 1);   // cold seed: full SCF, iters > 0
 // production: iters == 0; |E(t)-E0|/scale ≤ 0.10; soft O–H
@@ -207,11 +209,14 @@ sim.run(frame, 1);   // cold seed: full SCF, iters > 0
 
 | Condition | Reason |
 | --------- | ------ |
-| `xl_bomd_linearized && !xl_bomd` | Shadow forces ride on the XL auxiliary density |
-| `!compute_forces` | Shadow nuclear forces are the product |
 | UKS (`n_alpha + n_beta > 0`) | Γ RKS foothold only |
 | multi-k mesh | Γ-point only |
-| `use_ot` / `cpmd` / `second_gen_cp` | Mutually exclusive electronic dynamics |
+| `use_ot`, or a `CarParrinello` / `SecondGenCp` wrapper | Mutually exclusive electronic dynamics |
+
+Two older failure modes are now unreachable from the public surface: the
+`XlBomdLinearized` constructor is the only way to select shadow forces, and it
+sets both the XL auxiliary density and `compute_forces` itself — so "linearized
+without XL" and "linearized without forces" cannot be expressed.
 
 Unit gates A1–A2 in `test_cpu_gpw_xl_bomd`.
 
@@ -233,7 +238,8 @@ Relevant sources:
 | Layer | Path |
 | ----- | ---- |
 | Propagator | `include/atomiverse/cpu/electronic/xl_bomd.h`, `src/cpu/electronic/xl_bomd.cpp` |
-| Evaluator flags | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (`xl_bomd`, `xl_bomd_k`, `xl_bomd_linearized`) |
+| XL wrapper | `include/atomiverse/cpu/electronic/xl_bomd_force.h` (`XlBomdForce`, `XlBomdLinearized`) |
+| Evaluator | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (private XL mode bits) |
 | Warm shadow path | `src/cpu/gpw/gpw_evaluator.cpp` (zero-SCF block after XL ready) |
 | Forces at density | `src/cpu/gpw/internal/gpw_forces.cpp` (`gpw_forces_at_density`) |
 | Unit A1–A4 | `tests/cpu/gpw/test_gpw_xl_bomd.cpp` |

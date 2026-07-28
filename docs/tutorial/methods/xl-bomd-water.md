@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `xl-bomd-water` |
 | Regression | `regressions/dynamics/xl-bomd-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, xl_bomd=true, xl_bomd_k=5}` at `md::Phase::force`; propagator class `cpu::electronic::XlBomd` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{…, compute_forces=true}, k=5}` bound with `set_evaluator_ref`; propagator class `cpu::electronic::XlBomd` |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `xl-bomd-water`; MD roadmap XL-BOMD (`ASPC ≠ XL`) |
 | Dual gate | Correctness A1–A9 of the spec acceptance; speed **`perf_exempt`** (no CP2K AIMD twin wall) |
 | Wave | CP2K capability loop — wave 3 |
@@ -41,16 +41,18 @@ the zero-SCF linearized-functional XL force are refused loudly
 ## Usage
 
 ```cpp
-cpu::gpw::GPWEvaluator eval(
+cpu::gpw::GPWEvaluator gpw(
     {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
     /*mix*/ 0.3, cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
     /*compute_forces*/ true);
-eval.xl_bomd = true;   // engage the XL auxiliary-density propagator
-eval.xl_bomd_k = 5;    // Niklasson 2009 Table-I dissipation order
+// XL is a wrapper TYPE around the pure evaluator, not an `xl_bomd = true`
+// switch: the Niklasson 2009 Table-I dissipation order K is a constructor
+// argument, and the mode bits it sets are private on GPWEvaluator.
+cpu::electronic::XlBomdForce eval{std::move(gpw), /*k=*/5};
 
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{0.5});   // fs
-sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
+sim.set_evaluator_ref(eval);   // borrow: readbacks stay live after run()
 sim.build();
 sim.run(frame, n_steps);   // frame.meta.get(kEnergy) [eV]
 ```

@@ -72,6 +72,19 @@ docs/tutorial/methods/<slug>.md
 - **Family lock:** NDDO → OpenMOPAC; DFTB* → DFTB+; GFN-xTB → xtb. Forbidden:
   cross-family energy pins; treating GFN as DFTB3 successor.
 
+## Index — TB / SE capability wave 1 (2026-07-27)
+
+Offline family-locked pins only — see
+[tb-method-handoff](../../developer/tb-method-handoff.md) and
+`tools/tb_oracle/`. Family lock: NDDO → OpenMOPAC; DFTB\* → DFTB+;
+GFN-xTB → xtb. Narrative: [Ch. 17 Semiempirical AM1](../ch17-semiempirical-am1.md).
+
+| Method | Page | Regression | Oracle |
+| ------ | ---- | ---------- | ------ |
+| SCC-DFTB2 CH₄ 3ob-3-1 organic SK | [dftb2-3ob-organic](dftb2-3ob-organic.md) | `regressions/semiempirical/dftb2-3ob-organic` | dftb+ 24.1 (`perf_exempt`) |
+| SCC-DFTB2 analytic nuclear forces H₂O | [dftb2-analytic-forces](dftb2-analytic-forces.md) | `regressions/semiempirical/dftb2-analytic-forces` | dftb+ formula (`perf_exempt`) |
+| Collinear spin-DFTB2 O₂ triplet | [spin-dftb2-o2](spin-dftb2-o2.md) | `regressions/semiempirical/spin-dftb2-o2` | literature + family dftb+ (`perf_exempt`) |
+
 ## Index — TB / SE capability wave 2 (2026-07-27)
 
 Offline family-locked pins only — see
@@ -250,6 +263,141 @@ conditioning (not force correctness — its earlier block reason was retracted).
 | GPW PBE-D3 analytic ionic forces (isolated dimer) | [gpw-d3-forces](gpw-d3-forces.md) | `regressions/gpw/gpw-d3-forces` | **1.4** |
 | GPW PBE-D3(BJ) analytic ionic forces (periodic dimer) | [gpw-d3bj-forces](gpw-d3bj-forces.md) | `regressions/gpw/gpw-d3bj-forces` | **2.7** |
 | GPW Γ analytic cell stress with periodic MBD@rsSCS | [gpw-mbd-stress](gpw-mbd-stress.md) | `regressions/gpw/gpw-mbd-stress` | **perf_exempt** |
+
+## Index — restored capability pages (indexed 2026-07-28)
+
+These pages were written by the Tutorial phase of earlier
+`cp2k-method-loop` waves (plus the AO AIMD spec chain `esmm-cpmd-04/05`) but
+their index rows never landed: each wave stashed its tutorial pages before the
+merge. The pages were recovered on 2026-07-28 and their code samples refreshed
+to the current public API (`frame.box`, `set_evaluator` / `set_evaluator_ref`,
+and the `cpu::electronic::{CarParrinello,XlBomdForce,SecondGenCp}` /
+`{CarParrinelloMethod,XlBomdMethod}` AIMD wrappers).
+
+Every slug below maps 1:1 to a regression directory that exists in the tree.
+Fair walls (`ratio` or `perf_exempt`) live in each page's own Performance
+section and the matching `REFERENCE.md`; they are not repeated here. Rows are
+grouped by regression domain, alphabetical by slug.
+
+### GPW (`regressions/gpw/`)
+
+| Method | Page | Regression |
+| ------ | ---- | ---------- |
+| GPW Γ-RKS BLYP, isolated H₂O (MT) | [gpw-blyp-water](gpw-blyp-water.md) | `regressions/gpw/gpw-blyp-water` |
+| GPW PBE-D4 analytic ionic forces (periodic dimer) | [gpw-d4-forces](gpw-d4-forces.md) | `regressions/gpw/gpw-d4-forces` |
+| GPW PBE-D4 analytic cell stress (periodic dimer) | [gpw-d4-stress](gpw-d4-stress.md) | `regressions/gpw/gpw-d4-stress` |
+| Multi-k Dudarev DFT+U analytic cell stress (H₂ UKS) | [gpw-dftu-kpoint-stress](gpw-dftu-kpoint-stress.md) | `regressions/gpw/gpw-dftu-kpoint-stress` |
+| Multi-k Dudarev DFT+U, GPW UKS (H₂ toy) | [gpw-dftu-kpoints](gpw-dftu-kpoints.md) | `regressions/gpw/gpw-dftu-kpoints` |
+| GPW analytic cell stress + Dudarev DFT+U (NiO) | [gpw-dftu-stress](gpw-dftu-stress.md) | `regressions/gpw/gpw-dftu-stress` |
+| GPW multi-k Hirshfeld volumes (water dimer) | [gpw-hirshfeld-kpoints](gpw-hirshfeld-kpoints.md) | `regressions/gpw/gpw-hirshfeld-kpoints` |
+| Γ-UKS Hirshfeld-scaled MBD@rsSCS (O₂) | [gpw-hirshfeld-uks](gpw-hirshfeld-uks.md) | `regressions/gpw/gpw-hirshfeld-uks` |
+| GPW analytic forces at k-points (H₂) | [gpw-kpoint-forces](gpw-kpoint-forces.md) | `regressions/gpw/gpw-kpoint-forces` |
+| GPW analytic cell stress at k-points (diamond Si) | [gpw-kpoint-stress](gpw-kpoint-stress.md) | `regressions/gpw/gpw-kpoint-stress` |
+| Multi-k UKS GPW analytic forces (high-spin H₂) | [gpw-kpoint-uks-forces](gpw-kpoint-uks-forces.md) | `regressions/gpw/gpw-kpoint-uks-forces` |
+| Multi-k UKS GPW analytic cell stress (high-spin H₂) | [gpw-kpoint-uks-stress](gpw-kpoint-uks-stress.md) | `regressions/gpw/gpw-kpoint-uks-stress` |
+| GPW collinear multi-k UKS (H₂ identity + O₂ twin) | [gpw-kpoints-uks](gpw-kpoints-uks.md) | `regressions/gpw/gpw-kpoints-uks` |
+| GPW MBD@rsSCS ionic forces (water dimer) | [gpw-mbd-forces](gpw-mbd-forces.md) | `regressions/gpw/gpw-mbd-forces` |
+| GPW PBE-MBD@rsSCS + Hirshfeld volumes (water dimer) | [gpw-mbd-hirshfeld](gpw-mbd-hirshfeld.md) | `regressions/gpw/gpw-mbd-hirshfeld` |
+| GPW PBE-MBD@rsSCS, free-atom water dimer | [gpw-mbd-ice](gpw-mbd-ice.md) | `regressions/gpw/gpw-mbd-ice` |
+| GPW multi-k analytic forces + MBD@rsSCS | [gpw-mbd-kpoint-forces](gpw-mbd-kpoint-forces.md) | `regressions/gpw/gpw-mbd-kpoint-forces` |
+| GPW PBE-MBD@rsSCS, periodic Ewald + k-mesh | [gpw-mbd-periodic](gpw-mbd-periodic.md) | `regressions/gpw/gpw-mbd-periodic` |
+| Metallic Fermi–Dirac smearing (BCC Na, multi-k) | [gpw-metallic-smearing](gpw-metallic-smearing.md) | `regressions/gpw/gpw-metallic-smearing` |
+| GPW optB88-vdW (periodic water dimer) | [gpw-optb88-vdw](gpw-optb88-vdw.md) | `regressions/gpw/gpw-optb88-vdw` |
+| GPW Γ-RKS revPBE (Si₂ fragment, MT) | [gpw-revpbe-si](gpw-revpbe-si.md) | `regressions/gpw/gpw-revpbe-si` |
+| GPW Γ-RKS RPBE, isolated H₂O (MT) | [gpw-rpbe-water](gpw-rpbe-water.md) | `regressions/gpw/gpw-rpbe-water` |
+| GPW PBE + rVV10 (periodic water dimer) | [gpw-rvv10-ice](gpw-rvv10-ice.md) | `regressions/gpw/gpw-rvv10-ice` |
+| GPW PBE-TS (periodic water dimer) | [gpw-ts-ice](gpw-ts-ice.md) | `regressions/gpw/gpw-ts-ice` |
+| Γ-UKS GPW BLYP (O₂) | [gpw-uks-blyp](gpw-uks-blyp.md) | `regressions/gpw/gpw-uks-blyp` |
+| Γ-UKS GPW analytic forces (O₂ / PBE, MT) | [gpw-uks-forces](gpw-uks-forces.md) | `regressions/gpw/gpw-uks-forces` |
+| Γ-UKS GPW multigrid (O₂ / PADE) | [gpw-uks-multigrid](gpw-uks-multigrid.md) | `regressions/gpw/gpw-uks-multigrid` |
+| Γ-UKS GPW PBE (O₂) | [gpw-uks-pbe](gpw-uks-pbe.md) | `regressions/gpw/gpw-uks-pbe` |
+| Γ-UKS GPW revPBE (O₂) | [gpw-uks-revpbe](gpw-uks-revpbe.md) | `regressions/gpw/gpw-uks-revpbe` |
+| Γ-UKS GPW RPBE (O₂) | [gpw-uks-rpbe](gpw-uks-rpbe.md) | `regressions/gpw/gpw-uks-rpbe` |
+| Collinear UKS + FD smearing (BCC Na, multi-k) | [gpw-uks-smearing](gpw-uks-smearing.md) | `regressions/gpw/gpw-uks-smearing` |
+| Γ-UKS GPW analytic cell stress (O₂ / PBE, MT) | [gpw-uks-stress](gpw-uks-stress.md) | `regressions/gpw/gpw-uks-stress` |
+| GPW `CELL_OPT` MOLOPT re-twin (water chain) | [gpw-variable-cell-molopt](gpw-variable-cell-molopt.md) | `regressions/gpw/gpw-variable-cell-molopt` |
+| GPW PBE + vdW-DF (DRSLL), periodic dimer | [gpw-vdw-df-ice](gpw-vdw-df-ice.md) | `regressions/gpw/gpw-vdw-df-ice` |
+| GPW PBE + vdW-DF2 (LMKLL), periodic dimer | [gpw-vdw-df2-ice](gpw-vdw-df2-ice.md) | `regressions/gpw/gpw-vdw-df2-ice` |
+| GPW nonlocal vdW: self-consistent \(V_{\mathrm{nl}}\) + forces | [gpw-vdw-scf-potential](gpw-vdw-scf-potential.md) | `regressions/gpw/gpw-vdw-scf-potential` |
+| GPW free-atom XDM (periodic water dimer) | [gpw-xdm-ice](gpw-xdm-ice.md) | `regressions/gpw/gpw-xdm-ice` |
+| MPI GPW k-point scaling (4-rank gate) | [mpi-gpw-scaling-4rank](mpi-gpw-scaling-4rank.md) | `regressions/gpw/mpi-gpw-scaling-4rank` |
+| OT + Dudarev DFT+U, Γ-UKS GPW (NiO) | [ot-dftu](ot-dftu.md) | `regressions/gpw/ot-dftu` |
+| Multi-k OT + Dudarev DFT+U (H₂) | [ot-dftu-kpoints](ot-dftu-kpoints.md) | `regressions/gpw/ot-dftu-kpoints` |
+| Multi-k OT + DFT+U + Fermi–Dirac smearing (H₂) | [ot-dftu-smearing](ot-dftu-smearing.md) | `regressions/gpw/ot-dftu-smearing` |
+| Multi-k Orbital Transformation SCF (compact H₂) | [ot-kpoints](ot-kpoints.md) | `regressions/gpw/ot-kpoints` |
+| OT + metallic Fermi–Dirac smearing (BCC Na) | [ot-smearing](ot-smearing.md) | `regressions/gpw/ot-smearing` |
+| Multi-k UKS OT + Dudarev DFT+U (high-spin H₂) | [ot-uks-dftu](ot-uks-dftu.md) | `regressions/gpw/ot-uks-dftu` |
+| Multi-k UKS OT + DFT+U + metallic smearing (H₂) | [ot-uks-dftu-smearing](ot-uks-dftu-smearing.md) | `regressions/gpw/ot-uks-dftu-smearing` |
+| Multi-k collinear UKS OT (high-spin H₂) | [ot-uks-kpoints](ot-uks-kpoints.md) | `regressions/gpw/ot-uks-kpoints` |
+| OT orbital minimizer for Γ-UKS (O₂) | [ot-uks-o2](ot-uks-o2.md) | `regressions/gpw/ot-uks-o2` |
+| UKS OT + metallic Fermi–Dirac smearing (BCC Na) | [ot-uks-smearing](ot-uks-smearing.md) | `regressions/gpw/ot-uks-smearing` |
+| Periodic finite-\(q\) inter-\(k\) spectral G0W0 (Si) | [periodic-gw-finite-q](periodic-gw-finite-q.md) | `regressions/gpw/periodic-gw-finite-q` |
+| Multi-k spectral G0W0 (diamond Si, bct) | [periodic-gw-kpoints](periodic-gw-kpoints.md) | `regressions/gpw/periodic-gw-kpoints` |
+| Periodic Γ-point spectral G0W0 (sc-Si₂) | [periodic-gw-si](periodic-gw-si.md) | `regressions/gpw/periodic-gw-si` |
+| Multi-k RI-GPW MP2 (diamond Si, bct) | [periodic-mp2-kpoints](periodic-mp2-kpoints.md) | `regressions/gpw/periodic-mp2-kpoints` |
+| Periodic Γ-point GPW MP2, canonical (sc-Si₂) | [periodic-mp2-si](periodic-mp2-si.md) | `regressions/gpw/periodic-mp2-si` |
+| Periodic Γ-point RI-GPW MP2 (sc-Si₂) | [periodic-ri-mp2-si](periodic-ri-mp2-si.md) | `regressions/gpw/periodic-ri-mp2-si` |
+| Finite-\(q\) inter-\(k\) RI-GPW dRPA (diamond Si) | [periodic-rpa-finite-q](periodic-rpa-finite-q.md) | `regressions/gpw/periodic-rpa-finite-q` |
+| Multi-k RI-GPW direct RPA (diamond Si₄, bct) | [periodic-rpa-kpoints](periodic-rpa-kpoints.md) | `regressions/gpw/periodic-rpa-kpoints` |
+| Periodic Γ-point GPW direct RPA (sc-Si₂) | [periodic-rpa-si](periodic-rpa-si.md) | `regressions/gpw/periodic-rpa-si` |
+| Multi-k unrestricted spectral G0W0 (UGW) | [periodic-ugw-kpoints](periodic-ugw-kpoints.md) | `regressions/gpw/periodic-ugw-kpoints` |
+| Periodic Γ-point UGW@UKS (sc-Si₂) | [periodic-ugw-si](periodic-ugw-si.md) | `regressions/gpw/periodic-ugw-si` |
+| Multi-k unrestricted GPW MP2 (UMP2) | [periodic-ump2-kpoints](periodic-ump2-kpoints.md) | `regressions/gpw/periodic-ump2-kpoints` |
+| Periodic Γ-point GPW UMP2 (sc-Si₂) | [periodic-ump2-si](periodic-ump2-si.md) | `regressions/gpw/periodic-ump2-si` |
+| Multi-k unrestricted direct RPA (URPA@UKS) | [periodic-urpa-kpoints](periodic-urpa-kpoints.md) | `regressions/gpw/periodic-urpa-kpoints` |
+| Periodic Γ-point URPA@UKS (sc-Si₂) | [periodic-urpa-si](periodic-urpa-si.md) | `regressions/gpw/periodic-urpa-si` |
+
+### Plane wave (`regressions/pw/`)
+
+| Method | Page | Regression |
+| ------ | ---- | ---------- |
+| PW collinear spin band structure (bulk Si) | [bands-spin-si](bands-spin-si.md) | `regressions/pw/bands-spin-si` |
+| Collinear-spin Berry-phase polarization (bulk Si) | [berry-spin-si](berry-spin-si.md) | `regressions/pw/berry-spin-si` |
+| Metallic-occupation DOS (bulk Si, Fermi–Dirac) | [dos-metallic-si](dos-metallic-si.md) | `regressions/pw/dos-metallic-si` |
+| MPI plane-wave k-mesh scaling (4 ranks) | [mpi-pw-scaling-4rank](mpi-pw-scaling-4rank.md) | `regressions/pw/mpi-pw-scaling-4rank` |
+| Periodic multi-k MLWF (bulk Si, Marzari–Vanderbilt) | [periodic-wannier-si](periodic-wannier-si.md) | `regressions/pw/periodic-wannier-si` |
+| Collinear spin-polarized multi-k MLWF (bulk Si, UKS) | [periodic-wannier-uks](periodic-wannier-uks.md) | `regressions/pw/periodic-wannier-uks` |
+| PW collinear spin-GGA PBE (O₂ triplet, Γ) | [pw-spin-gga](pw-spin-gga.md) | `regressions/pw/pw-spin-gga` |
+| PW collinear UKS + metallic smearing (BCC Fe) | [pw-uks-fe-smearing](pw-uks-fe-smearing.md) | `regressions/pw/pw-uks-fe-smearing` |
+| PW isotropic variable-cell relax (diamond Si) | [pw-variable-cell-si](pw-variable-cell-si.md) | `regressions/pw/pw-variable-cell-si` |
+
+### Response / phonons (`regressions/response/`)
+
+| Method | Page | Regression |
+| ------ | ---- | ---------- |
+| Finite-\(q\) DFPT phonons at X (diamond Si) | [dfpt-finite-q-si](dfpt-finite-q-si.md) | `regressions/response/dfpt-finite-q-si` |
+| Finite-\(q\) DFPT phonons + metallic smearing (Si at X) | [dfpt-finite-q-smearing](dfpt-finite-q-smearing.md) | `regressions/response/dfpt-finite-q-smearing` |
+| DFPT phonons at Γ, pure GGA kernel (diamond Si) | [dfpt-gga-si](dfpt-gga-si.md) | `regressions/response/dfpt-gga-si` |
+| Incommensurate-\(q\) DFPT phonons (diamond Si) | [dfpt-incommensurate-si](dfpt-incommensurate-si.md) | `regressions/response/dfpt-incommensurate-si` |
+| DFPT phonons + metallic smearing (diamond Si) | [dfpt-metallic-si](dfpt-metallic-si.md) | `regressions/response/dfpt-metallic-si` |
+| DFPT phonons at Γ (diamond Si, PW LSDA) | [dfpt-phonon-si](dfpt-phonon-si.md) | `regressions/response/dfpt-phonon-si` |
+| Collinear-spin DFPT at incommensurate \(q\) (Si) | [dfpt-spin-incommensurate](dfpt-spin-incommensurate.md) | `regressions/response/dfpt-spin-incommensurate` |
+| DFPT phonons at Γ, collinear spin (diamond Si) | [dfpt-spin-si](dfpt-spin-si.md) | `regressions/response/dfpt-spin-si` |
+| DFPT phonons: collinear spin + metallic smearing (Si) | [dfpt-spin-smearing](dfpt-spin-smearing.md) | `regressions/response/dfpt-spin-smearing` |
+| Phonon dispersion \(\omega(q)\) (diamond Si, SW IFC) | [phonon-dispersion-si](phonon-dispersion-si.md) | `regressions/response/phonon-dispersion-si` |
+
+### Ab-initio MD (`regressions/dynamics/`)
+
+| Method | Page | Regression |
+| ------ | ---- | ---------- |
+| Car–Parrinello MD + electronic RATTLE (H₂O NVE, GPW) | [cpmd-rattle-water](cpmd-rattle-water.md) | `regressions/dynamics/cpmd-rattle-water` |
+| AO-basis CPMD on the SCF methods (RHF / RKS / UHF) | [cpmd-rhf-h2](cpmd-rhf-h2.md) | `regressions/dynamics/cpmd-{rhf-h2,rks-water,uhf-o2}` |
+| Car–Parrinello MD on Γ-UKS (O₂ triplet NVE, GPW) | [cpmd-uks](cpmd-uks.md) | `regressions/dynamics/cpmd-uks` |
+| Car–Parrinello MD (H₂O NVE, GPW fictitious e⁻ DOF) | [cpmd-water](cpmd-water.md) | `regressions/dynamics/cpmd-water` |
+| Second-generation CP with OT corrector (H₂O NVE) | [second-gen-cpmd-ot](second-gen-cpmd-ot.md) | `regressions/dynamics/second-gen-cpmd-ot` |
+| Second-generation CP on Γ-UKS (O₂ triplet NVE) | [second-gen-cpmd-uks](second-gen-cpmd-uks.md) | `regressions/dynamics/second-gen-cpmd-uks` |
+| Second-generation CP + OT corrector on Γ-UKS (O₂) | [second-gen-cpmd-uks-ot](second-gen-cpmd-uks-ot.md) | `regressions/dynamics/second-gen-cpmd-uks-ot` |
+| Second-generation CP: ASPC + partial SCF (H₂O NVE) | [second-gen-cpmd-water](second-gen-cpmd-water.md) | `regressions/dynamics/second-gen-cpmd-water` |
+| Multi-k XL-BOMD (H₂ NVE, GPW + k-mesh) | [xl-bomd-kpoints](xl-bomd-kpoints.md) | `regressions/dynamics/xl-bomd-kpoints` |
+| XL-BOMD on the Gaussian SCF methods (RHF H₂O NVE) | [xl-bomd-rhf-water](xl-bomd-rhf-water.md) | `regressions/dynamics/xl-bomd-rhf-water` |
+| XL-BOMD on Γ-UKS (O₂ triplet NVE, GPW) | [xl-bomd-uks](xl-bomd-uks.md) | `regressions/dynamics/xl-bomd-uks` |
+| XL-BOMD, extended-Lagrangian BOMD (H₂O NVE, GPW) | [xl-bomd-water](xl-bomd-water.md) | `regressions/dynamics/xl-bomd-water` |
+
+### Gaussian SCF (`regressions/scf/`)
+
+| Method | Page | Regression |
+| ------ | ---- | ---------- |
+| Maximally localized Wannier functions (Foster–Boys) | [wannier-centers](wannier-centers.md) | `regressions/scf/wannier-centers` |
 
 ## Index — PySCF campaign methods
 

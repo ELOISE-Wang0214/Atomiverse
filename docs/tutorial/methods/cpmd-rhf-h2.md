@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `cpmd-rhf-h2` (family page: also `cpmd-rks-water`, `cpmd-uhf-o2`) |
 | Regressions | `regressions/dynamics/cpmd-rhf-h2/`, `.../cpmd-rks-water/`, `.../cpmd-uhf-o2/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + a concrete `cpu::scf::{RHF,RKS,UHF,UKS}` with `cpmd = true`, `cpmd_mu`, bound at `md::Phase::force`; `cpu::md::CpmdConserved` for \(E_{\mathrm{cons}}\); propagator `cpu::electronic::Cpmd` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::CarParrinelloMethod<cpu::scf::{RHF,RKS,UHF,UKS}>{method, mu_au}` bound with `set_evaluator_ref`; `cpu::md::CpmdConserved` for \(E_{\mathrm{cons}}\); propagator `cpu::electronic::Cpmd` |
 | Spec | `esmm-cpmd-04-ao-cpmd` (ac-002 zero production iterations, ac-003 drift envelopes) |
 | Dual gate | Correctness = the three regressions; speed **`perf_exempt`** |
 | GPW sibling | [cpmd-water](cpmd-water.md) — same physics on the plane-wave/GPW side |
@@ -56,23 +56,29 @@ E_{\mathrm{cons}} = T_{\mathrm{n}} + T_{e} + E_{\mathrm{el}}
 
 ## API
 
-| Member on `cpu::scf::{RHF,RKS,UHF,UKS}` | Meaning |
+Car–Parrinello is a **wrapper type**, not a flag on the method: the mode bits
+live in `protected` storage on `MeanFieldMethod`, and
+`cpu::electronic::CarParrinelloMethod<Method>`
+(`cpu/electronic/aimd_method.h`) is the only public way to set them. The
+wrapper publicly inherits `Method`, so every ordinary member (`basis`, `tol`,
+`max_iter`, …) is still yours to set on the object you move in, and the
+wrapper is still an `HF`-kind Component for the force slot.
+
+| Public surface | Meaning |
 | --- | --- |
-| `bool cpmd = false` | Enable Car–Parrinello propagation. **Nested MD force slot only** — standalone `run()` / `forces()` with `cpmd = true` throw `std::logic_error` (there is no nuclear trajectory for the electrons to follow at a single point) |
-| `double cpmd_mu = 400.0` | Fictitious electronic mass μ [a.u.]. See *Choosing μ* — the AO residual is stiffer than a plane-wave one, so the textbook 400 is often too light |
-| `bool cpmd_thermostat = false` | Couple a Nosé–Hoover thermostat to the fictitious DOF (Blöchl & Parrinello, *PRB* **45**, 9413 (1992)). Default = NVE electrons |
-| `double cpmd_ekin_target_ha = 1e-5` | Target fictitious kinetic energy \(K_0\) [Hartree]; ignored unless `cpmd_thermostat` |
-| `double cpmd_tau_e = 50.0` | Electronic thermostat coupling time τ_e [fs]; ignored unless `cpmd_thermostat` |
+| `CarParrinelloMethod<Method>{Method method, double mu_au}` | Move a configured `RHF` / `RKS` / `UHF` / `UKS` in and enable CP with fictitious electronic mass μ [a.u. electron mass]. Throws `std::invalid_argument` unless μ is finite and > 0. See *Choosing μ* — the AO residual is stiffer than a plane-wave one, so the textbook 400 is often too light. **Nested MD force slot only** — a standalone `run()` / `forces()` on a CP-enabled method throws `std::logic_error` (there is no nuclear trajectory for the electrons to follow at a single point) |
+| `CarParrinelloMethod<Method>{Method, double mu_au, ScfElectronicThermostat{ekin_target_ha, tau_e_fs}}` | Same, plus a Nosé–Hoover thermostat on the fictitious DOF (Blöchl & Parrinello, *PRB* **45**, 9413 (1992)): target fictitious kinetic energy \(K_0\) [Hartree] and coupling time τ_e [fs]. The two-argument constructor is NVE electrons |
 | `double last_electronic_ke_ev() const` | \(T_e\) [eV] of the last step; also on `frame.meta[kEnergyElectronKinetic]` |
 | `double last_electronic_thermostat_ev() const` | \(E^{e}_{\mathrm{therm}}\) [eV]; exactly 0 without the thermostat; also on `frame.meta[kEnergyElectronThermostat]` |
 
 **There is deliberately no `cpmd_dt` member.** The method implements
-`cpu::TimestepConsumer` (`timestep_required()` is exactly `cpmd`), and
+`cpu::TimestepConsumer` (`timestep_required()` is exactly "CP is on"), and
 `cpu::md::MD::build()` pushes the nuclear timestep from the integrator
 (`TimestepProvider`) into the method before anything builds. Nuclei and
-electrons therefore share **one** clock by construction; setting `cpmd = true`
-without an MD integrator throws at `build_on` ("cpmd requires an MD integrator
-publishing the timestep"). This is the same protocol the GPW evaluator uses.
+electrons therefore share **one** clock by construction; wrapping a method in
+`CarParrinelloMethod` without an MD integrator throws at `build_on` ("cpmd
+requires an MD integrator publishing the timestep"). This is the same protocol
+the GPW evaluator uses.
 
 **`determinant()` is not refreshed on production steps.** Propagated orbitals
 have no canonical eigenvalues, so the published wavefunction (coefficients,
@@ -85,7 +91,7 @@ channels), GHF (spinor CP is new physics), `predictor()` (no ASPC-CP hybrid),
 `ri != RI::None`, `x2c`, `solvent_eps > 0`, `mom != Off`, `soscf`, non-empty
 `point_charges` (the QM/MM × CPMD seam — lifting this gate later *is* the
 integration), nonzero `external_field`, `d3bj`/`d4`, `compute_force = false`,
-non-positive or non-finite `cpmd_mu` / thermostat parameters, and a
+non-positive or non-finite μ / thermostat parameters, and a
 near-singular overlap (`n_dropped > 0`) at the seed all throw. In particular
 **dispersion is refused because `ScfGradient` carries no d3bj/d4 force terms**
 while the total energy includes the dispersion contribution —
@@ -99,17 +105,18 @@ exclusive with `cpmd` in **both** directions — the symmetric row is asserted b
 ```cpp
 constexpr double dt = 0.05; // fs — nuclear and electronic share one step
 
-cpu::scf::RKS rks{cpu::scf::XCType::LSDA};   // or RHF / UHF{n_a, n_b} / UKS
-rks.basis = cpu::scf::BasisSet::STO3G;
-rks.tol   = 1e-9;
-rks.cpmd  = true;
-rks.cpmd_mu = 1000.0;   // a.u. — scanned, see below
+cpu::scf::RKS rks_base{cpu::scf::XCType::LSDA};  // or RHF / UHF{n_a,n_b} / UKS
+rks_base.basis = cpu::scf::BasisSet::STO3G;
+rks_base.tol   = 1e-9;
+// CP is the wrapper type; mu [a.u. electron mass] is its constructor argument.
+cpu::electronic::CarParrinelloMethod<cpu::scf::RKS> rks{std::move(rks_base),
+                                                        /*mu_au=*/1000.0};
 // No electronic dt: MD pushes the integrator's dt into the method at build.
 
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{dt});  // the ONE owner of dt
-sim.on(md::Phase::force).add_ref(rks, /*order=*/0);
-sim.add(cpu::md::CpmdConserved{});                // E_cons -> meta[kConserved]
+sim.set_evaluator_ref(rks);       // borrow: iterations() stays readable after
+sim.set_observer(cpu::md::CpmdConserved{});       // E_cons -> meta[kConserved]
 sim.build();
 
 sim.run(frame, 1);          // step 1 = cold SCF seed  (iterations() > 0)
@@ -196,7 +203,8 @@ changes and \(T_e > 0\) is a hard gate there.
 
 | What | Path |
 | ---- | ---- |
-| Members, `TimestepConsumer`, seed/step | `include/atomiverse/cpu/scf/mean_field_method.h`, `src/cpu/scf/mean_field_method.cpp` |
+| CP wrapper (`CarParrinelloMethod`, `ScfElectronicThermostat`) | `include/atomiverse/cpu/electronic/aimd_method.h` |
+| Mode storage, `TimestepConsumer`, seed/step | `include/atomiverse/cpu/scf/mean_field_method.h`, `src/cpu/scf/mean_field_method.cpp` |
 | Fixed-state gradient (`compute_at_density`) | `include/atomiverse/cpu/scf/internal/gradient.h`, `src/cpu/scf/internal/gradient.cpp` |
 | Fixed-density energy | `src/cpu/scf/internal/mean_field_energy.cpp` |
 | Propagator | `include/atomiverse/cpu/electronic/cpmd.h` |

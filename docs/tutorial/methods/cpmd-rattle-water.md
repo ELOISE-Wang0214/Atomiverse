@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `cpmd-rattle-water` |
 | Regression | `regressions/dynamics/cpmd-rattle-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu}` at `md::Phase::force`; propagator `cpu::electronic::Cpmd` (RATTLE). The nuclear dt is pushed from the integrator into the evaluator by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{…, compute_forces=true}, mu_au}` bound with `set_evaluator_ref`; propagator `cpu::electronic::Cpmd` (RATTLE). CP mode is the **wrapper type**, not a flag. The nuclear dt is pushed from the integrator into the wrapper by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `cpmd-rattle-water` |
 | Dual gate | Correctness A1–A16 of the spec acceptance; speed **`perf_exempt`** |
 | Wave | CP2K capability loop — wave 5 |
@@ -36,16 +36,17 @@ envelope). Offline CP2K twin input:
 ## Usage
 
 ```cpp
-cpu::gpw::GPWEvaluator eval({O, H}, /*cutoff_ry*/200.0, /*max_iter*/60,
-                            /*tol*/1e-5, /*mix*/0.3, cpu::gpw::XcKind::PBE,
-                            /*nonperiodic*/true, /*compute_forces*/true);
-eval.cpmd = true;
-eval.cpmd_mu = 2000.0; // a.u. electron mass
-// No electronic dt: MD pushes the integrator's dt into the evaluator at build.
+cpu::gpw::GPWEvaluator gpw({O, H}, /*cutoff_ry*/200.0, /*max_iter*/60,
+                           /*tol*/1e-5, /*mix*/0.3, cpu::gpw::XcKind::PBE,
+                           /*nonperiodic*/true, /*compute_forces*/true);
+// mu [a.u. electron mass] is a constructor argument of the CP wrapper; the
+// mode bits it flips are private on GPWEvaluator.
+cpu::electronic::CarParrinello eval{std::move(gpw), /*mu_au=*/2000.0};
+// No electronic dt: MD pushes the integrator's dt into the wrapper at build.
 
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{0.1});  // fs — the ONE owner of dt
-sim.on(md::Phase::force).add_ref(eval);
+sim.set_evaluator_ref(eval);
 sim.build();
 sim.run(frame, nsteps);
 
