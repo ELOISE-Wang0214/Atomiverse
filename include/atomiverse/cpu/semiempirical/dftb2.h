@@ -23,7 +23,8 @@ enum class DftbSkSet {
     ThreeOb = 1,
 };
 
-/// @brief SCC-DFTB2 energy (+ optional nuclear forces) for H/C/N/O.
+/// @brief SCC-DFTB2 energy (+ optional D3 dispersion + nuclear forces) for
+///        H/C/N/O.
 ///
 /// Self-consistent-charge DFTB2 (Elstner et al., Phys. Rev. B **58**, 7260
 /// (1998), DOI 10.1103/PhysRevB.58.7260) with optional **collinear** spin
@@ -42,6 +43,16 @@ enum class DftbSkSet {
 ///   repulsive (Gaus et al., JCTC 2013; organic CHNO). Closed-shell energy;
 ///   forces are re-SCC FD. Spin channel is MioSketch-only.
 ///
+/// Optional **Grimme DFT-D3(BJ)** (`d3 = true`) is a geometry-only additive
+/// correction using in-tree Grimme tables and the published DFTB3-D3(BJ)
+/// damping set (s6, s8, a1, a2) as used by DFTB+ / simple-dftd3 `--bj dftb3`.
+/// It is added on top of **either** `sk_set` path, with its own analytic
+/// gradient, so `F = −∇E` holds for the total. Three-body ATM is off.
+/// **Limitation:** the dispersion sum is evaluated as an *isolated cluster*
+/// (no lattice images) even when the electronic Γ-point path is lattice-summed,
+/// so `d3` is only physical for molecules / large boxes — a periodic D3 lattice
+/// sum for DFTB2 is not implemented.
+///
 /// Open shell uses `charge` and `multiplicity` to set nα, nβ. Units: energy
 /// [eV], positions [Å], forces [eV/Å].
 ///
@@ -49,6 +60,7 @@ enum class DftbSkSet {
 ///   cpu::semiempirical::DFTB2 dftb;
 ///   dftb.sk_set = cpu::semiempirical::DftbSkSet::ThreeOb;
 ///   dftb.multiplicity = 3;   // O2 triplet (MioSketch)
+///   dftb.d3 = true;
 ///   dftb.with_forces = true;
 ///   eval.on(evaluate::Phase::evaluate).add(std::move(dftb));
 /// @endcode
@@ -66,6 +78,16 @@ class DFTB2 : public cpu::Semiempirical {
     int charge = 0;
     /// @brief Spin multiplicity 2S+1 (dimensionless). Default 1 = closed shell.
     int multiplicity = 1;
+    /// @brief Opt-in Grimme DFT-D3 with Becke–Johnson damping (two-body).
+    bool d3 = false;
+    /// @brief D3 C6 scale (dimensionless). DFTB3-D3(BJ) default = 1.
+    double d3_s6 = 1.0;
+    /// @brief D3 C8 scale (dimensionless). DFTB3-D3(BJ) default = 0.5883.
+    double d3_s8 = 0.5883;
+    /// @brief BJ steepness (dimensionless). DFTB3-D3(BJ) default = 0.5719.
+    double d3_a1 = 0.5719;
+    /// @brief BJ offset [Bohr]. DFTB3-D3(BJ) default = 3.6017.
+    double d3_a2 = 3.6017;
 
     DFTB2() = default;
 
@@ -74,8 +96,10 @@ class DFTB2 : public cpu::Semiempirical {
     void build(const BuildContext& ctx) override;
     void launch(const LaunchContext& ctx) override;
 
-    /// @brief Last electronic+repulsive energy [eV].
+    /// @brief Last total energy E_elec+rep+disp [eV].
     double last_energy() const { return energy_; }
+    /// @brief Last D3(BJ) dispersion energy [eV] (0 when `d3` is false).
+    double last_e_disp() const { return e_disp_; }
 
     /// @brief Per-atom Mulliken charge fluctuation Δq_A [e] after last launch.
     const std::vector<double>& last_mulliken_dq() const { return last_dq_; }
@@ -85,6 +109,7 @@ class DFTB2 : public cpu::Semiempirical {
 
   private:
     double energy_ = 0;
+    double e_disp_ = 0;
     std::vector<double> last_dq_;
     std::vector<double> last_spin_;
 };

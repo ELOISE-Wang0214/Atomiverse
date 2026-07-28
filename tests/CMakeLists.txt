@@ -246,6 +246,7 @@ atv_add_cpp_test(test_cpu_dftb2                   cpu/semiempirical/test_dftb2.c
 atv_add_cpp_test(test_cpu_dftb0                   cpu/semiempirical/test_dftb0.cpp)
 atv_add_cpp_test(test_cpu_dftb2_sk                cpu/semiempirical/test_dftb2_sk.cpp)
 atv_add_cpp_test(test_cpu_dftb2_3ob               cpu/semiempirical/test_dftb2_3ob.cpp)
+atv_add_cpp_test(test_cpu_dftb2_dispersion_d3     cpu/semiempirical/test_dftb2_dispersion_d3.cpp)
 
 # GPW module tests. All of them run unconditionally on the in-tree GTH + MOLOPT +
 # D3 tables (cpu/gpw/basis_data/) — no external data directory is consulted at

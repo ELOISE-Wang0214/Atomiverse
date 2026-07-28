@@ -575,6 +575,7 @@ if(ATV_BUILD_SEMIEMPIRICAL)
     atv_add_regression(semiempirical h2o_gfn0)
     atv_add_regression(semiempirical spin-dftb2-o2)
     atv_add_regression(semiempirical dftb2-periodic-gamma)
+    atv_add_regression(semiempirical dftb2-dispersion-d3)
     atv_add_regression(multiscale qmmm_h2_ar)
     if(ATV_BUILD_HF)
         # ES/link/polarizable embedding instantiate cpu::scf::RHF through the

@@ -1,9 +1,11 @@
 /// @file src/cpu/semiempirical/dftb2.cpp
 /// SCC-DFTB2 multi-element: mio-1-1 H–H pin + sketch (spin + analytic F) + 3ob.
 /// Γ-point PBC (MioSketch): lattice-summed H0/S, screened γ, and repulsive.
+/// Optional additive Grimme D3(BJ) dispersion (molecular sum, analytic forces).
 #include "atomiverse/cpu/semiempirical/dftb2.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -12,6 +14,9 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/gpw/internal/dftd3.h"
+#include "atomiverse/cpu/gpw/internal/dftd3_params.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/linalg/matrix.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_3ob_tables.h"
@@ -1464,6 +1469,65 @@ void DFTB2::launch(const LaunchContext& ctx) {
     } else {
         energy_ = launch_mio(f, scc_tol, max_scc, with_forces, charge,
                              multiplicity, last_dq_, last_spin_);
+    }
+
+    // Optional Grimme D3(BJ): a purely geometric additive correction, so it
+    // rides on top of whichever SK path ran above and needs no SCC re-entry.
+    // Its own analytic gradient keeps F = -grad(E) for the total, independent of
+    // whether the electronic forces above were analytic (closed-shell mio) or
+    // finite-difference (open shell / 3ob).
+    e_disp_ = 0.0;
+    if (d3) {
+        const int n_at = f.nlocal();
+        const int* type = f.span(kAtom_type).data();
+        const StorageReal* x = f.span(kAtom_x);
+        const StorageReal* y = f.span(kAtom_y);
+        const StorageReal* z = f.span(kAtom_z);
+
+        std::vector<int> Z(static_cast<std::size_t>(n_at));
+        std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(n_at));
+        for (int a = 0; a < n_at; ++a) {
+            const int zi = type[a];
+            if (!gpw::D3Params::supports_element(zi))
+                throw std::runtime_error(
+                    "DFTB2 D3: element Z=" + std::to_string(zi)
+                    + " is not in the in-tree D3 table (no fallback)");
+            Z[static_cast<std::size_t>(a)] = zi;
+            pos[static_cast<std::size_t>(a)] = {
+                static_cast<double>(x[a]) * units::kAngstromInBohr,
+                static_cast<double>(y[a]) * units::kAngstromInBohr,
+                static_cast<double>(z[a]) * units::kAngstromInBohr};
+        }
+
+        // Isolated cluster: the D3 sum takes no lattice images even when the
+        // electronic Gamma-point path above is lattice-summed (documented
+        // limitation on DFTB2::d3 -- periodic DFTB2-D3 is not implemented).
+        const double cell[3] = {0.0, 0.0, 0.0};
+        const gpw::D3Result res = gpw::dftd3_pbe_bj(
+            Z, pos, cell, /*periodic=*/false, gpw::D3Params{},
+            /*rcut_bohr=*/94.2, d3_s6, d3_s8, d3_a1, d3_a2,
+            /*cp2k_cn=*/false, /*calculate_c9=*/false);
+
+        e_disp_ = res.energy * units::kHartreeInEv;
+        energy_ += e_disp_;
+        // Total only: dispersion is an empirical geometric term, not part of the
+        // electronic share reported on kEnergyElectronic.
+        f.meta.get(kEnergy) += e_disp_;
+
+        if (with_forces) {
+            // Ha/Bohr -> eV/Angstrom.
+            const double f_conv =
+                units::kHartreeInEv * units::kAngstromInBohr;
+            AccReal* fx = f.span(kAtom_fx);
+            AccReal* fy = f.span(kAtom_fy);
+            AccReal* fz = f.span(kAtom_fz);
+            for (int a = 0; a < n_at; ++a) {
+                const auto& fa = res.forces[static_cast<std::size_t>(a)];
+                fx[a] += static_cast<AccReal>(fa[0] * f_conv);
+                fy[a] += static_cast<AccReal>(fa[1] * f_conv);
+                fz[a] += static_cast<AccReal>(fa[2] * f_conv);
+            }
+        }
     }
 }
 

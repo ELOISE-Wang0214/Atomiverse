@@ -193,3 +193,6 @@ jobs/
 
 # SLURM job logs
 slurm-*.out
+
+# TB oracle structure twins (offline pin inputs)
+!tools/tb_oracle/**/*.xyz
