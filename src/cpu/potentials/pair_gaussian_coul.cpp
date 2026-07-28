@@ -7,6 +7,7 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
+#include "atomiverse/cpu/potentials/force_scratch.h"
 #include "atomiverse/cpu/potentials/gaussian_charge.h"
 
 namespace ATV {
@@ -37,6 +38,16 @@ void PairGaussianCoul::compute(const LaunchContext& ctx) {
 
     const double K = ATV::units::coulomb;
     double energy = 0.0;
+    // Pair virial, Voigt xx yy zz xy xz yz [eV] — Σ Δr ⊗ f, LAMMPS sign.
+    //
+    // This style is *not* a `LongRangeParticipant`: it is a self-contained
+    // real-space Coulomb with a hard cutoff (Reed / MetalWalls form), so no
+    // reciprocal solver carries any part of this energy and there is nothing
+    // to double count — the cutoff pair sum is the whole stress contribution.
+    // The Gaussian self-energy is deliberately absent from it: it depends only
+    // on η and q, is independent of every coordinate and of the cell, and so
+    // contributes nothing to dE/dV.
+    md::Voigt6 vir{};
 
     auto accumulate = [&](int i, int j, double dx, double dy, double dz) {
         const double r2 = dx * dx + dy * dy + dz * dz;
@@ -58,6 +69,17 @@ void PairGaussianCoul::compute(const LaunchContext& ctx) {
         fx[j] -= fpair * dx;
         fy[j] -= fpair * dy;
         fz[j] -= fpair * dz;
+        // Here the force on i is +fpair·(r_j − r_i), i.e. F_i = −fpair·Δ with
+        // Δ = r_i − r_j, so the pair term is Δ_a F_b = −fpair·d_a·d_b — the
+        // opposite sign to the styles that write `f[i] -= fpair·d`. Both give
+        // a positive trace under repulsion; check the kernel, not the habit.
+        const double c = -fpair;
+        vir.v[0] += c * dx * dx;
+        vir.v[1] += c * dy * dy;
+        vir.v[2] += c * dz * dz;
+        vir.v[3] += c * dx * dy;
+        vir.v[4] += c * dx * dz;
+        vir.v[5] += c * dy * dz;
     };
 
     if (include_self_) {
@@ -100,6 +122,7 @@ void PairGaussianCoul::compute(const LaunchContext& ctx) {
     }
 
     f.meta.get(kEnergy) += energy;
+    vir.flush_to(f.meta.get(kStress));
 }
 
 } // namespace cpu

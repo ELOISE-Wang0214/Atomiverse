@@ -6,6 +6,7 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/potentials/force_scratch.h"
 
 namespace ATV {
 namespace cpu {
@@ -56,6 +57,25 @@ void PairDpd::compute(const LaunchContext& ctx) {
     const auto type = f.span(kAtom_type);
 
     double energy = 0.0;
+    // Pair virial, Voigt xx yy zz xy xz yz [eV] — Σ Δr ⊗ F^C, LAMMPS sign.
+    //
+    // CONSERVATIVE FORCE ONLY, deliberately. F^D and F^R are thermostat
+    // forces, not derivatives of the energy this style reports:
+    //   * the DPD thermostat is built so the invariant measure is the Gibbs
+    //     measure of the conservative potential alone (Español & Warren 1995),
+    //     so the thermodynamic pressure a barostat must integrate is
+    //     ρkT + (1/3V)⟨Σ r·F^C⟩ — both other terms average to zero at
+    //     equilibrium (⟨r̂·v_ij⟩ = 0 by symmetry, ⟨θ⟩ = 0 by construction);
+    //   * F^R ∝ 1/√dt, so its instantaneous r·F diverges as the timestep
+    //     shrinks. Tallying it would feed unbounded, timestep-dependent noise
+    //     into every pressure the engine reports.
+    // LAMMPS `pair_style dpd` tallies the full fpair instead; that is the
+    // instantaneous mechanical (Irving–Kirkwood) stress, which agrees with
+    // this one on average and not term by term. The choice here is the one
+    // that satisfies tr(σ) = −3V dE/dV for the energy this style writes,
+    // pinned by tests/cpu/potentials/test_pair_virial.cpp
+    // (`PairDpd.VirialExcludesDissipativeAndRandomForces`).
+    md::Voigt6 vir{};
     const StorageReal* __restrict x = f.span(kAtom_x);
     const StorageReal* __restrict y = f.span(kAtom_y);
     const StorageReal* __restrict z = f.span(kAtom_z);
@@ -101,6 +121,17 @@ void PairDpd::compute(const LaunchContext& ctx) {
             const double fc = aij * w;
             double fpair = -fc * inv_r;
 
+            // F^C on i is −fc·inv_r·(r_j − r_i) = fc·inv_r·Δ with Δ = r_i − r_j,
+            // so the pair term is Δ_a F_b = (a w / r)·d_a·d_b. Taken here,
+            // before the dissipative and random terms join `fpair`.
+            const double cvir = fc * inv_r;
+            vir.v[0] += cvir * dx * dx;
+            vir.v[1] += cvir * dy * dy;
+            vir.v[2] += cvir * dz * dz;
+            vir.v[3] += cvir * dx * dy;
+            vir.v[4] += cvir * dx * dz;
+            vir.v[5] += cvir * dy * dz;
+
             const double dvx = vx[j] - vx[i];
             const double dvy = vy[j] - vy[i];
             const double dvz = vz[j] - vz[i];
@@ -119,10 +150,18 @@ void PairDpd::compute(const LaunchContext& ctx) {
             fy[j] -= fpair * dy;
             fz[j] -= fpair * dz;
 
-            energy += 0.5 * aij * w2;
+            // U^C = ½ a r_c w², the potential whose gradient is F^C = a w r̂
+            // (Groot–Warren 1997; LAMMPS `0.5*a0*cut*wd*wd`). The `r_c` factor
+            // was missing: the energy was reported in eV/Å while `a` is a
+            // force amplitude, and it disagreed with the force this same loop
+            // applies by exactly that factor — visible the moment the virial
+            // is checked against −3V dE/dV. Both in-tree DPD regressions use
+            // r_c = 1 Å, which is why nothing caught it.
+            energy += 0.5 * aij * rc * w2;
         }
     }
     f.meta.get(kEnergy) += energy;
+    vir.flush_to(f.meta.get(kStress));
 }
 
 } // namespace cpu

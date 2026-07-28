@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/potentials/force_scratch.h"
 
 namespace ATV {
 namespace cpu {
@@ -30,6 +31,11 @@ void PairBuck::compute(const LaunchContext& ctx) {
     const int n = static_cast<int>(f.nlocal());
 
     double energy = 0.0;
+    // Pair virial, Voigt xx yy zz xy xz yz [eV] — Σ Δr ⊗ f, positive under
+    // repulsion (LAMMPS sign, matching PairLJCut / PairBorn). Buckingham is an
+    // oxide / halide short-range repulsion: without this a constant-pressure
+    // run integrates a pressure missing its entire repulsive wall.
+    md::Voigt6 vir{};
     const StorageReal* __restrict x = f.span(kAtom_x);
     const StorageReal* __restrict y = f.span(kAtom_y);
     const StorageReal* __restrict z = f.span(kAtom_z);
@@ -68,9 +74,22 @@ void PairBuck::compute(const LaunchContext& ctx) {
             fy[j] += fpair * dy;
             fz[j] += fpair * dz;
             energy += v;
+            // Δ = r_i − r_j = −(dx,dy,dz) and F_i = fpair·Δ, so every
+            // component is fpair·Δ_a·Δ_b = fpair·d_a·d_b — the sign of the
+            // separation the loop happened to measure drops out.
+            // Unconditional by design: a loop-invariant `if (do_virial)` here
+            // is what let GCC 14.3 reassociate the reduction away in
+            // PairLJCut's SIMD path (see pair_lj_cut.cpp).
+            vir.v[0] += fpair * dx * dx;
+            vir.v[1] += fpair * dy * dy;
+            vir.v[2] += fpair * dz * dz;
+            vir.v[3] += fpair * dx * dy;
+            vir.v[4] += fpair * dx * dz;
+            vir.v[5] += fpair * dy * dz;
         }
     }
     f.meta.get(kEnergy) += energy;
+    vir.flush_to(f.meta.get(kStress));
 }
 
 } // namespace cpu

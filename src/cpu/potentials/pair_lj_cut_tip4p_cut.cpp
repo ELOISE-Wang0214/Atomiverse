@@ -9,6 +9,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
+#include "atomiverse/cpu/potentials/force_scratch.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -288,6 +289,21 @@ void PairLJCutTip4pCut::compute(const LaunchContext& ctx) {
     const double alpha = alpha_;
 
     double energy_total = 0;
+    // Pair virial, Voigt xx yy zz xy xz yz [eV] — Σ Δr ⊗ f, LAMMPS sign.
+    //
+    // The Coulomb force is measured between M sites and then spread over O,
+    // H1 and H2, so "which separation times which force" is a real question.
+    // It has an exact answer: the redistribution weights are the barycentric
+    // weights that define M,
+    //     x_M = (1−α) x_O + (α/2)(x_H1 + x_H2),
+    //     F_O = (1−α) f,  F_H1 = F_H2 = (α/2) f,
+    // and they sum to one, so the group's contribution
+    //     Σ_k x_k ⊗ F_k = [(1−α)x_O + (α/2)(x_H1+x_H2)] ⊗ f = x_M ⊗ f.
+    // Both molecules give (x_M(i) − x_M(j)) ⊗ f, i.e. the M-site separation
+    // times the M-site force — not the O–O separation. Using the real-atom
+    // separation here would be wrong by α·(the intramolecular geometry), a few
+    // per cent of the electrostatic stress, and invisible in the forces.
+    md::Voigt6 vir{};
 
     // Serial path (foothold): TIP4P force partitioning writes H partners of O,
     // so a simple single-thread walk avoids OMP races on H force rows.
@@ -348,6 +364,14 @@ void PairLJCutTip4pCut::compute(const LaunchContext& ctx) {
                 fyt[j] -= fpair * dy;
                 fzt[j] -= fpair * dz;
                 energy_total += sc * (eps4 * (r6inv * r6inv - r6inv) - vshift);
+                // LJ acts on the real O positions: Δ = (dx,dy,dz) is already
+                // r_i − r_j and F_i = +fpair·Δ.
+                vir.v[0] += fpair * dx * dx;
+                vir.v[1] += fpair * dy * dy;
+                vir.v[2] += fpair * dz * dz;
+                vir.v[3] += fpair * dx * dy;
+                vir.v[4] += fpair * dx * dz;
+                vir.v[5] += fpair * dy * dz;
             }
 
             // Coulomb with M-site adjustment when either atom is oxygen.
@@ -376,6 +400,16 @@ void PairLJCutTip4pCut::compute(const LaunchContext& ctx) {
                 const double prefactor = sc * qqr2e * qi * qj * rinv;
                 const double cforce = prefactor * r2inv; // * |r| scale via cdx
                 energy_total += prefactor;
+                // Charge-site pair: Δ = cd (site of i minus site of j) and the
+                // force on that site is +cforce·cd, so the whole six-atom
+                // redistribution below collapses to cforce·cd_a·cd_b (see the
+                // barycentric identity at the top of this function).
+                vir.v[0] += cforce * cdx * cdx;
+                vir.v[1] += cforce * cdy * cdy;
+                vir.v[2] += cforce * cdz * cdz;
+                vir.v[3] += cforce * cdx * cdy;
+                vir.v[4] += cforce * cdx * cdz;
+                vir.v[5] += cforce * cdy * cdz;
 
                 // Force on charge site of i, partitioned if oxygen.
                 if (itype != type_O) {
@@ -442,6 +476,7 @@ void PairLJCutTip4pCut::compute(const LaunchContext& ctx) {
 
     f.meta.get(kEnergy) += energy_total;
     f.meta.get(kEnergyPair) += energy_total;
+    vir.flush_to(f.meta.get(kStress));
 }
 
 void PairLJCutTip4pCut::destroy(const DestroyContext&) {

@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/potentials/force_scratch.h"
 
 namespace ATV {
 namespace cpu {
@@ -25,6 +26,10 @@ void PairYukawa::compute(const LaunchContext& ctx) {
     const int n = static_cast<int>(f.nlocal());
 
     double energy = 0.0;
+    // Pair virial, Voigt xx yy zz xy xz yz [eV] — Σ Δr ⊗ f, LAMMPS sign. The
+    // screened Coulomb is the whole interaction here (hard cutoff, no
+    // reciprocal partner), so this is its complete stress contribution.
+    md::Voigt6 vir{};
     const StorageReal* __restrict x = f.span(kAtom_x);
     const StorageReal* __restrict y = f.span(kAtom_y);
     const StorageReal* __restrict z = f.span(kAtom_z);
@@ -59,9 +64,18 @@ void PairYukawa::compute(const LaunchContext& ctx) {
             fy[j] += fpair * dy;
             fz[j] += fpair * dz;
             energy += v;
+            // F_i = fpair·(r_i − r_j) ⇒ Δ_a f_b = fpair·d_a·d_b. Unconditional
+            // (see the reassociation note in pair_lj_cut.cpp).
+            vir.v[0] += fpair * dx * dx;
+            vir.v[1] += fpair * dy * dy;
+            vir.v[2] += fpair * dz * dz;
+            vir.v[3] += fpair * dx * dy;
+            vir.v[4] += fpair * dx * dz;
+            vir.v[5] += fpair * dy * dz;
         }
     }
     f.meta.get(kEnergy) += energy;
+    vir.flush_to(f.meta.get(kStress));
 }
 
 } // namespace cpu

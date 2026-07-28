@@ -14,9 +14,16 @@ namespace cpu {
 
 /// @brief Dissipative particle dynamics pair force (Groot–Warren 1997).
 ///
-/// Conservative: \(F^C = a\,w(r)\hat r\), \(w=1-r/r_c\).
+/// Conservative: \(F^C = a\,w(r)\hat r\), \(w=1-r/r_c\), from
+/// \(U^C = \tfrac12 a\,r_c\,w^2\) [eV].
 /// Multi-type: optional `a_matrix[type_i][type_j]` (symmetric).
 /// Dissipative / random with \(\sigma^2 = 2\gamma k_B T\) and weight \(w\).
+///
+/// **Stress:** `kStress` carries the conservative virial
+/// \(\sum \Delta r\otimes F^C\) only. The dissipative and random forces are
+/// thermostat terms — zero mean at equilibrium, and \(F^R\propto 1/\sqrt{dt}\)
+/// — so tallying them would put timestep-dependent noise into every reported
+/// pressure without changing its average. See `src/cpu/potentials/pair_dpd.cpp`.
 class PairDpd : public Pair {
   public:
     /// @param a Soft repulsion amplitude [eV/Å] (single-type).
