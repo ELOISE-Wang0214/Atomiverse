@@ -74,3 +74,36 @@ TEST(AtomSort, NotifyBumpsNeighborGeneration) {
     // Owner tag map always rebuilt after sort (specials / gather / bonded).
     EXPECT_EQ(dd.tag_to_local.size(), 4u);
 }
+
+/// The FRAME's own tag index — not just the decomposition's mirror — must name
+/// the post-sort rows. On a single rank that index is the ONLY tag→row map the
+/// constraint solvers have (`FixRattle`, `FixSettle`), so a stale entry means
+/// they hold three unrelated atoms rigid and the molecules quietly come apart.
+TEST(AtomSort, NotifyRepublishesTheFrameTagIndex) {
+    constexpr int n = 8;
+    cpu::Frame f(n);
+    const double coords[n][3] = {
+        {9.0, 0.1, 0.1}, {0.1, 0.1, 0.1}, {9.0, 9.0, 0.1}, {0.1, 9.0, 0.1},
+        {0.1, 0.1, 9.0}, {9.0, 0.1, 9.0}, {0.1, 9.0, 9.0}, {9.0, 9.0, 9.0},
+    };
+    for (int i = 0; i < n; ++i) {
+        f.span(kAtom_x)[i] = coords[i][0];
+        f.span(kAtom_y)[i] = coords[i][1];
+        f.span(kAtom_z)[i] = coords[i][2];
+        f.span(kAtom_tag)[i] = i + 1;
+        f.span(kAtom_type)[i] = i;
+        f.span(kAtom_mass)[i] = 1.0;
+    }
+    f.box = cpu::Box::cubic(10.0);
+    f.rebuild_tag_index(0, n);
+
+    cpu::md::mpi::DomainDecomposition dd;
+    dd.bind(f);
+    ASSERT_TRUE(cpu::md::sort_owned_atoms(f, n, /*binsize=*/5.0));
+    cpu::md::notify_sorted(&dd, f);
+
+    const auto& index = f.meta.get(cpu::kTagIndex);
+    ASSERT_EQ(index.size(), static_cast<std::size_t>(n));
+    for (int row = 0; row < n; ++row)
+        EXPECT_EQ(index.at(f.span(kAtom_tag)[row]), row);
+}

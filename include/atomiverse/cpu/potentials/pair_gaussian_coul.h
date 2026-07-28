@@ -2,13 +2,13 @@
 /// @brief Real-space Coulomb with Gaussian electrode charges (CPU).
 ///
 /// Evaluates the Reed / MetalWalls Gaussian charge energy and forces over
-/// all local pairs (min-image) with a hard cutoff. Per-type width \(\eta\)
-/// [Å⁻¹]: \(\eta>0\) ⇒ Gaussian electrode site; \(\eta\le 0\) ⇒ point charge
-/// (electrolyte). Optional Gaussian self-energy (default on).
+/// the published pair list (min-image) with a hard cutoff. Per-type width
+/// \(\eta\) [Å⁻¹]: \(\eta>0\) ⇒ Gaussian electrode site; \(\eta\le 0\) ⇒ point
+/// charge (electrolyte). Optional Gaussian self-energy (default on).
 ///
-/// Not a NeighborConsumer — suitable for small electrode / textbook cells
-/// (same pattern as `PairYukawa`). Large systems should move to a neighbor-
-/// listed path in a later slice.
+/// A `NeighborConsumer` through `Pair`: the driver requires a `NeighborList`
+/// rather than letting the style drop, unannounced, onto the O(N²) sweep it
+/// keeps for the no-list case.
 #pragma once
 
 #include <string>

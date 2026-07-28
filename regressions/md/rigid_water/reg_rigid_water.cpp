@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
@@ -98,6 +99,17 @@ int main() {
     }
     frame.build_special_list(); // intramolecular pairs are NOT LJ neighbours
 
+    // Remember which TAGS make up each molecule. Rows are not an identity:
+    // `atom_modify sort` spatially reorders the owned atoms at the first
+    // reneighbour after `nfreq` steps (LAMMPS default 1000), so row `3m` stops
+    // being molecule `m`'s oxygen part-way through the run. The engine's own
+    // constraint solver keys on tags for exactly this reason; a consumer that
+    // wants a named atom back must ask the Frame's tag index.
+    std::vector<ATV::TagInt> mol_tags(3 * n_mol);
+    for (int m = 0; m < n_mol; ++m)
+        for (int k = 0; k < 3; ++k)
+            mol_tags[3 * m + k] = frame.span(ATV::kAtom_tag)[3 * m + k];
+
     cpu::md::MD sim;
     // TIP3P: the Lennard-Jones site is on OXYGEN only. Hydrogen has none, so the
     // (H,H) and (O,H) pairs mix to eps = 0 and do not interact at all.
@@ -132,8 +144,11 @@ int main() {
         const double ke = frame.meta.get(ATV::kKinetic); // [eV]
         t_sum += 2.0 * ke / (double(ndof_rigid) * units::kB_ev_per_k);
 
+        const auto& tag_row = frame.meta.get(ATV::cpu::kTagIndex);
         for (int m = 0; m < n_mol; ++m) {
-            const int o = 3 * m, h1 = o + 1, h2 = o + 2;
+            const int o = tag_row.at(mol_tags[3 * m + 0]);
+            const int h1 = tag_row.at(mol_tags[3 * m + 1]);
+            const int h2 = tag_row.at(mol_tags[3 * m + 2]);
             const int ii[3] = {o, o, h1};
             const int jj[3] = {h1, h2, h2};
             const double want[3] = {r_oh, r_oh, d_hh};

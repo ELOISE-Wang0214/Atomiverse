@@ -1,12 +1,21 @@
 /// @file src/cpu/dynamics/fix_settle.cpp
 /// @brief Analytic SETTLE for 3-site rigid water (Miyamoto–Kollman 1992).
 ///
-/// Implementation follows the standard triangular reconstruction: conserve COM,
-/// restore OH/HH distances in the plane of the three atoms after the
-/// unconstrained move (GROMACS/OpenMM-style simplified SETTLE for v1).
+/// The published closed form: translate the reference (constraint-satisfying)
+/// triangle to the centre of mass of the unconstrained one, build the body
+/// frame from the reference triangle's normal and the unconstrained oxygen,
+/// and recover the three rotation angles φ, ψ, θ analytically. That is the
+/// exact SHAKE answer for a three-site rigid body — not a reshaping of the
+/// unconstrained triangle, which would reproduce the bond lengths while losing
+/// the orientation entirely.
+///
+/// Ref: S. Miyamoto and P. A. Kollman, "SETTLE: An analytical version of the
+/// SHAKE and RATTLE algorithm for rigid water models", J. Comput. Chem. 13,
+/// 952 (1992), Appendix.
 
 #include "atomiverse/cpu/dynamics/fix_settle.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
@@ -16,6 +25,38 @@
 namespace ATV {
 namespace cpu {
 namespace md {
+
+namespace {
+
+/// Cross product, written out because the three components are read
+/// individually everywhere below.
+struct Vec3 {
+    double x = 0.0, y = 0.0, z = 0.0;
+};
+
+Vec3 cross(const Vec3& a, const Vec3& b) {
+    return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z,
+            a.x * b.y - a.y * b.x};
+}
+
+double dot(const Vec3& a, const Vec3& b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+Vec3 normalized(const Vec3& v) {
+    const double n = std::sqrt(dot(v, v));
+    if (!(n > 0.0))
+        throw std::runtime_error(
+            "FixSettle: degenerate water geometry — the three sites are "
+            "collinear or coincident, so the body frame is undefined");
+    return {v.x / n, v.y / n, v.z / n};
+}
+
+/// `sqrt` of a quantity that is non-negative in exact arithmetic; rounding can
+/// push it a few ulps below zero at the extremes (|sinφ| → 1).
+double safe_sqrt(double v) { return std::sqrt(v > 0.0 ? v : 0.0); }
+
+} // namespace
 
 FixSettle::FixSettle(double dt, double d_oh, double d_hh)
     : dt_(dt), d_oh_(d_oh), d_hh_(d_hh) {
@@ -33,21 +74,51 @@ void FixSettle::add_water(TagInt tag_O, TagInt tag_H1, TagInt tag_H2) {
     waters_.push_back({tag_O, tag_H1, tag_H2, -1, -1, -1});
 }
 
-void FixSettle::resolve_rows_(const Frame& f) {
-    const int n = f.nlocal();
-    const auto tags = f.span(kAtom_tag);
+bool FixSettle::try_resolve_rows_(const Frame& f) {
+    // Tags are the identity, rows are not: `atom_modify sort` spatially
+    // reorders owned atoms at reneighbour, so a row cached at build() points
+    // at a different atom a thousand steps later. Resolve through the Frame's
+    // tag index — O(1) per water and refreshed by the sort itself.
+    const TagIndex& tag_index = f.meta.get(kTagIndex);
     for (auto& w : waters_) {
-        w.io = w.ih1 = w.ih2 = -1;
-        for (int i = 0; i < n; ++i) {
-            if (tags[i] == w.o)
-                w.io = i;
-            if (tags[i] == w.h1)
-                w.ih1 = i;
-            if (tags[i] == w.h2)
-                w.ih2 = i;
-        }
-        if (w.io < 0 || w.ih1 < 0 || w.ih2 < 0)
-            throw std::runtime_error("FixSettle: missing water tags in frame");
+        const auto io = tag_index.find(w.o);
+        const auto ih1 = tag_index.find(w.h1);
+        const auto ih2 = tag_index.find(w.h2);
+        if (io == tag_index.end() || ih1 == tag_index.end()
+            || ih2 == tag_index.end())
+            return false;
+        w.io = io->second;
+        w.ih1 = ih1->second;
+        w.ih2 = ih2->second;
+    }
+    return true;
+}
+
+void FixSettle::resolve_rows_(Frame& f) {
+    if (try_resolve_rows_(f))
+        return;
+    // SETTLE names its waters by tag and hangs them on no topology, so a rigid
+    // water box can legitimately carry no bonds at all — and
+    // `DomainRuntime::release_tag_maps_if_unused` drops the Frame tag index
+    // whenever `has_bonded()` is false, on the reasoning that nothing then
+    // resolves global tags at run time. This component does. Rebuild the map
+    // it needs: O(N), and only when the engine has just dropped it (once per
+    // frame binding) — never per step.
+    f.clear_tag_index();
+    f.rebuild_tag_index(0, f.nlocal());
+    if (try_resolve_rows_(f)) {
+        return;
+    }
+    for (const auto& w : waters_) {
+        const TagIndex& tag_index = f.meta.get(kTagIndex);
+        if (tag_index.count(w.o) == 0 || tag_index.count(w.h1) == 0
+            || tag_index.count(w.h2) == 0)
+            throw std::runtime_error(
+                "FixSettle: water ("
+                + std::to_string(static_cast<long long>(w.o)) + ", "
+                + std::to_string(static_cast<long long>(w.h1)) + ", "
+                + std::to_string(static_cast<long long>(w.h2))
+                + ") names a tag no row of this frame carries");
     }
 }
 
@@ -55,114 +126,179 @@ void FixSettle::build(const BuildContext& ctx) {
     if (waters_.empty())
         throw std::runtime_error("FixSettle: no waters registered");
     resolve_rows_(ctx.frame);
-    n_atoms_ = ctx.frame.nlocal();
-    x0_.assign(static_cast<size_t>(n_atoms_), 0.0);
-    y0_.assign(static_cast<size_t>(n_atoms_), 0.0);
-    z0_.assign(static_cast<size_t>(n_atoms_), 0.0);
+
+    // The closed form exists because the triangle is isosceles about the
+    // oxygen: equal H masses are a precondition, not a convenience.
+    const auto mass = ctx.frame.span(kAtom_mass);
+    for (const auto& w : waters_) {
+        const double ma = mass[w.ih1], mb = mass[w.ih2];
+        if (!(ma > 0.0) || !(mass[w.io] > 0.0))
+            throw std::runtime_error("FixSettle: water masses must be > 0");
+        if (std::fabs(ma - mb) > 1e-12 * std::max(ma, mb))
+            throw std::runtime_error(
+                "FixSettle: the two hydrogens of a water must have equal mass "
+                "— SETTLE's closed form assumes an isosceles triangle. Use "
+                "FixRattle for an asymmetric rigid triple.");
+    }
+    ref_.assign(waters_.size() * 9, 0.0);
 }
 
 void FixSettle::snapshot_(const Frame& f) {
-    const int n = f.nlocal();
-    if (n != n_atoms_) {
-        n_atoms_ = n;
-        x0_.resize(static_cast<size_t>(n));
-        y0_.resize(static_cast<size_t>(n));
-        z0_.resize(static_cast<size_t>(n));
-    }
-    for (int i = 0; i < n; ++i) {
-        x0_[static_cast<size_t>(i)] = f.span(kAtom_x)[i];
-        y0_[static_cast<size_t>(i)] = f.span(kAtom_y)[i];
-        z0_[static_cast<size_t>(i)] = f.span(kAtom_z)[i];
+    // Only the registered waters, and only their own nine coordinates: the
+    // reference is a per-molecule quantity, so an N-sized shadow of the whole
+    // frame would be O(N) of pure waste every step.
+    const auto x = f.span(kAtom_x);
+    const auto y = f.span(kAtom_y);
+    const auto z = f.span(kAtom_z);
+    if (ref_.size() != waters_.size() * 9)
+        ref_.assign(waters_.size() * 9, 0.0);
+    for (std::size_t k = 0; k < waters_.size(); ++k) {
+        const Water& w = waters_[k];
+        double* r = ref_.data() + 9 * k;
+        // Unwrap about the oxygen: the integrator wraps coordinates into the
+        // box, so a molecule straddling a face has its hydrogens an image away.
+        double h1x = x[w.ih1] - x[w.io], h1y = y[w.ih1] - y[w.io],
+               h1z = z[w.ih1] - z[w.io];
+        double h2x = x[w.ih2] - x[w.io], h2y = y[w.ih2] - y[w.io],
+               h2z = z[w.ih2] - z[w.io];
+        f.box.min_image(h1x, h1y, h1z);
+        f.box.min_image(h2x, h2y, h2z);
+        r[0] = x[w.io];
+        r[1] = y[w.io];
+        r[2] = z[w.io];
+        r[3] = r[0] + h1x;
+        r[4] = r[1] + h1y;
+        r[5] = r[2] + h1z;
+        r[6] = r[0] + h2x;
+        r[7] = r[1] + h2y;
+        r[8] = r[2] + h2z;
     }
 }
 
 void FixSettle::settle_positions_(Frame& f) const {
-    // Geometry constants for isosceles water triangle.
-    // Height from O to HH midpoint: h = sqrt(d_oh² − (d_hh/2)²)
-    const double half_hh = 0.5 * d_hh_;
-    const double h = std::sqrt(d_oh_ * d_oh_ - half_hh * half_hh);
+    // Canonical triangle in its own centre-of-mass frame (Miyamoto–Kollman
+    // eq. A1): O at (0, +ra, 0), H at (∓rc, −rb, 0).
+    const double rc = 0.5 * d_hh_;
+    const double height = std::sqrt(d_oh_ * d_oh_ - rc * rc);
+
+    auto x = f.span(kAtom_x);
+    auto y = f.span(kAtom_y);
+    auto z = f.span(kAtom_z);
     const auto mass = f.span(kAtom_mass);
 
-    for (const auto& w : waters_) {
+    for (std::size_t k = 0; k < waters_.size(); ++k) {
+        const Water& w = waters_[k];
         const int o = w.io, a = w.ih1, b = w.ih2;
-        const double mo = mass[o], ma = mass[a], mb = mass[b];
-        const double M = mo + ma + mb;
-        // Unconstrained positions
-        double xo = f.span(kAtom_x)[o], yo = f.span(kAtom_y)[o],
-               zo = f.span(kAtom_z)[o];
-        double xa = f.span(kAtom_x)[a], ya = f.span(kAtom_y)[a],
-               za = f.span(kAtom_z)[a];
-        double xb = f.span(kAtom_x)[b], yb = f.span(kAtom_y)[b],
-               zb = f.span(kAtom_z)[b];
-        // COM
-        const double cx = (mo * xo + ma * xa + mb * xb) / M;
-        const double cy = (mo * yo + ma * ya + mb * yb) / M;
-        const double cz = (mo * zo + ma * za + mb * zb) / M;
-        // Plane basis from unconstrained triangle
-        double e1x = xa - xo, e1y = ya - yo, e1z = za - zo;
-        double e2x = xb - xo, e2y = yb - yo, e2z = zb - zo;
-        // Normal
-        double nx = e1y * e2z - e1z * e2y;
-        double ny = e1z * e2x - e1x * e2z;
-        double nz = e1x * e2y - e1y * e2x;
-        double nn = std::sqrt(nx * nx + ny * ny + nz * nz);
-        if (nn < 1e-18) {
-            // Collinear fallback: use previous snapshot plane z-up.
-            nx = 0;
-            ny = 0;
-            nz = 1;
-            nn = 1;
-        }
-        nx /= nn;
-        ny /= nn;
-        nz /= nn;
-        // In-plane axis: bisector of H-O-H from unconstrained
-        double bx = 0.5 * (e1x + e2x), by = 0.5 * (e1y + e2y),
-               bz = 0.5 * (e1z + e2z);
-        double bn = std::sqrt(bx * bx + by * by + bz * bz);
-        if (bn < 1e-18) {
-            bx = 1;
-            by = 0;
-            bz = 0;
-            bn = 1;
-        }
-        bx /= bn;
-        by /= bn;
-        bz /= bn;
-        // Orthogonal in-plane
-        double px = by * nz - bz * ny;
-        double py = bz * nx - bx * nz;
-        double pz = bx * ny - by * nx;
-        // Place O, H1, H2 relative to COM with TIP3P masses.
-        // Standard SETTLE mass-weighted positions along symmetry:
-        // O along −bisector, H's at ± half_hh perpendicular.
-        // Distance O–COM along bisector for masses mO, mH, mH:
-        // r_O = −2 mH * h / M  (if height measured O to HH line)
-        // Actually: place HH at y=0, O at y=h in body frame then shift COM to 0.
-        const double y_O = h;
-        const double y_H = 0.0;
-        // Body coords
-        const double body_Ox = 0, body_Oy = y_O;
-        const double body_Ax = -half_hh, body_Ay = y_H;
-        const double body_Bx = half_hh, body_By = y_H;
-        const double com_x = (mo * body_Ox + ma * body_Ax + mb * body_Bx) / M;
-        const double com_y = (mo * body_Oy + ma * body_Ay + mb * body_By) / M;
-        auto place = [&](double bx_, double by_, int idx) {
-            const double lx = (bx_ - com_x);
-            const double ly = (by_ - com_y);
-            // x = cx + lx * p + ly * b  (p ⊥ b in plane)
-            f.span(kAtom_x)[idx] = cx + lx * px + ly * bx;
-            f.span(kAtom_y)[idx] = cy + lx * py + ly * by;
-            f.span(kAtom_z)[idx] = cz + lx * pz + ly * bz;
+        const double m_o = mass[o], m_h = mass[a];
+        const double m_total = m_o + 2.0 * m_h;
+        const double ra = 2.0 * m_h * height / m_total;
+        const double rb = height - ra;
+
+        // Unconstrained triangle, unwrapped about the oxygen for the same
+        // reason the reference is.
+        const Vec3 o1{x[o], y[o], z[o]};
+        double b1x = x[a] - o1.x, b1y = y[a] - o1.y, b1z = z[a] - o1.z;
+        double c1x = x[b] - o1.x, c1y = y[b] - o1.y, c1z = z[b] - o1.z;
+        f.box.min_image(b1x, b1y, b1z);
+        f.box.min_image(c1x, c1y, c1z);
+
+        // Centre of mass of the unconstrained configuration — SETTLE keeps it
+        // exactly where the unconstrained update put it.
+        const Vec3 com{o1.x + m_h * (b1x + c1x) / m_total,
+                       o1.y + m_h * (b1y + c1y) / m_total,
+                       o1.z + m_h * (b1z + c1z) / m_total};
+        const Vec3 a1{o1.x - com.x, o1.y - com.y, o1.z - com.z};
+        const Vec3 b1{o1.x + b1x - com.x, o1.y + b1y - com.y,
+                      o1.z + b1z - com.z};
+        const Vec3 c1{o1.x + c1x - com.x, o1.y + c1y - com.y,
+                      o1.z + c1z - com.z};
+
+        // Reference bond vectors (constraint-satisfying, pre-move).
+        const double* r = ref_.data() + 9 * k;
+        const Vec3 b0{r[3] - r[0], r[4] - r[1], r[5] - r[2]};
+        const Vec3 c0{r[6] - r[0], r[7] - r[1], r[8] - r[2]};
+
+        // Body frame: z′ normal to the REFERENCE triangle, x′ ⊥ (oxygen, z′).
+        const Vec3 ez = normalized(cross(b0, c0));
+        const Vec3 ex = normalized(cross(a1, ez));
+        const Vec3 ey = cross(ez, ex);
+
+        // Project. By construction a1·x′ = 0 and the reference bonds have no
+        // z′ component, so only the entries the algebra needs are formed.
+        const double xb0d = dot(b0, ex), yb0d = dot(b0, ey);
+        const double xc0d = dot(c0, ex), yc0d = dot(c0, ey);
+        const double za1d = dot(a1, ez);
+        const double xb1d = dot(b1, ex), yb1d = dot(b1, ey),
+                     zb1d = dot(b1, ez);
+        const double xc1d = dot(c1, ex), yc1d = dot(c1, ey),
+                     zc1d = dot(c1, ez);
+
+        // Rotations φ (about x′) and ψ (about y′) — eq. A6/A7.
+        const double sinphi = za1d / ra;
+        const double cosphi = safe_sqrt(1.0 - sinphi * sinphi);
+        if (!(cosphi > 0.0))
+            throw std::runtime_error(
+                "FixSettle: the unconstrained oxygen left the plane by more "
+                "than the molecule's own size — the timestep is far too large "
+                "for this constraint");
+        const double sinpsi = (zb1d - zc1d) / (2.0 * rc * cosphi);
+        const double cospsi = safe_sqrt(1.0 - sinpsi * sinpsi);
+
+        const double ya2d = ra * cosphi;
+        const double xb2d = -rc * cospsi;
+        const double t1 = -rb * cosphi;
+        const double t2 = rc * sinpsi * sinphi;
+        const double yb2d = t1 - t2;
+        const double yc2d = t1 + t2;
+
+        // Rotation θ about z′ — eq. A11: the one angle that is fixed by the
+        // reference orientation, and the whole reason the reference matters.
+        const double alpha = xb2d * (xb0d - xc0d) + yb0d * yb2d + yc0d * yc2d;
+        const double beta = xb2d * (yc0d - yb0d) + xb0d * yb2d + xc0d * yc2d;
+        const double gamma =
+            xb0d * yb1d - xb1d * yb0d + xc0d * yc1d - xc1d * yc0d;
+        const double al2be2 = alpha * alpha + beta * beta;
+        if (!(al2be2 > 0.0))
+            throw std::runtime_error(
+                "FixSettle: degenerate reference triangle (α² + β² = 0)");
+        const double sinthe =
+            (alpha * gamma - beta * safe_sqrt(al2be2 - gamma * gamma))
+            / al2be2;
+        const double costhe = safe_sqrt(1.0 - sinthe * sinthe);
+
+        // Constrained positions in the body frame — eq. A12.
+        const double xa3d = -ya2d * sinthe;
+        const double ya3d = ya2d * costhe;
+        const double za3d = za1d;
+        const double xb3d = xb2d * costhe - yb2d * sinthe;
+        const double yb3d = xb2d * sinthe + yb2d * costhe;
+        const double zb3d = zb1d;
+        const double xc3d = -xb2d * costhe - yc2d * sinthe;
+        const double yc3d = -xb2d * sinthe + yc2d * costhe;
+        const double zc3d = zc1d;
+
+        auto place = [&](double xd, double yd, double zd, int row) {
+            x[row] = static_cast<StorageReal>(com.x + ex.x * xd + ey.x * yd
+                                              + ez.x * zd);
+            y[row] = static_cast<StorageReal>(com.y + ex.y * xd + ey.y * yd
+                                              + ez.y * zd);
+            z[row] = static_cast<StorageReal>(com.z + ex.z * xd + ey.z * yd
+                                              + ez.z * zd);
         };
-        place(body_Ox, body_Oy, o);
-        place(body_Ax, body_Ay, a);
-        place(body_Bx, body_By, b);
+        place(xa3d, ya3d, za3d, o);
+        place(xb3d, yb3d, zb3d, a);
+        place(xc3d, yc3d, zc3d, b);
     }
 }
 
 void FixSettle::settle_velocities_(Frame& f) const {
     // Coupled 3-bond velocity constraints: iterate RATTLE-style projections.
+    auto vx = f.span(kAtom_vx);
+    auto vy = f.span(kAtom_vy);
+    auto vz = f.span(kAtom_vz);
+    const auto x = f.span(kAtom_x);
+    const auto y = f.span(kAtom_y);
+    const auto z = f.span(kAtom_z);
     const auto mass = f.span(kAtom_mass);
     for (int iter = 0; iter < 20; ++iter) {
         double max_rv = 0;
@@ -171,12 +307,13 @@ void FixSettle::settle_velocities_(Frame& f) const {
                 {w.io, w.ih1}, {w.io, w.ih2}, {w.ih1, w.ih2}};
             for (int c = 0; c < 3; ++c) {
                 const int i = idxs[c][0], j = idxs[c][1];
-                double dx = f.span(kAtom_x)[i] - f.span(kAtom_x)[j];
-                double dy = f.span(kAtom_y)[i] - f.span(kAtom_y)[j];
-                double dz = f.span(kAtom_z)[i] - f.span(kAtom_z)[j];
-                double dvx = f.span(kAtom_vx)[i] - f.span(kAtom_vx)[j];
-                double dvy = f.span(kAtom_vy)[i] - f.span(kAtom_vy)[j];
-                double dvz = f.span(kAtom_vz)[i] - f.span(kAtom_vz)[j];
+                double dx = x[i] - x[j];
+                double dy = y[i] - y[j];
+                double dz = z[i] - z[j];
+                f.box.min_image(dx, dy, dz);
+                const double dvx = vx[i] - vx[j];
+                const double dvy = vy[i] - vy[j];
+                const double dvz = vz[i] - vz[j];
                 const double r2 = dx * dx + dy * dy + dz * dz;
                 if (r2 < 1e-30)
                     continue;
@@ -185,12 +322,12 @@ void FixSettle::settle_velocities_(Frame& f) const {
                 const double mi = mass[i], mj = mass[j];
                 const double inv_mu = 1.0 / mi + 1.0 / mj;
                 const double lam = -rv / (r2 * inv_mu);
-                f.span(kAtom_vx)[i] += lam * dx / mi;
-                f.span(kAtom_vy)[i] += lam * dy / mi;
-                f.span(kAtom_vz)[i] += lam * dz / mi;
-                f.span(kAtom_vx)[j] -= lam * dx / mj;
-                f.span(kAtom_vy)[j] -= lam * dy / mj;
-                f.span(kAtom_vz)[j] -= lam * dz / mj;
+                vx[i] += static_cast<StorageReal>(lam * dx / mi);
+                vy[i] += static_cast<StorageReal>(lam * dy / mi);
+                vz[i] += static_cast<StorageReal>(lam * dz / mi);
+                vx[j] -= static_cast<StorageReal>(lam * dx / mj);
+                vy[j] -= static_cast<StorageReal>(lam * dy / mj);
+                vz[j] -= static_cast<StorageReal>(lam * dz / mj);
             }
         }
         if (max_rv < 1e-12)
@@ -201,6 +338,7 @@ void FixSettle::settle_velocities_(Frame& f) const {
 void FixSettle::launch(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     if (ctx.at(ATV::md::Phase::initial_integrate)) {
+        resolve_rows_(f);
         snapshot_(f);
         return;
     }

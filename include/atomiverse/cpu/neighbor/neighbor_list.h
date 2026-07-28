@@ -107,6 +107,16 @@ class NeighborList : public cpu::Component, public cpu::NeighborProvider {
         return this;
     }
 
+    /// @brief Mutable supply side, for a driver that configures the list.
+    cpu::NeighborProvider* neighbor_provider() override { return this; }
+
+    /// @brief Drop `atom_modify sort` permanently (see `NeighborProvider`).
+    void forbid_row_reordering() override {
+        AtomSortParams p = sort_state_.params;
+        p.enabled = false;
+        sort_state_.configure(p);
+    }
+
     void build(const cpu::BuildContext& ctx) override {
         reinit_strategy(ctx.runtime, ctx.frame);
         const int n_active = active_count(ctx.runtime, ctx.frame);

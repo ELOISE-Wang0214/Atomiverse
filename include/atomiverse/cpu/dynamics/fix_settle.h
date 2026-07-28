@@ -22,6 +22,39 @@ namespace md {
 ///
 /// Constructor takes OH and HH target distances [Å]. Add waters by O/H tags
 /// via `add_water(tag_O, tag_H1, tag_H2)`.
+///
+/// ## What SETTLE actually is
+///
+/// SETTLE is the closed-form solution of the SHAKE equations for a three-site
+/// rigid body. It is **not** "snap the triangle back to its ideal shape": the
+/// answer depends on the *reference* (constraint-satisfying) triangle at time
+/// `t` as well as on the unconstrained triangle at `t + dt`. Miyamoto &
+/// Kollman rotate the reference triangle, about the unconstrained
+/// configuration's centre of mass, onto the orientation SHAKE would have
+/// converged to — three rotations (φ about the body x′ axis, ψ about y′, θ
+/// about z′), each with an analytic sine.
+///
+/// Reconstructing the ideal triangle from the *unconstrained* geometry alone
+/// reproduces the bond lengths and nothing else: with no memory of where the
+/// molecule was, the reconstruction is free to mirror it, and the molecule
+/// teleports every step while the geometry check stays perfectly green. Hence
+/// the reference snapshot at `initial_integrate` @ −500, ahead of every
+/// integrator — the same shadow-array discipline `FixRattle` uses, and for the
+/// same reason.
+///
+/// ## Rows are not stable
+///
+/// Tags are the identity; rows are a per-rebuild accident (`atom_modify sort`
+/// spatially reorders owned atoms at reneighbour). Rows are therefore
+/// re-resolved from the Frame tag index at every `initial_integrate`, never
+/// cached from `build()`.
+///
+/// ## Assumptions
+///
+/// Three sites, isosceles: the two hydrogens must carry the same mass, which
+/// is what makes the closed form exist. A water whose H masses differ throws
+/// at `build()` rather than being silently mis-constrained — use `FixRattle`,
+/// which is iterative and general.
 class FixSettle : public Constraint, public ConstraintProvider {
   public:
     /// @param dt Timestep [fs] (for velocity stage).
@@ -56,7 +89,8 @@ class FixSettle : public Constraint, public ConstraintProvider {
         int io = -1, ih1 = -1, ih2 = -1;
     };
 
-    void resolve_rows_(const Frame& f);
+    bool try_resolve_rows_(const Frame& f);
+    void resolve_rows_(Frame& f);
     void settle_positions_(Frame& f) const;
     void settle_velocities_(Frame& f) const;
     void snapshot_(const Frame& f);
@@ -64,9 +98,10 @@ class FixSettle : public Constraint, public ConstraintProvider {
     double dt_;
     double d_oh_, d_hh_;
     std::vector<Water> waters_;
-    // Reference positions for velocity stage (pre-move).
-    std::vector<double> x0_, y0_, z0_;
-    int n_atoms_ = 0;
+    /// Reference (constraint-satisfying) triangle of every registered water,
+    /// snapshotted before the integrator moves anything: 9 doubles per water
+    /// (O, H1, H2 × x/y/z), minimum-image-unwrapped about the oxygen.
+    std::vector<double> ref_;
 };
 
 } // namespace md

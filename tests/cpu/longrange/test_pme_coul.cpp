@@ -387,14 +387,14 @@ TEST(LongRangePlanContract, ActualEwaldAndPmePairsBuild) {
     ewald.set_integrator(cpu::md::VelocityVerlet{1.0});
     ewald.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3});
     ewald.on(md::Phase::force).add(cpu::CoulLong{alpha, cutoff});
-    ewald.add(cpu::KSpaceEwald{alpha, 1e-5});
+    ewald.set_evaluator(cpu::KSpaceEwald{alpha, 1e-5});
     EXPECT_NO_THROW(ewald.build());
 
     cpu::md::MD pme;
     pme.set_integrator(cpu::md::VelocityVerlet{1.0});
     pme.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3});
     pme.on(md::Phase::force).add(cpu::CoulLong{alpha, cutoff});
-    pme.add(cpu::KSpacePME{alpha, 1.0, 6});
+    pme.set_evaluator(cpu::KSpacePME{alpha, 1.0, 6});
     EXPECT_NO_THROW(pme.build());
 }
 

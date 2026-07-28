@@ -25,6 +25,24 @@ namespace path {
 /// Not a new Driver category — a method preset that owns N `cpu::md::MD`
 /// instances and a `ReplicaSet`. Parameters are constructor arguments /
 /// public members — no `RemdConfig` bag.
+///
+/// ## Every replica is thermostatted, and that is not optional
+///
+/// The Sugita–Okamoto exchange test
+/// `P = min(1, exp[(β_i − β_j)(U_i − U_j)])` is the Metropolis rule for
+/// swapping configurations between two systems that are each sampling the
+/// **canonical** ensemble at their own β. Replicas integrated at constant
+/// energy sample nothing of the sort: they hold whatever energy their initial
+/// velocity draw gave them, `β_i` is a label on a slot rather than a property
+/// of a distribution, and the acceptance ratio measures nothing. (Concretely,
+/// with an NVE ladder every replica of a small system drifts to the same
+/// potential energy, `(β_i − β_j)(U_i − U_j)` loses its sign structure and the
+/// exchange accepts *everything*.)
+///
+/// So `Remd` attaches a CSVR thermostat (Bussi–Donadio–Parrinello, *J. Chem.
+/// Phys.* **126**, 014101 (2007)) at `temperatures[i]` to replica `i` — the
+/// standard REMD choice, canonical-correct and gentle on the dynamics.
+/// `thermostat_tau` is its coupling time.
 class Remd {
   public:
     /// @brief Strictly increasing temperature ladder [K], size ≥ 2.
@@ -35,6 +53,9 @@ class Remd {
     int steps_per_exchange = 10;
     /// @brief Master seed (deterministic streams).
     std::uint64_t seed = 1;
+    /// @brief CSVR coupling time [fs] for the per-replica thermostat.
+    ///        Must be > 0; the canonical ensemble at each slot depends on it.
+    double thermostat_tau = 100.0;
 
     /// @param temperatures Strictly increasing T [K], size ≥ 2.
     /// @param dt Nested MD timestep [fs].

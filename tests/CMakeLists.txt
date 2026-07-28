@@ -136,6 +136,7 @@ atv_add_cpp_test(test_cpu_mc_move cpu/montecarlo/test_mc_move.cpp)
 atv_add_cpp_test(test_cpu_mc_transaction_rollback cpu/montecarlo/test_transaction_rollback.cpp)
 atv_add_cpp_test(test_cpu_mc_ensemble_policies cpu/montecarlo/test_ensemble_policies.cpp)
 atv_add_cpp_test(test_cpu_mc_gcmc_npt_movers cpu/montecarlo/test_gcmc_npt_movers.cpp)
+atv_add_cpp_test(test_cpu_mc_row_order cpu/montecarlo/test_mc_row_order.cpp)
 # The MC physics-validation gates (pair_distribution / acceptance_ratio /
 # lj_nist) drive MC::run over many sweeps — e2e, not unit. They now live in
 # benchmarks/mc/lj/validation/ and run at acceptance time, never in ctest.

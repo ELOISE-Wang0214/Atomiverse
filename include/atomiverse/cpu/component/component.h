@@ -72,6 +72,10 @@ class Component {
     virtual const NeighborProvider* as_neighbor_provider() const {
         return nullptr;
     }
+    /// @brief Mutable supply side, for a driver that must CONFIGURE the
+    /// neighbor structure it was handed (Monte Carlo forbids row reordering).
+    /// Mirrors `halo_participant()` / `as_timestep_consumer()`.
+    virtual NeighborProvider* neighbor_provider() { return nullptr; }
     virtual const LongRangeParticipant* as_long_range_participant() const {
         return nullptr;
     }

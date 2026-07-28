@@ -85,9 +85,17 @@ cpu::PairGaussianCoul pot(/*cutoff [Å]=*/40.0,
                           /*include_self=*/true);
 cpu::Evaluate eval;
 eval.set_evaluator(std::move(pot));
+eval.set_neighbor(cpu::md::NeighborList<>{40.0, /*skin [Å]=*/1.0});
 eval.build();
 eval.run(frame); // E on frame.meta[kEnergy] [eV]
 ```
+
+`PairGaussianCoul` is a `NeighborConsumer` (it gained a neighbour-listed bulk
+path in the wave-4 electrochem drop), so `Evaluate::build()` requires the list
+instead of letting the style fall back to its O(N²) sweep unannounced. At
+L = 100 Å with r_c = 40 Å every pair of this 5-atom cell is inside the cutoff,
+so the list selects which loop runs and never which pairs are summed: the
+energy reproduces the analytic pin to |ΔE| = 0.
 
 Math-only: `cpu::GaussianChargeKernel::{eta_eff,greens,self_greens,dgreens_dr}`.
 

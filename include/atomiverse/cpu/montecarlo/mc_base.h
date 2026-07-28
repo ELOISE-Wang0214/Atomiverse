@@ -151,13 +151,26 @@ class McBase : public Driver<ATV::sampling::Phase> {
             .add(cpu::ZeroEnergy{}, -999);
     }
 
-    /// @brief Enforce that a pair evaluator that needs a neighbor list has one.
+    /// @brief Enforce that a pair evaluator that needs a neighbor list has
+    ///        one, and that nothing renumbers rows inside a trial.
     void install_defaults() override {
         const auto s = this->scan_pending_infra_();
         this->throw_if_missing_neighbor_list_(
             s, "MC",
             "Add `mc.set_neighbor(cpu::md::NeighborList<>{cutoff, skin, 1, 0, "
             "true})`.");
+        // A trial move is a transaction on frame ROWS, and the neighbour
+        // rebuild that would renumber them runs INSIDE the trial (bound at
+        // `sampling::Phase::energy`, ahead of the evaluator). Left enabled,
+        // `atom_modify sort` fires at its cadence part-way through a trial and
+        // `Transaction::rollback` then splices a saved row over an unrelated
+        // atom — two atoms land on top of each other, the sampler's reference
+        // energy stops describing the configuration it holds, and the chain
+        // freezes silently. See `NeighborProvider::forbid_row_reordering`.
+        this->for_each_pending_mut([](cpu::Component& c) {
+            if (cpu::NeighborProvider* np = c.neighbor_provider())
+                np->forbid_row_reordering();
+        });
     }
 
     /// @brief The trial `energy` phase runs energy-only; every other phase

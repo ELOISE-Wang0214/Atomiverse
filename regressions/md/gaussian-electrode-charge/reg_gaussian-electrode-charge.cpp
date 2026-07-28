@@ -11,6 +11,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/gaussian_charge.h"
 #include "atomiverse/cpu/potentials/pair_gaussian_coul.h"
 
@@ -68,6 +69,12 @@ int main() {
     cpu::Evaluate eval;
     // type 0 = point (η≤0), type 1 = Gaussian η=1
     eval.set_evaluator(cpu::PairGaussianCoul{40.0, {0.0, eta}, true});
+    // PairGaussianCoul is a NeighborConsumer (it has a neighbour-listed bulk
+    // path), so the driver requires a list rather than letting it fall back to
+    // an O(N²) sweep unannounced. At L = 100 Å and r_c = 40 Å every pair of
+    // this 5-atom cell is inside the cutoff, so the list changes which loop
+    // runs, never which pairs are summed — the pin below is the same number.
+    eval.set_neighbor(cpu::md::NeighborList<>{40.0, /*skin=*/1.0});
     eval.build();
     eval.run(f);
 

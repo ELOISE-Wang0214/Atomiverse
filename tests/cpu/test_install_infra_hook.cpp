@@ -338,7 +338,13 @@ class ProbeNeighborProvider : public ATV::cpu::Component,
     const ATV::cpu::NeighborProvider* as_neighbor_provider() const override {
         return this;
     }
+    ATV::cpu::NeighborProvider* neighbor_provider() override { return this; }
+    /// A provider must answer the row-order question (Monte Carlo forbids the
+    /// reorder); this probe never reorders anything, so it has nothing to do.
+    void forbid_row_reordering() override { reordering_forbidden = true; }
     void launch(const ATV::cpu::LaunchContext&) override {}
+
+    bool reordering_forbidden = false;
 };
 
 // ─── (g) base-vtable contract ───────────────────────────────────────────

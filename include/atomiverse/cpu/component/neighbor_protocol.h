@@ -58,12 +58,32 @@ class NeighborConsumer {
 /// @brief Supply side of the neighbor-list contract: a component that
 ///        builds and publishes the neighbor structure.
 ///
-/// Pure tag protocol — the publication channel stays `Context::pair_list`
-/// (a non-owning pointer written in the provider's `build()`/`launch()`),
-/// not a virtual on this interface.
+/// The publication channel stays `Context::pair_list` (a non-owning pointer
+/// written in the provider's `build()`/`launch()`), not a virtual on this
+/// interface. The one thing the interface does carry is the row-order
+/// guarantee below, because a provider is the only component that renumbers
+/// rows and a driver has to be able to forbid it.
 class NeighborProvider {
   public:
     virtual ~NeighborProvider() = default;
+
+    /// @brief Forbid the spatial reorder of owned rows for the rest of this
+    ///        provider's life (LAMMPS `atom_modify sort`).
+    ///
+    /// **Monte Carlo requires this.** An MC trial move is a transaction whose
+    /// changeset is a set of frame ROWS (`mc::Transaction` records "row `r`
+    /// looked like this"), and the neighbour rebuild runs *inside* the trial —
+    /// the list is bound at `sampling::Phase::energy`, ahead of the evaluator
+    /// that scores the proposal. A reorder landing between `record_touch` and
+    /// `rollback` therefore splices a saved row over a completely unrelated
+    /// atom. Two atoms end up on top of each other, the sampler's bookkeeping
+    /// energy stops describing the configuration it actually holds, and every
+    /// later trial is rejected against an overlap it cannot see: the Markov
+    /// chain freezes at whatever state it was in, with no error and no NaN.
+    ///
+    /// A spatial sort is a cache optimisation; correctness of the sampler is
+    /// not negotiable against it.
+    virtual void forbid_row_reordering() = 0;
 };
 
 } // namespace cpu
