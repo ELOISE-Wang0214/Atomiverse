@@ -234,10 +234,27 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   at low optimisation. The durable guard is
   `tests/cpu/potentials/test_pair_virial.cpp`, which checks
   `tr(sigma) = -3V dE/dV` and is flag-independent.
-- **Seven pair styles write no `kStress` at all** (`pair_buck`, `pair_dpd`,
-  `pair_gaussian_coul`, `pair_lj_cut_tip4p_cut`, `pair_morse`, `pair_wca`,
-  `pair_yukawa`) — any NPT / barostat / `VirialStress` / cell relaxation using
-  them integrates an incomplete pressure. IN PROGRESS 2026-07-28.
+- ~~**Seven pair styles write no `kStress` at all**~~ **FIXED 2026-07-28**
+  (`95722ee2`): all seven accumulate the virial unconditionally (no
+  loop-invariant guard, so there is nothing for the vectorizer to reassociate).
+  The sign is NOT uniform in this tree — five styles write `f -= fpair*d` and
+  two write `f += fpair*d` — so each kernel was read rather than copied. Every
+  style has a RED-before / GREEN-after row in
+  `tests/cpu/potentials/test_pair_virial.cpp` against both an explicit pair sum
+  and `tr(sigma) = -3V dE/dV`; flag independence checked by rebuilding the
+  whole library at `-O2 -march=native` (bit-identical). TIP4P uses the M-site
+  separation (proved sensitive: forcing the O-O separation gives a 34 % trace
+  error and fails both gates). DPD tallies the CONSERVATIVE force only —
+  the dissipative/random terms are thermostat forces whose instantaneous
+  `r.F` diverges as `1/sqrt(dt)` while averaging to zero, so tallying them
+  would feed unbounded timestep-dependent noise into every reported pressure;
+  that choice is itself pinned by a test.
+- ~~**DPD's conservative energy dropped the `r_c` factor**~~ **FIXED
+  2026-07-28** (`95722ee2` + test widened): `U = 1/2 a w^2` instead of
+  `1/2 a r_c w^2` — wrong units (`a` is a force amplitude [eV/A]) and a
+  disagreement with the force the same loop applies of exactly `r_c`. Invisible
+  because every DPD test and regression used `r_c = 1 A`. The unit test now
+  runs at `r_c = 2.5 A` and pins force and energy together.
 - **The GCC-vs-UB question is unresolved**: three independent perturbations
   (drop the branch, `#pragma GCC novector`, scalar-reduce per batch) each fix
   the LJ virial, which is a fragile-optimizer signature. Whether it is a
