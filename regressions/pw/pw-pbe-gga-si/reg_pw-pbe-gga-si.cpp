@@ -46,36 +46,19 @@ cpu::Frame make_si_diamond(double a_ang) {
     return f;
 }
 
-std::string find_upf() {
-    // Prefer in-tree path relative to CWD (build or source).
-    const char* cands[] = {
-        "tests/data/pw/Si_lda_nc.upf",
-        "../tests/data/pw/Si_lda_nc.upf",
-        "../../tests/data/pw/Si_lda_nc.upf",
-        "src/../tests/data/pw/Si_lda_nc.upf",
-    };
-    if (const char* env = std::getenv("ATV_SI_UPF"))
-        return std::string(env);
-    for (const char* p : cands) {
-        if (FILE* fp = std::fopen(p, "r")) {
-            std::fclose(fp);
-            return std::string(p);
-        }
-    }
-    // Last resort: from binary location is unknown; fail clearly.
-    return {};
-}
-
 } // namespace
 
 int main() {
     const double force_tol = 0.5;    // eV/Å — symmetry residual
     const double de_floor_ry = 1e-4; // |E_PBE − E_LSDA| floor [Ry]
 
-    const std::string upf = find_upf();
-    if (upf.empty()) {
-        std::printf("FAIL: cannot locate tests/data/pw/Si_lda_nc.upf "
-                    "(set ATV_SI_UPF)\n");
+    // Compiled-in absolute path (ATV_REG_DATA_DIR): resolves identically from
+    // the build tree, the source tree, or a bare ./reg_<case>.
+    const char* upf = ATV_REG_DATA_DIR "/pw/Si_lda_nc.upf";
+    if (std::FILE* f = std::fopen(upf, "r")) {
+        std::fclose(f);
+    } else {
+        std::printf("FAIL: cannot open %s\n", upf);
         return 1;
     }
 
@@ -142,7 +125,7 @@ int main() {
         "ok: |F0|=%.4g  |F1|=%.4g eV/Å  upf=%s\n",
         std::sqrt(F[0][0] * F[0][0] + F[0][1] * F[0][1] + F[0][2] * F[0][2]),
         std::sqrt(F[1][0] * F[1][0] + F[1][1] * F[1][1] + F[1][2] * F[1][2]),
-        upf.c_str());
+        upf);
     std::printf("PASS: pw-pbe-gga-si (true GGA PBE + symmetry forces)\n");
     return 0;
 }

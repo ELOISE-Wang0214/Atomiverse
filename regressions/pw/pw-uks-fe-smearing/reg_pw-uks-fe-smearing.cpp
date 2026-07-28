@@ -42,39 +42,6 @@ cpu::Frame make_fe_bcc_primitive(double a_ang) {
     return f;
 }
 
-std::string fe_upf() {
-#ifdef ATV_SOURCE_DIR
-    {
-        std::string p =
-            std::string(ATV_SOURCE_DIR) + "/tests/data/pw/Fe_ONCV_PBE-1.2.upf";
-        if (std::FILE* f = std::fopen(p.c_str(), "r")) {
-            std::fclose(f);
-            return p;
-        }
-    }
-#endif
-    if (const char* env = std::getenv("ATV_SOURCE_DIR")) {
-        std::string p = std::string(env) + "/tests/data/pw/Fe_ONCV_PBE-1.2.upf";
-        if (std::FILE* f = std::fopen(p.c_str(), "r")) {
-            std::fclose(f);
-            return p;
-        }
-    }
-    const char* cands[] = {
-        "tests/data/pw/Fe_ONCV_PBE-1.2.upf",
-        "../tests/data/pw/Fe_ONCV_PBE-1.2.upf",
-        "../../tests/data/pw/Fe_ONCV_PBE-1.2.upf",
-        "../../../tests/data/pw/Fe_ONCV_PBE-1.2.upf",
-    };
-    for (const char* c : cands) {
-        if (std::FILE* f = std::fopen(c, "r")) {
-            std::fclose(f);
-            return c;
-        }
-    }
-    return "tests/data/pw/Fe_ONCV_PBE-1.2.upf";
-}
-
 } // namespace
 
 int main() {
@@ -85,11 +52,13 @@ int main() {
     constexpr double tol_ne = 1e-4;
     constexpr double mag_min = 0.1; // ferro seed; self-consistent M ~ 1
 
-    const std::string upf = fe_upf();
-    if (std::FILE* f = std::fopen(upf.c_str(), "r")) {
+    // Compiled-in absolute path (ATV_REG_DATA_DIR): resolves identically from
+    // the build tree, the source tree, or a bare ./reg_<case>.
+    const char* upf = ATV_REG_DATA_DIR "/pw/Fe_ONCV_PBE-1.2.upf";
+    if (std::FILE* f = std::fopen(upf, "r")) {
         std::fclose(f);
     } else {
-        std::printf("FAIL: missing UPF %s\n", upf.c_str());
+        std::printf("FAIL: cannot open %s\n", upf);
         return 1;
     }
 

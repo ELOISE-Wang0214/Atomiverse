@@ -14,18 +14,69 @@
 add_custom_target(regressions
     COMMENT "Running all end-to-end textbook regression cases")
 
-# atv_add_regression(<domain> <case>)
+# atv_add_regression(<domain> <case> [THREADS <n>])
 #   expects regressions/<domain>/<case>/reg_<case>.cpp
+#
+# THREADS <n> — the case's DECLARED thread requirement, default **1**.
+#   A regression is a textbook twin of a handful of atoms: for almost all of
+#   them the OpenMP fork/join cost dwarfs the physics, and on a fat node that
+#   is not a rounding error but the whole wall (mc_bias_es: 7 s at 1 thread,
+#   231 s at 8, no completion at the node default of 48 — bit-identical
+#   results at every count). Leaving the count ambient made a case's wall a
+#   property of whichever machine happened to run it.
+#   A few cases have the opposite shape (GPW self-consistency over a real
+#   grid) and are genuinely faster wide; those declare `THREADS <n>` HERE,
+#   next to the case, so the requirement is reviewable in one file instead of
+#   hiding inside a .cpp. A case needing a specific count for physics reasons
+#   may still call `set_threads()` — omp_set_num_threads() overrides the
+#   environment, so the in-case choice still wins.
+#
+#   Measured 2026-07-28 (48-core epyc login node), 1-thread wall / 8-thread wall:
+#     gpw/*                8x  (gpw-forces-water >70 s -> 14 s; kpoints-si -> 14 s)
+#     scf/c10h22_cfmm_j    8x  (80 s -> 10 s)
+#     dynamics/cpmd-*      2x  (53 s -> 27 s; cpmd-uks 125 s -> 57 s)
+#     pw/*, response/dfpt-*  1.0x — the plane-wave and DFPT solvers do NOT
+#         thread on these paths (dfpt-spin-smearing was 2x SLOWER at 8), so
+#         they stay at 1: extra width there is footprint with no wall benefit.
+#   Do not raise a case on a hunch — measure both widths first.
+#
+#   Some cases are pinned to 1 for CORRECTNESS, not speed. The iterative OT and
+#   GW solvers are not thread-deterministic: at 8 threads the OT iteration count
+#   varies run-to-run (31 vs 56 on ot-minimizer-water, i.e. an 11 s / 110 s
+#   wall), and where a case gates on a chaotic NVE drift that amplifies into a
+#   real FAIL — second-gen-cpmd-ot scored 3 PASS / 1 FAIL in 4 runs at 8
+#   threads and is bitwise reproducible at 1. Cases pinned for this reason:
+#   second-gen-cpmd-ot, second-gen-cpmd-uks-ot, periodic-ugw-kpoints. Their
+#   siblings that cannot afford the pin (periodic-gw-si 51 s -> 8 s,
+#   periodic-ugw-si 93 s -> 14 s, ugw-uks-rpbe 146 s -> 22 s) stay at 8 and
+#   remain exposed; fixing the solvers is the real repair.
 function(atv_add_regression domain case)
+    cmake_parse_arguments(REG "" "THREADS" "" ${ARGN})
+    if(NOT DEFINED REG_THREADS)
+        set(REG_THREADS 1)
+    endif()
+
     set(target reg_${case})
     add_executable(${target} ${domain}/${case}/${target}.cpp)
     target_link_libraries(${target} PRIVATE atomiverse)
     set_target_properties(${target} PROPERTIES CXX_STANDARD 20)
 
+    # Absolute, compiled-in data root. A case must resolve its inputs the same
+    # way from the build tree, the source tree, or a bare `./reg_<case>` under
+    # a debugger — never by probing the current working directory. NOTE: we
+    # deliberately do NOT set WORKING_DIRECTORY here; that would paper over a
+    # CWD-relative path in the aggregate target while leaving every standalone
+    # run broken, which is exactly how this defect stayed invisible.
+    target_compile_definitions(${target} PRIVATE
+        ATV_REG_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data")
+
     add_custom_target(run_${target}
-        COMMAND ${target}
+        COMMAND ${CMAKE_COMMAND} -E env
+                OMP_NUM_THREADS=${REG_THREADS}
+                OPENBLAS_NUM_THREADS=${REG_THREADS}
+                $<TARGET_FILE:${target}>
         DEPENDS ${target}
-        COMMENT "regression [${domain}/${case}]")
+        COMMENT "regression [${domain}/${case}] (${REG_THREADS}t)")
     add_dependencies(regressions run_${target})
 endfunction()
 
@@ -207,10 +258,6 @@ if(ATV_BUILD_PW)
         ATV_PW_UPF_PATH="${_atv_si_upf}")
     atv_add_regression(pw pw-uks-kmesh-fe)
     atv_add_regression(pw pw-uks-fe-smearing)
-    if(TARGET reg_pw-uks-fe-smearing)
-        target_compile_definitions(reg_pw-uks-fe-smearing PRIVATE
-            ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-    endif()
     # MPI k-point round-robin scaling gate: the binary re-launches itself
     # through the configured mpiexec at np=1 and np=4 (parity + wall ratio).
     if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
@@ -235,138 +282,144 @@ if(ATV_BUILD_VIB AND ATV_BUILD_MD)
     atv_add_regression(response phonon-dispersion-si)
 endif()
 if(ATV_BUILD_GPW)
-    atv_add_regression(gpw gpw-pbe-d3bj-ice)
-    atv_add_regression(gpw gpw-d3-atm)
-    atv_add_regression(gpw gpw-d4-water)
-    atv_add_regression(gpw gpw-d4-atm)
-    atv_add_regression(gpw gpw-d4-stress)
-    atv_add_regression(gpw gpw-d4-forces)
-    atv_add_regression(gpw gpw-ts-ice)
-    atv_add_regression(gpw gpw-ts-forces)
-    atv_add_regression(gpw gpw-xdm-ice)
-    atv_add_regression(gpw gpw-xdm-forces)
-    atv_add_regression(gpw gpw-mbd-ice)
-    atv_add_regression(gpw gpw-mbd-periodic)
-    atv_add_regression(gpw gpw-mbd-forces)
-    atv_add_regression(gpw gpw-mbd-kpoint-forces)
-    atv_add_regression(gpw gpw-vdw-df-ice)
-    atv_add_regression(gpw gpw-vdw-df2-ice)
-    atv_add_regression(gpw gpw-rvv10-ice)
-    atv_add_regression(gpw gpw-vdw-scf-potential)
-    atv_add_regression(gpw gpw-optb88-vdw)
-    atv_add_regression(gpw gpw-mbd-hirshfeld)
-    atv_add_regression(gpw gpw-hirshfeld-kpoints)
-    atv_add_regression(gpw gpw-hirshfeld-uks)
-    atv_add_regression(gpw ot-minimizer-water)
-    atv_add_regression(gpw ot-uks-o2)
-    atv_add_regression(gpw ot-kpoints)
-    atv_add_regression(gpw ot-smearing)
-    atv_add_regression(gpw ot-uks-smearing)
-    atv_add_regression(gpw ot-uks-kpoints)
-    atv_add_regression(gpw ot-dftu)
-    atv_add_regression(gpw ot-dftu-kpoints)
-    atv_add_regression(gpw ot-uks-dftu)
-    atv_add_regression(gpw ot-dftu-smearing)
-    atv_add_regression(gpw ot-uks-dftu-smearing)
-    atv_add_regression(gpw gpw-water-pbe-mt)
-    atv_add_regression(gpw gpw-blyp-water)
-    atv_add_regression(gpw gpw-rpbe-water)
-    atv_add_regression(gpw gpw-forces-water)
-    atv_add_regression(gpw gpw-stress-water)
-    atv_add_regression(gpw gpw-analytic-stress)
-    atv_add_regression(gpw gpw-uks-o2-gamma)
-    atv_add_regression(gpw gpw-uks-pbe)
-    atv_add_regression(gpw gpw-uks-blyp)
-    atv_add_regression(gpw gpw-uks-revpbe)
-    atv_add_regression(gpw gpw-uks-rpbe)
-    atv_add_regression(gpw gpw-uks-forces)
-    atv_add_regression(gpw gpw-uks-stress)
-    atv_add_regression(gpw gpw-uks-multigrid)
+    atv_add_regression(gpw gpw-pbe-d3bj-ice THREADS 8)
+    atv_add_regression(gpw gpw-d3-atm THREADS 8)
+    atv_add_regression(gpw gpw-d4-water THREADS 8)
+    atv_add_regression(gpw gpw-d4-atm THREADS 8)
+    atv_add_regression(gpw gpw-d4-stress THREADS 8)
+    atv_add_regression(gpw gpw-d4-forces THREADS 8)
+    atv_add_regression(gpw gpw-ts-ice THREADS 8)
+    atv_add_regression(gpw gpw-ts-forces THREADS 8)
+    atv_add_regression(gpw gpw-xdm-ice THREADS 8)
+    atv_add_regression(gpw gpw-xdm-forces THREADS 8)
+    atv_add_regression(gpw gpw-mbd-ice THREADS 8)
+    atv_add_regression(gpw gpw-mbd-periodic THREADS 8)
+    atv_add_regression(gpw gpw-mbd-forces THREADS 8)
+    atv_add_regression(gpw gpw-mbd-kpoint-forces THREADS 8)
+    atv_add_regression(gpw gpw-vdw-df-ice THREADS 8)
+    atv_add_regression(gpw gpw-vdw-df2-ice THREADS 8)
+    atv_add_regression(gpw gpw-rvv10-ice THREADS 8)
+    atv_add_regression(gpw gpw-vdw-scf-potential THREADS 8)
+    atv_add_regression(gpw gpw-optb88-vdw THREADS 8)
+    atv_add_regression(gpw gpw-mbd-hirshfeld THREADS 8)
+    atv_add_regression(gpw gpw-hirshfeld-kpoints THREADS 8)
+    atv_add_regression(gpw gpw-hirshfeld-uks THREADS 8)
+    atv_add_regression(gpw ot-minimizer-water THREADS 8)
+    atv_add_regression(gpw ot-uks-o2 THREADS 8)
+    atv_add_regression(gpw ot-kpoints THREADS 8)
+    atv_add_regression(gpw ot-smearing THREADS 8)
+    atv_add_regression(gpw ot-uks-smearing THREADS 8)
+    atv_add_regression(gpw ot-uks-kpoints THREADS 8)
+    atv_add_regression(gpw ot-dftu THREADS 8)
+    atv_add_regression(gpw ot-dftu-kpoints THREADS 8)
+    atv_add_regression(gpw ot-uks-dftu THREADS 8)
+    atv_add_regression(gpw ot-dftu-smearing THREADS 8)
+    atv_add_regression(gpw ot-uks-dftu-smearing THREADS 8)
+    atv_add_regression(gpw gpw-water-pbe-mt THREADS 8)
+    atv_add_regression(gpw gpw-blyp-water THREADS 8)
+    atv_add_regression(gpw gpw-rpbe-water THREADS 8)
+    atv_add_regression(gpw gpw-forces-water THREADS 8)
+    atv_add_regression(gpw gpw-stress-water THREADS 8)
+    atv_add_regression(gpw gpw-analytic-stress THREADS 8)
+    atv_add_regression(gpw gpw-uks-o2-gamma THREADS 8)
+    atv_add_regression(gpw gpw-uks-pbe THREADS 8)
+    atv_add_regression(gpw gpw-uks-blyp THREADS 8)
+    atv_add_regression(gpw gpw-uks-revpbe THREADS 8)
+    atv_add_regression(gpw gpw-uks-rpbe THREADS 8)
+    atv_add_regression(gpw gpw-uks-forces THREADS 8)
+    atv_add_regression(gpw gpw-uks-stress THREADS 8)
+    atv_add_regression(gpw gpw-uks-multigrid THREADS 8)
     if(ATV_BUILD_MD)
-        atv_add_regression(gpw gpw-bomd-water)
+        atv_add_regression(gpw gpw-bomd-water THREADS 8)
         # Extended-Lagrangian BOMD (dynamics domain): XL auxiliary-density
         # propagation on the same H2O NVE twin.
-        atv_add_regression(dynamics xl-bomd-water)
+        atv_add_regression(dynamics xl-bomd-water THREADS 8)
         # XL-BOMD on Γ-UKS (dual α/β auxiliary densities) — O2 triplet NVE.
-        atv_add_regression(dynamics xl-bomd-uks)
+        atv_add_regression(dynamics xl-bomd-uks THREADS 8)
         # Multi-k RKS XL-BOMD (complex P_k aux densities) — H2 NVE.
-        atv_add_regression(dynamics xl-bomd-kpoints)
-        atv_add_regression(dynamics cpmd-kpoints)
+        atv_add_regression(dynamics xl-bomd-kpoints THREADS 8)
+        atv_add_regression(dynamics cpmd-kpoints THREADS 8)
         # Multi-k UKS XL-BOMD (dual-spin P_k^sigma) — high-spin H2 NVE.
-        atv_add_regression(dynamics xl-bomd-uks-kpoints)
+        atv_add_regression(dynamics xl-bomd-uks-kpoints THREADS 8)
         # Zero-SCF linearized-functional XL-BOMD forces (shadow BO potential).
-        atv_add_regression(dynamics xl-bomd-linearized-forces)
+        atv_add_regression(dynamics xl-bomd-linearized-forces THREADS 8)
         # Car–Parrinello MD (dynamics domain): fictitious electronic DOF on
         # the same H2O NVE twin family — not BOMD, not XL-BOMD.
-        atv_add_regression(dynamics cpmd-water)
+        atv_add_regression(dynamics cpmd-water THREADS 8)
         # CPMD electronic RATTLE (constraint-preserving orbitals) — upgrade
         # of the Löwdin foothold on the same H2O NVE twin family.
-        atv_add_regression(dynamics cpmd-rattle-water)
+        atv_add_regression(dynamics cpmd-rattle-water THREADS 8)
         # CPMD + Nosé–Hoover electronic thermostat on fictitious Ċ (H2O).
-        atv_add_regression(dynamics cpmd-electronic-thermostat)
+        atv_add_regression(dynamics cpmd-electronic-thermostat THREADS 8)
         # CPMD on Γ-UKS (dual α/β fictitious electronic DOF) — O2 triplet NVE.
-        atv_add_regression(dynamics cpmd-uks)
+        atv_add_regression(dynamics cpmd-uks THREADS 8)
         # Second-generation CP (Kühne ASPC + partial SCF corrector).
-        atv_add_regression(dynamics second-gen-cpmd-water)
+        atv_add_regression(dynamics second-gen-cpmd-water THREADS 8)
         # Second-generation CP on Γ-UKS (dual ASPC α/β + partial SCF).
-        atv_add_regression(dynamics second-gen-cpmd-uks)
+        atv_add_regression(dynamics second-gen-cpmd-uks THREADS 8)
         # Second-generation CP with OT partial-SCF corrector (RKS Γ).
         atv_add_regression(dynamics second-gen-cpmd-ot)
         # Second-generation CP with OT partial-SCF corrector on Γ-UKS.
         atv_add_regression(dynamics second-gen-cpmd-uks-ot)
         # Multi-k second-generation CP (ASPC on complex P_k + partial SCF).
-        atv_add_regression(dynamics second-gen-cpmd-kpoints)
+        atv_add_regression(dynamics second-gen-cpmd-kpoints THREADS 8)
     endif()
-    atv_add_regression(gpw gpw-pbesol-si)
-    atv_add_regression(gpw gpw-revpbe-si)
-    atv_add_regression(gpw gpw-dftu-nio)
-    atv_add_regression(gpw gpw-dftu-stress)
-    atv_add_regression(gpw gpw-dftu-kpoints)
-    atv_add_regression(gpw gpw-dftu-kpoint-stress)
-    atv_add_regression(gpw gpw-kpoints-si)
-    atv_add_regression(gpw periodic-wannier-gpw)
+    atv_add_regression(gpw gpw-pbesol-si THREADS 8)
+    atv_add_regression(gpw gpw-revpbe-si THREADS 8)
+    atv_add_regression(gpw gpw-dftu-nio THREADS 8)
+    atv_add_regression(gpw gpw-dftu-stress THREADS 8)
+    atv_add_regression(gpw gpw-dftu-kpoints THREADS 8)
+    atv_add_regression(gpw gpw-dftu-kpoint-stress THREADS 8)
+    atv_add_regression(gpw gpw-kpoints-si THREADS 8)
+    atv_add_regression(gpw periodic-wannier-gpw THREADS 8)
     # Dispersion ionic forces vs offline CP2K Quickstep D3 twins.
-    atv_add_regression(gpw gpw-d3-forces)
-    atv_add_regression(gpw gpw-d3bj-forces)
+    atv_add_regression(gpw gpw-d3-forces THREADS 8)
+    atv_add_regression(gpw gpw-d3bj-forces THREADS 8)
     # Gamma analytic cell stress folding periodic MBD@rsSCS.
-    atv_add_regression(gpw gpw-mbd-stress)
-    atv_add_regression(gpw gpw-metallic-smearing)
-    atv_add_regression(gpw gpw-uks-smearing)
-    atv_add_regression(gpw gpw-kpoint-forces)
-    atv_add_regression(gpw gpw-kpoint-uks-forces)
-    atv_add_regression(gpw gpw-kpoint-stress)
-    atv_add_regression(gpw gpw-kpoint-uks-stress)
-    atv_add_regression(gpw gpw-kpoint-uks-stress-gga)
-    atv_add_regression(gpw gpw-kpoints-uks)
+    atv_add_regression(gpw gpw-mbd-stress THREADS 8)
+    atv_add_regression(gpw gpw-metallic-smearing THREADS 8)
+    atv_add_regression(gpw gpw-uks-smearing THREADS 8)
+    atv_add_regression(gpw gpw-kpoint-forces THREADS 8)
+    atv_add_regression(gpw gpw-kpoint-uks-forces THREADS 8)
+    atv_add_regression(gpw gpw-kpoint-stress THREADS 8)
+    atv_add_regression(gpw gpw-kpoint-uks-stress THREADS 8)
+    atv_add_regression(gpw gpw-kpoint-uks-stress-gga THREADS 8)
+    atv_add_regression(gpw gpw-kpoints-uks THREADS 8)
     # FD vibrational spectrum from GPW analytic forces (Si2 UKS triplet,
     # isolated, centred MT). Dual-gate vs 1D energy curvature at the
     # ATV-convergent window (8 A / 150 Ry); offline CP2K 10 A/400 Ry pin
     # stays in REFERENCE for a future mixer-overlap twin.
     if(ATV_BUILD_VIB)
-        atv_add_regression(gpw gpw-fd-phonon-si)
+        atv_add_regression(gpw gpw-fd-phonon-si THREADS 8)
     endif()
-    atv_add_regression(gpw gpw-variable-cell-ice)
-    atv_add_regression(gpw gpw-variable-cell-molopt)
-    atv_add_regression(gpw periodic-mp2-si)
-    atv_add_regression(gpw periodic-ump2-si)
-    atv_add_regression(gpw periodic-ri-mp2-si)
-    atv_add_regression(gpw periodic-mp2-kpoints)
-    atv_add_regression(gpw periodic-ump2-kpoints)
-    atv_add_regression(gpw periodic-rpa-si)
-    atv_add_regression(gpw periodic-rpa-kpoints)
-    atv_add_regression(gpw periodic-rpa-finite-q)
-    atv_add_regression(gpw periodic-urpa-si)
-    atv_add_regression(gpw periodic-urpa-kpoints)
-    atv_add_regression(gpw periodic-gw-si)
-    atv_add_regression(gpw periodic-ugw-si)
+    atv_add_regression(gpw gpw-variable-cell-ice THREADS 8)
+    atv_add_regression(gpw gpw-variable-cell-molopt THREADS 8)
+    atv_add_regression(gpw periodic-mp2-si THREADS 8)
+    atv_add_regression(gpw periodic-ump2-si THREADS 8)
+    atv_add_regression(gpw periodic-ri-mp2-si THREADS 8)
+    atv_add_regression(gpw periodic-mp2-kpoints THREADS 8)
+    atv_add_regression(gpw periodic-ump2-kpoints THREADS 8)
+    atv_add_regression(gpw periodic-rpa-si THREADS 8)
+    atv_add_regression(gpw periodic-rpa-kpoints THREADS 8)
+    atv_add_regression(gpw periodic-rpa-finite-q THREADS 8)
+    atv_add_regression(gpw periodic-urpa-si THREADS 8)
+    atv_add_regression(gpw periodic-urpa-kpoints THREADS 8)
+    atv_add_regression(gpw periodic-gw-si THREADS 8)
+    atv_add_regression(gpw periodic-ugw-si THREADS 8)
+    # Pinned to 1 for CORRECTNESS: the UGW Newton QP solve failed to converge
+    # once in ~7 runs at 8 threads (thread-dependent FP reduction order), and
+    # 1 thread costs only 23 s vs 15 s. The sibling GW cases (periodic-gw-si
+    # 51 s -> 8 s, periodic-ugw-si 93 s -> 14 s, ugw-uks-rpbe 146 s -> 22 s)
+    # cannot afford the same pin and stay at 8 — see the report's finding on
+    # thread non-determinism in the iterative QP / OT solvers.
     atv_add_regression(gpw periodic-ugw-kpoints)
     # UGW@UKS RPBE spin XC residual (spectral G0W0; xc_grid_rpbe_spin).
-    atv_add_regression(gpw ugw-uks-rpbe)
-    atv_add_regression(gpw periodic-gw-kpoints)
-    atv_add_regression(gpw periodic-gw-finite-q)
+    atv_add_regression(gpw ugw-uks-rpbe THREADS 8)
+    atv_add_regression(gpw periodic-gw-kpoints THREADS 8)
+    atv_add_regression(gpw periodic-gw-finite-q THREADS 8)
     # MPI k-point RR industrial gate (self-launches mpiexec when ATV_USE_MPI).
     if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
-        atv_add_regression(gpw mpi-gpw-scaling-4rank)
+        atv_add_regression(gpw mpi-gpw-scaling-4rank THREADS 8)
         target_compile_definitions(reg_mpi-gpw-scaling-4rank PRIVATE
             ATV_MPIEXEC="${MPIEXEC_EXECUTABLE}")
         # Parent self-launches mpiexec; link MPI for the --mpi-worker path.
@@ -403,7 +456,7 @@ if(ATV_BUILD_HF)
     atv_add_regression(scf roks-o2-sto3g)
     atv_add_regression(scf roks-grad-o2-sto3g)
     atv_add_regression(scf h2o_ri_jk)
-    atv_add_regression(scf c10h22_cfmm_j)
+    atv_add_regression(scf c10h22_cfmm_j THREADS 8)
     atv_add_regression(scf h3_ghf_sto3g)
     atv_add_regression(scf ghf-grad-h3-sto3g)
     atv_add_regression(scf h2o_rhf_freq)

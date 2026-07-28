@@ -1133,6 +1133,16 @@ add_test(
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/docs_vocab_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
+# regression-harness gate: a case must resolve its data through the compiled-in
+# absolute ATV_REG_DATA_DIR (never by probing the CWD or reading the
+# environment), must not silently swap in a different Hamiltonian when an input
+# is missing, and must declare its OpenMP width at registration. Pure grep —
+# every build configuration.
+add_test(
+    NAME test_regression_harness_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/regression_harness_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
 # cuda-resurrect gate: the CUDA backend must not reference the deleted host CPU
 # API (catch-all Real / core/real.h, renamed unit constants, stale host
 # cpu::Frame accessor shapes). Pure grep over the cuda trees — runs on the login

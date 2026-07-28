@@ -18,29 +18,6 @@ using namespace ATV::cpu::pw;
 
 namespace {
 
-std::string o_upf() {
-    const char* env = std::getenv("ATV_SOURCE_DIR");
-    if (env) {
-        std::string p = std::string(env) + "/tests/data/pw/O_ONCV_PBE-1.2.upf";
-        if (std::FILE* f = std::fopen(p.c_str(), "r")) {
-            std::fclose(f);
-            return p;
-        }
-    }
-    const char* cands[] = {
-        "tests/data/pw/O_ONCV_PBE-1.2.upf",
-        "../tests/data/pw/O_ONCV_PBE-1.2.upf",
-        "../../tests/data/pw/O_ONCV_PBE-1.2.upf",
-    };
-    for (const char* c : cands) {
-        if (std::FILE* f = std::fopen(c, "r")) {
-            std::fclose(f);
-            return c;
-        }
-    }
-    return "tests/data/pw/O_ONCV_PBE-1.2.upf";
-}
-
 } // namespace
 
 int main() {
@@ -57,11 +34,13 @@ int main() {
     constexpr double want_e_ha = -28.7585210635;
     constexpr double tol_e_ha = 1.0e-3; // Ha — modest ecut / SCF tol
 
-    const std::string upf = o_upf();
-    if (std::FILE* f = std::fopen(upf.c_str(), "r")) {
+    // Compiled-in absolute path (ATV_REG_DATA_DIR): resolves identically from
+    // the build tree, the source tree, or a bare ./reg_<case>.
+    const char* upf = ATV_REG_DATA_DIR "/pw/O_ONCV_PBE-1.2.upf";
+    if (std::FILE* f = std::fopen(upf, "r")) {
         std::fclose(f);
     } else {
-        std::printf("FAIL: missing UPF %s\n", upf.c_str());
+        std::printf("FAIL: cannot open %s\n", upf);
         return 1;
     }
 

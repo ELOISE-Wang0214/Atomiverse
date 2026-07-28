@@ -33,15 +33,35 @@ the **textbook**?"* — it needs nothing, so it can run every cycle.
    own current output as a "golden value" is forbidden — that regression-tests our
    bugs.
 
-3. **As small as possible.** ≤ 60 s, single-threaded CPU. This is a regression,
-   not a production run.
+3. **As small as possible.** ≤ 60 s. This is a regression, not a production run.
 
-4. **Not in the default `ctest`.** Built behind `ATV_BUILD_REGRESSIONS=ON`, run
+   **Declare your thread width at registration.** `atv_add_regression(<domain>
+   <case> [THREADS <n>])` defaults to **1**, and the aggregate target runs the
+   binary under `OMP_NUM_THREADS=<n>`. Almost every case is a handful of atoms,
+   where OpenMP fork/join costs more than the physics — on a 48-core node
+   `mc_bias_es` takes 7 s at 1 thread, 231 s at 8, and does not finish at the
+   node default, with bit-identical results at every count. Cases with the
+   opposite shape (GPW/OT self-consistency on a real grid, DFPT response,
+   multi-k plane-wave) declare `THREADS 8` next to the case, so the requirement
+   is visible in one file instead of hidden in a `.cpp`. Raise a case only on a
+   **measurement**, not a hunch, and never above 8: at 16 threads on a shared
+   node the OpenMP barriers start losing to descheduling.
+
+4. **Never resolve input data relative to the current directory.** The absolute
+   data root is compiled in: `ATV_REG_DATA_DIR "/pw/Si_lda_nc.upf"`. A case must
+   give the same verdict from the build tree, the source tree, or a bare
+   `./reg_<case>` under a debugger. No `../..` probe chains, no `getenv`
+   escape hatch, and **no substituting a different model when an input is
+   missing** — `reg_pw-smearing-al` used to fall back to a toy `V_loc` and print
+   `PASS` against a pin recorded for the real pseudopotential. A missing input
+   is a failure. Grep-gated by `tests/architecture/regression_harness_scrub.sh`.
+
+5. **Not in the default `ctest`.** Built behind `ATV_BUILD_REGRESSIONS=ON`, run
    through the `regressions` target.
 
-5. **Non-zero exit on failure**, printing `got / want / tol`.
+6. **Non-zero exit on failure**, printing `got / want / tol`.
 
-6. **One flat `main()` per case.** Code that runs exactly once is **not** carved
+7. **One flat `main()` per case.** Code that runs exactly once is **not** carved
    into `setup_frame()` / `run_md()` / `check_energy()` helpers with one call site
    each. A reader must be able to read the case top to bottom. (CLAUDE.md: *"Extract
    on the second caller, not the first."*)

@@ -43,26 +43,6 @@ cpu::Frame make_al_fcc_primitive(double a_ang) {
     return f;
 }
 
-std::string find_upf() {
-    const char* env = std::getenv("ATV_AL_UPF");
-    if (env && env[0])
-        return std::string(env);
-    // Relative to build tree / source when run from repo root or build/
-    const char* candidates[] = {
-        "tests/data/pw/Al_pz_nc.upf",
-        "../tests/data/pw/Al_pz_nc.upf",
-        "../../tests/data/pw/Al_pz_nc.upf",
-        "regressions/../tests/data/pw/Al_pz_nc.upf",
-    };
-    for (const char* p : candidates) {
-        if (std::FILE* fp = std::fopen(p, "r")) {
-            std::fclose(fp);
-            return std::string(p);
-        }
-    }
-    return "tests/data/pw/Al_pz_nc.upf";
-}
-
 } // namespace
 
 int main() {
@@ -76,7 +56,7 @@ int main() {
     auto frame = make_al_fcc_primitive(a_ang);
 
     PW pw;
-    pw.upf_path = find_upf();
+    pw.upf_path = ATV_REG_DATA_DIR "/pw/Al_pz_nc.upf";
     pw.ecut_ry = 20.0;
     pw.k_mesh = 2;
     pw.tol = 1e-5;
@@ -87,13 +67,14 @@ int main() {
     pw.degauss = 0.02; // Ry
     pw.extra_bands = 4;
 
-    // Allow toy path if UPF missing (still exercises smearing + Ne=3).
+    // No toy fallback: REFERENCE.md pins the free energy for THIS NC-LDA UPF,
+    // so a missing file is a failure, not a reason to solve a different
+    // Hamiltonian and still print PASS.
     if (std::FILE* fp = std::fopen(pw.upf_path.c_str(), "r")) {
         std::fclose(fp);
     } else {
-        std::printf("WARN: UPF not found at %s — using toy V_loc\n",
-                    pw.upf_path.c_str());
-        pw.upf_path.clear();
+        std::printf("FAIL: cannot open %s\n", pw.upf_path.c_str());
+        return 1;
     }
 
     pw.build(frame);

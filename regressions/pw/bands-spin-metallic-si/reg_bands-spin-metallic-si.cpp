@@ -22,22 +22,6 @@ using namespace ATV::cpu::pw;
 
 namespace {
 
-std::string find_upf() {
-    const char* cands[] = {
-        "tests/data/pw/Si_lda_nc.upf",
-        "../tests/data/pw/Si_lda_nc.upf",
-        "../../tests/data/pw/Si_lda_nc.upf",
-        "../../../tests/data/pw/Si_lda_nc.upf",
-    };
-    for (const char* p : cands) {
-        if (FILE* f = std::fopen(p, "r")) {
-            std::fclose(f);
-            return p;
-        }
-    }
-    return {};
-}
-
 cpu::Frame make_si_diamond(double a_ang) {
     cpu::Frame frame(2);
     frame.span(kAtom_type)[0] = 14;
@@ -97,9 +81,13 @@ int main() {
     constexpr double kGapLoEv = 0.05;
     constexpr double kGapHiEv = 2.50;
 
-    const std::string upf = find_upf();
-    if (upf.empty()) {
-        std::printf("FAIL: cannot locate tests/data/pw/Si_lda_nc.upf\n");
+    // Compiled-in absolute path (ATV_REG_DATA_DIR): resolves identically from
+    // the build tree, the source tree, or a bare ./reg_<case>.
+    const char* upf = ATV_REG_DATA_DIR "/pw/Si_lda_nc.upf";
+    if (std::FILE* f = std::fopen(upf, "r")) {
+        std::fclose(f);
+    } else {
+        std::printf("FAIL: cannot open %s\n", upf);
         return 1;
     }
 
