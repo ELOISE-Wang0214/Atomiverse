@@ -178,11 +178,60 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
 - **MioSketch water charges are physically backwards** (Delta-q = +0.122 on O,
   -0.061 on each H) — a property of the invented exponential O/H sketch rows,
   not of the SCC. Real O/H mio-1-1 SK data is owed, like H-H already has.
-- **Seven PW/bands/DOS regressions resolve `tests/data/` relative to CWD**, so
-  they FAIL when the `regressions` target runs them from the build directory
-  and PASS from the repo root (verified both ways on `reg_bands-dos-si`,
-  `reg_dos-spin-si`). Harness defect, not physics. Fix = resolve the data path
-  from a compiled-in root or set the target's WORKING_DIRECTORY.
+- ~~**Seven PW/bands/DOS regressions resolve `tests/data/` relative to CWD**~~
+  **FIXED 2026-07-29** (`e30c933d`) — twelve, not seven. Route: a compiled-in
+  `ATV_REG_DATA_DIR` from `atv_add_regression()`, deliberately NOT
+  `WORKING_DIRECTORY` (that would fix only the aggregate target and leave every
+  standalone `./reg_x` broken, which is the invocation a human debugs with).
+  The `ATV_SI_UPF` / `ATV_AL_UPF` / `ATV_SOURCE_DIR` env escapes were deleted
+  too — an env var is a fallback by another name. Guarded by
+  `tests/architecture/regression_harness_scrub.sh`.
+- ~~**Regressions run thread-unpinned**~~ **FIXED 2026-07-29** (`e30c933d`):
+  thread count is now DECLARED at registration,
+  `atv_add_regression(<domain> <case> [THREADS <n>])`, default 1, applied via
+  the environment so it also covers code that never touches a Driver (PW::run,
+  GPW internals, BLAS). Measured, not guessed: 100 cases declare 8 (gpw 8x,
+  scf CFMM 8x, cpmd 2x), 265 take 1 — including 27 PW/DFPT cases I first
+  raised on structure and then dropped back after measuring 1.0x
+  (`dfpt-spin-smearing` is 2x SLOWER at 8). Capped at 8 because
+  `ot-minimizer-water` scales to 10.9 s at 8 but exceeds 200 s at 16.
+- **`reg_pw-smearing-al` silently substituted a toy Hamiltonian**
+  (found 2026-07-29, fixed in `e30c933d`): on a missing pseudopotential it
+  called `pw.upf_path.clear()` and solved a toy local potential, printing
+  `ok: ... upf=toy`. It failed only because its pin happened to catch the
+  −107.76 Ry answer; a looser tolerance and it would have PASSED for a
+  different Hamiltonian. Now a hard error. **Worth a sweep**: any other case
+  that can quietly degrade its own physics is the same defect.
+- **The `regressions` aggregate target has no `-k`** so it aborts at the first
+  failure and never produces a tally (named 2026-07-29). With `-k`: 365 cases,
+  5 failing, 61 min sequential. Consider making the target keep going by
+  default so it reports instead of stopping.
+- **Two PW iron pins are genuinely wrong or genuinely broken** (surfaced
+  2026-07-29 once the CWD defect stopped killing the cases first):
+  `pw-uks-kmesh-fe` −25.19236 vs pin −25.10872 ±0.005 (**17x tol**),
+  `pw-uks-fe-smearing` −205.8996 vs pin −205.8365 ±0.05. Proven pre-existing
+  (pre-fix sources run from the repo root give identical numbers).
+  IN PROGRESS 2026-07-29.
+- **`gpw-fd-phonon-si` is non-reproducible**: |Δω| 50.5 / 66.4 / 76.0 cm⁻¹
+  against a 50 cm⁻¹ tolerance, at 1 thread too.
+- **The OT and GW iterative solvers are not thread-deterministic**
+  (named 2026-07-29): `ot-minimizer-water` converges in **31 or 56 iterations
+  run-to-run at 8 threads** (11 s vs 110 s, same binary, no RNG);
+  `second-gen-cpmd-ot` scored 3 PASS / 1 FAIL in 4 identical runs (drift 0.245
+  and 0.360 vs tol 0.10) and is bitwise reproducible at 1 thread;
+  `periodic-ugw-kpoints` intermittently fails its Newton QP solve. Controls
+  (`cpmd-water`, `xl-bomd-water`, `second-gen-cpmd-water`) ARE reproducible at
+  8, so the OT corrector is the differentiator. Three cases pinned to
+  `THREADS 1` as a stopgap; their siblings cannot afford it
+  (`periodic-gw-si` 51→8 s, `ugw-uks-rpbe` 146→22 s) and stay exposed.
+  IN PROGRESS 2026-07-29.
+- **`gpw-d3bj-forces` is genuinely slow, not contention** — 72 s loaded, 73 s
+  re-run at load 8 (correcting my earlier contention hypothesis). Genuinely
+  over the 60 s budget at low load, reproduced: `gpw-uks-stress` **303 s**
+  (>600 at 1 thread), `second-gen-cpmd-uks-ot` 291, `gpw-uks-revpbe` 109,
+  `second-gen-cpmd-ot` 108, `gpw-uks-rpbe` 98, `gpw-uks-blyp` 96,
+  `periodic-wannier-gpw` 95, `gpw-uks-forces` 67, `gpw-mbd-stress` 65,
+  `gpw-fd-phonon-si` 65.
 - ~~**Five genuinely failing regressions**~~ **FIXED 2026-07-28** (`fdc2f6d4`)
   — three were real library bugs, not case bugs: SETTLE was not SETTLE (it
   rebuilt the ideal triangle from the unconstrained geometry and never read
