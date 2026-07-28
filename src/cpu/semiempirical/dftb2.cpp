@@ -890,11 +890,14 @@ void analytic_forces_unrestricted(
                 }
             }
 
+            // E² = ½Σ_AB γ_AB Δq_A Δq_B: the ordered double sum gives the
+            // A–B pair γ_AB Δq_A Δq_B, and with bond = R_B − R_A the chain
+            // rule is ∂r/∂bond = +dir, so ∂E²/∂bond = +Δq_A Δq_B dγ/dr.
             const double dgdR = dgamma_dr(r, ea.hubbard_u, eb.hubbard_u);
             const double dqa = dq[static_cast<std::size_t>(a)];
             const double dqb = dq[static_cast<std::size_t>(b)];
             for (int k = 0; k < 3; ++k)
-                dE_dbond[k] += -dqa * dqb * dgdR * dir[k];
+                dE_dbond[k] += dqa * dqb * dgdR * dir[k];
 
             // Spin energy −½ Σ W m²: W constant, m fixed ⇒ no geometry term.
 
@@ -998,11 +1001,14 @@ void analytic_forces_restricted(
                 }
             }
 
+            // E² = ½Σ_AB γ_AB Δq_A Δq_B: the ordered double sum gives the
+            // A–B pair γ_AB Δq_A Δq_B, and with bond = R_B − R_A the chain
+            // rule is ∂r/∂bond = +dir, so ∂E²/∂bond = +Δq_A Δq_B dγ/dr.
             const double dgdR = dgamma_dr(r, ea.hubbard_u, eb.hubbard_u);
             const double dqa = dq[static_cast<std::size_t>(a)];
             const double dqb = dq[static_cast<std::size_t>(b)];
             for (int k = 0; k < 3; ++k)
-                F_a[k] += -dqa * dqb * dgdR * dir[k];
+                F_a[k] += dqa * dqb * dgdR * dir[k];
 
             const double dErep_dr = pair_repulsive_dE_dr(type[a], type[b], r);
             for (int k = 0; k < 3; ++k)
@@ -1794,14 +1800,14 @@ void analytic_forces_3ob(int n_at, int n_ao, int n_occ,
                 }
             }
 
-            // E = Tr(PH0) + 1/2 Δq γ Δq + E_rep  ⇔  band − E_scc form at SCF.
-            // SCC pair term in the band−E_scc force: ∂E/∂R_B = −Δq_A Δq_B ∂γ/∂R.
+            // E = Tr(PH0) + ½ Σ_AB γ_AB Δq_A Δq_B + E_rep; with
+            // bond = R_B − R_A, ∂E²/∂bond = +Δq_A Δq_B dγ/dr.
             const double dgdR =
                 dgamma_dr_ha(r, ea.hubbard_u, eb.hubbard_u);
             const double dqa = dq[static_cast<std::size_t>(a)];
             const double dqb = dq[static_cast<std::size_t>(b)];
             for (int k = 0; k < 3; ++k)
-                dE_dbond[k] += -dqa * dqb * dgdR * dir[k];
+                dE_dbond[k] += dqa * dqb * dgdR * dir[k];
 
             const auto& pr = pair_3ob(Z[static_cast<std::size_t>(a)],
                                       Z[static_cast<std::size_t>(b)]);
