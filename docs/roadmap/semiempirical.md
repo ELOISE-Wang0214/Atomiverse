@@ -36,8 +36,10 @@ path). Opt-in **Grimme D3(BJ)** dispersion ships as an additive molecular
 correction with its own analytic gradient (`DFTB2::d3`,
 `reg_dftb2-dispersion-d3`); a periodic D3 lattice sum remains ○. Non-SCC
 **DFTB0** ships (`reg_dftb0-h2`). **GFN0-xTB toy** (`XtbGfn0`, `reg_h2o_gfn0`)
-remains a sketch. DFTB3, stress/TD depth, and GFN1/2 remain ○ (several on
-unmerged `wf/*` tips — see queue `## in_progress`: dftb3, ThreeOb F, stress).
+remains a sketch. **DFTB3** ships (`reg_dftb3-water-mio`) after its third-order potential was
+corrected to be the derivative of its own energy, and **analytic stress**
+ships (`reg_dftb2-analytic-stress`). All the `wf/*` TB tips were merged
+2026-07-28. TD depth and GFN1/2 remain ○.
 Loop queue: `docs/developer/tb-method-queue.md`. Family oracles: OpenMOPAC
 (NDDO) / DFTB+ (DFTB) / xtb (GFN) — see `tools/tb_oracle/README.md`.
 
@@ -69,13 +71,13 @@ multipole derivatives stay ○. Analytic Hessian remains finite-difference via
 
 | Method                    | CPU | CUDA | Kokkos |
 | ------------------------- | :-: | :--: | :---: |
-| Non-SCC DFTB / DFTB0      |  ○  |   ○  |   ○  |
+| Non-SCC DFTB / DFTB0      |  ✓  |   ○  |   ○  |
 | SCC-DFTB / DFTB2          |  ✓  |   ○  |   ○  |
-| DFTB3                     |  ○  |   ○  |   ○  |
+| DFTB3                     |  ✓  |   ○  |   ○  |
 | Spin-polarized DFTB       |  ✓  |   ○  |   ○  |
 | Noncollinear-spin DFTB    |  ○  |   ○  |   ○  |
 | DFTB+U                    |  ○  |   ○  |   ○  |
-| Dispersion-corrected DFTB |  ○  |   ○  |   ○  |
+| Dispersion-corrected DFTB |  ✓  |   ○  |   ○  |
 | Spin-orbit DFTB           |  ○  |   ○  |   ○  |
 | Periodic DFTB             |  ✓  |   ○  |   ○  |
 | DFTB analytic gradient    |  ✓  |   ○  |   ○  |

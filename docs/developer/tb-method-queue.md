@@ -131,11 +131,11 @@ merge onto `dev` since wave-2). **Recover incomplete ≫ staff new pending.**
 | DFTB analytic gradient | ✓ (restricted) | closed-form on **restricted MioSketch only** | deepen ThreeOb + open-shell F |
 | Spin-polarized DFTB | ✓ (collinear) | MioSketch dual αβ + Mulliken m | foothold; open-shell F still FD; noncollinear blocked |
 | Production 3ob organic SK | — (prose) | `DftbSkSet::ThreeOb` + CH4 pin | landed wave-1 (DFTB2 SK, not DFTB3) |
-| Non-SCC DFTB0 | ○ | tip `wf/dftb0-h2` only | **incomplete** |
-| DFTB3 | ○ | tip `wf/dftb3-water-mio` only | **incomplete** |
-| Dispersion D3 | ○ | tip `wf/dftb2-dispersion-d3` only | **incomplete** |
+| Non-SCC DFTB0 | ✓ | `dftb0.h`; reads the transcribed mio-1-1 H–H tables | **landed** 2026-07-28 (`757155d0`+`2c1502b6`); pin = the DFTB+ 24.1 value, licensed by SCC vanishing for homonuclear H₂ |
+| DFTB3 | ✓ | `dftb3.h` + `internal/dftb3_scc.h` | **landed** 2026-07-28 (`68df18a8`..`148a17ed`); third-order potential fixed to ∂E³/∂Δq (Euler 4.4e-16), SCC now converges (Anderson mixing) |
+| Dispersion D3 | ✓ | D3(BJ) applied in `DFTB2::launch` with its own analytic gradient | **landed** 2026-07-28 (`53ff52a0`); E_disp vs s-dftd3 1.5e-12 eV; absent from `kStress` (gap) |
 | Periodic DFTB | ✓ (Γ) | lattice-sum H⁰/S/γ/rep on MioSketch | **landed** wave-2; k-mesh → `dftb2-kpoints` |
-| DFTB analytic stress | ○ | absent | **gap** |
+| DFTB analytic stress | ✓ | closed-form virial, restricted MioSketch | **landed** 2026-07-28 (`24d43574`); analytic vs strain-FD 1.1e-10 eV/Å³ |
 | TD-DFTB | ○ | absent | **gap** |
 | GFN0-xTB | ✓ toy | sketch H/C/O | toy → Phase C deepen |
 | GFN1/2 / IPEA / spin / PBC GFN | ○ | absent | **gaps** (late) |
@@ -193,7 +193,7 @@ HEAD is later; see `## done` / handoff.
 | DFTB analytic gradient | ✓ (restricted) | closed-form HF+Pulay+γ+rep on MioSketch closed shell | **landed** wave-1; open-shell still FD; stress still ○ |
 | Spin-polarized DFTB | ✓ (collinear) | `multiplicity` / dual αβ / Mulliken m; `reg_spin-dftb2-o2` | **landed** wave-1 foothold; noncollinear blocked |
 | Production 3ob organic SK | — | `DftbSkSet::ThreeOb` + `dftb_3ob_tables.h` + CH4 DFTB+ pin | **landed** wave-1 (DFTB2 SK fidelity, not DFTB3 product) |
-| Non-SCC DFTB0 | ○ | no type on `dev` (tip on `wf/dftb0-h2`) | **gap** / incomplete tip |
+| Non-SCC DFTB0 | ✓ | `cpu::semiempirical::DFTB0` on `dev` | **landed** 2026-07-28 |
 | DFTB3 / D3 / PBC / stress / TD | ○ | absent on `dev` (tips on some `wf/*`) | **gaps** |
 | GFN0-xTB | ✓ toy | sketch H/C/O | toy only → Phase C |
 | GFN1 / GFN2 / IPEA / spin / PBC GFN | ○ | absent | **gaps** (late) |
