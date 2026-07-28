@@ -167,10 +167,23 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   `gaussian-electrode-charge` (no verdict line). Plus `python_pure_import`
   (missing `typer` in the env). Classical-MD/MC domain work, unrelated to the
   ES accumulation contract.
-- **Four `.claude/specs/` dirs arrived with the merged branches**
-  (`dftb2-dispersion-d3`, `dftb2-spin-analytic-forces`, `dftb2-analytic-stress`,
-  `dftb2-analytic-forces-threeob`) — house rule says specs die at done. Decide
-  their lifecycle (close + delete, or keep as the wave's record).
+- ~~**Four `.claude/specs/` dirs arrived with the merged branches**~~
+  **CLOSED 2026-07-28** — seven, not four (`dftb0-h2`, `dftb3-water-mio` and
+  `gpw-vv10-ice` came in the same way). Each deliverable verified present and
+  registered on dev (regression dir + CMake entry; gpw-vv10-ice is a negative
+  reconfirm with no code, its finding recorded in the CP2K queue). All seven
+  deleted per the house rule — history is the git log
+  (`a82b4b73`, `757155d0`, `53ff52a0`, `d425bcf4`, `24d43574`, `bff3936d`,
+  `68df18a8`).
+- ~~**Citation debt: "Szabo & Ostlund Table 3.11 = −1.117506 Ha"**~~
+  **CLOSED 2026-07-28** — audited every site: no REFERENCE attributes the
+  digit string to S&O. `rhf_h2_linesearch` and `mc_bias_es` cite CCCBDB
+  (−1.11751 Ha) as the literature value and print ours alongside;
+  `lj_rhf_coupled` carries the explicit retraction. Nothing to rewrite.
+- ~~**`cpu::SubDriver` phantom in CLAUDE.md / AGENTS.md**~~ **FIXED
+  2026-07-28** (`6aba6114`): five sites each replaced with the real
+  `DriverNode` nesting API (`outer.on(phase).add_ref(inner, order, budget)`),
+  plus a deleted-overload `add(lvalue)` in the same example.
 
 ## Live — deferred PySCF engine gaps (2026-07-24)
 
