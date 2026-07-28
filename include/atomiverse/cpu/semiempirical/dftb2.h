@@ -80,8 +80,17 @@ class DFTB2 : public cpu::Semiempirical {
   public:
     /// @brief SCC residual tolerance on max |Δq| (and |Δm| when open shell).
     double scc_tol = 1e-8;
-    /// @brief Maximum SCC iterations (dimensionless).
+    /// @brief Maximum SCC iterations (dimensionless). Exhausting it throws.
     int max_scc = 50;
+    /// @brief Anderson charge-mixing relaxation β ∈ (0,1] (dimensionless).
+    ///
+    /// Undamped Picard (no mixing) is a period-2 limit cycle for polar
+    /// systems: it never meets `scc_tol` and the reported energy is picked by
+    /// the parity of `max_scc`. Charges (and the spin population m, mixed as
+    /// one vector with them) go through `internal::ChargeMixer`. The default
+    /// converges every in-tree case in ≤ 14 iterations; β ≳ 0.7 stops
+    /// converging for hydrogen-bonded systems.
+    double mix_beta = 0.3;
     /// @brief When true, write F=−∇E [eV/Å] on launch.
     bool with_forces = true;
     /// @brief When true, write intensive cell stress to `kStress` [eV/Å³].
@@ -117,8 +126,16 @@ class DFTB2 : public cpu::Semiempirical {
 
     /// @brief Last total energy E_elec+rep+disp [eV].
     double last_energy() const { return energy_; }
+
     /// @brief Last D3(BJ) dispersion energy [eV] (0 when `d3` is false).
     double last_e_disp() const { return e_disp_; }
+
+    /// @brief SCC residual max|Δq_out − Δq_in| at exit [e]; below `scc_tol`
+    ///        whenever `launch` returned (it throws otherwise).
+    double last_scc_residual() const { return scc_residual_; }
+
+    /// @brief SCC iterations the last solve took (dimensionless).
+    int last_scc_iterations() const { return scc_iterations_; }
 
     /// @brief Last intensive Voigt stress [eV/Å³] (zero if stress not requested).
     const std::array<double, 6>& last_stress() const { return last_stress_; }
@@ -132,6 +149,8 @@ class DFTB2 : public cpu::Semiempirical {
   private:
     double energy_ = 0;
     double e_disp_ = 0;
+    double scc_residual_ = 0;
+    int scc_iterations_ = 0;
     std::array<double, 6> last_stress_{};
     std::vector<double> last_dq_;
     std::vector<double> last_spin_;
