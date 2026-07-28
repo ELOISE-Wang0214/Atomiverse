@@ -57,11 +57,35 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
 
 ## Ticket — /mol:fix owed (named 2026-07-27, esmm-cpmd-04 close-out)
 
-- **BOMD+d3bj/d4 forces are non-conservative**: `e_total_ += e_disp_`
-  (mean_field_method.cpp DFT-D block) has zero dispersion force terms in
-  `ScfGradient` — forces are not the gradient of the reported energy for any
-  d3bj/d4 run. CPMD refuses d3bj/d4 to keep E_cons honest; BOMD does not.
-  Fix = analytic D3(BJ)/D4 gradient legs in scf (GPW twin has them).
+- ~~**BOMD+d3bj/d4 forces are non-conservative**~~ **FIXED 2026-07-28**
+  (`34479521`): the defect was in THREE entry points, not one — `forces()`,
+  `mp2_forces()` and `ccsd_forces()` all reported `e_total_ += e_disp_` with a
+  gradient that knew nothing about dispersion. No D3 math was copied: GPW's
+  `internal/dftd3.cpp` stays the single implementation (its CN chain verified
+  complete) and scf delegates; only the flag->evaluator dispatch was extracted
+  to `scf/internal/dispersion.h`. Analytic-vs-FD: D3(BJ) 2.2e-11 eV/A,
+  D4 9.2e-10, end-to-end total 4.3e-06 (pure O(h^2)). New regression
+  `regressions/scf/bomd-d3bj-ar2-nve` (Ar2, dispersion is the only binding
+  force): E_disp and its gradient pinned against offline simple-dftd3 at
+  4.3e-19 Ha / 5.4e-20 Ha/Bohr, NVE drift 1.6e-05 eV vs a 9.7e-03 eV E_disp
+  swing (620x). CPMD's refusal kept — but its stated reason was false and is
+  rewritten: under CP, dispersion would be a force with no energy (the mirror
+  defect), so lifting it means folding E_disp into the CP total + E_cons.
+- **D4's gradient is itself a central difference** (named 2026-07-28,
+  `scf::dftd4()` at h=1e-4 Bohr, as shipped and dual-gated against dftd4
+  3.7.0 `-g`): D4 dynamics therefore costs 6N energy evaluations per step. A
+  closed-form D4 gradient is owed before D4 BOMD on more than a few atoms.
+- **No end-to-end gate for MP2/CCSD + d3bj forces** (named 2026-07-28) —
+  they route through the unit-tested helper, but the combination is untested
+  e2e.
+- **RKS/PBE forces are XC-grid-noisy and slow** (named 2026-07-28): ~3e-3
+  eV/A noise at the default grid on Ar2, and one RKS/def2-SVP force costs 28 s
+  vs 0.25 s for RHF (~2.4 s per SCF iteration on 36 AOs). Worth a /mol:fix on
+  the XC grid path.
+- **`regressions/gpw/gpw-d3bj-forces` exceeds its 60 s wall budget under node
+  load** (72-115 s; 32 s documented when quiet) while its physics stays
+  byte-identical to REFERENCE. Same class as the two OT cases above — the
+  budget needs a contention-aware policy, not a physics change.
 - Minor (same sweep): `reg_cpmd-water` single-threaded budget — now 54 s
   after esmm-cpmd-06's single-eval (was 62 s, under budget again);
   `test_cpu_scf_uhf_hessian` + `test_cpu_gpw_dftu` each showed one
