@@ -1,7 +1,8 @@
 /// @file src/cpu/semiempirical/dftb2.cpp
 /// SCC-DFTB2 multi-element: mio-1-1 H–H pin + sketch (spin + analytic F) + 3ob.
-/// Closed-shell analytic nuclear forces on BOTH SK sets; MioSketch adds the
-/// collinear open-shell gradient and the closed-form pair-virial cell stress.
+/// Closed-shell analytic nuclear forces AND closed-form pair-virial cell stress
+/// on BOTH SK sets; MioSketch adds the collinear open-shell gradient (whose
+/// stress is still multi-SCC affine strain-FD).
 /// Γ-point PBC (MioSketch): lattice-summed H0/S, screened γ, and repulsive.
 /// Multi-k (MioSketch restricted): Bloch-phased complex H0(k)/S(k), MP mesh.
 /// Optional additive Grimme D3(BJ) dispersion (molecular sum, analytic forces).
@@ -2168,19 +2169,18 @@ Scc3obResult scc_3ob(const std::vector<const Dftb3obElement*>& el,
     return out;
 }
 
-double energy_3ob_ha(const std::vector<const Dftb3obElement*>& el,
-                     const std::vector<int>& ao0, const std::vector<int>& Z,
-                     const std::vector<double>& x_b,
-                     const std::vector<double>& y_b,
-                     const std::vector<double>& z_b, int n_at, int n_ao,
-                     int n_occ, double scc_tol, int max_scc, double mix_beta) {
-    return scc_3ob(el, ao0, Z, x_b, y_b, z_b, n_at, n_ao, n_occ, scc_tol,
-                   max_scc, mix_beta)
-        .energy_ha;
-}
-
-/// Closed-form nuclear gradient for restricted SCC-DFTB2 on 3ob tables.
-/// Internally Ha/Bohr; writes Frame forces in eV/Å.
+/// Closed-form nuclear gradient (+ optional intensive stress) for **restricted**
+/// SCC-DFTB2 on 3ob tables. Internally Ha/Bohr; writes Frame forces in eV/Å and
+/// stress in eV/Å³ Voigt (xx,yy,zz,xy,xz,yz), mechanical convention
+/// σ = −(1/Ω)∂E/∂ε — same assembly and same sign as the restricted MioSketch
+/// path (`analytic_forces_restricted`).
+///
+/// `scc_3ob` is a raw-distance **cluster** sum (no lattice images, no
+/// min-image), so E depends on geometry only through the pair bond vectors and
+/// an affine strain of nuclei+cell gives ∂E/∂ε_αβ = Σ_pairs (∂E/∂R_α) R_β
+/// exactly — the pair virial below is FD-exact, not an approximation.
+///
+/// @param vol_a3 Cell volume Ω [Å³]; only read when `stress_voigt` is non-null.
 void analytic_forces_3ob(int n_at, int n_ao, int n_occ,
                          const std::vector<const Dftb3obElement*>& el,
                          const std::vector<int>& ao0, const std::vector<int>& Z,
@@ -2190,7 +2190,9 @@ void analytic_forces_3ob(int n_at, int n_ao, int n_occ,
                          const std::vector<double>& dq,
                          const linalg::RealMatrix& C,
                          const linalg::RealVector& eps, AccReal* fx, AccReal* fy,
-                         AccReal* fz) {
+                         AccReal* fz, bool want_forces,
+                         double* stress_voigt /* nullable, length 6 */,
+                         double vol_a3) {
     auto dist = [&](int i, int j, double& dx, double& dy, double& dz) {
         dx = x_b[static_cast<std::size_t>(j)] - x_b[static_cast<std::size_t>(i)];
         dy = y_b[static_cast<std::size_t>(j)] - y_b[static_cast<std::size_t>(i)];
@@ -2232,6 +2234,9 @@ void analytic_forces_3ob(int n_at, int n_ao, int n_occ,
     linalg::RealMatrix dS[3] = {xt::zeros<double>({n_ao, n_ao}),
                                 xt::zeros<double>({n_ao, n_ao}),
                                 xt::zeros<double>({n_ao, n_ao})};
+
+    // ∂E/∂ε in Voigt order [Ha] (strain is dimensionless), before −1/Ω.
+    double dE_de[6] = {0, 0, 0, 0, 0, 0};
 
     for (int a = 0; a < n_at; ++a) {
         const auto& ea = *el[static_cast<std::size_t>(a)];
@@ -2290,16 +2295,40 @@ void analytic_forces_3ob(int n_at, int n_ao, int n_occ,
 
             // F = −∂E/∂R; bond = R_B − R_A ⇒ F_A += ∂E/∂bond, F_B −= ∂E/∂bond
             // after converting Ha/Bohr → eV/Å.
-            const double fax = dE_dbond[0] * fscale;
-            const double fay = dE_dbond[1] * fscale;
-            const double faz = dE_dbond[2] * fscale;
-            fx[a] += static_cast<AccReal>(fax);
-            fy[a] += static_cast<AccReal>(fay);
-            fz[a] += static_cast<AccReal>(faz);
-            fx[b] -= static_cast<AccReal>(fax);
-            fy[b] -= static_cast<AccReal>(fay);
-            fz[b] -= static_cast<AccReal>(faz);
+            if (want_forces && fx && fy && fz) {
+                const double fax = dE_dbond[0] * fscale;
+                const double fay = dE_dbond[1] * fscale;
+                const double faz = dE_dbond[2] * fscale;
+                fx[a] += static_cast<AccReal>(fax);
+                fy[a] += static_cast<AccReal>(fay);
+                fz[a] += static_cast<AccReal>(faz);
+                fx[b] -= static_cast<AccReal>(fax);
+                fy[b] -= static_cast<AccReal>(fay);
+                fz[b] -= static_cast<AccReal>(faz);
+            }
+
+            if (stress_voigt) {
+                // Pair virial, Voigt order and sign taken from the restricted
+                // MioSketch path: off-diagonals are doubled because the affine
+                // strain is symmetric (ε_αβ = ε_βα = h). [Ha], bond in Bohr.
+                const double R[3] = {dx, dy, dz};
+                dE_de[0] += dE_dbond[0] * R[0];
+                dE_de[1] += dE_dbond[1] * R[1];
+                dE_de[2] += dE_dbond[2] * R[2];
+                dE_de[3] += dE_dbond[0] * R[1] + dE_dbond[1] * R[0]; // xy
+                dE_de[4] += dE_dbond[0] * R[2] + dE_dbond[2] * R[0]; // xz
+                dE_de[5] += dE_dbond[1] * R[2] + dE_dbond[2] * R[1]; // yz
+            }
         }
+    }
+
+    if (stress_voigt) {
+        if (vol_a3 <= 0.0)
+            throw std::runtime_error(
+                "DFTB2(ThreeOb): non-positive box volume for stress");
+        // ∂E/∂ε [Ha] → [eV]; Ω [Å³] ⇒ σ [eV/Å³].
+        for (int v = 0; v < 6; ++v)
+            stress_voigt[v] = -dE_de[v] * kHa2eV / vol_a3;
     }
 }
 
@@ -2357,72 +2386,20 @@ double launch_3ob(cpu::Frame& f, double scc_tol, int max_scc, double mix_beta,
     f.meta.get(kEnergyElectronic) += energy;
     out_dq = std::move(res.dq);
 
-    if (with_forces) {
+    // One post-SCC pair contraction serves both F and σ: the virial is the
+    // same bond terms as the gradient (no multi-SCC strain-FD product path).
+    if (with_forces || with_stress) {
+        double stress_buf[6] = {0, 0, 0, 0, 0, 0};
         analytic_forces_3ob(n_at, n_ao, res.n_occ, el, ao0, Z, xb, yb, zb,
-                            out_dq, res.C, res.eps, fx, fy, fz);
-    }
-    if (with_stress) {
-        // Multi-SCC affine strain-FD of E. ThreeOb now HAS an analytic SK
-        // derivative path (analytic_forces_3ob), so a closed-form pair virial
-        // is derivable here too -- not done in this wave; see the Gaps section
-        // of regressions/semiempirical/dftb2-analytic-forces-threeob.
-        constexpr double h_s = 2.0e-4;
-        const double vol0 = f.box.volume();
-        if (vol0 <= 0.0)
-            throw std::runtime_error(
-                "DFTB2(ThreeOb): non-positive box volume for stress");
-        std::vector<StorageReal> x0(static_cast<std::size_t>(n_at));
-        std::vector<StorageReal> y0(static_cast<std::size_t>(n_at));
-        std::vector<StorageReal> z0(static_cast<std::size_t>(n_at));
-        for (int a = 0; a < n_at; ++a) {
-            x0[static_cast<std::size_t>(a)] = x[a];
-            y0[static_cast<std::size_t>(a)] = y[a];
-            z0[static_cast<std::size_t>(a)] = z[a];
-        }
-        const Mat3 cell0 = f.box.cell();
-        auto& st = f.meta.get(kStress);
-        for (int v = 0; v < 6; ++v) {
-            auto restore = [&]() {
-                for (int a = 0; a < n_at; ++a) {
-                    x[a] = x0[static_cast<std::size_t>(a)];
-                    y[a] = y0[static_cast<std::size_t>(a)];
-                    z[a] = z0[static_cast<std::size_t>(a)];
-                }
-                f.box.set_cell(cell0);
-            };
-            restore();
-            apply_affine_strain(f, v, h_s);
-            for (int a = 0; a < n_at; ++a) {
-                xb[static_cast<std::size_t>(a)] =
-                    static_cast<double>(x[a]) * kA2Bohr;
-                yb[static_cast<std::size_t>(a)] =
-                    static_cast<double>(y[a]) * kA2Bohr;
-                zb[static_cast<std::size_t>(a)] =
-                    static_cast<double>(z[a]) * kA2Bohr;
+                            out_dq, res.C, res.eps, fx, fy, fz, with_forces,
+                            with_stress ? stress_buf : nullptr,
+                            f.box.volume());
+        if (with_stress) {
+            auto& st = f.meta.get(kStress);
+            for (int v = 0; v < 6; ++v) {
+                out_stress[static_cast<std::size_t>(v)] = stress_buf[v];
+                st[static_cast<std::size_t>(v)] += stress_buf[v];
             }
-            const double ep =
-                energy_3ob_ha(el, ao0, Z, xb, yb, zb, n_at, n_ao, n_occ,
-                              scc_tol, max_scc, mix_beta)
-                * kHa2eV;
-            restore();
-            apply_affine_strain(f, v, -h_s);
-            for (int a = 0; a < n_at; ++a) {
-                xb[static_cast<std::size_t>(a)] =
-                    static_cast<double>(x[a]) * kA2Bohr;
-                yb[static_cast<std::size_t>(a)] =
-                    static_cast<double>(y[a]) * kA2Bohr;
-                zb[static_cast<std::size_t>(a)] =
-                    static_cast<double>(z[a]) * kA2Bohr;
-            }
-            const double em =
-                energy_3ob_ha(el, ao0, Z, xb, yb, zb, n_at, n_ao, n_occ,
-                              scc_tol, max_scc, mix_beta)
-                * kHa2eV;
-            restore();
-            const double dE_de = (ep - em) / (2.0 * h_s);
-            const double sig = -dE_de / vol0;
-            out_stress[static_cast<std::size_t>(v)] = sig;
-            st[static_cast<std::size_t>(v)] += sig;
         }
     }
     return energy;

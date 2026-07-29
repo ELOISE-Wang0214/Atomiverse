@@ -40,10 +40,12 @@ remains ○ (`dftb2-dispersion-d3-periodic`). Non-SCC **DFTB0** ships
 (`reg_dftb0-h2`). **GFN0-xTB toy** (`XtbGfn0`, `reg_h2o_gfn0`) remains a
 sketch. **DFTB3** energy ships (`reg_dftb3-water-mio`) after its third-order
 potential was corrected to be the derivative of its own energy; DFTB3 analytic
-forces remain ○ (`dftb3-analytic-forces`). **Analytic stress** ships on
-restricted MioSketch (`reg_dftb2-analytic-stress`); ThreeOb and open-shell
-stress still use multi-SCC strain-FD (`dftb2-analytic-stress-threeob`,
-`dftb2-spin-analytic-stress`). Wave-3 TB staff closed 2026-07-29; GapCensus
+forces remain ○ (`dftb3-analytic-forces`). **Analytic stress** ships as the
+closed-form pair virial on restricted MioSketch (`reg_dftb2-analytic-stress`)
+**and on the ThreeOb 3ob-3-1 path**
+(`reg_dftb2-analytic-stress-threeob`, 2026-07-29 — the multi-SCC strain-FD
+product path for ThreeOb is **deleted**); collinear open-shell stress still uses
+multi-SCC strain-FD (`dftb2-spin-analytic-stress`). Wave-3 TB staff closed 2026-07-29; GapCensus
 wave-4 (2026-07-29) refilled Phase A deepens — TD depth and GFN1/2 remain ○.
 Loop queue: `docs/developer/tb-method-queue.md`. Family oracles: OpenMOPAC
 (NDDO) / DFTB+ (DFTB) / xtb (GFN) — see `tools/tb_oracle/README.md`.
@@ -93,14 +95,17 @@ DFTB2 is multi-element H/C/N/O with static SK tables (`dftb_mio_tables.h` sketch
 + `dftb_mio_hh_sk.h` mio-1-1 H–H + `dftb_3ob_tables.h` 3ob-3-1 organics).
 Collinear spin (`multiplicity`) and **analytic nuclear forces**
 (HF+Pulay+γ+rep; **open shell included** on MioSketch; **ThreeOb** closed-form
-F ships) are product paths. **Restricted MioSketch analytic stress** ships as
-the pair virial (`reg_dftb2-analytic-stress`); open-shell and ThreeOb stress
-fall back to multi-SCC affine strain-FD. Offline **DFTB+** absolute energy
+F ships) are product paths. **Analytic stress** ships as the closed-form pair
+virial on restricted MioSketch (`reg_dftb2-analytic-stress`) **and on ThreeOb**
+(`reg_dftb2-analytic-stress-threeob`; all six Voigt components vs strain-FD at
+5e-13 eV/Å³, plus the isotropic tr(σ)/3 = −dE/dΩ identity); only collinear
+open shell still falls back to multi-SCC affine strain-FD. Offline **DFTB+** absolute energy
 identity on mio-1-1 H–H ships (`reg_dftb2-dftbplus-energy-pin`); 3ob CH4 has a
 DFTB+ pin under pure SCC-DFTB2. **Γ-point PBC** lattice-sum energy **and**
 lattice-image nuclear forces ship; **multi-k energy** (Monkhorst–Pack) ships
 for closed-shell MioSketch. **Multi-k forces/stress**, **DFTB3** analytic
-forces, **periodic D3**, **ThreeOb / open-shell analytic stress**, and
+forces, **periodic D3**, **open-shell analytic stress**, a **D3 virial**
+(dispersion is absent from `kStress` on every path), and
 **TD-DFTB** remain ○ (queue Phase A). Oracle for all DFTB rows: **DFTB+**
 (never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 F → TD → NDDO PM →
 GFN late.

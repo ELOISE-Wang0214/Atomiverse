@@ -54,8 +54,12 @@ enum class DftbSkSet {
 /// - `sk_set = ThreeOb`: `basis_data/dftb_3ob_tables.h` 3ob-3-1 radial H/S +
 ///   repulsive (Gaus et al., JCTC 2013; organic CHNO). Closed shell: **analytic**
 ///   nuclear forces (same HF + Pulay + γ + repulsive assembly as MioSketch, on
-///   the Ha/Bohr 3ob tables; `reg_dftb2-analytic-forces-threeob`). Stress is
-///   multi-SCC strain-FD when requested. Spin / nonzero charge are not
+///   the Ha/Bohr 3ob tables; `reg_dftb2-analytic-forces-threeob`) **and** an
+///   analytic intensive cell stress on `kStress` [eV/Å³] — the pair virial of
+///   those same bond terms, same sign and Voigt order as the MioSketch path
+///   (`reg_dftb2-analytic-stress-threeob`). The 3ob path is a **molecular
+///   cluster** sum (no lattice images), so its virial is the isolated-molecule
+///   virial and the cell enters only through Ω. Spin / nonzero charge are not
 ///   supported on the ThreeOb path.
 ///
 /// Optional **Grimme DFT-D3(BJ)** (`d3 = true`) is a geometry-only additive
@@ -102,9 +106,10 @@ class DFTB2 : public cpu::Semiempirical {
     bool with_forces = true;
     /// @brief When true, write intensive cell stress to `kStress` [eV/Å³].
     ///
-    /// Restricted MioSketch: closed-form pair virial of the analytic force
-    /// terms. Open-shell / ThreeOb: multi-SCC affine strain-FD of total E.
-    /// **Excludes the `d3` dispersion term on both paths** — see
+    /// Restricted MioSketch **and** ThreeOb: closed-form pair virial of the
+    /// analytic force terms, σ = −(1/Ω)∂E/∂ε, Voigt `(xx,yy,zz,xy,xz,yz)`.
+    /// Collinear open shell (MioSketch): multi-SCC affine strain-FD of total E.
+    /// **Excludes the `d3` dispersion term on every path** — see
     /// `regressions/semiempirical/dftb2-analytic-stress/REFERENCE.md` Gaps.
     /// Multi-k (`any k_mesh[d] > 1`) does not support stress.
     bool with_stress = false;
