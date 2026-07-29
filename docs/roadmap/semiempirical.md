@@ -9,8 +9,14 @@ of kind `cpu::Semiempirical`). The shared NDDO engine is **internal**
 charges, the density matrix, and **nuclear forces** via fixed-density central
 finite difference of the SCF energy (product path; matches re-SCF FD at SCF
 stationarity). Closed-form multipole / integral derivatives remain ○ (see
-queue `nddo-closed-form-forces`). Evaluators write forces for Evaluate / MD /
-Minimize by default. Launch unwraps an isolated fragment for molecular AM1
+queue `nddo-closed-form-forces`). AM1 and RM1 now carry **absolute OpenMOPAC
+ΔHf pins** at each method's own optimized geometry
+(`reg_am1-water-mopac-energy`, `reg_rm1-water-mopac-energy`, 2026-07-29); the
+RM1 free-atom energies were AM1-derived and were repaired to MOPAC's `calpar`
+identity (a 19 kcal/mol ΔHf error), now gated for every parameter row. Residual
+against MOPAC is ~1e-3 eV and is a **physical-constant convention** floor (ATV
+uses CODATA-2018; MOPAC froze a₀ = 0.529167 Å, 1 Ha = 27.21 eV), not a defect.
+Evaluators write forces for Evaluate / MD / Minimize by default. Launch unwraps an isolated fragment for molecular AM1
 under PBC wrap (same pattern as Gaussian SCF). Regressions: `am1_water_force`,
 `am1_water_minimize`, `am1_water_bomd`, `rm1_water_energy`. Tutorial:
 [Chapter 17](../tutorial/ch17-semiempirical-am1.md) + `examples/15_am1.cpp`.
@@ -32,21 +38,33 @@ spin-DFTB2** ships (`multiplicity`, dual α/β, Mulliken m; `reg_spin-dftb2-o2`)
 on MioSketch (`reg_dftb2-periodic-gamma`) with **lattice-image-consistent
 nuclear forces** under PBC (`reg_dftb2-periodic-forces`). **Monkhorst–Pack
 k-mesh** beyond Γ ships for closed-shell MioSketch **energy**
-(`k_mesh` / `k_time_reversal` members; `reg_dftb2-kpoints`); multi-k analytic
-forces/stress remain ○ (`dftb2-multi-k-forces`). Opt-in **Grimme D3(BJ)**
-dispersion ships as an additive **molecular** correction with its own analytic
-gradient (`DFTB2::d3`, `reg_dftb2-dispersion-d3`); a periodic D3 lattice sum
-remains ○ (`dftb2-dispersion-d3-periodic`). Non-SCC **DFTB0** ships
-(`reg_dftb0-h2`). **GFN0-xTB toy** (`XtbGfn0`, `reg_h2o_gfn0`) remains a
-sketch. **DFTB3** energy ships (`reg_dftb3-water-mio`) after its third-order
-potential was corrected to be the derivative of its own energy; DFTB3 analytic
-forces remain ○ (`dftb3-analytic-forces`). **Analytic stress** ships as the
-closed-form pair virial on restricted MioSketch (`reg_dftb2-analytic-stress`)
-**and on the ThreeOb 3ob-3-1 path**
-(`reg_dftb2-analytic-stress-threeob`, 2026-07-29 — the multi-SCC strain-FD
-product path for ThreeOb is **deleted**); collinear open-shell stress still uses
-multi-SCC strain-FD (`dftb2-spin-analytic-stress`). Wave-3 TB staff closed 2026-07-29; GapCensus
-wave-4 (2026-07-29) refilled Phase A deepens — TD depth and GFN1/2 remain ○.
+(`k_mesh` / `k_time_reversal` members; `reg_dftb2-kpoints`) **and, since
+2026-07-29, for multi-k analytic nuclear forces and cell stress** via the
+Bloch-sum image-resolved densities (`reg_dftb2-multi-k-forces`). Opt-in
+**Grimme D3(BJ)** dispersion ships both as an additive **molecular** correction
+and as a **Γ-PBC lattice sum** (`DFTB2::d3`, `d3_periodic`, `d3_cutoff`;
+`reg_dftb2-dispersion-d3`, `reg_dftb2-dispersion-d3-periodic`), each with its
+own analytic gradient and virial. Non-SCC **DFTB0** ships (`reg_dftb0-h2`).
+**GFN0-xTB toy** (`XtbGfn0`, `reg_h2o_gfn0`) remains a sketch. **DFTB3** ships
+energy (`reg_dftb3-water-mio`) — after its third-order potential was corrected
+to be the derivative of its own energy — **and closed-form nuclear forces**
+including ∂Γ/∂R (`reg_dftb3-analytic-forces`), with the re-SCC finite
+difference deleted; DFTB3 is still **molecular min-image only** (no PBC,
+k-mesh, stress, open shell, ThreeOb or D3 on that path). **Analytic stress**
+ships as the closed-form pair virial on **every** DFTB2 product path —
+restricted MioSketch, collinear open shell, ThreeOb 3ob-3-1, and multi-k
+(`reg_dftb2-analytic-stress`, `reg_dftb2-spin-analytic-stress`,
+`reg_dftb2-analytic-stress-threeob`, `reg_dftb2-multi-k-forces`); **no
+multi-SCC strain-FD product path is left on DFTB2**, and the virial now carries
+the self-image A–(A+T) bonds it previously dropped (a 14% σ error on a dense
+periodic cell). Wave-4 TB staff closed 2026-07-29.
+
+**Open defect (blocks pin fidelity):** `γ_AB` in the MioSketch DFTB2/DFTB3 path
+is dimensionally inconsistent — it adds Å² to eV⁻² and omits `units::coulomb`,
+so γ_AA = U_A is accidentally correct while γ_AB(R→∞) is 14.4× too small. Every
+polar MioSketch number below is provisional until `dftb-gamma-units-fix` lands;
+the one absolute DFTB+ pin (H₂, Δq ≡ 0) is unaffected. See
+`.claude/notes/dftb-gamma-units-defect.md`.
 Loop queue: `docs/developer/tb-method-queue.md`. Family oracles: OpenMOPAC
 (NDDO) / DFTB+ (DFTB) / xtb (GFN) — see `tools/tb_oracle/README.md`.
 

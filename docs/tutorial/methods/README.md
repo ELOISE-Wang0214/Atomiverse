@@ -121,6 +121,13 @@ section must then say so explicitly and the case ships structural gates only.
 | Method | Page | Regression | Oracle |
 | ------ | ---- | ---------- | ------ |
 | Linear-response TD-DFTB (Casida) H₂ singlet/triplet | [td-dftb-h2](td-dftb-h2.md) | `regressions/semiempirical/td-dftb-h2` | literature (formalism; **no absolute pin** — `perf_exempt`) |
+| DFTB3 closed-form nuclear gradient (H₂O off-eq) | — | `regressions/semiempirical/dftb3-analytic-forces` | dftb+ formula-Gaus2011 + h² FD identity (`perf_exempt`) |
+| Multi-k Bloch analytic F **and** σ (off-eq C chain) | — | `regressions/semiempirical/dftb2-multi-k-forces` | dftb+ formula + FD/strain-FD identity (`perf_exempt`) |
+| Γ-PBC lattice-sum D3(BJ) (water dimer, 12 Å cell) | — | `regressions/semiempirical/dftb2-dispersion-d3-periodic` | **s-dftd3 1.2.1 offline, periodic** (`perf_exempt`) |
+| ThreeOb closed-form cell stress (asymmetric CH₄) | — | `regressions/semiempirical/dftb2-analytic-stress-threeob` | dftb+ formula + strain-FD (`perf_exempt`) |
+| Collinear open-shell cell stress (O₂ triplet, NO doublet) | — | `regressions/semiempirical/dftb2-spin-analytic-stress` | dftb+ formula + strain-FD (`perf_exempt`) |
+| AM1 H₂O ΔHf / E / charges | — | `regressions/semiempirical/am1-water-mopac-energy` | **OpenMOPAC** transcript (Dewar 1985) (`perf_exempt`) |
+| RM1 H₂O ΔHf at the RM1 optimum | — | `regressions/semiempirical/rm1-water-mopac-energy` | **OpenMOPAC** PARAM survey + Scientia Plena 2016 (`perf_exempt`) |
 
 ## Index — MetalWalls capability wave 1 (2026-07-23)
 

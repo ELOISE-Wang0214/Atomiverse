@@ -389,6 +389,74 @@ Workers: isolation worktree on nobackup; branch `wf/<slug>`; **spec-first**
 `.claude/specs/<slug>/`; SE-only cmake; offline pins only (DFTB+ / mopac /
 literature as family-locked). **No push.**
 
+## Recover / harness — 2026-07-29 (harness wave 4)
+
+| Source | Result |
+| ------ | ------ |
+| Queue greens merged | **all 8** assign-w4 staff → **done** (`dftb3-analytic-forces`, `dftb2-multi-k-forces`, `dftb2-dispersion-d3-periodic`, `dftb2-analytic-stress-threeob`, `dftb2-spin-analytic-stress`, `td-dftb-h2`, `am1-water-mopac-energy`, `rm1-water-mopac-energy`) |
+| Unmerged TB `wf/*` | **none** (all 7 worker branches merged + deleted) |
+| Isolation worktrees (TB) | **none** (removed same wave, per the Clearup rule) |
+| Live SE/TB specs after close | **none** (7 deleted) |
+| Incomplete | **0** |
+| Pending | **12** (Phase B NDDO×5, Phase C GFN×7) + **3 new** from the wave's findings |
+| Blocked | **9** |
+
+### Defects found this wave
+
+Three real ones, all surfaced by writing the gate *before* trusting the code:
+
+1. **`γ_AB` is dimensionally inconsistent** (`dftb2.cpp` `gamma_ab`,
+   `dftb3_scc.cpp` `Dftb3Scc::gamma`) — `r²` [Å²] added to `τ²` [eV⁻²], the
+   Coulomb constant missing. γ_AA = U_A is accidentally right, which is why it
+   survived; γ_AB(R→∞) → 1/R instead of k_e/R, **14.4× low**. Invisible because
+   the only real-mio-1-1 system in tree is H₂ (Δq ≡ 0). **Not fixed** — it
+   re-pins every polar MioSketch case. `.claude/notes/dftb-gamma-units-defect.md`,
+   new slug `dftb-gamma-units-fix` (Phase A head).
+2. **Self-image virial dropped** — the Γ pair virial walked `a<b` only, so
+   A–(A+T) image bonds (zero force, nonzero virial) were missing: **14% σ_xx
+   error** on a 2.8 Å C-chain cell. **Fixed** in `dftb2-multi-k-forces`, carried
+   onto the spin-resolved assembly at merge, gated by
+   `PeriodicAnalyticStressMatchesStrainFdCChain`.
+3. **RM1 free-atom energies were AM1-derived** — `eisol`/`aq` did not satisfy
+   MOPAC's `calpar` identity, giving ΔHf(H₂O) = −38.82 vs −57.86 kcal/mol
+   (19 kcal/mol, for a model whose published AUE is 5.0). **Fixed** in
+   `rm1-water-mopac-energy` with a `calpar` identity gate over all rows.
+
+### Inherited red gate (not TB)
+
+`test_no_factory_scrub` is **red on `dev`** from `src/cpu/scf/dftd4.cpp`
+`build_eeq_system` (a free `build_*` in `cpu/scf`, which admits none),
+introduced by the concurrent SCF/D4 session at `3ee28243` — already red at
+`bfe049f6`, before any TB commit, and no TB commit touches `src/cpu/scf/`.
+Named here per the iron law; belongs to that loop's owner to fix.
+
+## GapCensus — 2026-07-29 wave-5 (parent `dev`)
+
+**Branch:** `dev` @ harness-wave-4 close. **Live SE/TB specs:** none.
+**TB `wf/*` tips / isolation worktrees:** none. **incomplete `[~]`:** 0.
+
+### Tree vs roadmap (wave-5)
+
+| Capability | Roadmap | Tree on `dev` HEAD | Verdict |
+| ---------- | ------- | ------------------ | ------- |
+| DFTB2 analytic F | ✓ | restricted + open shell + ThreeOb + Γ-PBC images + **multi-k** | **closed** for MioSketch/3ob |
+| DFTB2 analytic stress | ✓ | restricted + open shell + ThreeOb + multi-k + self-image virial; **no strain-FD left** | **closed** for MioSketch/3ob |
+| DFTB3 | ✓ E + **analytic F** | molecular min-image only | deepen: **no PBC / k / stress / open shell / ThreeOb / D3 on DFTB3** |
+| Dispersion D3 | ✓ molecular + **periodic** | `d3` + `d3_periodic` + `d3_cutoff`; F and σ gated | orthorhombic only; no ATM |
+| TD-DFTB | ✓ foothold | `DFTB2::td_casida` energies | no oscillator strengths, no excited-state F, no LC |
+| Multi-k | ✓ E + F + σ | restricted Mio only | open shell + ThreeOb multi-k throw; no Fermi smearing |
+| AM1 / RM1 | ✓ + **mopac pins** | absolute ΔHf pins; RM1 params repaired | closed-form multipole F still ○ |
+| PM3 / PM6 / PM7 | ○ | no types | Phase B **oracle=mopac** |
+| GFN1/2 / IPEA / PBC / spin | ○ | `XtbGfn0` toy only | Phase C **oracle=xtb** |
+| **γ_AB units** | — | **defective** (see above) | **blocks pin fidelity of every polar MioSketch row** |
+
+### gaps_remaining (wave-5 census snapshot)
+
+**15** pending + **0** incomplete + **9** blocked → **nonzero; continue loop.**
+`new_slugs_added=3` (γ fix, DFTB3 periodic depth, sharper NDDO discriminator).
+**Staff `dftb-gamma-units-fix` first** — every MioSketch pin below it is
+provisional until it lands.
+
 ## pending
 
 ### Phase A — DFTB ladder (oracle = DFTB+)
@@ -397,7 +465,9 @@ Staff these before NDDO product depth and before GFN-xTB.
 **Prefer Recover of `## in_progress` over new pending.** Wave-4 assigned all
 remaining Phase A rows — pending Phase A empty until GapCensus refills.
 
-_(empty — all Phase A pending promoted to `## in_progress` in assign wave 4)_
+- [ ] `dftb-gamma-units-fix` | **Head of the ladder.** γ_AB adds Å² to eV⁻² and drops `units::coulomb`; correct both call sites (`dftb2.cpp`, `dftb3_scc.cpp`), re-derive every polar MioSketch drift pin in one pass, confirm `dftb2-dftbplus-energy-pin` (Δq = 0) is bit-unchanged, and decide whether the sketch U values were tuned against the broken form | dftb2/dftb3 | all polar mio cases | E / F / σ / q | **oracle=dftb+**; see `.claude/notes/dftb-gamma-units-defect.md`
+- [ ] `dftb3-periodic-forces` | DFTB3 beyond molecular min-image: lattice-image Γ-PBC energy + analytic F (DFTB2 already has all of it) | dftb3 | small periodic cell | E / F | **oracle=dftb+**; DFTB3 analytic F **landed** wave 4
+- [ ] `nddo-sharp-discriminator` | Water is a mild NDDO gate (RM1 sits 0.06 kcal/mol from experiment). Add CO₂ (RM1 −81.55 vs exp −94.05) or CO (−13.87 vs −26.42) so the pin discriminates the *method*, not thermochemistry | nddo | CO2 / CO | ΔHf | **oracle=mopac**; OpenMOPAC ships an RM1 CO₂ transcript
 
 ### Phase B — NDDO product depth (oracle = OpenMOPAC)
 
@@ -428,16 +498,7 @@ the first hard pin.
 
 ## in_progress
 
-_(assign wave 4 — all **new**; no resume tips)_
-
-- [~] `dftb3-analytic-forces` | Analytic DFTB3 nuclear forces (replace re-SCC central FD) | dftb3 | H2O off-eq | F | **oracle=dftb+**; energy foothold `dftb3-water-mio` **landed**
-- [~] `dftb2-multi-k-forces` | Analytic multi-k nuclear forces (+ stress) after Monkhorst–Pack energy foothold | dftb2 | C-chain / small crystal | F / stress | **oracle=dftb+**; today multi-k throws on `with_forces`/`with_stress`; restricted Mio first
-- [~] `dftb2-dispersion-d3-periodic` | Periodic lattice-sum D3(BJ) for Γ-PBC cells (`d3_periodic`) | dftb2 | small ortho cell | E_disp / F | **oracle=dftb+|literature** (s-dftd3); molecular `d3` already lands — not a second molecular pin
-- [~] `dftb2-analytic-stress-threeob` | Closed-form cell stress on `DftbSkSet::ThreeOb` (replace multi-SCC strain-FD) | dftb2 | CH4 / organic | stress [eV/Å³] | **oracle=dftb+** (formula); F closed-form already lands
-- [~] `dftb2-spin-analytic-stress` | Collinear open-shell analytic cell stress (MioSketch) | dftb2 | O2 / open shell | stress | **oracle=dftb+** (formula); open-shell F already lands
-- [~] `td-dftb-h2` | Linear-response TD-DFTB foothold | td-dftb | H2/H2O | excitation [eV] | **oracle=dftb+|literature**; ground-state SCC-DFTB2 solid on `dev`
-- [~] `am1-water-mopac-energy` | Hard OpenMOPAC total energy / ΔHf pin for H2O AM1 | nddo/am1 | H2O | E [eV] or ΔHf | **oracle=mopac**; existing reg is finite/self-FD only
-- [~] `rm1-water-mopac-energy` | Hard OpenMOPAC total energy / ΔHf pin for H2O RM1 | nddo/rm1 | H2O | E [eV] or ΔHf | **oracle=mopac**; current reg is method-discriminating only. Follow `am1-water-mopac-energy`: pin at the RM1-**optimized** structure from the same transcript, and expect the same ~1e-3 eV constant-convention floor (ATV uses CODATA-2018, MOPAC froze a0=0.529167 Å / 1 Ha=27.21 eV)
+_(empty — all 8 assign-wave-4 slugs merged to `dev`; see `## done`)_
 
 ## blocked
 
@@ -453,7 +514,16 @@ _(assign wave 4 — all **new**; no resume tips)_
 
 ## done
 
-_(footholds + wave-1/2/3 product depth on `dev`)_
+_(footholds + wave-1/2/3/4 product depth on `dev`)_
+
+- [x] `rm1-water-mopac-energy` | Absolute OpenMOPAC RM1 ΔHf(H₂O) pin at the RM1-optimized geometry; **fixed RM1 free-atom energies** (`eisol`/`aq` were AM1-derived — 19 kcal/mol error) + `calpar` identity unit gate | `reg_rm1-water-mopac-energy` | **oracle=mopac** (OpenMOPAC PARAM survey + Scientia Plena 2016)
+- [x] `am1-water-mopac-energy` | First hard OpenMOPAC pin on the NDDO surface: AM1 ΔHf / E / charges at the AM1-optimized geometry; seeds `tools/tb_oracle/inputs/mopac/` | `reg_am1-water-mopac-energy` | **oracle=mopac** (MOPAC 7.00 transcript; Dewar 1985)
+- [x] `td-dftb-h2` | Linear-response TD-DFTB (Casida) foothold — `DFTB2::td_casida`, singlet + triplet energies, molecular restricted MioSketch | `reg_td-dftb-h2` | **oracle=literature** (Niehaus 2001 formalism; **no absolute pin exists** — structural gates only)
+- [x] `dftb2-spin-analytic-stress` | Collinear open-shell closed-form cell stress; `analytic_forces_restricted`/`_unrestricted` folded into one spin-resolved `analytic_forces_stress` | `reg_dftb2-spin-analytic-stress` | **oracle=dftb+** (formula)
+- [x] `dftb2-analytic-stress-threeob` | Closed-form ThreeOb cell stress; strain-FD product path deleted | `reg_dftb2-analytic-stress-threeob` | **oracle=dftb+** (formula)
+- [x] `dftb2-dispersion-d3-periodic` | Γ-PBC lattice-image D3(BJ) (`d3_periodic`) + `d3_cutoff` member — a lattice sum is undefined without its truncation, so it was unpinnable against any engine | `reg_dftb2-dispersion-d3-periodic` | **oracle=literature** (offline s-dftd3 1.2.1, periodic `.gen`)
+- [x] `dftb2-multi-k-forces` | Bloch-sum analytic multi-k F **and** stress (restricted Mio); **fixed the Γ pair virial**, which dropped self-image A–(A+T) terms (14% σ_xx error on a periodic cell) | `reg_dftb2-multi-k-forces` | **oracle=dftb+** (formula; F + strain-FD identity)
+- [x] `dftb3-analytic-forces` | Closed-form DFTB3 nuclear gradient incl. ∂Γ/∂R; re-SCC FD deleted; the mio SK value+derivative kernel unified on `internal::MioSketchPair` (was three copies) | `reg_dftb3-analytic-forces` | **oracle=dftb+** (Gaus 2011 formula + h² FD identity)
 
 - [x] `am1-water-mopac-energy` | First **absolute OpenMOPAC pin** on the NDDO surface: AM1 H₂O total energy / ΔHf / Mulliken charges + optimum-stationarity, at the AM1-optimized geometry from the same transcript | `reg_am1-water-mopac-energy` | **oracle=mopac** (MOPAC 7.00 archived transcript; `tools/tb_oracle/inputs/mopac/am1-water/` — first mopac twin)
 - [x] `dftb2-kpoints` | Monkhorst–Pack multi-k SCC-DFTB2 beyond Γ (MioSketch energy; multi-k F/stress throw) | `reg_dftb2-kpoints` | **oracle=dftb+**
