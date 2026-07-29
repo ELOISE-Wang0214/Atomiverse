@@ -206,12 +206,45 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   failure and never produces a tally (named 2026-07-29). With `-k`: 365 cases,
   5 failing, 61 min sequential. Consider making the target keep going by
   default so it reports instead of stopping.
-- **Two PW iron pins are genuinely wrong or genuinely broken** (surfaced
-  2026-07-29 once the CWD defect stopped killing the cases first):
-  `pw-uks-kmesh-fe` −25.19236 vs pin −25.10872 ±0.005 (**17x tol**),
-  `pw-uks-fe-smearing` −205.8996 vs pin −205.8365 ±0.05. Proven pre-existing
-  (pre-fix sources run from the repo root give identical numbers).
-  IN PROGRESS 2026-07-29.
+- ~~**Two PW iron pins are genuinely wrong or genuinely broken**~~
+  **RESOLVED 2026-07-29** (`e7b7b534`) — one of each, and the first was a real
+  physics bug: in the collinear-UKS + smearing branch of `PW::run`,
+  `ws.gvec`/`ws.n_g` were rebound to each k-point's WAVEFUNCTION G-sphere
+  inside the k loop and never restored, so spin ↓ copied only the first
+  `n_g(k_last)` coefficients of its `V_xc` and FFT-ed `V_eff` on the last
+  k-point's (h,k,l) — **the two spin channels were solved with different
+  Hamiltonians** (8.7 eV on Fe). The identical defect had been fixed in the
+  sibling helper `internal::run_scf_smear_collinear` (`ea3ae031`) and never
+  back-ported. Proved by an exact invariant rather than a number: at
+  `multiplicity = 1` both channels are seeded identically and every operator is
+  spin-symmetric, so `M = N↑ − N↓ ≡ 0` with no tolerance — measured 1.90 (Γ)
+  and −0.25 (2×2×2) before, exactly 0 after. `pw-uks-kmesh-fe` was a fossil
+  pin instead: it predates `c6a6273c`, which made `step_spin` a true spin-GGA
+  (before that, `xc = PBE` silently ran the σ=0 LDA limit — another silent
+  Hamiltonian substitution). BOTH absolute-energy freezes were **deleted, not
+  re-pinned** (neither setting has a citable external value) and replaced with
+  exact statements: Herzberg `M = 2`, `n_kpts = k_mesh³`, `N_occ = Z_val`,
+  `S ≥ 0`, `∂F/∂T = −S`, `TS → 0`. The `dF/dT` gate discriminates: the broken
+  solver gives −1.2e-3 Ry against a required < −1e-2.
+- **Most PW absolute-energy pins in this tree are self-freezes** (named
+  2026-07-29), including the currently-PASSING `pw-spin-polarized-o2` and
+  `pw-spin-gga`. They validate nothing and go stale on every legitimate physics
+  change — two of them went stale within five days. Either replace them with
+  exact invariants (as the two above now are) or pin them against a citable
+  external code.
+- **The collinear PW convergence test measures the POST-MIX density change**
+  (i.e. `β × residual`), so at `β = 0.3` it declares convergence at a residual
+  3.3× looser than `tol`. Shared by both collinear branches; tightening it
+  moves several other pins. Also: the collinear branches use plain linear
+  mixing while only the restricted path uses Pulay — for Fe that costs ~5× the
+  iterations (12 → 60).
+- **Four GPW unit tests are registered inside the PW guard, not the GPW
+  guard** (named 2026-07-29, pre-existing — verified identical at the session's
+  start commit): `test_cpu_gpw_forces`, `_stress`, `_uks`, `_dftu`. A build
+  with `ATV_BUILD_PW=ON` and `ATV_BUILD_GPW=OFF` therefore fails to link with
+  4 undefined-reference errors — and that combination is **exactly the
+  copy-pasteable CPU build command in AGENTS.md and CLAUDE.md**. Fix: move the
+  four registrations inside `if(ATV_BUILD_GPW)`.
 - **`gpw-fd-phonon-si` is non-reproducible**: |Δω| 50.5 / 66.4 / 76.0 cm⁻¹
   against a 50 cm⁻¹ tolerance, at 1 thread too.
 - **The OT and GW iterative solvers are not thread-deterministic**
