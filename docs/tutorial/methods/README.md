@@ -98,6 +98,20 @@ are ATV-mio-style). Fair walls from REFERENCE (`ratio` or `perf_exempt`).
 | SCC-DFTB2 H₂ total \(E\) vs mio-1-1 | [dftb2-dftbplus-energy-pin](dftb2-dftbplus-energy-pin.md) | `regressions/semiempirical/dftb2-dftbplus-energy-pin` | dftb+ 24.1 | **≈ 0.4** |
 | Γ-point periodic SCC-DFTB2 (1-D C chain) | [dftb2-periodic-gamma](dftb2-periodic-gamma.md) | `regressions/semiempirical/dftb2-periodic-gamma` | literature (+ family dftb+) | **perf_exempt** |
 
+## Index — TB / SE capability wave 3 (2026-07-29)
+
+Offline family-locked pins only — see
+[tb-method-handoff](../../developer/tb-method-handoff.md) and
+`tools/tb_oracle/`. Final harness-wave-3 batch: lattice-image Γ-PBC forces,
+multi-k energy, DFTB3 energy foothold. Fair walls deferred when no DFTB+
+binary on host (`perf_exempt`).
+
+| Method | Page | Regression | Oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
+| ------ | ---- | ---------- | ------ | --------------------------------------------- |
+| Γ-PBC analytic nuclear forces (off-eq C chain) | [dftb2-periodic-forces](dftb2-periodic-forces.md) | `regressions/semiempirical/dftb2-periodic-forces` | literature (+ family dftb+) | **perf_exempt** |
+| Multi-k SCC-DFTB2 (4×1×1 C chain) | [dftb2-kpoints](dftb2-kpoints.md) | `regressions/semiempirical/dftb2-kpoints` | dftb+ family (+ ATV mio-style pin) | **perf_exempt** |
+| SCC-DFTB3 H₂O (mio-style; third-order \(E\)) | [dftb3-water-mio](dftb3-water-mio.md) | `regressions/semiempirical/dftb3-water-mio` | dftb+ formula-Gaus2011 (Hamiltonian twin) | **perf_exempt** |
+
 ## Index — MetalWalls capability wave 1 (2026-07-23)
 
 Classical electrochemical MD + LAMMPS-overlap MD (map E1–E3, E8–E9). Offline

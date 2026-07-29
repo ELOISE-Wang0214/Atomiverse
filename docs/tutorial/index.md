@@ -123,6 +123,20 @@ Full index: [methods/README](methods/README.md). Narrative:
 | SCC-DFTB2 H₂ total \(E\) vs mio-1-1 | [dftb2-dftbplus-energy-pin](methods/dftb2-dftbplus-energy-pin.md) | `regressions/semiempirical/dftb2-dftbplus-energy-pin` | dftb+ 24.1 (ratio **≈ 0.4**) |
 | Γ-point periodic SCC-DFTB2 (1-D C chain) | [dftb2-periodic-gamma](methods/dftb2-periodic-gamma.md) | `regressions/semiempirical/dftb2-periodic-gamma` | literature + family dftb+ (`perf_exempt`) |
 
+### TB / SE capability wave 3 (semiempirical + tight-binding)
+
+Offline OpenMOPAC / DFTB+ / xtb pins only — see
+[tb-method-handoff](../developer/tb-method-handoff.md) and `tools/tb_oracle/`.
+Family-locked oracles: NDDO → OpenMOPAC; DFTB* → DFTB+; GFN-xTB → xtb.
+Full index: [methods/README](methods/README.md). Final harness-wave-3 batch
+(lattice-image Γ-PBC \(F\), multi-k energy, DFTB3 energy).
+
+| Method | Page | Regression | Oracle |
+|--------|------|------------|--------|
+| Γ-PBC analytic nuclear forces (off-eq C chain) | [dftb2-periodic-forces](methods/dftb2-periodic-forces.md) | `regressions/semiempirical/dftb2-periodic-forces` | literature + family dftb+ (`perf_exempt`) |
+| Multi-k SCC-DFTB2 (4×1×1 C chain) | [dftb2-kpoints](methods/dftb2-kpoints.md) | `regressions/semiempirical/dftb2-kpoints` | dftb+ family (`perf_exempt`) |
+| SCC-DFTB3 H₂O (mio-style; third-order \(E\)) | [dftb3-water-mio](methods/dftb3-water-mio.md) | `regressions/semiempirical/dftb3-water-mio` | dftb+ formula-Gaus2011 (`perf_exempt`) |
+
 ### MetalWalls capability wave 1 (classical electrochem + LAMMPS-overlap MD)
 
 Offline LAMMPS / MetalWalls / literature pins only — see
