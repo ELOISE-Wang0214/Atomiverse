@@ -37,6 +37,7 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/component/hf.h"
+#include "atomiverse/cpu/component/qm_engine.h"
 #include "atomiverse/cpu/component/timestep_protocol.h"
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/electronic/cpmd.h"
@@ -315,21 +316,27 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
     ///         mismatch with a subsequent `run` basis.
     void set_mom_reference(const SlaterDeterminant& det);
 
-    // ── Environment (hf-capability-gaps-15-embed) ─────────────────────
-    /// @brief External point charge (QM/MM electrostatic embedding, QM side).
-    ///
-    /// Positions in Å, charge in e. Empty vector = no embedding (bit-identical
-    /// to the vacuum path). Wired into the private Hcore / classical energy
-    /// in `drive_scf_core_`; never stored on Frame.
-    struct PointCharge {
-        double x = 0; ///< Position x [Å].
-        double y = 0; ///< Position y [Å].
-        double z = 0; ///< Position z [Å].
-        double q = 0; ///< Charge [e].
-    };
-
+    // ── Environment (hf-capability-gaps-15-embed / esmm-qmmm-01) ───────
     /// @brief External MM-like point charges (positions [Å], charges [e]).
-    std::vector<PointCharge> point_charges;
+    ///
+    /// Empty = no embedding (bit-identical vacuum path). Wired into private
+    /// Hcore / classical energy in `drive_scf_core_`; never stored on Frame.
+    /// Type is the shared public `cpu::EmbeddingSite` (no nested PointCharge).
+    std::vector<cpu::EmbeddingSite> point_charges;
+
+    /// @brief Include MM–MM self Coulomb in the embedding energy/gradient.
+    ///
+    /// Default true preserves standalone embedding energy pins
+    /// (`h2o_embedding_field`). Additive QM/MM couplings set false so MM–MM
+    /// lives in exactly one place (the MM force field).
+    bool embed_self_energy = true;
+
+    /// @brief Forces on embedding sites from the last `forces()` / nested force
+    ///        evaluation [eV/Å]. Empty when `point_charges` was empty.
+    /// @return Const reference to the republished site forces.
+    const std::vector<cpu::EmbeddingForce>& embedding_site_forces() const {
+        return embed_site_forces_;
+    }
 
     /// @brief Uniform external electric field (Ex, Ey, Ez) [a.u.].
     ///
@@ -1002,6 +1009,8 @@ public:
 
     // Most recent analytic gradient (forces() return + force-slot write).
     GradientResult last_grad_;
+    /// Republished from `last_grad_.embedding_forces` after each force eval.
+    std::vector<cpu::EmbeddingForce> embed_site_forces_;
 
     // ── Car–Parrinello state (cpmd = true only) ───────────────────────
     /// Occupied-orbital propagators: α always, β only for UHF/UKS. Engaged

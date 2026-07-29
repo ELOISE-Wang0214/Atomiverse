@@ -17,6 +17,7 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/component/qm_engine.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/observe/multipole.h"
 #include "atomiverse/cpu/scf/gradient_result.h"
@@ -31,7 +32,6 @@ using namespace ATV;
 using namespace ATV::cpu::scf;
 using ATV::cpu::scf::internal::ExternalField;
 using ATV::cpu::scf::internal::PointChargeEmbedding;
-using ATV::cpu::scf::internal::PointChargeSite;
 
 namespace {
 
@@ -136,11 +136,173 @@ TEST(PointChargeEmbedding, ClassicalSumsExact) {
 }
 
 TEST(PointChargeEmbedding, NonFiniteThrows) {
-    const PointChargeSite bad_q{0.0, 0.0, 0.0, std::nan("")};
+    const cpu::EmbeddingSite bad_q{0.0, 0.0, 0.0, std::nan("")};
     EXPECT_THROW(PointChargeEmbedding({bad_q}), std::invalid_argument);
-    const PointChargeSite bad_r{std::numeric_limits<double>::infinity(), 0.0,
-                                0.0, 1.0};
+    const cpu::EmbeddingSite bad_r{std::numeric_limits<double>::infinity(), 0.0,
+                                   0.0, 1.0};
     EXPECT_THROW(PointChargeEmbedding({bad_r}), std::invalid_argument);
+}
+
+// ── esmm-qmmm-01: analytic embedding gradients ─────────────────────────
+
+TEST(PointChargeEmbedding, AnalyticQmCenterMatchesCoreMatrixFD) {
+    // Two-charge H2O toy: analytic Tr[P dV/dR] vs central FD of core_matrix.
+    auto frame = make_h2o();
+    IntegralPack pack{frame, BasisSet::STO3G};
+    const std::vector<cpu::EmbeddingSite> sites = {{0.0, 0.0, 3.0, 0.5},
+                                                   {0.0, 0.0, -3.0, -0.5}};
+    PointChargeEmbedding emb(sites);
+
+    // Dummy closed-shell density: 2·S^{-1} projection onto occupied (use
+    // identity scaled) — for FD parity any symmetric P works.
+    const int n = pack.n_ao_cart();
+    xt::xtensor<double, 2> P = xt::zeros<double>({n, n});
+    for (int i = 0; i < n; ++i)
+        P(i, i) = 1.0; // unit diagonal (dimensionless)
+
+    std::vector<int> shell_to_atom(static_cast<std::size_t>(n), -1);
+    for (int i = 0; i < n; ++i) {
+        const double* c = pack.shells[static_cast<std::size_t>(i)].center;
+        for (int a = 0; a < static_cast<int>(pack.atoms.size()); ++a) {
+            const double* p = pack.atoms[static_cast<std::size_t>(a)].pos;
+            if (c[0] == p[0] && c[1] == p[1] && c[2] == p[2]) {
+                shell_to_atom[static_cast<std::size_t>(i)] = a;
+                break;
+            }
+        }
+        ASSERT_GE(shell_to_atom[static_cast<std::size_t>(i)], 0);
+    }
+
+    const int natm = static_cast<int>(pack.atoms.size());
+    xt::xtensor<double, 2> g_an = xt::zeros<double>({natm, 3});
+    emb.accumulate_qm_center_gradient(g_an, pack.shells, P, shell_to_atom,
+                                      pack.atoms);
+    // Isolate electron–MM: subtract classical nucleus–MM from g_an by
+    // recomputing with P=0... easier: FD only the electronic Tr[P V].
+    // Rebuild analytic electron-only via FD of V:
+    const double h = 1e-4; // Bohr
+    xt::xtensor<double, 2> g_fd = xt::zeros<double>({natm, 3});
+    for (int A = 0; A < natm; ++A) {
+        const double* ap = pack.atoms[static_cast<std::size_t>(A)].pos;
+        const auto on_A = [&](const double* c) {
+            return c[0] == ap[0] && c[1] == ap[1] && c[2] == ap[2];
+        };
+        for (int d = 0; d < 3; ++d) {
+            std::vector<native::Shell> shp = pack.shells;
+            std::vector<native::Shell> shm = pack.shells;
+            for (auto& s : shp)
+                if (on_A(s.center))
+                    s.center[d] += h;
+            for (auto& s : shm)
+                if (on_A(s.center))
+                    s.center[d] -= h;
+            const auto Vp = emb.core_matrix(shp);
+            const auto Vm = emb.core_matrix(shm);
+            const xt::xtensor<double, 2> dV = (Vp - Vm) / (2.0 * h);
+            g_fd(A, d) = xt::sum(P * dV)();
+        }
+    }
+    // Analytic electron leg = total analytic − classical nucleus–MM
+    xt::xtensor<double, 2> g_class = xt::zeros<double>({natm, 3});
+    for (int A = 0; A < natm; ++A) {
+        const double* ap = pack.atoms[static_cast<std::size_t>(A)].pos;
+        const double Za =
+            static_cast<double>(pack.atoms[static_cast<std::size_t>(A)].Z);
+        for (const auto& site : sites) {
+            const double rc[3] = {site.x * units::kAngstromInBohr,
+                                  site.y * units::kAngstromInBohr,
+                                  site.z * units::kAngstromInBohr};
+            const double dx = ap[0] - rc[0];
+            const double dy = ap[1] - rc[1];
+            const double dz = ap[2] - rc[2];
+            const double r2 = dx * dx + dy * dy + dz * dz;
+            const double r3 = r2 * std::sqrt(r2);
+            const double zq = Za * site.q;
+            g_class(A, 0) += -zq * dx / r3;
+            g_class(A, 1) += -zq * dy / r3;
+            g_class(A, 2) += -zq * dz / r3;
+        }
+    }
+    double max_err = 0.0;
+    for (int A = 0; A < natm; ++A)
+        for (int d = 0; d < 3; ++d) {
+            const double g_el = g_an(A, d) - g_class(A, d);
+            max_err = std::max(max_err, std::abs(g_el - g_fd(A, d)));
+        }
+    EXPECT_LT(max_err, 1e-6) << "max |analytic_el − FD| = " << max_err;
+}
+
+TEST(MeanFieldEmbedding, SiteForcesThirdLawAndEmptyAbsence) {
+    auto frame = make_h2o();
+
+    // Empty charges → empty embedding_forces
+    {
+        RHF rhf;
+        rhf.basis = BasisSet::STO3G;
+        rhf.tol = 1e-10;
+        rhf.max_iter = 80;
+        const auto g = rhf.forces(frame);
+        EXPECT_EQ(g.embedding_forces.size(), 0u);
+        EXPECT_TRUE(rhf.embedding_site_forces().empty());
+    }
+
+    // With charges, self-energy off → Σ_QM F + Σ_MM F ≈ 0
+    {
+        RHF rhf;
+        rhf.basis = BasisSet::STO3G;
+        rhf.tol = 1e-12;
+        rhf.max_iter = 120;
+        rhf.embed_self_energy = false;
+        rhf.point_charges = {{0.0, 0.0, 3.0, 0.5}, {0.0, 0.0, -3.0, -0.5}};
+        const auto g = rhf.forces(frame);
+        ASSERT_EQ(g.embedding_forces.shape(0), 2u);
+        ASSERT_EQ(g.embedding_forces.shape(1), 3u);
+        ASSERT_EQ(rhf.embedding_site_forces().size(), 2u);
+
+        double sum[3] = {0, 0, 0};
+        for (int A = 0; A < 3; ++A)
+            for (int d = 0; d < 3; ++d)
+                sum[d] += g.forces(A, d);
+        for (int c = 0; c < 2; ++c)
+            for (int d = 0; d < 3; ++d)
+                sum[d] += g.embedding_forces(c, d);
+        const double net = std::sqrt(sum[0] * sum[0] + sum[1] * sum[1]
+                                     + sum[2] * sum[2]);
+        EXPECT_LT(net, 1e-9) << "net force " << net << " eV/Å";
+    }
+
+    // Site gradient vs FD of total energy w.r.t. one charge position
+    {
+        RHF rhf0;
+        rhf0.basis = BasisSet::STO3G;
+        rhf0.tol = 1e-12;
+        rhf0.max_iter = 120;
+        rhf0.embed_self_energy = false;
+        rhf0.point_charges = {{0.0, 0.0, 3.0, 0.5}, {0.0, 0.0, -3.0, -0.5}};
+        const auto g0 = rhf0.forces(frame);
+        // F = −∂E/∂R  [eV/Å] → ∂E/∂R [Ha/Bohr]
+        const double dE_dR_z = -units::convert(g0.embedding_forces(0, 2),
+                                               units::Force::eVPerAngstrom,
+                                               units::Force::HartreePerBohr);
+
+        const double h_A = 1e-4; // Å for site displacement
+        auto energy_at = [&](double z) {
+            RHF rhf;
+            rhf.basis = BasisSet::STO3G;
+            rhf.tol = 1e-12;
+            rhf.max_iter = 120;
+            rhf.embed_self_energy = false;
+            rhf.point_charges = {{0.0, 0.0, z, 0.5}, {0.0, 0.0, -3.0, -0.5}};
+            rhf.run(frame);
+            return rhf.energy(); // Hartree
+        };
+        const double e_p = energy_at(3.0 + h_A);
+        const double e_m = energy_at(3.0 - h_A);
+        // h_A is Å; convert to Bohr for dE/dR_Bohr
+        const double h_bohr = h_A * units::kAngstromInBohr;
+        const double fd = (e_p - e_m) / (2.0 * h_bohr);
+        EXPECT_NEAR(dE_dR_z, fd, 1e-6);
+    }
 }
 
 TEST(ExternalField, OriginMatchesMultipoleCenterOfNuclearCharge) {

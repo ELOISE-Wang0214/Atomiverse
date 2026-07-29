@@ -182,7 +182,7 @@ void QmmmPolarizable::launch(const LaunchContext& ctx) {
     rhf.compute_force = false;
     rhf.point_charges.clear();
     for (int i : mm_rows) {
-        cpu::scf::RHF::PointCharge pc;
+        cpu::EmbeddingSite pc;
         pc.x = x[i];
         pc.y = y[i];
         pc.z = z[i];

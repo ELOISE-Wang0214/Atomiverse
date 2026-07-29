@@ -242,6 +242,37 @@ void accumulate_two_electron_hessian_uhf(xt::xtensor<double, 2>& hess,
                                          const xt::xtensor<double, 2>& Pa,
                                          const xt::xtensor<double, 2>& Pb);
 
+// ── Primitive nuclear-attraction derivatives (internal; unit-testable) ─
+// -Z / -q prefactor is NOT included; caller multiplies.
+
+/// @brief d/dA of primitive nuclear attraction (center A = Gaussian center).
+/// @param a_ang Cartesian angular momenta on A [3].
+/// @param b_ang Cartesian angular momenta on B [3].
+/// @param alpha_a Exponent on A.
+/// @param A Center A [Bohr].
+/// @param alpha_b Exponent on B.
+/// @param B Center B [Bohr].
+/// @param C Nuclear / charge position [Bohr].
+/// @param[out] dV_dA dV/dA [3] (bare integral; no −Z).
+void nuclear_deriv_prim_center_general(const int a_ang[3], const int b_ang[3],
+                                       double alpha_a, const double A[3],
+                                       double alpha_b, const double B[3],
+                                       const double C[3], double dV_dA[3]);
+
+/// @brief d/dC of primitive nuclear attraction via translational invariance.
+/// @param a_ang Cartesian angular momenta on A [3].
+/// @param b_ang Cartesian angular momenta on B [3].
+/// @param alpha_a Exponent on A.
+/// @param A Center A [Bohr].
+/// @param alpha_b Exponent on B.
+/// @param B Center B [Bohr].
+/// @param C Nuclear / charge position [Bohr].
+/// @param[out] dV_dC dV/dC [3] (bare integral; no −Z).
+void nuclear_deriv_prim_nuc_general(const int a_ang[3], const int b_ang[3],
+                                    double alpha_a, const double A[3],
+                                    double alpha_b, const double B[3],
+                                    const double C[3], double dV_dC[3]);
+
 } // namespace scf
 } // namespace cpu
 } // namespace ATV

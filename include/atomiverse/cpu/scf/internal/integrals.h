@@ -86,10 +86,14 @@ struct IntegralPack {
 
     /// @brief External MM point charges (positions [Å], charge [e]), retained
     ///        by the method when point-charge embedding is active so the
-    ///        semi-numerical gradient can rebuild the embed 1e matrix V_embed
-    ///        for dV_embed/dR and take the analytic nucleus–MM Coulomb
-    ///        derivative. Empty ⇒ no embedding.
-    std::vector<internal::PointChargeSite> embed_charges;
+    ///        analytic embedding gradient can assemble QM-center and site
+    ///        forces. Empty ⇒ no embedding.
+    std::vector<cpu::EmbeddingSite> embed_charges;
+
+    /// @brief When true, include MM–MM self-energy in the energy and its
+    ///        site gradient. Default true matches standalone embedding pins;
+    ///        additive QM/MM couplings set false so MM–MM is owned once.
+    bool embed_self_energy = true;
 
     /// @brief Uniform external electric field [a.u.], retained by the method
     ///        when a field is active so the semi-numerical gradient can rebuild

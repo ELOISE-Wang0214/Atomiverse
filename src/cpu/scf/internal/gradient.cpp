@@ -784,64 +784,60 @@ GradientResult ScfGradient::assemble_(
     }
 
     // ── Point-charge embedding (QM/MM) gradient ──────────────────────────
-    // The embed 1e operator V_embed = Σ_C −q_C⟨μ|1/|r−R_C||ν⟩ is folded into
-    // Hcore before the SCF (density-independent, ECP-U-like), and the classical
-    // nucleus–MM Coulomb Σ_A Σ_C Z_A q_C/|R_A−R_C| into V_nuc. The gradient adds
-    // both explicit derivatives (the density response is already in P/W):
-    //   electron–MM: Tr[P·dV_embed/dR_A]  (central-differenced 1e block)
-    //   nucleus–MM:  −Σ_C Z_A q_C (R_A−R_C)/|R_A−R_C|³  (analytic)
-    // MM–MM is constant w.r.t. QM nuclei (zero derivative).
+    // Analytic both legs (esmm-qmmm-01):
+    //   QM nuclei: Tr[P·dV/dR_A] + classical nucleus–MM Coulomb
+    //   MM sites:  Tr[P·dV/dR_C] + classical (third law) + optional MM–MM
+    // No central-difference core_matrix rebuild.
+    xt::xtensor<double, 2> site_grad_ha; // empty unless embedding active
     if (!integrals.embed_charges.empty()) {
+        if (!integrals.ecp_centers.empty())
+            throw std::runtime_error(
+                "ScfGradient: point-charge embedding + ECP is not supported "
+                "(analytic embedding path refuses the combination; no silent "
+                "FD fallback)");
         const internal::PointChargeEmbedding emb{integrals.embed_charges};
-        const bool sph = integrals.spherical();
-        const auto& c2s = integrals.c2s;
-        xt::xtensor<double, 2> ct;
-        if (sph)
-            ct = xt::transpose(c2s);
-        const double h = 1e-4; // Bohr
-        const auto v_sph = [&](std::vector<native::Shell>& sh) {
-            xt::xtensor<double, 2> V = emb.core_matrix(sh);
-            if (sph)
-                V = xt::linalg::dot(ct, xt::linalg::dot(V, c2s));
-            return V;
-        };
-        for (int A = 0; A < natm; ++A) {
-            const double* ap = integrals.atoms[A].pos;
-            const auto on_A = [&](const double* c) {
-                return c[0] == ap[0] && c[1] == ap[1] && c[2] == ap[2];
-            };
-            for (int d = 0; d < 3; ++d) {
-                // Electron–MM Hellmann–Feynman via FD of V_embed.
-                std::vector<native::Shell> shp = integrals.shells;
-                std::vector<native::Shell> shm = integrals.shells;
-                for (auto& s : shp)
-                    if (on_A(s.center))
-                        s.center[d] += h;
-                for (auto& s : shm)
-                    if (on_A(s.center))
-                        s.center[d] -= h;
-                const xt::xtensor<double, 2> dV =
-                    (v_sph(shp) - v_sph(shm)) / (2.0 * h);
-                grad(A, d) += xt::sum(P * dV)();
-            }
-            // Nucleus–MM Coulomb derivative (analytic; charges in Å → Bohr).
-            for (const auto& site : integrals.embed_charges) {
-                const double rc[3] = {site.x * units::kAngstromInBohr,
-                                      site.y * units::kAngstromInBohr,
-                                      site.z * units::kAngstromInBohr};
-                const double dx = ap[0] - rc[0];
-                const double dy = ap[1] - rc[1];
-                const double dz = ap[2] - rc[2];
-                const double r2 = dx * dx + dy * dy + dz * dz;
-                const double r3 = r2 * std::sqrt(r2);
-                const double zq = integrals.atoms[A].Z * site.q;
-                grad(A, 0) += -zq * dx / r3;
-                grad(A, 1) += -zq * dy / r3;
-                grad(A, 2) += -zq * dz / r3;
-            }
+        const int n_cart = integrals.n_ao_cart();
+        // Density in Cartesian AO basis for on-the-fly contraction.
+        xt::xtensor<double, 2> P_cart = P;
+        if (integrals.spherical()) {
+            // P^cart = c2s · P^sph · c2sᵀ
+            P_cart = xt::linalg::dot(
+                integrals.c2s,
+                xt::linalg::dot(P, xt::transpose(integrals.c2s)));
         }
-        ATV_INFO("[gradient] embed (QM/MM) gradient term added (n_charges={})",
-                 emb.n_charges());
+        if (static_cast<int>(P_cart.shape(0)) != n_cart
+            || static_cast<int>(P_cart.shape(1)) != n_cart)
+            throw std::runtime_error(
+                "ScfGradient: embedding density cart shape mismatch");
+
+        std::vector<int> shell_to_atom(static_cast<std::size_t>(n_cart), -1);
+        for (int i = 0; i < n_cart; ++i) {
+            const double* c = integrals.shells[static_cast<std::size_t>(i)].center;
+            for (int a = 0; a < natm; ++a) {
+                const double* p = integrals.atoms[static_cast<std::size_t>(a)].pos;
+                if (c[0] == p[0] && c[1] == p[1] && c[2] == p[2]) {
+                    shell_to_atom[static_cast<std::size_t>(i)] = a;
+                    break;
+                }
+            }
+            if (shell_to_atom[static_cast<std::size_t>(i)] < 0)
+                throw std::runtime_error(
+                    "ScfGradient: embed shell center has no matching atom");
+        }
+
+        emb.accumulate_qm_center_gradient(grad, integrals.shells, P_cart,
+                                          shell_to_atom, integrals.atoms);
+
+        const int nc = emb.n_charges();
+        site_grad_ha = xt::zeros<double>({nc, 3});
+        emb.accumulate_site_gradient(site_grad_ha, integrals.shells, P_cart,
+                                     integrals.atoms);
+        if (integrals.embed_self_energy)
+            emb.accumulate_self_gradient(site_grad_ha);
+
+        ATV_INFO("[gradient] embed (QM/MM) analytic gradient (n_charges={}, "
+                 "self_energy={})",
+                 nc, integrals.embed_self_energy);
     }
 
     // ── Uniform external electric field gradient ─────────────────────────
@@ -1060,7 +1056,7 @@ GradientResult ScfGradient::assemble_(
                  d4_ ? "d4" : "d3bj", disp_max_abs);
     }
 
-    GradientResult out{FromHartreeBohr{}, grad, e_scf_ha};
+    GradientResult out{FromHartreeBohr{}, grad, e_scf_ha, site_grad_ha};
     double max_force = 0.0;
     for (int A = 0; A < natm; ++A)
         for (int d = 0; d < 3; ++d)

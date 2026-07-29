@@ -145,9 +145,10 @@ static void kinetic_deriv_prim_general(const int a_ang[3], const int b_ang[3],
 /// @param B Center B position [3].
 /// @param C Nuclear position [3].
 /// @param dV_dA Output: dV/dA in each direction [3].
-static void nuclear_deriv_prim_center_general(
-    const int a_ang[3], const int b_ang[3], double alpha_a, const double A[3],
-    double alpha_b, const double B[3], const double C[3], double dV_dA[3]) {
+void nuclear_deriv_prim_center_general(const int a_ang[3], const int b_ang[3],
+                                       double alpha_a, const double A[3],
+                                       double alpha_b, const double B[3],
+                                       const double C[3], double dV_dA[3]) {
     const double gamma = alpha_a + alpha_b;
     const double mu = alpha_a * alpha_b / gamma;
     const double R2_AB = (A[0] - B[0]) * (A[0] - B[0])
@@ -219,11 +220,10 @@ static void nuclear_deriv_prim_center_general(
 ///
 /// The nuclear contribution dV_pq^C/dC_d has already been derived. We compute it
 /// via a direct formula using Boys functions.
-static void nuclear_deriv_prim_nuc_general(const int a_ang[3],
-                                           const int b_ang[3], double alpha_a,
-                                           const double A[3], double alpha_b,
-                                           const double B[3], const double C[3],
-                                           double dV_dC[3]) {
+void nuclear_deriv_prim_nuc_general(const int a_ang[3], const int b_ang[3],
+                                    double alpha_a, const double A[3],
+                                    double alpha_b, const double B[3],
+                                    const double C[3], double dV_dC[3]) {
     const double gamma = alpha_a + alpha_b;
     const double mu = alpha_a * alpha_b / gamma;
     const double R2_AB = (A[0] - B[0]) * (A[0] - B[0])

@@ -131,7 +131,7 @@ void QmmmElectrostatic::launch(const LaunchContext& ctx) {
     for (int i : mm_rows) {
         if (link_mm.count(tags[i]))
             continue; // link MM partner excluded from embedding charges
-        cpu::scf::RHF::PointCharge pc;
+        cpu::EmbeddingSite pc;
         pc.x = x[i];
         pc.y = y[i];
         pc.z = z[i];

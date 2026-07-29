@@ -846,21 +846,19 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     RealMatrix H = ints.Hcore;
     double v_nuc = ints.V_nuc;
     if (!point_charges.empty()) {
-        std::vector<internal::PointChargeSite> sites;
-        sites.reserve(point_charges.size());
-        for (const auto& c : point_charges)
-            sites.push_back({c.x, c.y, c.z, c.q});
-        const internal::PointChargeEmbedding emb(sites);
+        const internal::PointChargeEmbedding emb(point_charges);
         RealMatrix Venv = emb.core_matrix(ints.shells);
         if (ints.spherical()) {
             const auto ct = xt::transpose(ints.c2s);
             Venv = xt::linalg::dot(ct, xt::linalg::dot(Venv, ints.c2s));
         }
         H += Venv;
-        v_nuc += emb.nuclear_energy(ints.atoms) + emb.self_energy();
-        // Retain the charges on the pack so the analytic gradient can rebuild
-        // dV_embed/dR (FD) + the nucleus–MM Coulomb derivative.
-        integrals_sp_->embed_charges = std::move(sites);
+        v_nuc += emb.nuclear_energy(ints.atoms);
+        if (embed_self_energy)
+            v_nuc += emb.self_energy();
+        // Retain charges + self-energy gate for the analytic gradient.
+        integrals_sp_->embed_charges = point_charges;
+        integrals_sp_->embed_self_energy = embed_self_energy;
     }
     if (field_active) {
         const internal::ExternalField field(external_field, ints.atoms);
@@ -1247,6 +1245,19 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
                                        d3bj,
                                        d4};
         last_grad_ = gradient.compute(frame, ints, *det_sp_, e_total_);
+        // Republish embedding-site forces for the public accessor.
+        embed_site_forces_.clear();
+        if (last_grad_.embedding_forces.size() > 0) {
+            const int nc =
+                static_cast<int>(last_grad_.embedding_forces.shape(0));
+            embed_site_forces_.resize(static_cast<std::size_t>(nc));
+            for (int c = 0; c < nc; ++c) {
+                embed_site_forces_[static_cast<std::size_t>(c)] = {
+                    last_grad_.embedding_forces(c, 0),
+                    last_grad_.embedding_forces(c, 1),
+                    last_grad_.embedding_forces(c, 2)};
+            }
+        }
         const int natm = static_cast<int>(frame.nlocal());
         AccReal* __restrict fx = frame.span(kAtom_fx);
         AccReal* __restrict fy = frame.span(kAtom_fy);
