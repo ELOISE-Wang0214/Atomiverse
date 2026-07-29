@@ -1,9 +1,9 @@
 # MetalWalls method loop — handoff
 
-Last land: **real-oracle re-pin — 2026-07-29** (see below). Prior feature land:
-**wave 5 — 2026-07-27** (10/10 staffed slugs green, merged into `dev`;
-done total **46**, specs closed 10). Pending residual (**3**) and blocked
-(**4**) remain for the next GapCensus/assign. **incomplete_remaining=0**.
+Last land: **residual queue product — 2026-07-29** (3 pending closed; not a new
+wave). Prior: real-oracle re-pin 2026-07-29; wave 5 2026-07-27 (done total
+**49** = 46 + 3 residual). **pending=0.** **blocked=4** (out-of-loop gates).
+**incomplete_remaining=0**.
 
 
 ## Residual queue product land — 2026-07-29 (not a new wave)
@@ -104,20 +104,20 @@ states `oracle:` + `oracle_version`; ctest never launches LAMMPS/MetalWalls.
 
 **Resume set: empty.** **incomplete_remaining=0**.
 
-## Next (after harness wave 5 — 2026-07-27)
+## Next
 
-Residual queue: **pending=3**, **blocked=4**, in_progress=0.
+**Queue pending empty.** Blocked (4) remain by design — not staffable in this
+CPU classical MD loop:
 
-1. Pending (next assign staffs these): `nanoporous-carbon-const-pot` (E9
-   product geometry), `maze-molten-salt-al` (MW example scenario; MaZe +
-   Fumi–Tosi footholds landed), `thermo-integration-capacitance` (E10 TI
-   workflow).
-2. Blocked (out of loop, unchanged): `cuda-const-pot`, `aim-daim-product`,
-   `ml-pinnwall-electrode`, `periodic-hybrid-electrode-dft`.
-3. Next wave starts with **GapCensus** (map re-diff; foothold ≠ closed), then
-   worktrees `wf/<slug>` off `dev`, **spec-first**, MD-only build.
+| blocked | gate |
+|---------|------|
+| `cuda-const-pot` | CUDA electrode track separate |
+| `aim-daim-product` | E11 AIM/DAIM not scheduled |
+| `ml-pinnwall-electrode` | E12 external ML |
+| `periodic-hybrid-electrode-dft` | quantum → CP2K/PySCF loops |
 
-Parent stays on **`dev`**. Default **staff_count=10**.
+No GapCensus / new wave required for residual product (already closed). Parent
+stays on **`dev`**.
 
 ## Oracle
 
