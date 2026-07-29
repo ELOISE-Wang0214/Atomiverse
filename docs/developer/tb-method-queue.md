@@ -363,29 +363,49 @@ SE-only cmake; offline DFTB+ pins only. **No push.**
 periodic D3 lattice sum, DFTB3 analytic F, TD-DFTB, Phase B mopac, …).
 **Queue not exhausted.**
 
+## Assign — 2026-07-29 wave 4 (parent `dev` @ `f8e8e432`)
+
+**Priority:** incomplete `[~]` (0) ≫ open SE specs (none) ≫ pending Phase A
+then early Phase B mopac pins. **Staff = 8** (cap). No TB `wf/*` tips / no
+isolation worktrees to recover. Ladder: DFTB3 F + DFTB2 depth before remaining
+NDDO PM product / GFN.
+
+| # | Slug | Kind | Action |
+| - | ---- | ---- | ------ |
+| 1 | `dftb3-analytic-forces` | **new** | Closed-form DFTB3 nuclear F; replace re-SCC FD; energy foothold landed |
+| 2 | `dftb2-multi-k-forces` | **new** | Analytic multi-k F (+ stress); restricted Mio first; energy MP ships |
+| 3 | `dftb2-dispersion-d3-periodic` | **new** | Γ-PBC lattice-sum D3(BJ) (`d3_periodic`); not a second molecular pin |
+| 4 | `dftb2-analytic-stress-threeob` | **new** | Closed-form ThreeOb cell stress; F already analytic |
+| 5 | `dftb2-spin-analytic-stress` | **new** | Collinear open-shell analytic stress (MioSketch); F already analytic |
+| 6 | `td-dftb-h2` | **new** | LR-TD-DFTB excitation foothold on solid SCC-DFTB2 ground state |
+| 7 | `am1-water-mopac-energy` | **new** | Hard OpenMOPAC E/ΔHf pin for H2O AM1; seed `tools/tb_oracle/inputs/mopac/` |
+| 8 | `rm1-water-mopac-energy` | **new** | Hard OpenMOPAC E/ΔHf pin for H2O RM1 |
+
+**Skipped this wave:** Phase B deeper (`nddo-closed-form-forces`, PM3/6/7 —
+after mopac energy pins land); all Phase C GFN (ladder); blocked (9).
+
+**After staff:** incomplete `[~]` = **8**; pending = **12**; blocked = **9**.
+Workers: isolation worktree on nobackup; branch `wf/<slug>`; **spec-first**
+`.claude/specs/<slug>/`; SE-only cmake; offline pins only (DFTB+ / mopac /
+literature as family-locked). **No push.**
+
 ## pending
 
 ### Phase A — DFTB ladder (oracle = DFTB+)
 
 Staff these before NDDO product depth and before GFN-xTB.
-**Prefer Recover of `## in_progress` over new pending.** Incomplete is empty
-after harness wave 3 — staff Phase A deepens next.
+**Prefer Recover of `## in_progress` over new pending.** Wave-4 assigned all
+remaining Phase A rows — pending Phase A empty until GapCensus refills.
 
-- [ ] `dftb3-analytic-forces` | Analytic DFTB3 nuclear forces (replace re-SCC central FD) | dftb3 | H2O off-eq | F | **oracle=dftb+**; energy foothold `dftb3-water-mio` **landed**
-- [ ] `dftb2-multi-k-forces` | Analytic multi-k nuclear forces (+ stress) after Monkhorst–Pack energy foothold | dftb2 | C-chain / small crystal | F / stress | **oracle=dftb+**; today multi-k throws on `with_forces`/`with_stress`; restricted Mio first
-- [ ] `dftb2-dispersion-d3-periodic` | Periodic lattice-sum D3(BJ) for Γ-PBC cells (`d3_periodic`) | dftb2 | small ortho cell | E_disp / F | **oracle=dftb+|literature** (s-dftd3); molecular `d3` already lands — not a second molecular pin
-- [ ] `dftb2-analytic-stress-threeob` | Closed-form cell stress on `DftbSkSet::ThreeOb` (replace multi-SCC strain-FD) | dftb2 | CH4 / organic | stress [eV/Å³] | **oracle=dftb+** (formula); F closed-form already lands
-- [ ] `dftb2-spin-analytic-stress` | Collinear open-shell analytic cell stress (MioSketch) | dftb2 | O2 / open shell | stress | **oracle=dftb+** (formula); open-shell F already lands
-- [ ] `td-dftb-h2` | Linear-response TD-DFTB foothold | td-dftb | H2/H2O | excitation [eV] | **oracle=dftb+|literature**; after ground-state SCC solid (incl. DFTB3 F preferred)
+_(empty — all Phase A pending promoted to `## in_progress` in assign wave 4)_
 
 ### Phase B — NDDO product depth (oracle = OpenMOPAC)
 
 AM1/RM1 energy footholds ship. Forces are fixed-density FD — deepen with
 OpenMOPAC pins and closed-form integrals. Do **not** use DFTB+ for these rows.
-Seed `tools/tb_oracle/inputs/mopac/` with the first hard pin.
+Seed `tools/tb_oracle/inputs/mopac/` with the first hard pin (assign-w4 staffs
+`am1-water-mopac-energy` + `rm1-water-mopac-energy`).
 
-- [ ] `am1-water-mopac-energy` | Hard OpenMOPAC total energy / ΔHf pin for H2O AM1 | nddo/am1 | H2O | E [eV] or ΔHf | **oracle=mopac**; existing reg is finite/self-FD only
-- [ ] `rm1-water-mopac-energy` | Hard OpenMOPAC total energy / ΔHf pin for H2O RM1 | nddo/rm1 | H2O | E [eV] or ΔHf | **oracle=mopac**; current reg is method-discriminating only
 - [ ] `nddo-closed-form-forces` | Closed-form multipole / integral-derivative NDDO nuclear forces (replace fixed-P FD) | nddo | H2O off-eq | F vs mopac + FD | **oracle=mopac**
 - [ ] `pm3-organic-energy` | PM3 (or MNDO) on NDDO ladder for table pipeline | nddo | small organic | E | **oracle=mopac**; bridge MNDO→PM6; extend `SemiEmpiricalMethod`
 - [ ] `pm6-water-energy` | PM6 energy vs OpenMOPAC | nddo/pm6 | H2O | E | **oracle=mopac**
@@ -408,8 +428,16 @@ the first hard pin.
 
 ## in_progress
 
-_(empty after harness wave 3 — all eight assign-w3 staff merged onto `dev`;
-wave-4 census found no TB tips to promote)_
+_(assign wave 4 — all **new**; no resume tips)_
+
+- [~] `dftb3-analytic-forces` | Analytic DFTB3 nuclear forces (replace re-SCC central FD) | dftb3 | H2O off-eq | F | **oracle=dftb+**; energy foothold `dftb3-water-mio` **landed**
+- [~] `dftb2-multi-k-forces` | Analytic multi-k nuclear forces (+ stress) after Monkhorst–Pack energy foothold | dftb2 | C-chain / small crystal | F / stress | **oracle=dftb+**; today multi-k throws on `with_forces`/`with_stress`; restricted Mio first
+- [~] `dftb2-dispersion-d3-periodic` | Periodic lattice-sum D3(BJ) for Γ-PBC cells (`d3_periodic`) | dftb2 | small ortho cell | E_disp / F | **oracle=dftb+|literature** (s-dftd3); molecular `d3` already lands — not a second molecular pin
+- [~] `dftb2-analytic-stress-threeob` | Closed-form cell stress on `DftbSkSet::ThreeOb` (replace multi-SCC strain-FD) | dftb2 | CH4 / organic | stress [eV/Å³] | **oracle=dftb+** (formula); F closed-form already lands
+- [~] `dftb2-spin-analytic-stress` | Collinear open-shell analytic cell stress (MioSketch) | dftb2 | O2 / open shell | stress | **oracle=dftb+** (formula); open-shell F already lands
+- [~] `td-dftb-h2` | Linear-response TD-DFTB foothold | td-dftb | H2/H2O | excitation [eV] | **oracle=dftb+|literature**; ground-state SCC-DFTB2 solid on `dev`
+- [~] `am1-water-mopac-energy` | Hard OpenMOPAC total energy / ΔHf pin for H2O AM1 | nddo/am1 | H2O | E [eV] or ΔHf | **oracle=mopac**; existing reg is finite/self-FD only
+- [~] `rm1-water-mopac-energy` | Hard OpenMOPAC total energy / ΔHf pin for H2O RM1 | nddo/rm1 | H2O | E [eV] or ΔHf | **oracle=mopac**; current reg is method-discriminating only
 
 ## blocked
 
