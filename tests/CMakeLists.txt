@@ -32,9 +32,9 @@ set(ATV_TEST_TIMEOUT_SECONDS 10 CACHE STRING
 option(ATV_TEST_HEAVY
     "Build/register multi-second method tests (default OFF — pre-push gate)"
     OFF)
+# Not CACHE: must track the source list; a sticky CACHE left scrubs in the gate.
 set(ATV_TEST_HEAVY_REGEX
-    "ccsd|fci|mp2|rpa|g0w0|casscf|nevpt|eom_|tdhf|ri_mp2|bomd|cpmd|xl_bomd|second_gen_cpmd|gpw_solver|gpw_method|gpw_ot|gpw_forces|gpw_stress|gpw_uks|gpw_mbd|gpw_dftd|gpw_ts|gpw_xdm|gpw_vdw|gpw_rvv10|gpw_hirshfeld|gpw_dftu|gpw_kpoints|gpw_thread|gpw_periodic_wannier|gpw_smearing|gpw_poisson|gpw_hartree|gpw_grid_fft|gpw_xc_grid_gga|gpw_mt_poisson|pw_si|pw_bomd|pw_forces|pw_method|pw_evaluator|pw_spin|pw_stress|pw_dfpt|pw_bands|pw_berry|pw_periodic_wannier|pw_smearing|pw_components|scf_solver|rohf_solver|uks_solver|uhf_solver|x2c|pcm|embedding|counterpoise|cphf|dispersion|rks_tda|ghf|scf_cpmd|scf_xl|scf_aspc|scf_mc_predictor|method_driver|dftb2$|dftb3$|dftb2_3ob|dftb2_dispersion|dftb3_scc|dftb0$|am1_scaffold|am1_thermochemistry|scf_wannier|scf_ecp$|electronic_cpmd|electronic_xl|scrub$|module_dag|module_off|compatibility_surface|molrs_source_contract"
-    CACHE STRING "Test name regex treated as heavy (skipped when ATV_TEST_HEAVY=OFF)")
+    "ccsd|fci|mp2|rpa|g0w0|casscf|nevpt|eom_|tdhf|ri_mp2|bomd|cpmd|xl_bomd|second_gen_cpmd|gpw_solver|gpw_method|gpw_ot|gpw_forces|gpw_stress|gpw_uks|gpw_mbd|gpw_dftd|gpw_ts|gpw_xdm|gpw_vdw|gpw_rvv10|gpw_hirshfeld|gpw_dftu|gpw_kpoints|gpw_thread|gpw_periodic_wannier|gpw_smearing|gpw_poisson|gpw_hartree|gpw_grid_fft|gpw_xc_grid_gga|gpw_mt_poisson|pw_si|pw_bomd|pw_forces|pw_method|pw_evaluator|pw_spin|pw_stress|pw_dfpt|pw_bands|pw_berry|pw_periodic_wannier|pw_smearing|pw_components|scf_solver|rohf_solver|uks_solver|uhf_solver|x2c|pcm|embedding|counterpoise|cphf|dispersion|rks_tda|ghf|scf_cpmd|scf_xl|scf_aspc|scf_mc_predictor|method_driver|dftb2$|dftb3$|dftb2_3ob|dftb2_dispersion|dftb3_scc|dftb0$|am1_scaffold|am1_thermochemistry|scf_wannier|scf_ecp$|electronic_cpmd|electronic_xl|_scrub|module_dag|module_off|compatibility_surface|molrs_source_contract|no_facade|no_toplevel|path_words|driver_names|no_backend|no_factory|no_alloc")
 
 # Fast-gate discipline (HARD RULE):
 #   • tests/ = one component / one method / ≤ ATV_TEST_TIMEOUT_SECONDS.
@@ -1168,7 +1168,7 @@ add_test(
 if(TARGET test_module_dag_auto_enable)
 set_tests_properties(test_module_dag_auto_enable PROPERTIES
     LABELS "architecture;cmake"
-    TIMEOUT 300)
+    TIMEOUT ${ATV_TEST_TIMEOUT_SECONDS})
 endif()
 
 add_test(
@@ -1179,7 +1179,7 @@ add_test(
 if(TARGET test_module_off_excludes_sources)
 set_tests_properties(test_module_off_excludes_sources PROPERTIES
     LABELS "architecture;cmake"
-    TIMEOUT 300)
+    TIMEOUT ${ATV_TEST_TIMEOUT_SECONDS})
 endif()
 
 add_test(
@@ -1261,3 +1261,10 @@ endif()
 # never ctest). Acceptance / parity gates live under benchmarks/** when
 # that tree is rebuilt. If a target is registered above, it must be a
 # single-component unit test.
+
+# Enforce the unit timeout on every registration in this directory (including
+# raw add_test scrub scripts). Hard kill — no 300s architecture greps on pre-push.
+get_property(_atv_all_tests DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY TESTS)
+if(_atv_all_tests)
+  set_tests_properties(${_atv_all_tests} PROPERTIES TIMEOUT ${ATV_TEST_TIMEOUT_SECONDS})
+endif()

@@ -51,11 +51,15 @@ cmake -B "${BUILD_DIR}" \
 
 cmake --build "${BUILD_DIR}" -j"${jobs}"
 
-# Hard kill per-test at TEST_TIMEOUT. no_alloc is runtime-dependent.
-# Skip MPI multi-rank (needs mpirun). Heavy method tests were not even built.
+# Hard kill per-test at TEST_TIMEOUT.
+# - Skip MPI multi-rank (needs mpirun).
+# - Heavy method tests were not even built (ATV_TEST_HEAVY=OFF).
+# - Tree-wide grep "scrub" scripts scan the whole monorepo + molrs and
+#   routinely exceed 10s — not component unit tests; run them in a
+#   separate architecture job if needed.
 ctest --test-dir "${BUILD_DIR}" \
   -j"${jobs}" \
   --timeout "${TEST_TIMEOUT}" \
   --output-on-failure \
-  -E 'no_alloc|^test_mpi_'
+  -E 'no_alloc|^test_mpi_|scrub|module_dag|module_off|compatibility_surface|molrs_source_contract'
 )
