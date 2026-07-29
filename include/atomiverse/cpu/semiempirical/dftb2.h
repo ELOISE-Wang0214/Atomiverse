@@ -37,10 +37,16 @@ enum class DftbSkSet {
 ///   `regressions/semiempirical/dftb2-dftbplus-energy-pin/`); other pairs from
 ///   exponential sketch (`dftb_mio_tables.h` + spin_W). **Γ-point PBC:**
 ///   lattice-summed H⁰/S, screened γ, and repulsive within static SK cutoffs
-///   (molecular limit when L ≫ r_cut). **Analytic** nuclear forces for closed
-///   shell **and** collinear open shell (HF + Pulay + SCC γ + repulsive; spin
-///   shifts on ∂S) use the **same lattice-image walk** as the energy — not
-///   min-image only — so \(F=-\nabla E\) under Γ-PBC (`reg_dftb2-periodic-forces`,
+///   (molecular limit when L ≫ r_cut). **k-mesh beyond Γ:** set
+///   `k_mesh = {n1,n2,n3}` (Monkhorst–Pack, CP2K/DFTB+ convention) for
+///   Bloch-phased complex \(H^0(\mathbf{k})\), \(S(\mathbf{k})\), and
+///   k-weighted SCC energy (`reg_dftb2-kpoints`). Default `{1,1,1}` keeps the
+///   real Γ solver (pin-safe). Multi-k is **energy-only** (restricted
+///   MioSketch); `with_forces` / `with_stress` / open shell / ThreeOb throw.
+///   **Analytic** nuclear forces for closed shell **and** collinear open shell
+///   (HF + Pulay + SCC γ + repulsive; spin shifts on ∂S) use the **same
+///   lattice-image walk** as the energy — not min-image only — so
+///   \(F=-\nabla E\) under Γ-PBC (`reg_dftb2-periodic-forces`,
 ///   `reg_dftb2-analytic-forces`, `reg_dftb2-spin-analytic-forces`). Closed shell
 ///   also offers an analytic intensive cell stress on `kStress` [eV/Å³] — the
 ///   pair virial of those same image bond terms (`reg_dftb2-analytic-stress`);
@@ -74,6 +80,7 @@ enum class DftbSkSet {
 ///   dftb.d3 = true;
 ///   dftb.with_forces = true;
 ///   dftb.with_stress = true;
+///   dftb.k_mesh = {4, 1, 1};   // multi-k energy (forces off)
 ///   eval.on(evaluate::Phase::evaluate).add(std::move(dftb));
 /// @endcode
 class DFTB2 : public cpu::Semiempirical {
@@ -99,6 +106,7 @@ class DFTB2 : public cpu::Semiempirical {
     /// terms. Open-shell / ThreeOb: multi-SCC affine strain-FD of total E.
     /// **Excludes the `d3` dispersion term on both paths** — see
     /// `regressions/semiempirical/dftb2-analytic-stress/REFERENCE.md` Gaps.
+    /// Multi-k (`any k_mesh[d] > 1`) does not support stress.
     bool with_stress = false;
     /// @brief Static SK parameter set (member — not a Config bag).
     DftbSkSet sk_set = DftbSkSet::MioSketch;
@@ -116,6 +124,16 @@ class DFTB2 : public cpu::Semiempirical {
     double d3_a1 = 0.5719;
     /// @brief BJ offset [Bohr]. DFTB3-D3(BJ) default = 3.6017.
     double d3_a2 = 3.6017;
+    /// @brief Monkhorst–Pack mesh subdivisions per reciprocal axis
+    ///        (dimensionless). Default `{1,1,1}` = Γ only (real solver).
+    ///
+    /// CP2K/DFTB+ convention: \(\kappa_d = (2r - N_d - 1)/(2 N_d)\),
+    /// \(r = 1..N_d\). Any \(N_d < 1\) throws. Multi-k requires restricted
+    /// MioSketch and energy-only (`with_forces`/`with_stress` false).
+    std::array<int, 3> k_mesh{{1, 1, 1}};
+    /// @brief Fold \(\pm\mathbf{k}\) pairs (double weight). Default true.
+    ///        Exact for real-Hamiltonian closed-shell densities.
+    bool k_time_reversal = true;
 
     DFTB2() = default;
 
