@@ -24,17 +24,28 @@
 - **Command:** `lmp -in in.fumi_tosi_nacl4`
 - **Pin:** PE = 54.7707332302457 eV; forces in REFERENCE.md
 - **ATV:** multi-type `cpu::PairBorn` + `cpu::PairCoulCut` on 4-ion NaCl square
-## thomas-fermi-electrode (2026-07-24)
+## thomas-fermi-electrode (re-pinned 2026-07-29 against the real binary)
 
-- **Oracle:** MetalWalls Thomas–Fermi model (Scalfi et al. JCP 153, 174704 (2020))
+- **Oracle:** MetalWalls git `c8ad175d` binary, `mpirun -n 1 mw`
 - **Why not LAMMPS:** ELECTRODE package is perfect conductor only (no \(l_{\mathrm{TF}}\))
-- **Binary:** no `mw` on agent host → offline discrete pin (same algebra as ConstPotBO + TF diagonal)
-- **Script:** `tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/pin_gold_cap.py`
-- **Command:** `python3 .../pin_gold_cap.py`
-- **Pin:** empty Au capacitor toy, \(\Delta\Psi=1\) V, \(\eta=1/0.56\) Å⁻¹, \(d=4/a_0^3\),
-  \(R=40\): \(Q_{\mathrm{top}}(l_{\mathrm{TF}}=0)=4.620945546104\times 10^{-3}\,e\),
-  \(Q_{\mathrm{top}}(l_{\mathrm{TF}}=2\,\mathrm{Å})=3.934601758679\times 10^{-3}\,e\)
-- **perf_exempt:** no MetalWalls twin binary
+- **Inputs:** `tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/mw_twin/`
+  (`num_pbc 2`, `electrode_charges matrix_inversion`, `charge_neutrality true`;
+  substitute `@LTF@` = `0.0` or `3.779452249251540` bohr)
+- **Pin:** empty Au capacitor toy, \(\Delta\Psi=1\) V, \(\eta=1/0.56\) Å⁻¹, \(d=4/a_0^3\)
+  — `total_charges.out`: \(Q_{\mathrm{top}}(l_{\mathrm{TF}}=0)=4.354124119406114\times 10^{-3}\,e\),
+  \(Q_{\mathrm{top}}(l_{\mathrm{TF}}=2\,\mathrm{Å})=3.707555065364343\times 10^{-3}\,e\)
+- **Superseded pin:** the wave-2 numbers \(4.620945546104\times10^{-3}\) /
+  \(3.934601758679\times10^{-3}\) came from `pin_gold_cap.py` (deleted), which
+  re-implemented `ConstPotBO`'s **own** truncated \(xy\)-image sum at
+  `xy_image_range = 40`. That is a self-golden, and it is **+6.13 % high**: the
+  truncated sum converges to the exact 2D-periodic elastance only as \(O(1/R)\).
+  The TF model itself is correct; `xy_image_range` is now 1280 in the regression.
+- **perf:** `ratio_atv_over_mw = 4.4` (0.885 s vs 0.20 s per elastance solve, 1 rank)
+
+> **OPEN — same defect, different slug:** `regressions/md/voronoi-volume-tf`
+> (`reg_voronoi-volume-tf.cpp:24,26,34`) reuses the identical toy at
+> `kImageRange = 40` and the identical superseded numbers. It needs the same
+> re-pin against the MetalWalls binary (per-site `voronoi_volume` twin).
 
 ## surface-tension-coupling (2026-07-24)
 - oracle: lammps (`lmp` develop 30 Mar 2026)

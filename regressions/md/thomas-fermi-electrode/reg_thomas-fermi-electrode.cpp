@@ -1,8 +1,10 @@
 /// @file regressions/md/thomas-fermi-electrode/reg_thomas-fermi-electrode.cpp
 /// @brief E2E: Thomas–Fermi finite metallicity on gold capacitor toy (E7).
 ///
-/// Offline pin: MetalWalls / Scalfi TF model (REFERENCE.md). Public headers
-/// + link atomiverse only. Exits non-zero on failure.
+/// Pinned against the MetalWalls binary (git c8ad175d), `num_pbc 2`,
+/// `electrode_charges matrix_inversion`, `charge_neutrality true` — see
+/// REFERENCE.md. Public headers + link atomiverse only. Exits non-zero on
+/// failure.
 
 #include <cmath>
 #include <cstdio>
@@ -16,17 +18,27 @@ using namespace ATV;
 
 namespace {
 
-// Offline pins from tools/metalwalls_oracle/.../pin_gold_cap.py
-constexpr double kQTopPerfect = 4.620945546104e-03; // [e], l_tf = 0
-constexpr double kQTopTf2 = 3.934601758679e-03;     // [e], l_tf = 2 Å
-constexpr double kRelTol = 0.01;                    // 1% dual-gate
+// MetalWalls c8ad175d, total_charges.out of the twin inputs under
+// tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/mw_twin/.
+// MW charges are already in e (its "atomic unit of charge" is e), so these are
+// raw MW output with no conversion; the unit conversion is on the inputs
+// (Å→bohr, V→hartree/e, Å⁻¹→bohr⁻¹). See REFERENCE.md.
+constexpr double kQTopPerfect = 4.354124119406114e-03; // [e], l_tf = 0
+constexpr double kQTopTf2 = 3.707555065364343e-03;     // [e], l_tf = 2 Å
+constexpr double kRelTol = 0.01;                       // 1% dual-gate
 
 constexpr double kEta = 1.0 / 0.56; // [1/Å]
 constexpr double kA0 = 4.07;        // [Å]
 constexpr double kD = 4.0 / (kA0 * kA0 * kA0);
 constexpr double kPlane = kA0 / 2.0;
 constexpr double kLGap = 20.0;
-constexpr int kImageRange = 40;
+// `xy_image_range` is ConstPotBO's convergence knob, not a property of the
+// system: the truncated square-image sum approaches the exact 2D-periodic
+// (MetalWalls num_pbc = 2) elastance only as O(1/R), because each pair misses a
+// lattice tail ≈ (π z²/R)/A_cell. With a 20 Å gap over a 4.07 Å cell, R = 40
+// is still 6.1% off and R = 1280 is 0.18% off — inside the 1% gate below.
+// Convergence table: .../thomas-fermi-electrode/tf_lattice_convergence.py.
+constexpr int kImageRange = 1280;
 
 cpu::Frame gold_capacitor() {
     // 3 bot + 3 top electrode sites (types 1, 2), empty vacuum.
