@@ -1,87 +1,70 @@
-# Reference — Voronoi / site-volume companion for Thomas–Fermi metallicity
+# voronoi-volume-tf
 
-oracle: metalwalls  
-oracle_version: MetalWalls TF model per Scalfi et al. JCP 153, 174704 (2020)
-(per-species electrode inputs `thomas_fermi_length` + `voronoi_volume`,
-gitlab `ampere2/metalwalls` branch `release`); offline discrete pin via
-`tools/metalwalls_oracle/inputs/metalwalls/voronoi-volume-tf/pin_voronoi_tf.py`
-(no MetalWalls binary on the agent host)
+oracle: metalwalls
+oracle_version: MetalWalls release 20.05, git **c8ad175d** (release branch,
+2026-06-18), binary at
+`/nobackup/proj/disk/teoroo/personal/jicli594/work/opt/metalwalls/mw`
+oracle_kind: real binary (re-pinned 2026-07-29; supersedes the wave-5
+`pin_voronoi_tf.py` self-golden)
 
-## Science
+## Physics
 
-Map **§1 "Voronoi volume (TF)"** — the companion of the wave-2 E7 foothold
-`thomas-fermi-electrode`. Scalfi, Dufils, Reeves, Rotenberg, Salanne,
-*J. Chem. Phys.* **153**, 174704 (2020),
-DOI [10.1063/5.0028232](https://doi.org/10.1063/5.0028232): the TF
-metallicity self-energy is per-site,
+Thomas–Fermi electrode metallicity with **per-site Voronoi volume** as the
+local volume that enters the TF diagonal correction (Scalfi et al., J. Chem.
+Phys. **153**, 174704 (2020); MetalWalls `voronoi_volume` species keyword).
+ATV: `ConstPotBO::site_volume` + `cpu::VoronoiVolume` for geometry-derived
+\(v_i\).
 
-\[ U_{\mathrm{TF}} = \sum_i \frac{l_{\mathrm{TF}}^2}{2\,\epsilon_0\,v_i}\,q_i^2
-   \;\Rightarrow\;
-   A_{ii} \mathrel{+}= 4\pi k_e\,\frac{l_{\mathrm{TF}}^2}{v_i}, \]
+## Geometry (matched twin of `thomas-fermi-electrode`)
 
-with \(v_i\) the **Voronoi volume** of the electrode site — MetalWalls'
-per-species `voronoi_volume` input. For FCC gold \(v = a_0^3/4\) exactly
-(4 sites tile the conventional cube; the FCC Voronoi cell is the rhombic
-dodecahedron). LAMMPS ELECTRODE has no TF/Voronoi twin (perfect conductor
-only) → oracle priority binds to **MetalWalls**.
+Empty Au capacitor: 3+3 collinear sites, \(a_0 = 4.07\) Å, plane spacing
+\(a_0/2\), gap 20 Å, \(\Delta\Psi = 1\) V, \(\eta = 1/0.56\) Å⁻¹,
+`charge_neutrality true`, `num_pbc 2`.
 
-## System
+Twin inputs (templates with `@LTF@` / `@VORONOI@`):
+`tools/metalwalls_oracle/inputs/metalwalls/voronoi-volume-tf/mw_twin/`.
 
-1. **Bulk FCC Au**, 2×2×2 conventional cells (32 sites), \(a_0 = 4.07\) Å,
-   cubic box \(2a_0\), fully periodic — input to `cpu::VoronoiVolume`.
-2. **Gold capacitor toy** — identical to `regressions/md/thomas-fermi-electrode`:
-   3+3 electrode planes (1 site/plane), \(L_x=L_y=a_0\), plane spacing
-   \(a_0/2\), first-plane gap 20 Å, \(\Delta\Psi = 1\) V, Gaussian
-   \(\eta = 1/0.56\) Å⁻¹, 2D xy image half-range 40, electroneutrality on,
-   \(l_{\mathrm{TF}} = 2\) Å.
+| case | `thomas_fermi_length` [bohr] | `voronoi_volume` [bohr³] |
+| ---- | --------------------------- | ------------------------ |
+| perfect metal | 0 | \(a_0^3/4\) (unused at \(l_{\mathrm{TF}}=0\)) |
+| TF bulk \(v\) | \(2\,\mathrm{Å}/a_0\) = 3.779452249251540 | 113.741732075823890 |
+| TF half \(v\) | same | 56.870866037911945 |
 
-## Offline pins (hard-coded; discrete ConstPotBO algebra = MW TF model)
+## Pin (numbers MetalWalls printed)
 
-Script: `tools/metalwalls_oracle/inputs/metalwalls/voronoi-volume-tf/pin_voronoi_tf.py`
-(numpy 2.5.1, run offline 2026-07-27). Wave-2 perfect-metal pin from
-`thomas-fermi-electrode`.
+From `total_charges.out` step 0 (`|Q_top|` column):
 
-| Quantity | Pin | Units |
-| --- | --- | --- |
-| FCC Voronoi volume \(v = a_0^3/4\) | **16.854785750000** | Å³ |
-| \(Q_{\mathrm{top}}\), \(l_{\mathrm{TF}}=2\) Å, \(v_i = a_0^3/4\) | **+3.934601758679e−03** | e |
-| \(Q_{\mathrm{top}}\), \(l_{\mathrm{TF}}=2\) Å, \(v_i = a_0^3/8\) | **+3.509853715789e−03** | e |
-| \(Q_{\mathrm{top}}\), \(l_{\mathrm{TF}}=0\) (perfect metal) | **+4.620945546104e−03** | e |
+| case | \(Q_{\mathrm{top}}\) [e] |
+| ---- | ------------------------- |
+| \(l_{\mathrm{TF}}=0\) | **4.354124119406114×10⁻³** |
+| \(l_{\mathrm{TF}}=2\) Å, \(v=a_0^3/4\) | **3.707555065364343×10⁻³** |
+| \(l_{\mathrm{TF}}=2\) Å, \(v=a_0^3/8\) | **3.321360199637453×10⁻³** |
 
-\(Q_{\mathrm{top}}(v_i = a_0^3/4)\) equals the wave-2 fixed-density pin
-(\(d = 4/a_0^3\)) to all digits — the volume and density forms are the same
-algebra, asserted below as an equivalence invariant.
+These match the real-binary `thomas-fermi-electrode` re-pin for the
+fixed-density perfect-metal / TF cases. Halved Voronoi volume hardens the
+diagonal and lowers \(Q\) (metallicity ordering).
 
-## What Atomiverse asserts
+## Superseded self-golden
 
-Public API: `cpu::VoronoiVolume::volumes(frame)` (periodic tessellation
-volumes [Å³]) and `cpu::md::ConstPotBO::site_volume` (per-row \(v_i\) [Å³],
-TF hardness \(4\pi k_e l_{\mathrm{TF}}^2/v_i\)); ConstPotBO stays a
-`pre_force` Component.
+Wave-5 pins \(4.6209\times10^{-3}\) / \(3.9346\times10^{-3}\) /
+\(3.5099\times10^{-3}\) came from `pin_voronoi_tf.py`, a numpy transcription
+of ATV's own truncated elastance at `xy_image_range = 40` — **~6.13 % high**
+vs the real binary (same defect as the pre-repin `thomas-fermi-electrode`
+numbers; see `.claude/notes/oracle-pin-provenance.md`).
 
-| Check | Tol |
-| --- | --- |
-| every bulk-FCC \(v_i\) vs \(a_0^3/4\) | ≤ 1e−9 rel |
-| \(\sum v_i\) vs box volume \(8a_0^3\) | ≤ 1e−10 rel |
-| \(\lvert\sum Q_i\rvert\) (each solve) | ≤ 1e−10 e |
-| \(Q_{\mathrm{top}}(v_i)\) vs MW-model pin | ≤ 1 % rel |
-| \(Q_{\mathrm{top}}(v_i)\) vs fixed-density twin (in-binary) | ≤ 1e−10 rel |
-| \(C(v_i)\) vs pin | ≤ 1 % rel |
-| \(Q_{\mathrm{top}}(v_i/2)\) vs pin | ≤ 1 % rel |
-| \(C(v/2) < C(v) < C(l_{\mathrm{TF}}{=}0)\) | exact ordering |
-| \(Q_{\mathrm{top}}(l_{\mathrm{TF}}{=}0)\) vs wave-2 pin | ≤ 1 % rel |
+## Assertions
+
+| check | tolerance |
+| ----- | --------- |
+| FCC Voronoi \(v_i = a_0^3/4\) | 1e-9 rel (geometry) |
+| \(Q_{\mathrm{top}}\) vs MW pins above | 1 % rel |
+| \(Q(v) = Q(d=4/a_0^3)\) self-consistency | 1e-10 rel |
+| \(C(v/2) < C(v) < C(l_{\mathrm{TF}}=0)\) | ordering |
+
+`xy_image_range = 1280` so the truncated image sum approaches MW's 2D-Ewald
+elastance (same treatment as the TF re-pin).
 
 ## Perf
 
-```
-perf_exempt: true
-perf_exempt_reason: no MetalWalls binary on agent host for a fair TF/Voronoi wall twin; LAMMPS has no TF electrode feature; run is a sub-second algebraic solve + 32-site tessellation
-ratio_atv_over_oracle: n/a
-within_10x: exempt
-```
-
-## Repro of pin (offline only — never ctest)
-
-```bash
-python3 tools/metalwalls_oracle/inputs/metalwalls/voronoi-volume-tf/pin_voronoi_tf.py
-```
+`perf_exempt` — tiny elastance; wall ratio would measure Ewald setup.
+EOF

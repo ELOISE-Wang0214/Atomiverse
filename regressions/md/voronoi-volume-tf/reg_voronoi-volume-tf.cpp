@@ -19,19 +19,24 @@ using namespace ATV;
 
 namespace {
 
-// Offline pins from tools/metalwalls_oracle/.../pin_voronoi_tf.py
+// Real MetalWalls c8ad175d pins (mpirun -n 1 mw, 2026-07-29):
+// tools/metalwalls_oracle/inputs/metalwalls/voronoi-volume-tf/mw_twin/
+// with @LTF@ / @VORONOI@ substituted — see total_charges.out archives.
+// Supersedes the pin_voronoi_tf.py self-golden (same 6.13% defect as the
+// pre-repin thomas-fermi-electrode numbers).
 constexpr double kVfccPin = 16.854785750000; // [Å³] a0³/4, exact geometry
-constexpr double kQTopBulkV = 3.934601758679e-03; // [e] l_tf=2, v = a0³/4
-constexpr double kQTopHalfV = 3.509853715789e-03; // [e] l_tf=2, v = a0³/8
-constexpr double kQTopPerfect = 4.620945546104e-03; // [e] l_tf=0 (wave-2 pin)
-constexpr double kRelTol = 0.01; // 1% dual-gate vs oracle pins
+constexpr double kQTopBulkV = 3.707555065364343e-03; // [e] l_tf=2 Å, v = a0³/4
+constexpr double kQTopHalfV = 3.321360199637453e-03; // [e] l_tf=2 Å, v = a0³/8
+constexpr double kQTopPerfect = 4.354124119406114e-03; // [e] l_tf=0
+// ATV truncated xy-image elastance vs MW 2D-Ewald: ~1e-5 residual at 1280.
+constexpr double kRelTol = 0.01; // 1% dual-gate vs real MW pins
 
 constexpr double kEta = 1.0 / 0.56; // [1/Å] MetalWalls w = 0.56 Å
 constexpr double kA0 = 4.07;        // [Å] Au lattice constant
 constexpr double kD = 4.0 / (kA0 * kA0 * kA0); // [1/Å³] fixed-density twin
 constexpr double kPlane = kA0 / 2.0;
 constexpr double kLGap = 20.0;
-constexpr int kImageRange = 40;
+constexpr int kImageRange = 1280;
 
 int g_nfail = 0;
 
