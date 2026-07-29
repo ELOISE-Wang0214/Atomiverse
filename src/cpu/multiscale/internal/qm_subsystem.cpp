@@ -1,13 +1,17 @@
 /// @file src/cpu/multiscale/internal/qm_subsystem.cpp
 #include "atomiverse/cpu/multiscale/internal/qm_subsystem.h"
 
+#include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <string>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/component/owned_range.h"
+#include "atomiverse/cpu/multiscale/link_atom.h"
 #include "atomiverse/cpu/multiscale/qm_mask.h"
 
 namespace ATV {
@@ -64,7 +68,7 @@ void QmSubsystem::resolve_mask_(const Frame& frame) {
 }
 
 void QmSubsystem::allocate_private_frame_() {
-    n_fqm_ = n_qm_real_ + static_cast<int>(links_.size());
+    n_fqm_ = n_qm_real_ + static_cast<int>(resolved_links_.size());
     qm_frame_ = std::make_unique<Frame>(n_fqm_);
 }
 
@@ -89,7 +93,7 @@ void QmSubsystem::build(Frame& frame, int mpi_size, bool require_embedding) {
             throw std::invalid_argument(
                 "QmSubsystem: embed_cutoff must be > 0");
     }
-    if (!(link_scale_ > 0.0) || !(link_scale_ < 1.0))
+    if (!(link_scale > 0.0) || !(link_scale < 1.0))
         throw std::invalid_argument(
             "QmSubsystem: link_scale must be in (0,1)");
 
@@ -118,7 +122,8 @@ void QmSubsystem::build(Frame& frame, int mpi_size, bool require_embedding) {
                 + bad.str());
     }
 
-    // Resolve links against tags.
+    // Derive covalent QM/MM cuts from mask × bond topology (no user links()).
+    // No bonds ⇒ zero links (LJ / nonbonded QM/MM is valid).
     std::unordered_map<TagInt, int> tag_to_row;
     const int n = static_cast<int>(frame.nlocal());
     for (int i = 0; i < n; ++i)
@@ -127,23 +132,43 @@ void QmSubsystem::build(Frame& frame, int mpi_size, bool require_embedding) {
     std::unordered_set<int> qm_row_set(qm_rows_.begin(), qm_rows_.end());
     resolved_links_.clear();
     link_mm_tags_.clear();
-    for (const auto& lb : links_) {
-        if (lb.qm_tag == lb.mm_tag)
-            throw std::invalid_argument(
-                "QmSubsystem: link bond with identical tags");
-        auto iq = tag_to_row.find(lb.qm_tag);
-        auto im = tag_to_row.find(lb.mm_tag);
-        if (iq == tag_to_row.end() || im == tag_to_row.end())
-            throw std::runtime_error(
-                "QmSubsystem: link bond atom missing from frame");
-        if (!qm_row_set.count(iq->second))
-            throw std::invalid_argument(
-                "QmSubsystem: link qm_tag is not a QM atom (kAtomQmZ)");
-        if (qm_row_set.count(im->second))
-            throw std::invalid_argument(
-                "QmSubsystem: link mm_tag must not be a QM atom");
-        link_mm_tags_.insert(lb.mm_tag);
-        resolved_links_.push_back({iq->second, im->second, -1});
+    // Dedupe unordered tag pairs (bonds may be listed once on min-tag owner).
+    std::unordered_set<std::string> seen_pairs;
+
+    const bool has_bonds =
+        frame.blocks.at("atoms").contains("num_bond")
+        && frame.blocks.at("atoms").contains("bond_atom");
+    if (has_bonds) {
+        const auto num_bond = frame.span(kAtom_num_bond);
+        const auto bond_atom = frame.span(kAtom_bond_atom);
+        const auto qm_z = frame.span(kAtomQmZ);
+        for (int i = 0; i < n; ++i) {
+            const int nb = num_bond[static_cast<std::size_t>(i)];
+            for (int m = 0; m < nb; ++m) {
+                const TagInt partner_tag = bond_atom(i, m);
+                auto it = tag_to_row.find(partner_tag);
+                if (it == tag_to_row.end())
+                    continue;
+                const int j = it->second;
+                const bool qi = qm_z[i] > 0;
+                const bool qj = qm_z[j] > 0;
+                if (qi == qj)
+                    continue; // both QM or both MM
+                const int qm_row = qi ? i : j;
+                const int mm_row = qi ? j : i;
+                const TagInt tq = tags[qm_row];
+                const TagInt tm = tags[mm_row];
+                const TagInt lo = std::min(tq, tm);
+                const TagInt hi = std::max(tq, tm);
+                const std::string key =
+                    std::to_string(static_cast<long long>(lo)) + ":"
+                    + std::to_string(static_cast<long long>(hi));
+                if (!seen_pairs.insert(key).second)
+                    continue;
+                link_mm_tags_.insert(tm);
+                resolved_links_.push_back({qm_row, mm_row, -1});
+            }
+        }
     }
 
     allocate_private_frame_();
@@ -194,7 +219,7 @@ void QmSubsystem::refresh_(Frame& frame) {
         double hx, hy, hz;
         place_link_hydrogen(x[rl.qm_row], y[rl.qm_row], z[rl.qm_row],
                             x[rl.mm_row], y[rl.mm_row], z[rl.mm_row],
-                            link_scale_, hx, hy, hz);
+                            link_scale, hx, hy, hz);
         qx[h] = hx;
         qy[h] = hy;
         qz[h] = hz;
@@ -278,7 +303,7 @@ void QmSubsystem::scatter_(Frame& frame, bool forces_requested, double e_qm) {
     }
     for (const auto& rl : resolved_links_) {
         const int h = rl.fqm_h_row;
-        project_link_force(link_scale_, qfx[h], qfy[h], qfz[h], fx[rl.qm_row],
+        project_link_force(link_scale, qfx[h], qfy[h], qfz[h], fx[rl.qm_row],
                            fy[rl.qm_row], fz[rl.qm_row], fx[rl.mm_row],
                            fy[rl.mm_row], fz[rl.mm_row]);
     }

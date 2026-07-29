@@ -13,8 +13,6 @@
 #include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/component/qm_engine.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/multiscale/link_atom.h"
-
 namespace ATV {
 namespace cpu {
 namespace multiscale {
@@ -54,20 +52,19 @@ class QmSubsystem {
     template <typename E>
     void set_engine(E&) = delete;
 
-    /// @brief Covalent cuts (empty = none). Mutate before build.
-    std::vector<LinkBond>& links() { return links_; }
-    const std::vector<LinkBond>& links() const { return links_; }
-
-    double& link_scale() { return link_scale_; }
-    double link_scale() const { return link_scale_; }
+    /// @brief Link-H scale g ∈ (0,1). Parameter, not a region list.
+    double link_scale = 0.709;
 
     double& embed_cutoff() { return embed_cutoff_; }
     double embed_cutoff() const { return embed_cutoff_; }
 
     bool& reset_history_each_launch() { return reset_history_each_launch_; }
 
-    /// @brief Resolve mask, allocate private frame, prepare engine.
-    /// @param frame User frame with `kAtomQmZ` column filled.
+    /// @brief Resolve mask, derive links from bond topology, allocate private
+    ///        frame, prepare engine.
+    /// @param frame User frame with `kAtomQmZ` filled. Covalent QM/MM cuts are
+    ///        **derived** from `num_bond`/`bond_atom` × mask (no bonds ⇒ zero
+    ///        links). There is no `set_links` / `links()` user API.
     /// @param mpi_size Communicator size (v1 requires 1).
     /// @param require_embedding When true (electrostatic/polarizable), the
     ///        engine must implement `as_embedding()` and QM charges must be 0.
@@ -106,8 +103,6 @@ class QmSubsystem {
     QmEngine* engine_ = nullptr;
     EmbeddingEngine* embedding_ = nullptr;
 
-    std::vector<LinkBond> links_;
-    double link_scale_ = 0.709;
     double embed_cutoff_ = 12.0;
     bool reset_history_each_launch_ = false;
 

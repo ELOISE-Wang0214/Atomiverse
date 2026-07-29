@@ -57,6 +57,9 @@ cpu::Frame make_methanol_like() {
     qm[0] = 8; // O
     qm[1] = 1; // H
     // C and methyl H stay 0 = MM
+    // Covalent QM/MM cut is derived from topology (O–C bond), not set_links.
+    f.rebuild_tag_index(0, 6);
+    f.add_bond(/*O tag=*/1, /*C tag=*/3, /*type=*/1);
     return f;
 }
 
@@ -70,7 +73,6 @@ Energies energy_link(double scale) {
     // Soft LJ so the gate focuses on the QM energy response to g.
     cpu::QmmmElectrostatic qmmm{{{1, 1, 0.01, 3.4}, {6, 6, 0.01, 3.4}}, 8.0,
                                 15.0};
-    qmmm.links() = {{/*qm=*/1, /*mm=*/3}};
     qmmm.link_scale() = scale;
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;

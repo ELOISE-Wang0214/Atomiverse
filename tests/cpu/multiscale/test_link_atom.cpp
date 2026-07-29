@@ -1,5 +1,5 @@
 /// @file tests/cpu/multiscale/test_link_atom.cpp
-/// @brief Unit tests for H link-atom placement and force projection.
+/// @brief Unit tests for H link-atom placement and topology-derived cuts.
 #include <cmath>
 #include <gtest/gtest.h>
 #include <stdexcept>
@@ -15,6 +15,16 @@
 #include "atomiverse/cpu/scf/methods.h"
 
 using namespace ATV;
+
+namespace {
+
+void insert_qm_z(cpu::Frame& f) {
+    f.blocks.at("atoms").insert(
+        "qm_z", cpu::ColumnSpec{ColDType::Int, 1, ColGroup::Core, 0, kColNone,
+                               kDynamicFieldId});
+}
+
+} // namespace
 
 TEST(LinkAtom, PlacementFormula) {
     double hx, hy, hz;
@@ -46,42 +56,44 @@ TEST(LinkAtom, ForceProjectionPartition) {
 }
 
 #ifdef ATV_HAS_HF
-TEST(LinkAtom, RejectsIllegalLinksAtBuild) {
+TEST(LinkAtom, NoBondsMeansZeroLinks) {
+    // LJ-style: mask only, no topology → 0 link cuts (still valid QM/MM).
+    // QM = H2 (even e−); MM = Ar; no bonds on the Frame.
     cpu::Frame f(3);
-    f.span(kAtom_type)[0] = 1;
-    f.span(kAtom_type)[1] = 6;
-    f.span(kAtom_type)[2] = 1;
+    f.span(kAtom_x)[0] = 0;
+    f.span(kAtom_x)[1] = 0.74;
+    f.span(kAtom_x)[2] = 5.0;
+    f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 1;
+    f.span(kAtom_type)[2] = 18;
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
     f.span(kAtom_tag)[2] = 3;
+    for (int i = 0; i < 3; ++i)
+        f.span(kAtom_charge)[i] = 0;
     f.box = cpu::Box::cubic(20);
-    f.blocks.at("atoms").insert(
-        "qm_z", cpu::ColumnSpec{ColDType::Int, 1, ColGroup::Core, 0, kColNone,
-                           kDynamicFieldId});
-    auto qm = f.span(cpu::kAtomQmZ);
-    qm[0] = 1;
-    qm[1] = 0;
-    qm[2] = 0;
+    f.meta.get(kEnergy) = 0;
+    insert_qm_z(f);
+    f.span(cpu::kAtomQmZ)[0] = 1;
+    f.span(cpu::kAtomQmZ)[1] = 1;
+    f.span(cpu::kAtomQmZ)[2] = 0;
 
     cpu::Context ctx;
-    {
-        cpu::QmmmElectrostatic q{{{1, 1, 0.01, 3.4}}, 10.0, 12.0};
-        q.links() = {{1, 1}}; // same tags
-        q.set_engine(cpu::scf::RHF{});
-        EXPECT_THROW(q.build({ctx, f}), std::invalid_argument);
-    }
-    {
-        cpu::QmmmElectrostatic q{{{1, 1, 0.01, 3.4}}, 10.0, 12.0};
-        q.links() = {{1, 2}};
-        // mark mm as QM
-        qm[1] = 6;
-        q.set_engine(cpu::scf::RHF{});
-        EXPECT_THROW(q.build({ctx, f}), std::invalid_argument);
-        qm[1] = 0;
-    }
+    cpu::QmmmElectrostatic q{{{1, 1, 0.01, 3.4}, {18, 18, 0.01, 3.4}}, 10.0,
+                             12.0};
+    cpu::scf::RHF rhf;
+    rhf.basis = cpu::scf::BasisSet::STO3G;
+    rhf.tol = 1e-8;
+    rhf.max_iter = 40;
+    q.set_engine(std::move(rhf));
+    q.build({ctx, f});
+    EXPECT_EQ(q.last_n_links(), 0);
+    cpu::LaunchContext lc{ctx, f, 0, 0};
+    lc.forces_requested = false;
+    q.launch(lc);
+    EXPECT_TRUE(std::isfinite(q.last_qm_energy()));
 }
 
-TEST(LinkAtom, QmmmPlacesLinkHydrogen) {
+TEST(LinkAtom, QmmmPlacesLinkHydrogenFromBond) {
     cpu::Frame f(3);
     f.span(kAtom_x)[0] = 0;
     f.span(kAtom_x)[1] = 1.5;
@@ -92,20 +104,21 @@ TEST(LinkAtom, QmmmPlacesLinkHydrogen) {
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
     f.span(kAtom_tag)[2] = 3;
-    f.span(kAtom_charge)[2] = 0.0;
+    f.span(kAtom_charge)[0] = f.span(kAtom_charge)[1] = f.span(kAtom_charge)[2] =
+        0;
     f.box = cpu::Box::cubic(20);
     f.meta.get(kEnergy) = 0;
-    f.blocks.at("atoms").insert(
-        "qm_z", cpu::ColumnSpec{ColDType::Int, 1, ColGroup::Core, 0, kColNone,
-                           kDynamicFieldId});
+    insert_qm_z(f);
     auto qmcol = f.span(cpu::kAtomQmZ);
     qmcol[0] = 1; // H QM
-    qmcol[1] = 0;
+    qmcol[1] = 0; // C MM
     qmcol[2] = 0;
+
+    f.rebuild_tag_index(0, 3);
+    f.add_bond(/*ti=*/1, /*tj=*/2, /*type=*/1); // QM H — MM C cross cut
 
     cpu::Context ctx;
     cpu::QmmmElectrostatic qm{{{1, 1, 0.01, 3.4}}, 10.0, 12.0};
-    qm.links() = {{1, 2}};
     qm.link_scale() = 0.709;
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
@@ -119,5 +132,32 @@ TEST(LinkAtom, QmmmPlacesLinkHydrogen) {
     EXPECT_EQ(qm.last_n_links(), 1);
     EXPECT_TRUE(std::isfinite(f.meta.get(kEnergy)));
     EXPECT_TRUE(std::isfinite(qm.last_qm_energy()));
+}
+
+TEST(LinkAtom, BothQmBondIsNotALink) {
+    cpu::Frame f(2);
+    f.span(kAtom_x)[0] = 0;
+    f.span(kAtom_x)[1] = 0.74;
+    f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 1;
+    f.span(kAtom_tag)[0] = 1;
+    f.span(kAtom_tag)[1] = 2;
+    f.span(kAtom_charge)[0] = f.span(kAtom_charge)[1] = 0;
+    f.box = cpu::Box::cubic(20);
+    f.meta.get(kEnergy) = 0;
+    insert_qm_z(f);
+    f.span(cpu::kAtomQmZ)[0] = 1;
+    f.span(cpu::kAtomQmZ)[1] = 1;
+    f.rebuild_tag_index(0, 2);
+    f.add_bond(1, 2, 1);
+
+    cpu::Context ctx;
+    cpu::QmmmElectrostatic q{{{1, 1, 0.01, 3.4}}, 10.0, 12.0};
+    cpu::scf::RHF rhf;
+    rhf.basis = cpu::scf::BasisSet::STO3G;
+    rhf.tol = 1e-8;
+    rhf.max_iter = 40;
+    q.set_engine(std::move(rhf));
+    q.build({ctx, f});
+    EXPECT_EQ(q.last_n_links(), 0);
 }
 #endif

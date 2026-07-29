@@ -11,7 +11,6 @@
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/multiscale/internal/qm_mm_vdw.h"
 #include "atomiverse/cpu/multiscale/internal/qm_subsystem.h"
-#include "atomiverse/cpu/multiscale/link_atom.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 namespace ATV {
@@ -55,8 +54,8 @@ class QmmmPolarizable : public Potential {
     double pol_tol = 1e-8; ///< [e·Å]
     int pol_max_iter = 50;
 
-    std::vector<LinkBond>& links() { return sub_.links(); }
-    double& link_scale() { return sub_.link_scale(); }
+    /// @brief Link-H scale g ∈ (0,1). Region cuts come from Frame bonds×mask.
+    double& link_scale() { return sub_.link_scale; }
     bool& reset_history_each_launch() {
         return sub_.reset_history_each_launch();
     }

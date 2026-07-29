@@ -15,6 +15,11 @@
 /// Value **0 = MM**; **> 0 = QM with atomic number Z = value**. The force-field
 /// `type` column keeps its ordinary meaning. The column is runtime-only
 /// (`kDynamicFieldId`) and does not cross the molrs boundary in v1.
+///
+/// **Covalent QM/MM links** are not a separate user list: at
+/// `Qmmm*::build`, cuts are derived from this mask × existing
+/// `num_bond`/`bond_atom` topology. No bonds ⇒ zero links (valid for LJ
+/// particle QM/MM). See harness `frame-region-fields`.
 #pragma once
 
 #include "atomiverse/core/frame_schema.h"

@@ -131,6 +131,9 @@ For non-trivial work, prefer:
 ## What must never change casually
 
 - Frame as sole I/O currency (`blocks` + `meta` + `box`); no parallel `*System`
+- **Region / selection / partition → Frame fields** (not `set_*` on methods); missing
+  required field throws (iron law free-form)
+- **Prefer composition over inheritance** for workflows (iron law free-form)
 - Driver = staged loop + Criterion/Handler termination; no category driver bases
 - No public factories (`make_*` / `build_*` / `*_config`); **no public `*Config` bags**
   (parameters = ctor args / members — iron law free-form section)
@@ -189,6 +192,65 @@ Do **not** invent a new exception without `/mol:note`.
 `NoseHooverNPT::Config` / `GpwEvaluatorConfig` / `AM1Config` /
 `AM1BCCChargeConfig` / `PWConfig` as user path — deleted or privatized
 2026-07-23. Do not reintroduce.
+
+<!-- mol:note:topic:frame-region-fields -->
+## Iron law — region / selection on Frame fields (2026-07-29)
+
+**Rule (binding):** which atoms, bonds, or spatial/logical **region** a method
+acts on is declared on the **Frame** (named columns / blocks / topology already
+on the frame), **not** via public `set_region` / `set_mask` / `set_links` /
+constructor atom-index lists / return-ref mutators that poke membership.
+
+- **Required field missing or invalid** (e.g. QM/MM without `atoms.qm_z` /
+  `kAtomQmZ`, or all-zero when a QM region is mandatory) → **throw** with a
+  how-to; no silent “treat everything as MM/QM” default.
+- **Derived membership is allowed** when it is a pure function of Frame data
+  already present — e.g. QM/MM **link cuts** = bonds whose endpoints differ in
+  the QM mask. **No bonds ⇒ no links** (valid: LJ particle QM/MM). Do **not**
+  invent a parallel user-facing link list API.
+- **Still on the object API:** algorithm parameters (cutoffs, `tol`, scales),
+  and **component/method slots** (`set_evaluator`, `set_engine`,
+  `set_integrator`, …). Those are not “which atoms”.
+
+**Wrong:** `qmmm.links() = {{tag_q, tag_m}}`, `qmmm.set_links(...)`,
+`freeze.set_atoms({0,1,2})` as the primary region story.
+
+**Right:** user fills `frame` columns (e.g. `kAtomQmZ`); method `build`/`launch`
+reads them; topology on the frame supplies bonds when needed.
+
+Applies project-wide (QM/MM, freezes, electrodes, shells, constraints groups, …)
+whenever the question is membership/partition — same style, not a QM/MM-only
+hack. Detail: `.claude/notes/frame-region-fields.md`
+
+<!-- mol:note:topic:prefer-composition -->
+## Iron law — prefer composition over inheritance (2026-07-29)
+
+**Rule (binding):** user-visible workflows are **composed** from existing
+Driver presets + Components/evaluators, **not** grown as deep subclass trees
+or “god” drivers that re-own every concern.
+
+- **Compose:** one outer loop (`MD` / `Minimize` / `MC` / `Evaluate` / …) +
+  plural `set_evaluator` (and other categorical setters). AIMD =
+  `MD` + electronic evaluator; QM/MM = **same shape** + MM evaluators + a
+  connection-layer evaluator (`QmmmMechanical` / `QmmmElectrostatic` /
+  `QmmmPolarizable`) that `set_engine`s the QM method — **not** a second MD
+  and **not** a `QmmmDriver` that subclasses `MD`.
+- **New `Driver` / preset subclass** only when the **loop topology** is
+  genuinely new (e.g. `PathDriver` and coupled replicas). “Different force
+  recipe” is a **Component / evaluator**, not a new driver base.
+- **Three (or N) sibling types** for distinct physics beat one class with a
+  mode enum / god switch (no public embedding-mode bag).
+- **Inheritance depth** stays shallow: `Concrete → Kind → Component` (≤2);
+  presets derive the loop node directly. Do not invent category bases
+  (`*Driver` taxonomy) — already deleted once.
+
+**Wrong:** `class QmmmMD : public MD` with region setters; dual full MD
+`run()` glued by a parent; `Qmmm` god + `enum Embedding`.
+
+**Right:** `md.set_evaluator(lj); md.set_evaluator(qmmm.set_engine(rhf));
+md.run(frame, n);` with region on `frame`.
+
+Detail: `.claude/notes/prefer-composition.md`
 
 <!-- mol:note:topic:cuda-openmm-neighbor-force -->
 ## CUDA classical MD — OpenMM **engine** architecture

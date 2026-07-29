@@ -144,11 +144,11 @@ Also: `cpu::SubDriver` nesting on shared `Runtime`; criteria `ForceConverged`, `
   - `electronic::SecondGenCp` — ASPC + partial SCF on GPW
   - `electronic::CarParrinelloMethod<M>` / `XlBomdMethod<M>` — wrap concrete mean-field `RHF`/`RKS`/… (sets protected base flags in ctor only)
 
-**QMMM (`cpu/multiscale/`)**
-- `LinkBond`, `place_link_hydrogen`, `project_link_force`
-- `QmmmMechanical` — DFTB2 QM + LJ MM (Potential)
-- `QmmmElectrostatic` — RHF + MM point charges + LJ + optional link H
-- `QmmmPolarizable` — RHF + Thole induced dipoles + LJ; free `solve_induced_dipoles`
+**QMMM (`cpu/multiscale/`) — compose under one MD (AIMD-shaped), not a QmmmDriver**
+- Region: Frame `kAtomQmZ`; link cuts **derived** from mask × bond topology (0 bonds ⇒ 0 links)
+- `LinkBond` / `place_link_hydrogen` / `project_link_force` — geometry helpers (not user `set_links`)
+- Connection evaluators (`Potential`): `QmmmMechanical`, `QmmmElectrostatic`, `QmmmPolarizable` — each `set_engine` / `set_engine_ref`; no god embedding enum
+- Public path: `md.set_evaluator(mm…); md.set_evaluator(qmmm.set_engine(qm…));` — see harness `frame-region-fields` + `prefer-composition`
 
 **Classical MD / FF (sample)**
 - Integrators: `VelocityVerlet`, `NoseHooverNPT`, `NphIntegrator`, Brownian, …
@@ -173,6 +173,8 @@ Also: `cpu::SubDriver` nesting on shared `Runtime`; criteria `ForceConverged`, `
 **Iron laws on public surface**
 - No public `make_*` / `build_*` / `*_config()` factories (`no_factory_scrub.sh`)
 - No public `*Config` bags — ctor args + members; private internal OK under `internal/`
+- Region/selection on **Frame fields** (missing required → throw); no primary `set_links` / region index APIs (`frame-region-fields`)
+- Prefer **composition** (Driver + evaluators) over workflow inheritance / god drivers (`prefer-composition`)
 - Units on public surface: eV, Å, fs, amu, eV/Å, K (SCF/PW internal Ha/Ry → eV on Frame)
 
 ---
@@ -182,8 +184,9 @@ Also: `cpu::SubDriver` nesting on shared `Runtime`; criteria `ForceConverged`, `
 - **Naming:** full English directory names, mirrored CPU/CUDA; namespaces lag dirs (`cpu::md::MD` under `dynamics/`). Extensions: CPU `.h/.cpp`, CUDA `.cuh/.cu`, core `.h`. Public symbols under `ATV::` / `ATV::cpu` / `ATV::cuda`.
 - **Construction:** OOP default — domain concepts are types with methods; construct → configure members → `build`/`run`/`launch`. Lookup tables as ctors (`GthPotential(Element, name)`). No factories; no public Config bags.
 - **Driver model:** staged typed phase enum + iteration + Criterion termination (+ optional OutcomePolicy). Presets only add defaults in constructors. Algorithms publish metrics; criteria judge; loop owns `IterationStatus`.
-- **Registration:** `on(phase).add` is the only Plan primitive; `set_evaluator` is the shared categorical energy/force entry (plural). AIMD via typed wrappers, not public boolean switches on evaluators.
-- **Frame purity / backend isolation:** backend-specific types (xtensor, CUDA runtime) must not leak into core/facade or across backends. Pair/reciprocal math is backend-owned (no top-level shared math module).
+- **Registration:** `on(phase).add` is the only Plan primitive; `set_evaluator` is the shared categorical energy/force entry (plural). AIMD via typed wrappers, not public boolean switches on evaluators. QM/MM is the same composition shape (MM + connection evaluator), not a parallel driver taxonomy.
+- **Composition over inheritance:** new loop topology ⇒ new preset; different force recipe ⇒ Component/evaluator. See `prefer-composition`.
+- **Frame purity / backend isolation:** backend-specific types (xtensor, CUDA runtime) must not leak into core/facade or across backends. Pair/reciprocal math is backend-owned (no top-level shared math module). Region membership is Frame data (`frame-region-fields`).
 - **Units & precision:** eV/Å/fs; `StorageReal`/`WorkReal`/`AccReal` (+ CUDA `real_t`/`work_t`/`prec_t`); integer roles `LocalInt`/`TagInt`/`ImageInt`/`BigInt`.
 - **Errors:** lookup tables throw on unsupported input (no silent fallbacks); ownership misuse deleted at compile time.
 - **Tests:** unit only under `tests/`; e2e in `regressions/`; architecture scrubs enforce layout, factories, OpenMM path, stage typing, SCF phase bans.
