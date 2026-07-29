@@ -12,8 +12,11 @@
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/frame/column.h"
+#include "atomiverse/cpu/multiscale/qm_mask.h"
 #include "atomiverse/cpu/multiscale/qmmm_electrostatic.h"
 #include "atomiverse/cpu/multiscale/qmmm_polarizable.h"
+#include "atomiverse/cpu/scf/methods.h"
 
 using namespace ATV;
 
@@ -40,8 +43,17 @@ cpu::Frame water_plus_site() {
     for (int i = 0; i < 4; ++i) {
         f.span(kAtom_tag)[i] = i + 1;
         f.span(kAtom_mass)[i] = 1;
+        f.span(kAtom_charge)[i] = 0;
     }
     f.box = cpu::Box::cubic(25);
+    f.blocks.at("atoms").insert(
+        "qm_z", cpu::ColumnSpec{ColDType::Int, 1, ColGroup::Core, 0, kColNone,
+                           kDynamicFieldId});
+    auto qm = f.span(cpu::kAtomQmZ);
+    qm[0] = 8;
+    qm[1] = 1;
+    qm[2] = 1;
+    qm[3] = 0;
     return f;
 }
 
@@ -52,8 +64,14 @@ int main() {
     {
         auto f = water_plus_site();
         cpu::Evaluate eval;
-        eval.on(evaluate::Phase::evaluate)
-            .add(cpu::QmmmElectrostatic{{1, 2, 3}, 0.0, 0.01, 3.4, 10.0});
+        cpu::QmmmElectrostatic qmmm{{{8, 8, 0.01, 3.4}, {1, 1, 0.01, 3.4}}, 10.0,
+                                    12.0};
+        cpu::scf::RHF rhf;
+        rhf.basis = cpu::scf::BasisSet::STO3G;
+        rhf.tol = 1e-8;
+        rhf.max_iter = 60;
+        qmmm.set_engine(std::move(rhf));
+        eval.on(evaluate::Phase::evaluate).add(std::move(qmmm));
         eval.build();
         eval.run(f);
         e_fix = f.meta.get(kEnergy);

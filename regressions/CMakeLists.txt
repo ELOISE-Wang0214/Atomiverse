@@ -659,7 +659,7 @@ if(ATV_BUILD_SEMIEMPIRICAL)
         # ES/link/polarizable embedding instantiate cpu::scf::RHF through the
         # QMMM library sources; without ATV_BUILD_HF the RHF vtable is not
         # compiled and these binaries cannot link (MD-only merge gate).
-        atv_add_regression(multiscale qmmm_es_h2)
+        atv_add_regression(multiscale qmmm_es_h2o_pyscf)
         atv_add_regression(multiscale qmmm_link_ch3oh)
         atv_add_regression(multiscale qmmm_pol_h2o)
     endif()

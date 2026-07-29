@@ -328,7 +328,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/semiempirical/scc_mixer.cpp
             src/cpu/semiempirical/xtb_gfn0.cpp
             src/cpu/multiscale/qmmm_mechanical.cpp
-            src/cpu/multiscale/qmmm_electrostatic.cpp
+            # qmmm_electrostatic + internals need HF (engine slot); see ATV_BUILD_HF.
             src/cpu/multiscale/qmmm_polarizable.cpp
         )
         # Grimme D3 engine for DFTB2::d3 (and peers) under SE-only cmake.
@@ -581,6 +581,10 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/internal/pcm.cpp
             src/cpu/scf/internal/soscf.cpp
             src/cpu/scf/internal/x2c.cpp
+            # Multiscale electrostatic QM/MM (esmm-qmmm-03) — HF engine required.
+            src/cpu/multiscale/internal/qm_subsystem.cpp
+            src/cpu/multiscale/internal/qm_mm_vdw.cpp
+            src/cpu/multiscale/qmmm_electrostatic.cpp
             src/cpu/scf/stages/fock_stage.cpp
             src/cpu/scf/stages/mix_stage.cpp
             src/cpu/scf/stages/density_stage.cpp

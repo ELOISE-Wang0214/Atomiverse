@@ -236,20 +236,18 @@ atv_add_cpp_test(test_cpu_pim_induced_dipole      cpu/potentials/test_pim_induce
 atv_add_cpp_test(test_cpu_pim_xl_dipole           cpu/potentials/test_pim_xl_dipole.cpp)
 atv_add_cpp_test(test_cpu_minimize_aniso_cell     cpu/minimize/test_anisotropic_cell.cpp)
 atv_add_cpp_test(test_cpu_xtb_gfn0                cpu/semiempirical/test_xtb_gfn0.cpp)
-# QM/MM embedding units. src/cpu/multiscale/*.cpp compiles only under
-# ATV_BUILD_SEMIEMPIRICAL (root CMakeLists), and the electrostatic /
-# polarizable objects additionally reference ATV::cpu::scf::RHF, which only
-# links under ATV_BUILD_HF. Registering them unconditionally broke the default
-# configuration (HF=OFF) at link time.
+# QM/MM units. Mechanical stays under SE; electrostatic engine-slot path needs HF.
 if(ATV_BUILD_SEMIEMPIRICAL)
     atv_add_cpp_test(test_cpu_qmmm_mechanical     cpu/multiscale/test_qmmm_mechanical.cpp)
     if(ATV_BUILD_HF)
-        atv_add_cpp_test(test_cpu_qmmm_electrostatic  cpu/multiscale/test_qmmm_electrostatic.cpp)
-        # test_link_atom includes multiscale/qmmm_electrostatic.h and drives the
-        # RHF-embedded link-atom cut — same RHF link dependency.
-        atv_add_cpp_test(test_cpu_link_atom           cpu/multiscale/test_link_atom.cpp)
         atv_add_cpp_test(test_cpu_qmmm_polarizable    cpu/multiscale/test_qmmm_polarizable.cpp)
     endif()
+endif()
+if(ATV_BUILD_HF)
+    atv_add_cpp_test(test_cpu_qm_mm_vdw           cpu/multiscale/test_qm_mm_vdw.cpp)
+    atv_add_cpp_test(test_cpu_qm_subsystem        cpu/multiscale/test_qm_subsystem.cpp)
+    atv_add_cpp_test(test_cpu_qmmm_electrostatic  cpu/multiscale/test_qmmm_electrostatic.cpp)
+    atv_add_cpp_test(test_cpu_link_atom           cpu/multiscale/test_link_atom.cpp)
 endif()
 atv_add_cpp_test(test_cpu_minimize_triclinic      cpu/minimize/test_triclinic_cell.cpp)
 atv_add_cpp_test(test_cpu_bond_fene               cpu/potentials/test_bond_fene.cpp)

@@ -26,7 +26,8 @@ namespace cpu {
 ///
 /// Dynamic runtime field (`wire_id = kDynamicFieldId`). Insert before
 /// `QmmmElectrostatic::build()`; missing or all-zero throws with a how-to.
-inline constexpr ColKey<int> kAtomQmZ{"atoms", "qm_z", kDynamicFieldId};
+inline constexpr ColKey<int> kAtomQmZ{"atoms", "qm_z", kDynamicFieldId,
+                                      ColDType::Int};
 
 } // namespace cpu
 } // namespace ATV

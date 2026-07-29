@@ -11,8 +11,11 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/frame/column.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/multiscale/qm_mask.h"
 #include "atomiverse/cpu/multiscale/qmmm_electrostatic.h"
+#include "atomiverse/cpu/scf/methods.h"
 
 using namespace ATV;
 
@@ -44,8 +47,16 @@ cpu::Frame make_methanol_like() {
         f.span(kAtom_tag)[i] = static_cast<TagInt>(i + 1);
         f.span(kAtom_mass)[i] = 1.0;
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
+        f.span(kAtom_charge)[i] = 0;
     }
     f.box = cpu::Box::cubic(30.0);
+    f.blocks.at("atoms").insert(
+        "qm_z", cpu::ColumnSpec{ColDType::Int, 1, ColGroup::Core, 0, kColNone,
+                           kDynamicFieldId});
+    auto qm = f.span(cpu::kAtomQmZ);
+    qm[0] = 8; // O
+    qm[1] = 1; // H
+    // C and methyl H stay 0 = MM
     return f;
 }
 
@@ -56,8 +67,16 @@ struct Energies {
 
 Energies energy_link(double scale) {
     auto f = make_methanol_like();
-    cpu::QmmmElectrostatic qmmm{{1, 2}, /*mm_q=*/0.0,           0.01, 3.4,
-                                8.0,    {{/*qm=*/1, /*mm=*/3}}, scale};
+    // Soft LJ so the gate focuses on the QM energy response to g.
+    cpu::QmmmElectrostatic qmmm{{{1, 1, 0.01, 3.4}, {6, 6, 0.01, 3.4}}, 8.0,
+                                15.0};
+    qmmm.links() = {{/*qm=*/1, /*mm=*/3}};
+    qmmm.link_scale() = scale;
+    cpu::scf::RHF rhf;
+    rhf.basis = cpu::scf::BasisSet::STO3G;
+    rhf.tol = 1e-8;
+    rhf.max_iter = 80;
+    qmmm.set_engine(std::move(rhf));
     cpu::Context ctx;
     qmmm.build({ctx, f});
     cpu::LaunchContext lc{ctx, f, 0, 0};
@@ -87,7 +106,6 @@ int main() {
             std::printf("FAIL: link scale did not shift QM energy\n");
             return 1;
         }
-        // STO-3G closed-shell OH+H is deep negative in eV.
         if (!(a.qm < -100.0)) {
             std::printf("FAIL: E_qm=%.6f not below -100 eV gate\n", a.qm);
             return 1;
