@@ -2,9 +2,12 @@
 /// @brief END-TO-END: bulk polarizable IL under NPT (MetalWalls PIM product
 ///        twin) — PIM virial pin + NoseHooverNPT product invariants.
 ///
-/// oracle: metalwalls (offline numpy pin of the published bulk-PIM Thole
-/// form; no MetalWalls binary — see REFERENCE.md and
-/// tools/metalwalls_oracle/pin_notes_pim-npt-polarizable-il.md).
+/// oracle: literature (Applequist/Thole induced-dipole form), offline numpy
+/// pin; the charge–dipole kernel and the E_pol convention are cross-validated
+/// against the real MetalWalls binary (git c8ad175d) in the isolated-pair
+/// limit. MetalWalls cannot express the pinned lattice numbers themselves —
+/// it has no Thole damping and no truncated-Coulomb mode. See REFERENCE.md
+/// and tools/metalwalls_oracle/pin_notes_pim-npt-polarizable-il.md.
 /// Public headers + link atomiverse only. Flat main(); exits non-zero on fail.
 
 #include <cmath>
@@ -89,8 +92,11 @@ class TrackVolume : public cpu::Criterion {
 } // namespace
 
 int main() {
-    // ── Offline numpy pins (MetalWalls JOSS 5:2373 bulk PIM + Thole 1981;
-    //    see pin notes). Units: eV, eV, eV/A^3.
+    // ── Offline numpy pins of the TRUNCATED (rc = 4.0 A, minimum-image)
+    //    Applequist/Thole induced-dipole model this component implements.
+    //    NOT MetalWalls values: real MW (Ewald, no Thole) gives
+    //    E_pol = -1.682169167852 eV on this same geometry — the 5.17x gap is
+    //    the real-space truncation, see REFERENCE.md. Units: eV, eV, eV/A^3.
     const double E_pol_pin = -8.695749870555906;
     const double W_pin[6] = {-10.66184373345355,  -12.125914211727187,
                              -9.657852793291474,  -0.2325271422922529,
