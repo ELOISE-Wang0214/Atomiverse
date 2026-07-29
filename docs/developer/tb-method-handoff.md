@@ -1,12 +1,12 @@
 # TB / SE method loop — handoff
 
 Last assign: **2026-07-27 wave 3** on parent `dev` @ `223dcd4c`.
-Last GapCensus: **2026-07-27 wave 3** (product surface still post harness wave-2
-SE land; HEAD may include concurrent esmm/driver commits).
-Last harness: **wave 2** merged `dftb2-dftbplus-energy-pin` +
-`dftb2-periodic-gamma` → done.
-**incomplete_remaining=8** (6 resume tips + 2 new staff). **pending=16**.
-**blocked=9**. GapCensus still owns discovery — **queue not exhausted**.
+Last GapCensus: **2026-07-27 wave 3**.
+Last harness: **wave 3** (2026-07-29) — all **8** assign-w3 staff → **done**
+on `dev` @ `30672ccf` (final batch: `dftb3-water-mio`, `dftb2-periodic-forces`,
+`dftb2-kpoints`; earlier wave-3 landings: DFTB0, D3, ThreeOb F, spin F, stress).
+**incomplete_remaining=0**. **pending=16**. **blocked=9**.
+GapCensus still owns discovery — **queue not exhausted**.
 
 ## Workflow order (binding)
 
@@ -14,25 +14,40 @@ Recover incomplete first → Census → Assign (`incomplete ≫ pending`) →
 Worktrees (**spec-first**) → Merge → Clearup → Harness → Tutorial. See
 `docs/developer/tb-method-loop.md` and `docs/developer/oracle-capability-loop.md`.
 
-## Assign wave 3 staff (2026-07-27)
+## Harness wave 3 land (2026-07-29)
 
-| Slug | is_resume | Tip / note | oracle |
-| ---- | --------- | ---------- | ------ |
-| `dftb0-h2` | true | `wf/dftb0-h2` @ `bcff8c4a` ahead=1 behind=45 | dftb+ |
-| `dftb3-water-mio` | true | `wf/dftb3-water-mio` @ `f26ba40b` ahead=1 behind=45 | dftb+ |
-| `dftb2-dispersion-d3` | true | `wf/dftb2-dispersion-d3` @ `edabfa64` ahead=2 behind=45 | dftb+\|literature |
-| `dftb2-analytic-forces-threeob` | true | `wf/dftb2-analytic-forces-threeob` @ `211dc386` ahead=1 behind=29 | dftb+\|literature |
-| `dftb2-spin-analytic-forces` | true | `wf/dftb2-spin-analytic-forces` @ `1e8cac93` ahead=1 behind=29 | dftb+\|literature |
-| `dftb2-analytic-stress` | true | `wf/dftb2-analytic-stress` @ `d2da3fe9` ahead=1 behind=29 | dftb+\|literature |
-| `dftb2-periodic-forces` | false | **new** — lattice-image F under Γ-PBC | dftb+\|literature |
-| `dftb2-kpoints` | false | **new** — k-mesh beyond Γ | dftb+ |
+| Slug | Result |
+| ---- | ------ |
+| `dftb0-h2` | **merged → done** (non-SCC DFTB0; DFTB+ 24.1 H–H pin) |
+| `dftb3-water-mio` | **merged → done** (third-order SCC; dual-gate re-pin) |
+| `dftb2-dispersion-d3` | **merged → done** (molecular D3(BJ) + analytic F) |
+| `dftb2-analytic-forces-threeob` | **merged → done** (closed-form ThreeOb F) |
+| `dftb2-spin-analytic-forces` | **merged → done** (collinear open-shell F) |
+| `dftb2-analytic-stress` | **merged → done** (restricted MioSketch virial) |
+| `dftb2-periodic-forces` | **merged → done** (lattice-image Γ-PBC F) |
+| `dftb2-kpoints` | **merged → done** (Monkhorst–Pack multi-k energy) |
 
-**Skipped:** `dftb3-analytic-forces` (dep on `dftb3-water-mio`); `td-dftb-h2`;
-Phase B OpenMOPAC NDDO; Phase C GFN-xTB; blocked (9).
+Specs closed (deleted): `dftb3-water-mio`, `dftb2-periodic-forces`,
+`dftb2-kpoints`. TB `wf/*` tips and isolation worktrees: **none**.
 
-Workers must: isolation worktree on nobackup; `wf/<slug>`; **rebase resume
-tips onto current `dev` first**; open `.claude/specs/<slug>/` before code;
-SE-only cmake; offline pins only (`tools/tb_oracle/`); no push.
+Roadmap prose: PBC lattice-image forces + multi-k energy + ThreeOb analytic F
+documented as shipped; table rows already ✓ for DFTB0/3/D3/stress/gradient/
+periodic (no new table ○→✓ this harness beyond prose deepen). **Still open:**
+multi-k F/stress, periodic D3 lattice sum, `dftb3-analytic-forces`, TD-DFTB,
+Phase B OpenMOPAC NDDO, Phase C GFN product.
+
+## Assign wave 3 staff (2026-07-27) — historical
+
+| Slug | is_resume | Note | oracle |
+| ---- | --------- | ---- | ------ |
+| `dftb0-h2` | true | landed | dftb+ |
+| `dftb3-water-mio` | true | landed | dftb+ |
+| `dftb2-dispersion-d3` | true | landed | dftb+\|literature |
+| `dftb2-analytic-forces-threeob` | true | landed | dftb+\|literature |
+| `dftb2-spin-analytic-forces` | true | landed | dftb+\|literature |
+| `dftb2-analytic-stress` | true | landed | dftb+\|literature |
+| `dftb2-periodic-forces` | false | landed | dftb+\|literature |
+| `dftb2-kpoints` | false | landed | dftb+ |
 
 ## Wave 2 land (2026-07-27) — historical
 
@@ -41,12 +56,9 @@ SE-only cmake; offline pins only (`tools/tb_oracle/`); no push.
 | `dftb2-dftbplus-energy-pin` | **merged → done** (mio-1-1 H–H absolute E) |
 | `dftb2-periodic-gamma` | **merged → done** (Γ lattice-sum energy) |
 
-Roadmap ○→✓: Periodic DFTB (Γ-point foothold). k-mesh / PBC forces / stress /
-DFTB0/3/D3 remain ○ or incomplete.
-
 ## Wave 1 land (2026-07-27) — historical
 
-| Slug | Result |
+| slug | Result |
 | ---- | ------ |
 | `dftb2-3ob-organic` | **merged → done** |
 | `dftb2-analytic-forces` | **merged → done** |
@@ -65,7 +77,9 @@ DFTB0/3/D3 remain ○ or incomplete.
 
 ## Next
 
-1. **Worktrees** for the 8 staff (parallelism ≤ staff_count).
-2. Resumes: **rebase** `wf/*` onto `dev`, re-open/repair spec if missing, dual gate.
-3. New: spec → offline pin → impl → dual gate → commit on `wf/<slug>`.
-4. Merge greens → Clearup (same wave) → Harness → GapCensus wave 4.
+1. **GapCensus wave 4** on `dev` (re-diff OpenMOPAC|DFTB+|xtb + roadmap ○ +
+   `cpu/semiempirical`); foothold ≠ closed — refill pending if deepen needed.
+2. Assign next staff from pending (prefer Phase A `dftb3-analytic-forces` /
+   `td-dftb-h2` only after census; then Phase B mopac ladder).
+3. No incomplete `[~]` tips to recover.
+4. **Queue not exhausted** — GapCensus owns discovery.

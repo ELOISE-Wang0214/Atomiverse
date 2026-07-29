@@ -23,23 +23,25 @@ open. AM1-BCC charge assignment still uses the energy/charge path (see
 **mio-1-1 H–H** radial grids for the absolute DFTB+ energy pin
 (`dftb_mio_hh_sk.h`, `reg_dftb2-dftbplus-energy-pin`), and production
 **3ob-3-1** organic CHNO tables (`DftbSkSet::ThreeOb`, `reg_dftb2-3ob-organic`).
-**Nuclear forces on MioSketch are analytic** for closed shell **and collinear
+**Nuclear forces** are analytic on MioSketch for closed shell **and collinear
 open shell** (Hellmann–Feynman + Pulay + SCC γ + repulsive;
-`reg_dftb2-analytic-forces`, `reg_dftb2-spin-analytic-forces`); the **ThreeOb**
-path still uses re-SCC FD (deepen: `dftb2-analytic-forces-threeob`).
-**Collinear spin-DFTB2** ships (`multiplicity`, dual α/β, Mulliken m;
-`reg_spin-dftb2-o2`). **Γ-point periodic** SCC-DFTB2 lattice sums (H⁰/S,
-screened γ, repulsive) ship on MioSketch (`reg_dftb2-periodic-gamma`); k-mesh
-remains ○ (`dftb2-kpoints`); lattice-image-consistent nuclear forces under PBC
-remain ○ (`dftb2-periodic-forces` — energy lattice sums vs min_image force
-path). Opt-in **Grimme D3(BJ)** dispersion ships as an additive molecular
-correction with its own analytic gradient (`DFTB2::d3`,
+`reg_dftb2-analytic-forces`, `reg_dftb2-spin-analytic-forces`) and on the
+**ThreeOb** organic path (`reg_dftb2-analytic-forces-threeob`). **Collinear
+spin-DFTB2** ships (`multiplicity`, dual α/β, Mulliken m; `reg_spin-dftb2-o2`).
+**Γ-point periodic** SCC-DFTB2 lattice sums (H⁰/S, screened γ, repulsive) ship
+on MioSketch (`reg_dftb2-periodic-gamma`) with **lattice-image-consistent
+nuclear forces** under PBC (`reg_dftb2-periodic-forces`). **Monkhorst–Pack
+k-mesh** beyond Γ ships for closed-shell MioSketch **energy**
+(`k_mesh` / `k_time_reversal` members; `reg_dftb2-kpoints`); multi-k analytic
+forces/stress remain ○. Opt-in **Grimme D3(BJ)** dispersion ships as an
+additive molecular correction with its own analytic gradient (`DFTB2::d3`,
 `reg_dftb2-dispersion-d3`); a periodic D3 lattice sum remains ○. Non-SCC
 **DFTB0** ships (`reg_dftb0-h2`). **GFN0-xTB toy** (`XtbGfn0`, `reg_h2o_gfn0`)
-remains a sketch. **DFTB3** ships (`reg_dftb3-water-mio`) after its third-order potential was
-corrected to be the derivative of its own energy, and **analytic stress**
-ships (`reg_dftb2-analytic-stress`). All the `wf/*` TB tips were merged
-2026-07-28. TD depth and GFN1/2 remain ○.
+remains a sketch. **DFTB3** energy ships (`reg_dftb3-water-mio`) after its
+third-order potential was corrected to be the derivative of its own energy;
+DFTB3 analytic forces remain ○ (`dftb3-analytic-forces`). **Analytic stress**
+ships on restricted MioSketch (`reg_dftb2-analytic-stress`). Wave-3 TB staff
+closed 2026-07-29. TD depth and GFN1/2 remain ○.
 Loop queue: `docs/developer/tb-method-queue.md`. Family oracles: OpenMOPAC
 (NDDO) / DFTB+ (DFTB) / xtb (GFN) — see `tools/tb_oracle/README.md`.
 
@@ -87,16 +89,17 @@ multipole derivatives stay ○. Analytic Hessian remains finite-difference via
 DFTB2 is multi-element H/C/N/O with static SK tables (`dftb_mio_tables.h` sketch
 + `dftb_mio_hh_sk.h` mio-1-1 H–H + `dftb_3ob_tables.h` 3ob-3-1 organics).
 Collinear spin (`multiplicity`) and **analytic nuclear forces**
-(HF+Pulay+γ+rep; **open shell included**) ship on MioSketch; ThreeOb forces
-remain re-SCC FD. **Restricted MioSketch analytic stress** ships as the pair
-virial of those same terms (`reg_dftb2-analytic-stress`); open-shell and
-ThreeOb stress fall back to multi-SCC affine strain-FD. Offline **DFTB+**
-absolute energy identity on mio-1-1 H–H ships
-(`reg_dftb2-dftbplus-energy-pin`); 3ob CH4 has a DFTB+ pin under pure
-SCC-DFTB2. **Γ-point PBC** lattice-sum energy ships (`reg_dftb2-periodic-gamma`);
-lattice-consistent **PBC forces**, **k-mesh** beyond Γ, **DFTB3** forces, and
-**TD-DFTB** remain ○. Oracle for all DFTB rows: **DFTB+** (never OpenMOPAC).
-Ladder: DFTB0 → DFTB2 depth → DFTB3 → spin product depth → …
+(HF+Pulay+γ+rep; **open shell included** on MioSketch; **ThreeOb** closed-form
+F ships) are product paths. **Restricted MioSketch analytic stress** ships as
+the pair virial (`reg_dftb2-analytic-stress`); open-shell and ThreeOb stress
+fall back to multi-SCC affine strain-FD. Offline **DFTB+** absolute energy
+identity on mio-1-1 H–H ships (`reg_dftb2-dftbplus-energy-pin`); 3ob CH4 has a
+DFTB+ pin under pure SCC-DFTB2. **Γ-point PBC** lattice-sum energy **and**
+lattice-image nuclear forces ship; **multi-k energy** (Monkhorst–Pack) ships
+for closed-shell MioSketch. **Multi-k forces/stress**, **DFTB3** analytic
+forces, **periodic D3**, and **TD-DFTB** remain ○. Oracle for all DFTB rows:
+**DFTB+** (never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 → spin
+product depth → …
 
 ## 3. Extended Tight-Binding Methods
 
