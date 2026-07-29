@@ -123,6 +123,20 @@ Full index: [methods/README](methods/README.md). Narrative:
 | SCC-DFTB2 H₂ total \(E\) vs mio-1-1 | [dftb2-dftbplus-energy-pin](methods/dftb2-dftbplus-energy-pin.md) | `regressions/semiempirical/dftb2-dftbplus-energy-pin` | dftb+ 24.1 (ratio **≈ 0.4**) |
 | Γ-point periodic SCC-DFTB2 (1-D C chain) | [dftb2-periodic-gamma](methods/dftb2-periodic-gamma.md) | `regressions/semiempirical/dftb2-periodic-gamma` | literature + family dftb+ (`perf_exempt`) |
 
+### TB / SE capability wave 4 (semiempirical + tight-binding)
+
+Offline OpenMOPAC / DFTB+ / xtb pins only — see
+[tb-method-handoff](../developer/tb-method-handoff.md) and `tools/tb_oracle/`.
+Family-locked oracles: NDDO → OpenMOPAC; DFTB* → DFTB+; GFN-xTB → xtb. A row
+may carry `oracle: literature` (formalism only) when neither an oracle binary
+nor a published value for the exact geometry + SK set exists; the case then
+ships structural gates and says so in its REFERENCE `Gaps`.
+Full index: [methods/README](methods/README.md).
+
+| Method | Page | Regression | Oracle |
+|--------|------|------------|--------|
+| Linear-response TD-DFTB (Casida) H₂ singlet/triplet | [td-dftb-h2](methods/td-dftb-h2.md) | `regressions/semiempirical/td-dftb-h2` | literature (formalism; **no absolute pin**, `perf_exempt`) |
+
 ### MetalWalls capability wave 1 (classical electrochem + LAMMPS-overlap MD)
 
 Offline LAMMPS / MetalWalls / literature pins only — see

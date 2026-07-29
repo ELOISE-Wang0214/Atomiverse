@@ -87,7 +87,7 @@ multipole derivatives stay ○. Analytic Hessian remains finite-difference via
 | Periodic DFTB             |  ✓  |   ○  |   ○  |
 | DFTB analytic gradient    |  ✓  |   ○  |   ○  |
 | DFTB analytic stress      |  ✓  |   ○  |   ○  |
-| TD-DFTB                   |  ○  |   ○  |   ○  |
+| TD-DFTB                   |  ✓  |   ○  |   ○  |
 
 DFTB2 is multi-element H/C/N/O with static SK tables (`dftb_mio_tables.h` sketch
 + `dftb_mio_hh_sk.h` mio-1-1 H–H + `dftb_3ob_tables.h` 3ob-3-1 organics).
@@ -99,9 +99,19 @@ fall back to multi-SCC affine strain-FD. Offline **DFTB+** absolute energy
 identity on mio-1-1 H–H ships (`reg_dftb2-dftbplus-energy-pin`); 3ob CH4 has a
 DFTB+ pin under pure SCC-DFTB2. **Γ-point PBC** lattice-sum energy **and**
 lattice-image nuclear forces ship; **multi-k energy** (Monkhorst–Pack) ships
-for closed-shell MioSketch. **Multi-k forces/stress**, **DFTB3** analytic
-forces, **periodic D3**, **ThreeOb / open-shell analytic stress**, and
-**TD-DFTB** remain ○ (queue Phase A). Oracle for all DFTB rows: **DFTB+**
+for closed-shell MioSketch. **TD-DFTB** ships as a linear-response Casida
+foothold on the restricted MioSketch ground state
+(`DFTB2::td_casida`; Niehaus et al., PRB **63**, 085108 (2001);
+`reg_td-dftb-h2`): **energies only** (no oscillator strengths, no excited-state
+gradients), singlet + triplet, molecular Γ only. It has **no absolute oracle** —
+no `dftb+` binary on the pin host and no published H₂/mio-1-1 excitation energy
+exists, so it is gated on the λ→0 single-particle limit, Ω symmetry, the
+transition-charge sum rule and analytic two-level identities; see its
+`REFERENCE.md` `Gaps` (which also records a **pre-existing γ_AB units defect**
+shared with the DFTB3 ground state). **Multi-k forces/stress**, **DFTB3**
+analytic forces, **periodic D3**, **ThreeOb / open-shell analytic stress**,
+**TD-DFTB oscillator strengths / excited-state gradients**, and
+**long-range-corrected TD-DFTB** remain ○. Oracle for all DFTB rows: **DFTB+**
 (never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 F → TD → NDDO PM →
 GFN late.
 

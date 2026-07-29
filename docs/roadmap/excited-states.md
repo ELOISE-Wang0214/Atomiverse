@@ -134,11 +134,22 @@ CCSD(T) / CC2.
 | Simplified TDA, sTDA         |  ○  |   ○  |   ○  |
 | Simplified TDDFT, sTDDFT     |  ○  |   ○  |   ○  |
 | sTDA-xTB                     |  ○  |   ○  |   ○  |
-| TD-DFTB                      |  ○  |   ○  |   ○  |
+| TD-DFTB                      |  ✓  |   ○  |   ○  |
 | Long-range-corrected TD-DFTB |  ○  |   ○  |   ○  |
 
-Blocked upstream: no DFTB, no xTB
-(see [Semiempirical and Tight Binding](semiempirical.md)).
+**TD-DFTB** ships as `cpu::semiempirical::DFTB2::td_casida` — the tight-binding
+Casida linear response of Niehaus, Suhai, Della Sala, Lugli, Elstner, Seifert,
+Frauenheim, *Phys. Rev. B* **63**, 085108 (2001): Mulliken transition charges
+contract γ_AB (singlet) or the on-site spin constants W_A (triplet) into
+ΩF = ω²F. **Energies only** — no oscillator strengths, no transition dipoles,
+no excited-state gradients or NAC. Restricted closed shell, molecular Γ point,
+MioSketch Slater–Koster, dense solver (≤ 512 pairs). It carries **no absolute
+excitation-energy oracle** (no `dftb+` binary on the pin host; no published
+H₂/mio-1-1 value exists) and is gated on structural limits — see
+`regressions/semiempirical/td-dftb-h2/REFERENCE.md`.
+
+The remaining rows are blocked upstream: no xTB response, no long-range
+correction (see [Semiempirical and Tight Binding](semiempirical.md)).
 
 ## 5. Green's-Function and Many-Body Methods
 

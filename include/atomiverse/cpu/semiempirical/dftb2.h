@@ -8,6 +8,7 @@
 
 #include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/semiempirical/td_dftb2.h"
 
 namespace ATV {
 namespace cpu {
@@ -163,6 +164,67 @@ class DFTB2 : public cpu::Semiempirical {
 
     /// @brief Per-atom Mulliken spin population m_A = Nα−Nβ [e] after last launch.
     const std::vector<double>& last_mulliken_spin() const { return last_spin_; }
+
+    /// @brief Vertical linear-response TD-DFTB (Casida) excitation energies at
+    ///        the geometry in `frame`.
+    ///
+    /// Tight-binding time-dependent DFT response (Niehaus, Suhai, Della Sala,
+    /// Lugli, Elstner, Seifert, Frauenheim, *Phys. Rev. B* **63**, 085108
+    /// (2001), DOI 10.1103/PhysRevB.63.085108). Mulliken transition charges
+    /// \(q^{ia}_A=\tfrac12\sum_{\mu\in A}(c_{\mu i}(Sc_a)_\mu
+    /// + c_{\mu a}(Sc_i)_\mu)\) [e] contract the coupling kernel
+    /// \(K^{S}_{ia,jb}=\sum_{AB}q^{ia}_A\gamma_{AB}q^{jb}_B\) (singlet, the
+    /// same \(\gamma_{AB}\) [eV] as the SCC energy) or
+    /// \(K^{T}_{ia,jb}=\sum_{A}q^{ia}_A W_A q^{jb}_A\) (triplet, on-site
+    /// magnetization kernel, atom-averaged spin constant \(W_A\) [eV]); the
+    /// Hermitian eigenproblem \(\Omega F=\omega^2 F\) with
+    /// \(\Omega_{ia,jb}=\delta_{ij}\delta_{ab}(\varepsilon_a-\varepsilon_i)^2
+    /// +2\sqrt{\varepsilon_a-\varepsilon_i}\,K_{ia,jb}\,
+    /// \sqrt{\varepsilon_b-\varepsilon_j}\) is solved densely.
+    ///
+    /// **Stateless / Frame-in.** This runs its own converged restricted SCC at
+    /// `frame`'s geometry through the same routine `launch()` uses; it does
+    /// **not** read a cached ground state, so it is independent of whether (or
+    /// where) `launch()` last ran. Cost is one extra SCC solve.
+    ///
+    /// **Energies only** — no oscillator strengths, no transition dipoles, no
+    /// excited-state gradients. **Parameter caveat:** only the H onsite /
+    /// Hubbard \(U\) and the H–H Slater–Koster + repulsive grids are
+    /// transcribed mio-1-1; every other `MioSketch` pair (and every spin
+    /// constant \(W_A\), including H's) is an order-of-magnitude sketch, so
+    /// absolute excitation energies are not DFTB+/mio-1-1 numbers for anything
+    /// but the structural limits gated in
+    /// `regressions/semiempirical/td-dftb-h2/`.
+    ///
+    /// @param frame          Geometry [Å] + atomic number Z in the type column.
+    ///                       Read-only; nothing is written to it.
+    /// @param n_states       Number of lowest excitations to return
+    ///                       (dimensionless), 1 ≤ n_states ≤ n_pair.
+    /// @param channel        Singlet or triplet spin channel.
+    /// @param n_occ_window   Highest-lying occupied orbitals to include
+    ///                       (dimensionless); 0 = all occupied.
+    /// @param n_virt_window  Lowest-lying virtual orbitals to include
+    ///                       (dimensionless); 0 = all virtual.
+    /// @param coupling_scale Scale λ on the coupling kernel K (dimensionless).
+    ///                       1 = physical response; 0 = the non-interacting
+    ///                       limit, where ω reduces to \(\varepsilon_a
+    ///                       -\varepsilon_i\) exactly.
+    /// @return `TdDftbResult` — excitation energies [eV], the matching
+    ///         single-particle gaps [eV], Mulliken transition charges [e], and
+    ///         the assembled Casida matrix Ω [eV²].
+    /// @throws std::runtime_error when `sk_set != MioSketch`, when a k-mesh
+    ///         beyond Γ is set, when the reference is not closed shell
+    ///         (`multiplicity != 1` or an odd electron count), when there is
+    ///         no occupied or no virtual orbital, when the pair space exceeds
+    ///         the dense cap of 512, when an occupied→virtual gap is
+    ///         non-positive, or when a Casida root ω² is negative (an
+    ///         imaginary excitation — instability). No fallback values.
+    /// @throws std::invalid_argument when `n_states`, either window, or
+    ///         `coupling_scale` is out of range.
+    TdDftbResult td_casida(const Frame& frame, int n_states,
+                           TdDftbChannel channel = TdDftbChannel::singlet,
+                           int n_occ_window = 0, int n_virt_window = 0,
+                           double coupling_scale = 1.0) const;
 
   private:
     double energy_ = 0;

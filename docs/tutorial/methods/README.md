@@ -98,6 +98,17 @@ are ATV-mio-style). Fair walls from REFERENCE (`ratio` or `perf_exempt`).
 | SCC-DFTB2 H₂ total \(E\) vs mio-1-1 | [dftb2-dftbplus-energy-pin](dftb2-dftbplus-energy-pin.md) | `regressions/semiempirical/dftb2-dftbplus-energy-pin` | dftb+ 24.1 | **≈ 0.4** |
 | Γ-point periodic SCC-DFTB2 (1-D C chain) | [dftb2-periodic-gamma](dftb2-periodic-gamma.md) | `regressions/semiempirical/dftb2-periodic-gamma` | literature (+ family dftb+) | **perf_exempt** |
 
+## Index — TB / SE capability wave 4 (2026-07-29)
+
+Offline family-locked pins only. Oracle = **DFTB+** for DFTB family rows; a
+row may carry `oracle: literature` (formalism) when no DFTB+ binary and no
+published value for the exact geometry + SK set exist — the REFERENCE `Gaps`
+section must then say so explicitly and the case ships structural gates only.
+
+| Method | Page | Regression | Oracle |
+| ------ | ---- | ---------- | ------ |
+| Linear-response TD-DFTB (Casida) H₂ singlet/triplet | [td-dftb-h2](td-dftb-h2.md) | `regressions/semiempirical/td-dftb-h2` | literature (formalism; **no absolute pin** — `perf_exempt`) |
+
 ## Index — MetalWalls capability wave 1 (2026-07-23)
 
 Classical electrochemical MD + LAMMPS-overlap MD (map E1–E3, E8–E9). Offline
