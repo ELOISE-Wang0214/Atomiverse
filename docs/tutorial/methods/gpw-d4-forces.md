@@ -84,13 +84,13 @@ Default cutoffs match dftd4: CN **30 Bohr**, two-body disp **60 Bohr**.
 | \(a_1\) | 0.38574991 | dimensionless |
 | \(a_2\) | 4.80688534 | Bohr |
 
-**Force implementation note.** `cpu::scf::dftd4` returns
-\(F = -\nabla E_{\mathrm{disp}}\) by central differences of the energy
-functional (default step \(h = 10^{-4}\) Bohr). Offline dftd4 prints
-**gradient** \(g = +\partial E/\partial R\); the product comparison is
-\(F_{\mathrm{ATV}} \stackrel{?}{=} -g_{\mathrm{dftd4}}\). Because D4 is
-geometry-only, it does **not** change the SCF density — product wiring is
-therefore
+**Force implementation note.** `cpu::scf::dftd4` returns the **analytic**
+\(F = -\nabla E_{\mathrm{disp}}\) of the two-body functional (BJ pair +
+CN\(_\mathrm{d4}\) weight chain + EEQ charge-response adjoint). Offline
+dftd4 prints **gradient** \(g = +\partial E/\partial R\); the product
+comparison is \(F_{\mathrm{ATV}} \stackrel{?}{=} -g_{\mathrm{dftd4}}\).
+Because D4 is geometry-only, it does **not** change the SCF density —
+product wiring is therefore
 
 \[
 \mathbf{F}^{\mathrm{d4\,on}} - \mathbf{F}^{\mathrm{plain}}
@@ -289,10 +289,11 @@ dftd4 -f pbe --mbdscale 0.0 --grad pin_grad.txt --json pin.json POSCAR
 
 Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
 
-D4 force evaluation is \(O(N^2 \times N_{\mathrm{images}} \times 6N)\) central
-differences on a 6-atom cell (milliseconds). Full GPW SCF + electronic forces
-dominate wall time. A fair **full QS ENERGY_FORCE** ratio vs CP2K is
-**unavailable** on Arrhenius (no DFTD4-linked CP2K).
+D4 two-body force evaluation is \(O(N^2 \times N_{\mathrm{images}})\) (same
+order as the energy; not \(6N\) energy evaluations) on a 6-atom cell
+(micro–milliseconds). Full GPW SCF + electronic forces dominate wall time.
+A fair **full QS ENERGY_FORCE** ratio vs CP2K is **unavailable** on Arrhenius
+(no DFTD4-linked CP2K).
 
 | Twin | \(T_{\mathrm{oracle}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | ----------------------: | ----: | ---- | ------ |
@@ -313,8 +314,9 @@ host with libdftd4-linked CP2K.
 - **Hard gates are D4 energy + −∇E + wiring**, not absolute GPW force
   components vs CP2K QS (DFTD4 missing on pin host).
 - **Two-body only** — no ATM / C9 three-body / MBD term (\(s_9 = 0\)).
-- **Geometry-only D4 forces** use central FD of \(E_{\mathrm{disp}}\)
-  (\(h=10^{-4}\) Bohr default); not a closed-form analytic D4 gradient.
+- **Geometry-only D4 two-body forces** are the analytic gradient of
+  \(E_{\mathrm{disp}}\) (pair + CN + EEQ adjoint). ATM (\(s_9 \neq 0\)) still
+  uses central FD of the full energy.
 - **`d3` / `d3bj` / `d4` / `ts` / `mbd` / `xdm` mutually exclusive** — any two
   true throws in the force path.
 - **Multi-SCF FD of full product forces** on this cell is out of regression

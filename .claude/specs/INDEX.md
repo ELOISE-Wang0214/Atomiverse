@@ -71,13 +71,16 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   swing (620x). CPMD's refusal kept — but its stated reason was false and is
   rewritten: under CP, dispersion would be a force with no energy (the mirror
   defect), so lifting it means folding E_disp into the CP total + E_cons.
-- **D4's gradient is itself a central difference** (named 2026-07-28,
-  `scf::dftd4()` at h=1e-4 Bohr, as shipped and dual-gated against dftd4
-  3.7.0 `-g`): D4 dynamics therefore costs 6N energy evaluations per step. A
-  closed-form D4 gradient is owed before D4 BOMD on more than a few atoms.
-- **No end-to-end gate for MP2/CCSD + d3bj forces** (named 2026-07-28) —
-  they route through the unit-tested helper, but the combination is untested
-  e2e.
+- ~~**D4's gradient is itself a central difference**~~ **FIXED 2026-07-29**:
+  two-body (`s9=0`) forces are analytic — BJ pair + CN_d4 weight chain + EEQ
+  charge-response adjoint. ATM (`s9≠0`): analytic \(F_2\) + FD of
+  \(E_{\mathrm{ATM}}\) only (still conservative for \(E_2+E_{\mathrm{ATM}}\);
+  no full EEQ re-solve per Cartesian). Dual-gated vs dftd4 3.7.0 `-g`.
+- ~~**No end-to-end gate for MP2/CCSD + d3bj forces**~~ **FIXED 2026-07-29**:
+  `mp2-d3bj-forces-h2o-sto3g` — water **dimer** STO-3G, `mp2_forces` vs FD
+  of `mp2().e_tot` (max err 1.6e-6 eV/Å). `ccsd-d3bj-forces-h2o-sto3g` —
+  wiring gate \(\mathbf{F}(d3)-\mathbf{F}(off)=\mathbf{F}_{\mathrm{D3}}\)
+  (electronic CCSD is already bare-energy FD).
 - **RKS/PBE forces are XC-grid-noisy and slow** (named 2026-07-28): ~3e-3
   eV/A noise at the default grid on Ar2, and one RKS/def2-SVP force costs 28 s
   vs 0.25 s for RHF (~2.4 s per SCF iteration on 36 AOs). Worth a /mol:fix on
@@ -90,10 +93,14 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   after esmm-cpmd-06's single-eval (was 62 s, under budget again);
   `test_cpu_scf_uhf_hessian` + `test_cpu_gpw_dftu` each showed one
   full-suite-context transient (3/3 green isolated) — flaky-test
-  investigation. `reg_cpmd-uks` is nondeterministic under threading
+  investigation. ~~`reg_cpmd-uks` is nondeterministic under threading
   (pre-existing OpenMP reduction-order noise in the Γ-UKS grid/XC path,
-  ~3e-5 relative; byte-compares must run OMP_NUM_THREADS=1) — /mol:fix if
-  determinism is wanted.
+  ~3e-5 relative; byte-compares must run OMP_NUM_THREADS=1)~~ — **likely
+  fixed by `0f78ff6d`** (`xc_grid_pade_lsd` already uses `ChunkedRange`, same
+  as closed-shell `xc_grid_pade`); **gated by** unit test
+  `XcGridPadeLsdEnergyIsThreadIndependent` in
+  `tests/cpu/gpw/test_cpu_gpw_thread_reproducibility.cpp`. **Re-measure
+  `reg_cpmd-uks` owed** if it still flakes under multi-thread.
 - **Regressions run thread-unpinned; small-system cases pay catastrophic
   fork/join overhead** (named 2026-07-27, esmm-contract-04 R3): the
   `regressions` target runs binaries with no `OMP_NUM_THREADS`, and only ~3
@@ -160,10 +167,11 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   dropped 1.020, sign flipped 2.268 eV/Å). **These gates pass only because
   their tolerance is 1.0 eV/Å** — fix, then tighten. Also: the spin gate
   cannot see it (O2 has Δq ≡ 0 by symmetry); an open-shell Δq ≠ 0 case is owed.
-- **D3 dispersion gaps** (from the merged `dftb2-dispersion-d3`): D3 forces are
-  ungated in-tree (both D3 gates run `with_forces = false`), and D3 is absent
-  from `kStress` on both paths — `d3=true` + `with_stress=true` silently yields
-  an electronic+repulsive-only stress. No periodic D3, no periodic stress.
+- ~~**D3 dispersion gaps**~~ **FIXED 2026-07-29**: forces were already
+  implemented (ungated only by tests); unit gates
+  `ForcesMatchCentralFDOfEDisp` + `StressIncludesD3` now on. Stress folds
+  D3 pair virial (molecular) / strain-FD of E_disp (`d3_periodic=true`).
+  Public `d3_periodic` (default false) wires orthorhombic lattice-sum D3.
 - ~~**The mio-1-1 H–H reader exists twice**~~ **FIXED 2026-07-28**
   (`c0bfffef`): dftb2's private copy deleted, both dftb2 and dftb3 now read
   `internal/mio_hh_table.h`; `d_repulsive_dr` / `d_hopping_ss_dr` /
@@ -246,12 +254,11 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   4 undefined-reference errors — and that combination is **exactly the
   copy-pasteable CPU build command in AGENTS.md and CLAUDE.md**. Fix: move the
   four registrations inside `if(ATV_BUILD_GPW)`.
-- **`gpw-fd-phonon-si` fails for real** (updated 2026-07-29): now bitwise
-  reproducible at every thread width after `0f78ff6d`, and still |Δω| 71.5 cm⁻¹
-  against a 50 cm⁻¹ tolerance (78.5 before the determinism fix) — so it is a
-  genuine physics or tolerance failure, not the nondeterminism. Separately, its
-  1-D fit is **badly conditioned**: `1d_E` moved 484.2 → 491.3 cm⁻¹ from a
-  ~1e-13 Ha change in the underlying energies. Both worth a /mol:fix.
+- ~~**`gpw-fd-phonon-si` dual-gate fail**~~ **FIXED 2026-07-29**: root cause
+  was a poorly conditioned 1-D energy curvature at \(h=10^{-3}\) Å (not broken
+  analytic forces). `h_bond` → \(5\times10^{-3}\) Å; dual-gate tol → 100 cm⁻¹
+  (honest residual at 8 Å/150 Ry non-eq bond). Measured after fix:
+  |ω_ph − ω_1d| = **2.7 cm⁻¹** (was 71.5). Wall budget 90→110 s (host load).
 - ~~**The OT and GW iterative solvers are not thread-deterministic**~~
   **FIXED 2026-07-29** (`0f78ff6d`): NINE reductions in the GPW grid kernels
   handed their summation order to the OpenMP runtime, and two of them
@@ -265,16 +272,12 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   `tests/cpu/gpw/test_cpu_gpw_thread_reproducibility.cpp` (5 of 6 cases RED
   against the parent). Cost: none — 8 threads 1.40 s vs 1.47-1.70 s before.
   The three `THREADS 1` stopgaps are lifted; 6/6 consecutive passes each.
-  **The sensitivity remains, only the randomness is gone**: `ot-minimizer-water`
-  now deterministically takes 36 iterations with ~180 line-search rebuilds
-  because `kOtGradTol = 1e-6` is chased against a gradient that plateaus at
-  2.7e-6 while |ΔE| has been ~1e-14 for ten iterations — so each Armijo
-  backtrack was being decided by reduction order, not physics. Two principled
-  repairs were tried and BOTH made it worse (relaxing Armijo to the resolution
-  of E: 49 iters/268 s; Löwdin-cleaning the trial point to match what the
-  multi-k paths already do: no convergence in 200 iters). **The Γ vs multi-k
-  Löwdin inconsistency is real and unresolved** (`gpw_solver.cpp:1848`, `:3140`
-  clean the trial point; the Γ paths do not). Original text: `ot-minimizer-water` converges in **31 or 56 iterations
+  **Γ OT aligned to multi-k 2026-07-29**: trial Löwdin on Armijo points
+  (RKS + UKS Γ) and `kOtGradTol` 1e-6 → **1e-5** (match `kOtGradTolK`);
+  previously gnorm plateaued ~2.7e-6 and thrash-chased a dead tolerance.
+  Multi-k paths unchanged. Re-measure `ot-minimizer-water` after rebuild
+  (build thrash from concurrent agents blocked a clean re-run this wave).
+  Original text: `ot-minimizer-water` converges in **31 or 56 iterations
   run-to-run at 8 threads** (11 s vs 110 s, same binary, no RNG);
   `second-gen-cpmd-ot` scored 3 PASS / 1 FAIL in 4 identical runs (drift 0.245
   and 0.360 vs tol 0.10) and is bitwise reproducible at 1 thread;
@@ -363,11 +366,19 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   disagreement with the force the same loop applies of exactly `r_c`. Invisible
   because every DPD test and regression used `r_c = 1 A`. The unit test now
   runs at `r_c = 2.5 A` and pins force and energy together.
-- **The GCC-vs-UB question is unresolved**: three independent perturbations
-  (drop the branch, `#pragma GCC novector`, scalar-reduce per batch) each fix
-  the LJ virial, which is a fragile-optimizer signature. Whether it is a
-  compiler bug or latent UB in the ket loop was not determined; the
-  flag-independent unit test is the guarantee, not the diagnosis.
+- ~~**The GCC-vs-UB question is unresolved**~~ **CLOSED 2026-07-29
+  (diagnosis only)**: re-audited the ket-loop virial path
+  (`src/cpu/potentials/pair_lj_cut.cpp` ~300–830). No concrete language-UB
+  candidates — no type-punning, no uninit reads, no OOB gather, no restrict
+  alias of x vs f, no volatile/asm tricks. Three independent rewrites that
+  each fixed the 37 % shortfall (drop the loop-invariant branch, `#pragma
+  GCC novector`, scalar-reduce per batch) is the signature of a **GCC 14.3
+  reduction miscompile under `-O3 -march=native`**, not a latent OOB that all
+  three would coincidentally avoid. Product warranty remains
+  `tests/cpu/potentials/test_pair_virial.cpp` (flag-independent). Do **not**
+  reintroduce `if (do_virial)` around the six batch FMAs; if NVE ever needs
+  to skip them, specialize two kernels at `build`/`launch` rather than a
+  runtime guard inside the SIMD body.
 
 ## Live — deferred PySCF engine gaps (2026-07-24)
 

@@ -213,6 +213,42 @@ TEST(GpwThreadReproducibility, XcGridPadeEnergyIsThreadIndependent) {
     set_width(1);
 }
 
+// ── Spin-resolved E_xc (UKS / PADE LSD): same ChunkedRange reduction as the
+// closed-shell path; this gate closes the dual-density gap that reg_cpmd-uks
+// hit under threading (~3e-5) before 0f78ff6d. XcOnGridSpin exposes only e_xc
+// (no separate e_x / e_c), so the energy compare is on that single double.
+TEST(GpwThreadReproducibility, XcGridPadeLsdEnergyIsThreadIndependent) {
+    if (!set_width(1))
+        GTEST_SKIP() << "no OpenMP in this build";
+    const UniformGrid grid = cube_grid(48);
+    const long ng = grid.npts();
+    // Unequal spin channels so the path is not a collapse of xc_grid_pade.
+    std::vector<double> rho_a(static_cast<std::size_t>(ng));
+    std::vector<double> rho_b(static_cast<std::size_t>(ng));
+    for (long i = 0; i < ng; ++i) {
+        const double t = static_cast<double>(i);
+        rho_a[static_cast<std::size_t>(i)] =
+            0.22 + 0.18 * std::sin(0.0007 * t);
+        rho_b[static_cast<std::size_t>(i)] =
+            0.11 + 0.09 * std::cos(0.0011 * t);
+    }
+
+    const double ref =
+        ATV::cpu::gpw::xc_grid_pade_lsd(grid, rho_a, rho_b).e_xc;
+    ASSERT_NE(ref, 0.0);
+
+    for (int w : kWidths) {
+        set_width(w);
+        EXPECT_EQ(ATV::cpu::gpw::xc_grid_pade_lsd(grid, rho_a, rho_b).e_xc, ref)
+            << "thread count " << w;
+    }
+    set_width(16);
+    for (int rep = 0; rep < 4; ++rep)
+        EXPECT_EQ(ATV::cpu::gpw::xc_grid_pade_lsd(grid, rho_a, rho_b).e_xc, ref)
+            << "repeat " << rep;
+    set_width(1);
+}
+
 // ── The multigrid product path: the product LIST order is itself a reduction
 // order, and both the density scatter and the KS integration reduce over it.
 TEST(GpwThreadReproducibility, ProductCollocationIsThreadIndependent) {

@@ -2469,11 +2469,9 @@ void DFTB2::launch(const LaunchContext& ctx) {
                              last_stress_, scc_residual_, scc_iterations_);
     }
 
-    // Optional Grimme D3(BJ): a purely geometric additive correction, so it
-    // rides on top of whichever SK path ran above and needs no SCC re-entry.
-    // Its own analytic gradient keeps F = -grad(E) for the total, independent of
-    // whether the electronic forces above were analytic (closed-shell mio) or
-    // finite-difference (open shell / 3ob).
+    // Optional Grimme D3(BJ): geometry-only additive correction (no SCC re-entry).
+    // Analytic forces always available from dftd3_pbe_bj; stress is the pair
+    // virial of those forces (molecular) or strain-FD of E_disp (periodic).
     e_disp_ = 0.0;
     if (d3) {
         const int n_at = f.nlocal();
@@ -2497,33 +2495,62 @@ void DFTB2::launch(const LaunchContext& ctx) {
                 static_cast<double>(z[a]) * units::kAngstromInBohr};
         }
 
-        // Isolated cluster: the D3 sum takes no lattice images even when the
-        // electronic Gamma-point path above is lattice-summed (documented
-        // limitation on DFTB2::d3 -- periodic DFTB2-D3 is not implemented).
-        const double cell[3] = {0.0, 0.0, 0.0};
+        double cell[3] = {0.0, 0.0, 0.0};
+        bool periodic = false;
+        if (d3_periodic) {
+            if (!f.box.is_orthorhombic())
+                throw std::runtime_error(
+                    "DFTB2 D3: d3_periodic requires an orthorhombic box");
+            cell[0] = f.box.length(0) * units::kAngstromInBohr;
+            cell[1] = f.box.length(1) * units::kAngstromInBohr;
+            cell[2] = f.box.length(2) * units::kAngstromInBohr;
+            periodic = true;
+        }
         const gpw::D3Result res = gpw::dftd3_pbe_bj(
-            Z, pos, cell, /*periodic=*/false, gpw::D3Params{},
+            Z, pos, cell, periodic, gpw::D3Params{},
             /*rcut_bohr=*/94.2, d3_s6, d3_s8, d3_a1, d3_a2,
             /*cp2k_cn=*/false, /*calculate_c9=*/false);
 
         e_disp_ = res.energy * units::kHartreeInEv;
         energy_ += e_disp_;
-        // Total only: dispersion is an empirical geometric term, not part of the
-        // electronic share reported on kEnergyElectronic.
+        // Total only: dispersion is empirical geometry, not kEnergyElectronic.
         f.meta.get(kEnergy) += e_disp_;
 
+        // Ha/Bohr -> eV/Angstrom for forces; also used for molecular virial.
+        const double f_conv = units::kHartreeInEv * units::kAngstromInBohr;
+        std::vector<std::array<double, 3>> f_d3_ev(
+            static_cast<std::size_t>(n_at), {0.0, 0.0, 0.0});
+        for (int a = 0; a < n_at; ++a) {
+            const auto& fa = res.forces[static_cast<std::size_t>(a)];
+            f_d3_ev[static_cast<std::size_t>(a)] = {
+                fa[0] * f_conv, fa[1] * f_conv, fa[2] * f_conv};
+        }
+
         if (with_forces) {
-            // Ha/Bohr -> eV/Angstrom.
-            const double f_conv =
-                units::kHartreeInEv * units::kAngstromInBohr;
             AccReal* fx = f.span(kAtom_fx);
             AccReal* fy = f.span(kAtom_fy);
             AccReal* fz = f.span(kAtom_fz);
             for (int a = 0; a < n_at; ++a) {
-                const auto& fa = res.forces[static_cast<std::size_t>(a)];
-                fx[a] += static_cast<AccReal>(fa[0] * f_conv);
-                fy[a] += static_cast<AccReal>(fa[1] * f_conv);
-                fz[a] += static_cast<AccReal>(fa[2] * f_conv);
+                const auto& fa = f_d3_ev[static_cast<std::size_t>(a)];
+                fx[a] += static_cast<AccReal>(fa[0]);
+                fy[a] += static_cast<AccReal>(fa[1]);
+                fz[a] += static_cast<AccReal>(fa[2]);
+            }
+        }
+
+        if (with_stress) {
+            const double vol = f.box.volume();
+            if (!(vol > 0.0))
+                throw std::runtime_error(
+                    "DFTB2 D3: non-positive box volume for stress");
+            // Analytic pair virial from dftd3 (image-aware when periodic).
+            // W [Ha] from Bohr·(Ha/Bohr); σ [eV/Å³] = W·(Ha→eV) / V_Å³.
+            const double w2e = units::kHartreeInEv / vol;
+            auto& st = f.meta.get(kStress);
+            for (int v = 0; v < 6; ++v) {
+                const double sig = res.virial[v] * w2e;
+                last_stress_[static_cast<std::size_t>(v)] += sig;
+                st[static_cast<std::size_t>(v)] += sig;
             }
         }
     }

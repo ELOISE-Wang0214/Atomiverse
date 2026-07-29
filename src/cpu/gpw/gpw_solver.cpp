@@ -4027,9 +4027,11 @@ static GpwResult run_gpw_scf_impl(
     constexpr double kDiisErrTol = 1e-5;
     // OT convergence: max element of the projected gradient (the SCF error
     // vector). Paired with the energy-stability test for a tight fixed point.
+    // Matched to multi-k kOtGradTolK (1e-5): Γ OT often plateaus ~2.7e-6, so
+    // the old 1e-6 floor caused thrashing against a non-zero residual floor.
     // DFT+U softens the residual (same 5e-3 class as DIIS+U): V_U can leave a
     // small projected-gradient floor while the total energy is fully stable.
-    constexpr double kOtGradTol = 1e-6;
+    constexpr double kOtGradTol = 1e-5;
     constexpr double kOtGradTolDftu = 1e-2;
     const double ot_grad_tol = do_dftu ? kOtGradTolDftu : kOtGradTol;
 
@@ -4582,6 +4584,9 @@ static GpwResult run_gpw_scf_impl(
                     alpha = 1.0;
                 alpha = std::min(alpha, 2.0);
                 constexpr double c1 = 1e-4;
+                // Löwdin-clean every Armijo trial (multi-k parity): without it
+                // trial etot sees drifted metric and accept-only clean leaves a
+                // residual floor that thrashing cannot leave.
                 RealMatrix Cnew_a =
                     na > 0 ? internal::ot_parameterize(Cocc_a, alpha * d_a, S)
                            : Cocc_a;
@@ -4589,21 +4594,29 @@ static GpwResult run_gpw_scf_impl(
                     nb_spin > 0
                         ? internal::ot_parameterize(Cocc_b, alpha * d_b, S)
                         : Cocc_b;
+                if (na > 0)
+                    Cnew_a = linalg::lowdin_orthonormalize(Cnew_a, S);
+                if (nb_spin > 0)
+                    Cnew_b = linalg::lowdin_orthonormalize(Cnew_b, S);
                 for (int bt = 0; bt < 50; ++bt) {
                     if (etot(Cnew_a, Cnew_b) <= e_total + c1 * alpha * slope)
                         break;
                     alpha *= 0.5;
-                    if (na > 0)
+                    if (na > 0) {
                         Cnew_a =
                             internal::ot_parameterize(Cocc_a, alpha * d_a, S);
-                    if (nb_spin > 0)
+                        Cnew_a = linalg::lowdin_orthonormalize(Cnew_a, S);
+                    }
+                    if (nb_spin > 0) {
                         Cnew_b =
                             internal::ot_parameterize(Cocc_b, alpha * d_b, S);
+                        Cnew_b = linalg::lowdin_orthonormalize(Cnew_b, S);
+                    }
                 }
                 if (na > 0)
-                    Cocc_a = linalg::lowdin_orthonormalize(Cnew_a, S);
+                    Cocc_a = Cnew_a; // already Löwdin-clean
                 if (nb_spin > 0)
-                    Cocc_b = linalg::lowdin_orthonormalize(Cnew_b, S);
+                    Cocc_b = Cnew_b;
             }
             // Budget exhausted: export full orbital state (P/C/eps + ⟨S²⟩) at
             // the final OT densities so partial-SCF / SGCP UKS-OT force
@@ -4824,15 +4837,20 @@ static GpwResult run_gpw_scf_impl(
                 alpha = 1.0;
             alpha = std::min(alpha, 2.0);
             constexpr double c1 = 1e-4;
+            // Löwdin-clean every Armijo trial (multi-k parity): without it
+            // trial etot sees drifted metric and accept-only clean leaves a
+            // residual floor that thrashing cannot leave.
             RealMatrix Cnew = internal::ot_parameterize(Cocc, alpha * d, S);
+            Cnew = linalg::lowdin_orthonormalize(Cnew, S);
             for (int bt = 0; bt < 50; ++bt) {
                 ++ls_rebuilds;
                 if (etot(Cnew) <= e_total + c1 * alpha * slope)
                     break;
                 alpha *= 0.5;
                 Cnew = internal::ot_parameterize(Cocc, alpha * d, S);
+                Cnew = linalg::lowdin_orthonormalize(Cnew, S);
             }
-            Cocc = linalg::lowdin_orthonormalize(Cnew, S);
+            Cocc = Cnew; // already Löwdin-clean
             if (prof) {
                 auto tD = Clk::now();
                 std::fprintf(stderr,

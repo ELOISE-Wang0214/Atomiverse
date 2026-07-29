@@ -52,6 +52,14 @@ struct D3Result {
     double energy = 0.0; ///< Dispersion energy [Hartree].
     /// @brief Forces F_A = -dE/dR_A [Hartree/Bohr], one xyz triple per atom.
     std::vector<std::array<double, 3>> forces;
+    /// @brief Unnormalized pair virial W_αβ [Hartree] in Voigt order
+    ///        (xx,yy,zz,xy,xz,yz). Intensive stress is σ = W / V with V in
+    ///        Bohr³ (or convert both energy and length to eV/Å and divide by
+    ///        V_Å³). Includes lattice-image pair vectors when `periodic`.
+    ///        Empty / zero when no pairs contributed. Sign: W = Σ r ⊗ F_pair
+    ///        with F_pair the force on the first site of each pair term, so
+    ///        σ = W/V matches σ = −(1/V) ∂E/∂ε for F = −∇E.
+    double virial[6] = {0, 0, 0, 0, 0, 0};
 };
 
 /// @brief PBE-D3 (zero damping) dispersion energy and forces.

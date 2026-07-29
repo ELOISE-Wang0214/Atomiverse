@@ -66,14 +66,16 @@ double dftd4_energy(const std::vector<int>& Z,
 
 /// @brief PBE-D4 energy and forces \(F = -\nabla E_{\mathrm{disp}}\).
 ///
-/// Energy matches `dftd4_energy`. Forces are the exact gradient of that
-/// geometry-only energy (central differences of the energy functional with
-/// step `grad_h` [Bohr]; default \(10^{-4}\)). Dual-gates against offline
-/// dftd4 3.7.0 `-g` (printed gradient is \(+\nabla E\); ATV stores \(-\nabla E\)).
+/// Energy matches `dftd4_energy`. Forces: **analytic** two-body gradient
+/// (BJ + CN\(_\mathrm{d4}\) chain + EEQ adjoint). When `s9 ≠ 0` (ATM), the
+/// three-body piece is central-differenced of \(E_{\mathrm{ATM}}\) only
+/// (step `grad_h`, default \(10^{-4}\) Bohr) and added so
+/// \(F = -\nabla(E_2+E_{\mathrm{ATM}})\). Dual-gates against offline dftd4
+/// 3.7.0 `-g` (printed \(+\nabla E\); ATV stores \(-\nabla E\)).
 ///
 /// @param s9        ATM three-body scale (0 = off; PBE-D4-ATM = 1).
 /// @param disp3_cut Three-body cutoff [Bohr].
-/// @param grad_h    Central-difference step for \(\nabla E\) [Bohr].
+/// @param grad_h    FD step [Bohr] for the ATM energy leg only.
 /// @return Energy [Hartree] and forces [Hartree/Bohr].
 D4Result dftd4(const std::vector<int>& Z,
                const std::vector<std::array<double, 3>>& pos_bohr,
@@ -116,14 +118,12 @@ class D4 {
     /// @brief Dispersion forces \(F_A = -\partial E_{disp}/\partial R_A\) for
     ///        the same functional `energy()` evaluates.
     ///
-    /// Delegates to the free `dftd4()` gradient: central differences of the
-    /// geometry-only D4 energy functional (CN + EEQ charges + BJ pair + ATM all
-    /// move with the nuclei), step `grad_h` = 10⁻⁴ Bohr, dual-gated against
-    /// offline dftd4 3.7.0 `-g`. Same members, same isolated evaluation, same
-    /// tables as `energy()`, so the pair is conservative by construction.
-    /// Cost is 6N energy evaluations — set `d3bj` instead for long dynamics on
-    /// large systems (D3(BJ) has a closed-form analytic gradient).
-    /// Unsupported Z throws.
+    /// Delegates to the free `dftd4()` gradient: analytic \(-\nabla E\) of the
+    /// geometry-only D4 energy (BJ pair + CN\(_\mathrm{d4}\) chain + EEQ charge
+    /// adjoint; ATM via FD when `s9 ≠ 0`). Same members, same isolated
+    /// evaluation, same tables as `energy()`, so the pair is conservative.
+    /// Two-body cost is \(O(N^2)\) (not 6N energy evaluations). Unsupported Z
+    /// throws.
     ///
     /// @param frame System geometry (Å, Z).
     /// @return One xyz triple per atom [Hartree/Bohr], length `frame.nlocal()`.

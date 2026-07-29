@@ -510,6 +510,12 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
                         res.forces[j][0] += fx;
                         res.forces[j][1] += fy;
                         res.forces[j][2] += fz;
+                        res.virial[0] -= pref * rx * rx;
+                        res.virial[1] -= pref * ry * ry;
+                        res.virial[2] -= pref * rz * rz;
+                        res.virial[3] -= 2.0 * pref * rx * ry;
+                        res.virial[4] -= 2.0 * pref * rx * rz;
+                        res.virial[5] -= 2.0 * pref * ry * rz;
 
                         // CN-chain: dE/dCN_i and dE/dCN_j for this pair's C6/C8.
                         dEdCN[i] += -kS6 * fac * dc6a * fdab6 / r6
@@ -544,6 +550,12 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
             res.forces[d.k][0] += fx;
             res.forces[d.k][1] += fy;
             res.forces[d.k][2] += fz;
+            res.virial[0] -= s * d.rik[0] * d.rik[0];
+            res.virial[1] -= s * d.rik[1] * d.rik[1];
+            res.virial[2] -= s * d.rik[2] * d.rik[2];
+            res.virial[3] -= 2.0 * s * d.rik[0] * d.rik[1];
+            res.virial[4] -= 2.0 * s * d.rik[0] * d.rik[2];
+            res.virial[5] -= 2.0 * s * d.rik[1] * d.rik[2];
         }
     }
 
@@ -697,6 +709,15 @@ D3Result dftd3_pbe_bj(const std::vector<int>& Z,
                         res.forces[j][0] += fx;
                         res.forces[j][1] += fy;
                         res.forces[j][2] += fz;
+                        // Pair virial with image vector r (F_i = −pref r):
+                        // matches Σ_a r_a ⊗ F_a for molecular pairs and the
+                        // image form for PBC. Off-diag doubled like DFTB2.
+                        res.virial[0] -= pref * rx * rx;
+                        res.virial[1] -= pref * ry * ry;
+                        res.virial[2] -= pref * rz * rz;
+                        res.virial[3] -= 2.0 * pref * rx * ry;
+                        res.virial[4] -= 2.0 * pref * rx * rz;
+                        res.virial[5] -= 2.0 * pref * ry * rz;
 
                         // CN-chain: ∂E/∂CN through C6/C8 (f also depends on
                         // √(C8/C6); include d f / d C for forces accuracy).
@@ -737,6 +758,13 @@ D3Result dftd3_pbe_bj(const std::vector<int>& Z,
             res.forces[d.k][0] += fx;
             res.forces[d.k][1] += fy;
             res.forces[d.k][2] += fz;
+            // CN-chain forces also carry a pair virial on rik.
+            res.virial[0] -= s * d.rik[0] * d.rik[0];
+            res.virial[1] -= s * d.rik[1] * d.rik[1];
+            res.virial[2] -= s * d.rik[2] * d.rik[2];
+            res.virial[3] -= 2.0 * s * d.rik[0] * d.rik[1];
+            res.virial[4] -= 2.0 * s * d.rik[0] * d.rik[2];
+            res.virial[5] -= 2.0 * s * d.rik[1] * d.rik[2];
         }
     }
 

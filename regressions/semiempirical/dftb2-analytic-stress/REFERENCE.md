@@ -83,11 +83,11 @@ nor the new value is an oracle number — no DFTB+ binary exists on this host
 
 ## Gaps (still open)
 
-1. **D3 dispersion is absent from the stress.** `DFTB2::d3` contributes to the
-   energy and forces but not to `kStress` — neither the analytic pair virial nor
-   the open-shell strain-FD path (which differentiates `scc_total`, excluding
-   dispersion) sees it. Setting `d3 = true` with `with_stress = true` silently
-   yields an electronic+repulsive-only stress. A D3 virial is owed.
+1. ~~**D3 dispersion is absent from the stress.**~~ **Closed:** with `d3=true`
+   and `with_stress=true`, D3 is folded into `last_stress_` / `kStress`
+   (molecular pair virial of D3 forces; periodic strain-FD of \(E_{\mathrm{disp}}\)
+   when `d3_periodic=true`). Unit gates in
+   `tests/cpu/semiempirical/test_dftb2_dispersion_d3.cpp`.
 2. **No periodic case.** Both this gate and the geometry are a molecule in a
    20 Å box, so the stress is never checked against the Γ-point lattice-summed
    energy path, where the min-image force/virial expression is not the gradient

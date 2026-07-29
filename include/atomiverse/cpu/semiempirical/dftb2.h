@@ -62,11 +62,12 @@ enum class DftbSkSet {
 /// correction using in-tree Grimme tables and the published DFTB3-D3(BJ)
 /// damping set (s6, s8, a1, a2) as used by DFTB+ / simple-dftd3 `--bj dftb3`.
 /// It is added on top of **either** `sk_set` path, with its own analytic
-/// gradient, so `F = −∇E` holds for the total. Three-body ATM is off.
-/// **Limitation:** the dispersion sum is evaluated as an *isolated cluster*
-/// (no lattice images) even when the electronic Γ-point path is lattice-summed,
-/// so `d3` is only physical for molecules / large boxes — a periodic D3 lattice
-/// sum for DFTB2 is not implemented.
+/// gradient and (when `with_stress`) pair-virial / strain-FD stress, so
+/// \(F = -\nabla E\) and \(\sigma = -(1/\Omega)\partial E/\partial\varepsilon\)
+/// hold for the total. Three-body ATM is off.
+/// Default (`d3_periodic = false`): isolated-cluster D3 (no lattice images) —
+/// correct for molecules / large boxes and the water-dimer pin. Set
+/// `d3_periodic = true` for an orthorhombic lattice-image D3 sum.
 ///
 /// Open shell uses `charge` and `multiplicity` to set nα, nβ. Units: energy
 /// [eV], positions [Å], forces [eV/Å], stress [eV/Å³] Voigt
@@ -104,9 +105,10 @@ class DFTB2 : public cpu::Semiempirical {
     ///
     /// Restricted MioSketch: closed-form pair virial of the analytic force
     /// terms. Open-shell / ThreeOb: multi-SCC affine strain-FD of total E.
-    /// **Excludes the `d3` dispersion term on both paths** — see
-    /// `regressions/semiempirical/dftb2-analytic-stress/REFERENCE.md` Gaps.
-    /// Multi-k (`any k_mesh[d] > 1`) does not support stress.
+    /// When `d3=true`, D3 stress is folded in from the analytic pair virial
+    /// of `dftd3_pbe_bj` (image-aware when `d3_periodic=true`). Multi-k
+    /// (`any k_mesh[d] > 1`) does not support electronic stress (D3 stress
+    /// still applies if requested).
     bool with_stress = false;
     /// @brief Static SK parameter set (member — not a Config bag).
     DftbSkSet sk_set = DftbSkSet::MioSketch;
@@ -116,6 +118,9 @@ class DFTB2 : public cpu::Semiempirical {
     int multiplicity = 1;
     /// @brief Opt-in Grimme DFT-D3 with Becke–Johnson damping (two-body).
     bool d3 = false;
+    /// @brief When true with `d3`, lattice-sum D3 over the orthorhombic box.
+    ///        Default false preserves the molecular water-dimer pin.
+    bool d3_periodic = false;
     /// @brief D3 C6 scale (dimensionless). DFTB3-D3(BJ) default = 1.
     double d3_s6 = 1.0;
     /// @brief D3 C8 scale (dimensionless). DFTB3-D3(BJ) default = 0.5883.

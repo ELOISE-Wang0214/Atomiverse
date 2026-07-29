@@ -6,6 +6,11 @@
 /// erf CNs, EEQ2019 charges (Ewald A-matrix when periodic), BJ-damped pair sum
 /// over lattice images. ATM (`s9`) follows dftd4 `damping/atm.f90` with neutral
 /// C6 reweight (dftd4 `disp.f90`).
+///
+/// Two-body forces are analytic: explicit BJ pair derivatives, the CN_d4 chain
+/// through reference Gaussian weights, and an EEQ adjoint for charge response
+/// (A λ = ∂E/∂q). ATM forces (`s9 ≠ 0`) remain central differences of the full
+/// energy functional.
 
 #include "atomiverse/cpu/scf/dftd4.h"
 
@@ -97,13 +102,37 @@ double zeta(double a, double c, double qref, double qmod) {
     return std::exp(a * (1.0 - std::exp(c * (1.0 - qref / qmod))));
 }
 
+/// @brief ∂zeta/∂qmod (0 when qmod < 0, where zeta is clamped).
+double dzeta_dqmod(double a, double c, double qref, double qmod) {
+    if (qmod < 0.0)
+        return 0.0;
+    const double z = zeta(a, c, qref, qmod);
+    const double expc = std::exp(c * (1.0 - qref / qmod));
+    // u = a (1 − exp(c(1 − qref/qmod))); du/dqmod = −a c qref/qmod² · expc
+    const double du = -a * c * (qref / (qmod * qmod)) * expc;
+    return z * du;
+}
+
 double weight_cn(double wf, double cn, double cnref) {
     const double d = cn - cnref;
     return std::exp(-wf * d * d);
 }
 
+/// @brief ∂weight_cn/∂cn.
+double dweight_cn_dcn(double wf, double cn, double cnref) {
+    const double d = cn - cnref;
+    return -2.0 * wf * d * weight_cn(wf, cn, cnref);
+}
+
 double erf_count(double r, double rc, double kcn) {
     return 0.5 * (1.0 + std::erf(-kcn * (r - rc) / rc));
+}
+
+/// @brief ∂erf_count/∂r.
+double derf_count(double r, double rc, double kcn) {
+    const double u = -kcn * (r - rc) / rc;
+    // ½ · (2/√π) exp(−u²) · (−kcn/rc) = −(kcn/(rc √π)) exp(−u²)
+    return -(kcn / (rc * kSqrtPi)) * std::exp(-u * u);
 }
 
 double en_factor(double eni, double enj) {
@@ -114,6 +143,106 @@ double en_factor(double eni, double enj) {
 double log_cn_cut(double cn, double cnmax) {
     return std::log(1.0 + std::exp(cnmax))
            - std::log(1.0 + std::exp(cnmax - cn));
+}
+
+/// @brief ∂log_cn_cut/∂cn = 1 / (1 + exp(cn − cnmax)).
+double dlog_cn_cut(double cn, double cnmax) {
+    return 1.0 / (1.0 + std::exp(cn - cnmax));
+}
+
+/// @brief One CN-derivative neighbour entry (dCN_i/dR via atom k).
+struct DCN {
+    int k;                     ///< neighbour atom index
+    double dval;               ///< d(contrib)/dr along rik
+    std::array<double, 3> rik; ///< R_i − R_k − T [Bohr]
+};
+
+/// @brief Apply F += −(dE/dCN_i) ∇_R CN_i from a neighbour list.
+void apply_cn_forces(const std::vector<double>& dEdCN,
+                     const std::vector<std::vector<DCN>>& dcn,
+                     std::vector<std::array<double, 3>>& forces) {
+    const int n = static_cast<int>(dEdCN.size());
+    for (int i = 0; i < n; ++i) {
+        const double de = dEdCN[static_cast<std::size_t>(i)];
+        if (std::abs(de) < 1.0e-30)
+            continue;
+        for (const auto& d : dcn[static_cast<std::size_t>(i)]) {
+            const double drk = std::sqrt(d.rik[0] * d.rik[0] + d.rik[1] * d.rik[1]
+                                         + d.rik[2] * d.rik[2]);
+            if (drk < 1.0e-14)
+                continue;
+            const double s = de * d.dval / drk;
+            const double fx = s * d.rik[0];
+            const double fy = s * d.rik[1];
+            const double fz = s * d.rik[2];
+            // F_i = −∂E/∂R_i; ∂E/∂R_i includes (dE/dCN_i)(dCN_i/dR_i)
+            // dCN_i/dR_i = dval · rik/|rik|, dCN_i/dR_k = −same
+            forces[static_cast<std::size_t>(i)][0] -= fx;
+            forces[static_cast<std::size_t>(i)][1] -= fy;
+            forces[static_cast<std::size_t>(i)][2] -= fz;
+            forces[static_cast<std::size_t>(d.k)][0] += fx;
+            forces[static_cast<std::size_t>(d.k)][1] += fy;
+            forces[static_cast<std::size_t>(d.k)][2] += fz;
+        }
+    }
+}
+
+/// @brief Dense linear solve A x = b (partial pivoting); A is ndim×ndim row-major.
+void solve_linear(const std::vector<double>& Aflat, const std::vector<double>& b,
+                  int ndim, std::vector<double>& sol) {
+    std::vector<double> aug(static_cast<std::size_t>(ndim * (ndim + 1)));
+    for (int i = 0; i < ndim; ++i) {
+        for (int j = 0; j < ndim; ++j)
+            aug[static_cast<std::size_t>(i * (ndim + 1) + j)] =
+                Aflat[static_cast<std::size_t>(i * ndim + j)];
+        aug[static_cast<std::size_t>(i * (ndim + 1) + ndim)] =
+            b[static_cast<std::size_t>(i)];
+    }
+    for (int col = 0; col < ndim; ++col) {
+        int piv = col;
+        double best =
+            std::abs(aug[static_cast<std::size_t>(col * (ndim + 1) + col)]);
+        for (int r = col + 1; r < ndim; ++r) {
+            const double v =
+                std::abs(aug[static_cast<std::size_t>(r * (ndim + 1) + col)]);
+            if (v > best) {
+                best = v;
+                piv = r;
+            }
+        }
+        if (best < 1.0e-18)
+            throw std::runtime_error("D4: singular EEQ matrix");
+        if (piv != col) {
+            for (int c = col; c <= ndim; ++c)
+                std::swap(aug[static_cast<std::size_t>(col * (ndim + 1) + c)],
+                          aug[static_cast<std::size_t>(piv * (ndim + 1) + c)]);
+        }
+        const double diag =
+            aug[static_cast<std::size_t>(col * (ndim + 1) + col)];
+        for (int r = col + 1; r < ndim; ++r) {
+            const double f =
+                aug[static_cast<std::size_t>(r * (ndim + 1) + col)] / diag;
+            for (int c = col; c <= ndim; ++c)
+                aug[static_cast<std::size_t>(r * (ndim + 1) + c)] -=
+                    f * aug[static_cast<std::size_t>(col * (ndim + 1) + c)];
+        }
+    }
+    sol.resize(static_cast<std::size_t>(ndim));
+    for (int i = ndim - 1; i >= 0; --i) {
+        double s = aug[static_cast<std::size_t>(i * (ndim + 1) + ndim)];
+        for (int j = i + 1; j < ndim; ++j)
+            s -= aug[static_cast<std::size_t>(i * (ndim + 1) + j)]
+                 * sol[static_cast<std::size_t>(j)];
+        sol[static_cast<std::size_t>(i)] =
+            s / aug[static_cast<std::size_t>(i * (ndim + 1) + i)];
+    }
+}
+
+/// @brief ∂/∂r [erf(b r)/r] = (2/√π) b exp(−(b r)²)/r − erf(b r)/r².
+double derf_over_r(double r, double b) {
+    const double br = b * r;
+    return (2.0 / kSqrtPi) * b * std::exp(-br * br) / r
+           - std::erf(br) / (r * r);
 }
 
 void require_z(int z) {
@@ -270,9 +399,13 @@ double ewald_alpha(const double cell[3]) {
 
 void cn_d4(const std::vector<int>& Z,
            const std::vector<std::array<double, 3>>& pos, const double cell[3],
-           bool periodic, double cn_cut, std::vector<double>& cn) {
+           bool periodic, double cn_cut, std::vector<double>& cn,
+           std::vector<std::vector<DCN>>* dcn_out = nullptr) {
     const int n = static_cast<int>(Z.size());
     cn.assign(static_cast<std::size_t>(n), 0.0);
+    if (dcn_out) {
+        dcn_out->assign(static_cast<std::size_t>(n), {});
+    }
     std::vector<std::array<double, 3>> trans;
     lattice_points(cell, cn_cut, periodic, trans);
     const double cut2 = cn_cut * cn_cut;
@@ -302,6 +435,17 @@ void cn_d4(const std::vector<int>& Z,
                 cn[static_cast<std::size_t>(i)] += c;
                 if (i != j)
                     cn[static_cast<std::size_t>(j)] += c;
+                if (dcn_out) {
+                    const double dc = den * derf_count(r, rc, kKcn);
+                    // Self-image |T| is position-independent → dc contributes 0
+                    // to atomic forces, but store for completeness on i only.
+                    (*dcn_out)[static_cast<std::size_t>(i)].push_back(
+                        {j, dc, {dx, dy, dz}});
+                    if (i != j) {
+                        (*dcn_out)[static_cast<std::size_t>(j)].push_back(
+                            {i, dc, {-dx, -dy, -dz}});
+                    }
+                }
             }
         }
     }
@@ -309,9 +453,12 @@ void cn_d4(const std::vector<int>& Z,
 
 void cn_eeq(const std::vector<int>& Z,
             const std::vector<std::array<double, 3>>& pos, const double cell[3],
-            bool periodic, double cn_cut, std::vector<double>& cn) {
+            bool periodic, double cn_cut, std::vector<double>& cn,
+            std::vector<std::vector<DCN>>* dcn_raw_out = nullptr) {
     const int n = static_cast<int>(Z.size());
-    cn.assign(static_cast<std::size_t>(n), 0.0);
+    std::vector<double> cn_raw(static_cast<std::size_t>(n), 0.0);
+    if (dcn_raw_out)
+        dcn_raw_out->assign(static_cast<std::size_t>(n), {});
     std::vector<std::array<double, 3>> trans;
     lattice_points(cell, cn_cut, periodic, trans);
     const double cut2 = cn_cut * cn_cut;
@@ -336,15 +483,34 @@ void cn_eeq(const std::vector<int>& Z,
                     continue;
                 const double r = std::sqrt(r2);
                 const double c = erf_count(r, rc, kKcn);
-                cn[static_cast<std::size_t>(i)] += c;
+                cn_raw[static_cast<std::size_t>(i)] += c;
                 if (i != j)
-                    cn[static_cast<std::size_t>(j)] += c;
+                    cn_raw[static_cast<std::size_t>(j)] += c;
+                if (dcn_raw_out) {
+                    const double dc = derf_count(r, rc, kKcn);
+                    (*dcn_raw_out)[static_cast<std::size_t>(i)].push_back(
+                        {j, dc, {dx, dy, dz}});
+                    if (i != j) {
+                        (*dcn_raw_out)[static_cast<std::size_t>(j)].push_back(
+                            {i, dc, {-dx, -dy, -dz}});
+                    }
+                }
             }
         }
     }
+    cn.resize(static_cast<std::size_t>(n));
     for (int i = 0; i < n; ++i)
         cn[static_cast<std::size_t>(i)] =
-            log_cn_cut(cn[static_cast<std::size_t>(i)], kCnMaxEeq);
+            log_cn_cut(cn_raw[static_cast<std::size_t>(i)], kCnMaxEeq);
+    // Fold log_cn_cut' into dval so callers differentiate the cut CN.
+    if (dcn_raw_out) {
+        for (int i = 0; i < n; ++i) {
+            const double dcut =
+                dlog_cn_cut(cn_raw[static_cast<std::size_t>(i)], kCnMaxEeq);
+            for (auto& e : (*dcn_raw_out)[static_cast<std::size_t>(i)])
+                e.dval *= dcut;
+        }
+    }
 }
 
 double amat_dir(const double rij[3], double gam, double alp,
@@ -378,19 +544,25 @@ double amat_rec(const double rij[3], double vol, double alp,
     return s;
 }
 
-void eeq_charges(const std::vector<int>& Z,
-                 const std::vector<std::array<double, 3>>& pos,
-                 const double cell[3], bool periodic, double charge,
-                 std::vector<double>& q) {
+/// @brief Build the (n+1)×(n+1) EEQ system M sol = rhs and the cut CN_eeq.
+///
+/// On return: `A` is row-major M, `rhs` is the right-hand side, `cn` is the
+/// log-cut EEQ coordination number. Optional `dcn_eeq` holds ∂CN_eeq/∂R lists
+/// (log' already folded into dval).
+void build_eeq_system(const std::vector<int>& Z,
+                      const std::vector<std::array<double, 3>>& pos,
+                      const double cell[3], bool periodic, double charge,
+                      std::vector<double>& A, std::vector<double>& rhs,
+                      std::vector<double>& cn,
+                      std::vector<std::vector<DCN>>* dcn_eeq = nullptr) {
     const int n = static_cast<int>(Z.size());
     // EEQ CN uses fixed 25 Bohr cutoff (dftd4 charge.f90).
     constexpr double kEeqCnCut = 25.0;
-    std::vector<double> cn;
-    cn_eeq(Z, pos, cell, periodic, kEeqCnCut, cn);
+    cn_eeq(Z, pos, cell, periodic, kEeqCnCut, cn, dcn_eeq);
 
     const int ndim = n + 1;
-    std::vector<double> A(static_cast<std::size_t>(ndim * ndim), 0.0);
-    std::vector<double> x(static_cast<std::size_t>(ndim), 0.0);
+    A.assign(static_cast<std::size_t>(ndim * ndim), 0.0);
+    rhs.assign(static_cast<std::size_t>(ndim), 0.0);
     auto at = [&](int i, int j) -> double& {
         return A[static_cast<std::size_t>(i * ndim + j)];
     };
@@ -401,7 +573,7 @@ void eeq_charges(const std::vector<int>& Z,
             const double tmp =
                 kD4EeqKcn[static_cast<std::size_t>(zi)]
                 / std::sqrt(cn[static_cast<std::size_t>(i)] + 1.0e-14);
-            x[static_cast<std::size_t>(i)] =
+            rhs[static_cast<std::size_t>(i)] =
                 -kD4EeqChi[static_cast<std::size_t>(zi)]
                 + tmp * cn[static_cast<std::size_t>(i)];
             for (int j = 0; j < i; ++j) {
@@ -439,7 +611,7 @@ void eeq_charges(const std::vector<int>& Z,
             const double tmp =
                 kD4EeqKcn[static_cast<std::size_t>(zi)]
                 / std::sqrt(cn[static_cast<std::size_t>(i)] + 1.0e-14);
-            x[static_cast<std::size_t>(i)] =
+            rhs[static_cast<std::size_t>(i)] =
                 -kD4EeqChi[static_cast<std::size_t>(zi)]
                 + tmp * cn[static_cast<std::size_t>(i)];
 
@@ -484,55 +656,19 @@ void eeq_charges(const std::vector<int>& Z,
         at(i, n) = 1.0;
     }
     at(n, n) = 0.0;
-    x[static_cast<std::size_t>(n)] = charge;
+    rhs[static_cast<std::size_t>(n)] = charge;
+}
 
-    // Gaussian elimination with partial pivoting.
-    std::vector<double> aug(static_cast<std::size_t>(ndim * (ndim + 1)));
-    for (int i = 0; i < ndim; ++i) {
-        for (int j = 0; j < ndim; ++j)
-            aug[static_cast<std::size_t>(i * (ndim + 1) + j)] = at(i, j);
-        aug[static_cast<std::size_t>(i * (ndim + 1) + ndim)] =
-            x[static_cast<std::size_t>(i)];
-    }
-    for (int col = 0; col < ndim; ++col) {
-        int piv = col;
-        double best =
-            std::abs(aug[static_cast<std::size_t>(col * (ndim + 1) + col)]);
-        for (int r = col + 1; r < ndim; ++r) {
-            const double v =
-                std::abs(aug[static_cast<std::size_t>(r * (ndim + 1) + col)]);
-            if (v > best) {
-                best = v;
-                piv = r;
-            }
-        }
-        if (best < 1.0e-18)
-            throw std::runtime_error("D4: singular EEQ matrix");
-        if (piv != col) {
-            for (int c = col; c <= ndim; ++c)
-                std::swap(aug[static_cast<std::size_t>(col * (ndim + 1) + c)],
-                          aug[static_cast<std::size_t>(piv * (ndim + 1) + c)]);
-        }
-        const double diag =
-            aug[static_cast<std::size_t>(col * (ndim + 1) + col)];
-        for (int r = col + 1; r < ndim; ++r) {
-            const double f =
-                aug[static_cast<std::size_t>(r * (ndim + 1) + col)] / diag;
-            for (int c = col; c <= ndim; ++c)
-                aug[static_cast<std::size_t>(r * (ndim + 1) + c)] -=
-                    f * aug[static_cast<std::size_t>(col * (ndim + 1) + c)];
-        }
-    }
+void eeq_charges(const std::vector<int>& Z,
+                 const std::vector<std::array<double, 3>>& pos,
+                 const double cell[3], bool periodic, double charge,
+                 std::vector<double>& q) {
+    const int n = static_cast<int>(Z.size());
+    std::vector<double> A, rhs, cn;
+    build_eeq_system(Z, pos, cell, periodic, charge, A, rhs, cn);
+    std::vector<double> sol;
+    solve_linear(A, rhs, n + 1, sol);
     q.resize(static_cast<std::size_t>(n));
-    std::vector<double> sol(static_cast<std::size_t>(ndim));
-    for (int i = ndim - 1; i >= 0; --i) {
-        double s = aug[static_cast<std::size_t>(i * (ndim + 1) + ndim)];
-        for (int j = i + 1; j < ndim; ++j)
-            s -= aug[static_cast<std::size_t>(i * (ndim + 1) + j)]
-                 * sol[static_cast<std::size_t>(j)];
-        sol[static_cast<std::size_t>(i)] =
-            s / aug[static_cast<std::size_t>(i * (ndim + 1) + i)];
-    }
     for (int i = 0; i < n; ++i)
         q[static_cast<std::size_t>(i)] = sol[static_cast<std::size_t>(i)];
 }
@@ -873,6 +1009,469 @@ double dftd4_energy(const std::vector<int>& Z,
     return e;
 }
 
+namespace {
+
+/// @brief Casimir–Polder C6 kernel between reference states (ir of Zi, jr of Zj).
+double ref_c6(const std::vector<std::array<double, kD4NFreq>>& ai,
+              const std::vector<std::array<double, kD4NFreq>>& aj, int ir,
+              int jr) {
+    std::array<double, kD4NFreq> pol{};
+    for (int k = 0; k < kD4NFreq; ++k)
+        pol[static_cast<std::size_t>(k)] =
+            ai[static_cast<std::size_t>(ir)][static_cast<std::size_t>(k)]
+            * aj[static_cast<std::size_t>(jr)][static_cast<std::size_t>(k)];
+    return kThoPi * trapzd(pol);
+}
+
+/// @brief Analytic two-body D4 forces (BJ + CN_d4 chain + EEQ charge adjoint).
+///
+/// ATM (`s9 ≠ 0`) is not included here — caller may FD the residual.
+void dftd4_twobody_grad(const std::vector<int>& Z,
+                        const std::vector<std::array<double, 3>>& pos,
+                        const double cell[3], bool periodic, double s6,
+                        double s8, double a1, double a2, double ga, double gc,
+                        double wf, double charge, double cn_cut,
+                        double disp2_cut, double& energy,
+                        std::vector<std::array<double, 3>>& forces) {
+    const int n = static_cast<int>(Z.size());
+    forces.assign(static_cast<std::size_t>(n), {0.0, 0.0, 0.0});
+    energy = 0.0;
+    if (n <= 0)
+        return;
+
+    // ---- CN_d4 + neighbour derivatives ----
+    std::vector<double> cn_d;
+    std::vector<std::vector<DCN>> dcn_d4;
+    cn_d4(Z, pos, cell, periodic, cn_cut, cn_d, &dcn_d4);
+
+    // ---- EEQ charges + matrix for adjoint ----
+    std::vector<double> A, rhs, cn_eeq_v;
+    std::vector<std::vector<DCN>> dcn_eeq;
+    build_eeq_system(Z, pos, cell, periodic, charge, A, rhs, cn_eeq_v,
+                     &dcn_eeq);
+    std::vector<double> sol;
+    solve_linear(A, rhs, n + 1, sol);
+    std::vector<double> q(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i)
+        q[static_cast<std::size_t>(i)] = sol[static_cast<std::size_t>(i)];
+
+    // ---- Reference polarizabilities (unique Z) ----
+    std::vector<int> uniq = Z;
+    std::sort(uniq.begin(), uniq.end());
+    uniq.erase(std::unique(uniq.begin(), uniq.end()), uniq.end());
+    std::vector<std::vector<std::array<double, kD4NFreq>>> ref_alpha(
+        uniq.size());
+    for (std::size_t u = 0; u < uniq.size(); ++u)
+        set_refalpha_eeq(uniq[u], ga, gc, ref_alpha[u]);
+    auto slot = [&](int z) -> std::size_t {
+        return static_cast<std::size_t>(std::find(uniq.begin(), uniq.end(), z)
+                                        - uniq.begin());
+    };
+
+    // ---- CN / charge weights and intermediates for ∂gw/∂CN, ∂gw/∂q ----
+    int mref = 0;
+    for (int zi : Z)
+        mref = std::max(mref, nref_of(zi));
+    std::vector<std::vector<double>> gw(
+        static_cast<std::size_t>(n),
+        std::vector<double>(static_cast<std::size_t>(mref + 1), 0.0));
+    // gwk_cn part and zeta part; dgwk_cn/dCN, dzeta/dq
+    std::vector<std::vector<double>> gwk(
+        static_cast<std::size_t>(n),
+        std::vector<double>(static_cast<std::size_t>(mref + 1), 0.0));
+    std::vector<std::vector<double>> zet(
+        static_cast<std::size_t>(n),
+        std::vector<double>(static_cast<std::size_t>(mref + 1), 0.0));
+    std::vector<std::vector<double>> dgwk_dcn(
+        static_cast<std::size_t>(n),
+        std::vector<double>(static_cast<std::size_t>(mref + 1), 0.0));
+    std::vector<std::vector<double>> dzet_dq(
+        static_cast<std::size_t>(n),
+        std::vector<double>(static_cast<std::size_t>(mref + 1), 0.0));
+
+    constexpr double eps_norm = 1.0e-150;
+    for (int iat = 0; iat < n; ++iat) {
+        const int zi = Z[static_cast<std::size_t>(iat)];
+        const int nref = nref_of(zi);
+        std::vector<int> ngw;
+        get_ngw(zi, ngw);
+        const double zi_eff = kD4Zeff[static_cast<std::size_t>(zi)];
+        const double gi = kD4Hardness[static_cast<std::size_t>(zi)] * gc;
+        const double cni = cn_d[static_cast<std::size_t>(iat)];
+        const double qi = q[static_cast<std::size_t>(iat)];
+
+        std::vector<double> expw(static_cast<std::size_t>(nref + 1), 0.0);
+        std::vector<double> dexpw(static_cast<std::size_t>(nref + 1), 0.0);
+        double norm_sum = 0.0;
+        double dnorm_sum = 0.0;
+        for (int ir = 1; ir <= nref; ++ir) {
+            const double cnr =
+                kD4RefCovCn[static_cast<std::size_t>(d4_idx2(ir, zi))];
+            for (int igw = 1; igw <= ngw[static_cast<std::size_t>(ir)]; ++igw) {
+                const double wloc =
+                    weight_cn(static_cast<double>(igw) * wf, cni, cnr);
+                expw[static_cast<std::size_t>(ir)] += wloc;
+                dexpw[static_cast<std::size_t>(ir)] +=
+                    dweight_cn_dcn(static_cast<double>(igw) * wf, cni, cnr);
+            }
+            norm_sum += expw[static_cast<std::size_t>(ir)];
+            dnorm_sum += dexpw[static_cast<std::size_t>(ir)];
+        }
+        double inv_norm = 0.0;
+        if (std::abs(norm_sum) > eps_norm)
+            inv_norm = 1.0 / norm_sum;
+
+        double maxcn = 0.0;
+        for (int ir = 1; ir <= nref; ++ir)
+            maxcn = std::max(
+                maxcn, kD4RefCovCn[static_cast<std::size_t>(d4_idx2(ir, zi))]);
+
+        for (int ir = 1; ir <= nref; ++ir) {
+            const double cnr =
+                kD4RefCovCn[static_cast<std::size_t>(d4_idx2(ir, zi))];
+            double gwk_ir = expw[static_cast<std::size_t>(ir)] * inv_norm;
+            double dgwk_ir = 0.0;
+            if (inv_norm != 0.0) {
+                // ∂(e/W)/∂cn = (e' W − e W') / W²
+                dgwk_ir =
+                    (dexpw[static_cast<std::size_t>(ir)] * norm_sum
+                     - expw[static_cast<std::size_t>(ir)] * dnorm_sum)
+                    * inv_norm * inv_norm;
+            } else {
+                gwk_ir = (std::abs(maxcn - cnr) < 1.0e-12) ? 1.0 : 0.0;
+                dgwk_ir = 0.0;
+            }
+            if (!std::isfinite(gwk_ir)) {
+                gwk_ir = (std::abs(maxcn - cnr) < 1.0e-12) ? 1.0 : 0.0;
+                dgwk_ir = 0.0;
+            }
+            const double qref =
+                kD4Clsq[static_cast<std::size_t>(d4_idx2(ir, zi))];
+            const double qreff = qref + zi_eff;
+            const double qmod = qi + zi_eff;
+            const double zval = zeta(ga, gi, qreff, qmod);
+            const double dz = dzeta_dqmod(ga, gi, qreff, qmod);
+            gwk[static_cast<std::size_t>(iat)][static_cast<std::size_t>(ir)] =
+                gwk_ir;
+            zet[static_cast<std::size_t>(iat)][static_cast<std::size_t>(ir)] =
+                zval;
+            dgwk_dcn[static_cast<std::size_t>(iat)]
+                    [static_cast<std::size_t>(ir)] = dgwk_ir;
+            dzet_dq[static_cast<std::size_t>(iat)]
+                   [static_cast<std::size_t>(ir)] = dz;
+            gw[static_cast<std::size_t>(iat)][static_cast<std::size_t>(ir)] =
+                gwk_ir * zval;
+        }
+    }
+
+    // ---- C6 matrix ----
+    std::vector<std::vector<double>> c6(
+        static_cast<std::size_t>(n),
+        std::vector<double>(static_cast<std::size_t>(n), 0.0));
+    for (int i = 0; i < n; ++i) {
+        const int zi = Z[static_cast<std::size_t>(i)];
+        const int nrefi = nref_of(zi);
+        const auto& ai = ref_alpha[slot(zi)];
+        for (int j = 0; j < n; ++j) {
+            const int zj = Z[static_cast<std::size_t>(j)];
+            const int nrefj = nref_of(zj);
+            const auto& aj = ref_alpha[slot(zj)];
+            double s = 0.0;
+            for (int ir = 1; ir <= nrefi; ++ir)
+                for (int jr = 1; jr <= nrefj; ++jr)
+                    s += gw[static_cast<std::size_t>(i)]
+                           [static_cast<std::size_t>(ir)]
+                         * gw[static_cast<std::size_t>(j)]
+                             [static_cast<std::size_t>(jr)]
+                         * ref_c6(ai, aj, ir, jr);
+            c6[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = s;
+        }
+    }
+
+    // ---- Two-body BJ energy + explicit R forces + dE/dgw ----
+    std::vector<std::vector<double>> dEdgw(
+        static_cast<std::size_t>(n),
+        std::vector<double>(static_cast<std::size_t>(mref + 1), 0.0));
+
+    std::vector<std::array<double, 3>> trans;
+    lattice_points(cell, disp2_cut, periodic, trans);
+    const double cut2 = disp2_cut * disp2_cut;
+
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j <= i; ++j) {
+            const int zi = Z[static_cast<std::size_t>(i)];
+            const int zj = Z[static_cast<std::size_t>(j)];
+            const double rrij = 3.0 * kD4R4r2[static_cast<std::size_t>(zi)]
+                                * kD4R4r2[static_cast<std::size_t>(zj)];
+            const double r0ij = a1 * std::sqrt(rrij) + a2;
+            const double r0_6 = std::pow(r0ij, 6);
+            const double r0_8 = std::pow(r0ij, 8);
+            const double c6ij =
+                c6[static_cast<std::size_t>(j)][static_cast<std::size_t>(i)];
+            const double fac = (i == j) ? 0.5 : 1.0;
+            const int nrefi = nref_of(zi);
+            const int nrefj = nref_of(zj);
+            const auto& ai = ref_alpha[slot(zi)];
+            const auto& aj = ref_alpha[slot(zj)];
+
+            // ∂c6_ij / ∂gw_i[ir] at fixed gw_j
+            std::vector<double> dc6_dgwi(static_cast<std::size_t>(nrefi + 1),
+                                         0.0);
+            std::vector<double> dc6_dgwj(static_cast<std::size_t>(nrefj + 1),
+                                         0.0);
+            for (int ir = 1; ir <= nrefi; ++ir) {
+                double s = 0.0;
+                for (int jr = 1; jr <= nrefj; ++jr)
+                    s += gw[static_cast<std::size_t>(j)]
+                           [static_cast<std::size_t>(jr)]
+                         * ref_c6(ai, aj, ir, jr);
+                dc6_dgwi[static_cast<std::size_t>(ir)] = s;
+            }
+            for (int jr = 1; jr <= nrefj; ++jr) {
+                double s = 0.0;
+                for (int ir = 1; ir <= nrefi; ++ir)
+                    s += gw[static_cast<std::size_t>(i)]
+                           [static_cast<std::size_t>(ir)]
+                         * ref_c6(ai, aj, ir, jr);
+                dc6_dgwj[static_cast<std::size_t>(jr)] = s;
+            }
+
+            double pair_dedc6 = 0.0; // sum_T −fac · edisp
+            for (const auto& t : trans) {
+                const double rx =
+                    pos[static_cast<std::size_t>(i)][0]
+                    - (pos[static_cast<std::size_t>(j)][0] + t[0]);
+                const double ry =
+                    pos[static_cast<std::size_t>(i)][1]
+                    - (pos[static_cast<std::size_t>(j)][1] + t[1]);
+                const double rz =
+                    pos[static_cast<std::size_t>(i)][2]
+                    - (pos[static_cast<std::size_t>(j)][2] + t[2]);
+                const double r2 = rx * rx + ry * ry + rz * rz;
+                if (r2 > cut2 || r2 < 1.0e-24)
+                    continue;
+                const double dr = std::sqrt(r2);
+                const double r6 = r2 * r2 * r2;
+                const double r8 = r6 * r2;
+                const double den6 = r6 + r0_6;
+                const double den8 = r8 + r0_8;
+                const double t6 = 1.0 / den6;
+                const double t8 = 1.0 / den8;
+                const double edisp = s6 * t6 + s8 * rrij * t8;
+                energy += -fac * c6ij * edisp;
+                pair_dedc6 += -fac * edisp;
+
+                // E = −fac c6 edisp; ∂E/∂R = −fac c6 ∂edisp/∂R
+                // ∂t6/∂R = −6 R^5 / den6² , ∂t8/∂R = −8 R^7 / den8²
+                // ∂E/∂R = fac c6 (s6 · 6 R^5/den6² + s8 rrij · 8 R^7/den8²)
+                const double dE_dR =
+                    fac * c6ij
+                    * (s6 * (6.0 * r6 / dr) / (den6 * den6)
+                       + s8 * rrij * (8.0 * r8 / dr) / (den8 * den8));
+                const double pref = dE_dR / dr;
+                const double fx = pref * rx;
+                const double fy = pref * ry;
+                const double fz = pref * rz;
+                // F = −∇E
+                forces[static_cast<std::size_t>(i)][0] -= fx;
+                forces[static_cast<std::size_t>(i)][1] -= fy;
+                forces[static_cast<std::size_t>(i)][2] -= fz;
+                forces[static_cast<std::size_t>(j)][0] += fx;
+                forces[static_cast<std::size_t>(j)][1] += fy;
+                forces[static_cast<std::size_t>(j)][2] += fz;
+            }
+
+            // dE/dgw through this pair's c6
+            for (int ir = 1; ir <= nrefi; ++ir)
+                dEdgw[static_cast<std::size_t>(i)][static_cast<std::size_t>(ir)]
+                    += pair_dedc6 * dc6_dgwi[static_cast<std::size_t>(ir)];
+            for (int jr = 1; jr <= nrefj; ++jr)
+                dEdgw[static_cast<std::size_t>(j)][static_cast<std::size_t>(jr)]
+                    += pair_dedc6 * dc6_dgwj[static_cast<std::size_t>(jr)];
+        }
+    }
+
+    // ---- dE/dCN_d4 and dE/dq from weight chain ----
+    std::vector<double> dEdCN_d4(static_cast<std::size_t>(n), 0.0);
+    std::vector<double> dEdq(static_cast<std::size_t>(n), 0.0);
+    for (int i = 0; i < n; ++i) {
+        const int nref = nref_of(Z[static_cast<std::size_t>(i)]);
+        for (int ir = 1; ir <= nref; ++ir) {
+            const double degw =
+                dEdgw[static_cast<std::size_t>(i)][static_cast<std::size_t>(ir)];
+            // gw = gwk * zeta
+            dEdCN_d4[static_cast<std::size_t>(i)] +=
+                degw * zet[static_cast<std::size_t>(i)]
+                          [static_cast<std::size_t>(ir)]
+                * dgwk_dcn[static_cast<std::size_t>(i)]
+                          [static_cast<std::size_t>(ir)];
+            dEdq[static_cast<std::size_t>(i)] +=
+                degw * gwk[static_cast<std::size_t>(i)]
+                          [static_cast<std::size_t>(ir)]
+                * dzet_dq[static_cast<std::size_t>(i)]
+                         [static_cast<std::size_t>(ir)];
+        }
+    }
+
+    // CN_d4 forces
+    apply_cn_forces(dEdCN_d4, dcn_d4, forces);
+
+    // ---- EEQ adjoint: M λ = (∂E/∂q, 0); force from λᵀ (∂rhs − ∂M sol) ----
+    const int ndim = n + 1;
+    std::vector<double> g(static_cast<std::size_t>(ndim), 0.0);
+    for (int i = 0; i < n; ++i)
+        g[static_cast<std::size_t>(i)] = dEdq[static_cast<std::size_t>(i)];
+    std::vector<double> lambda;
+    solve_linear(A, g, ndim, lambda);
+
+    // (a) rhs depends on CN_eeq: x_i = −χ + kcn · cn / √(cn+ε)
+    // dx/dcn = kcn · (½ cn + ε) / (cn+ε)^{3/2}
+    std::vector<double> dEdCN_eeq(static_cast<std::size_t>(n), 0.0);
+    for (int i = 0; i < n; ++i) {
+        const int zi = Z[static_cast<std::size_t>(i)];
+        const double cni = cn_eeq_v[static_cast<std::size_t>(i)];
+        const double eps = 1.0e-14;
+        const double s = std::sqrt(cni + eps);
+        const double dx_dcn =
+            kD4EeqKcn[static_cast<std::size_t>(zi)] * (0.5 * cni + eps)
+            / (s * s * s);
+        // dE_charge/dR via x: λ_i · dx_i  →  dE/dCN_eeq += λ_i · dx/dcn
+        dEdCN_eeq[static_cast<std::size_t>(i)] +=
+            lambda[static_cast<std::size_t>(i)] * dx_dcn;
+    }
+    apply_cn_forces(dEdCN_eeq, dcn_eeq, forces);
+
+    // (b) A(R) geometry: dE = − Σ_{ij} λ_i q_j dA_ij
+    // Molecular: A_ij = erf(√gam r)/r with r = |R_j − R_i| in build (sign ok).
+    // Periodic: A_ij = amat_dir + amat_rec.
+    if (!periodic) {
+        for (int i = 0; i < n; ++i) {
+            const int zi = Z[static_cast<std::size_t>(i)];
+            for (int j = 0; j < i; ++j) {
+                const int zj = Z[static_cast<std::size_t>(j)];
+                // same gam as energy path (1/(rad_i²+rad_j²) as product form)
+                const double gam =
+                    1.0
+                    / (kD4EeqRad[static_cast<std::size_t>(zi)]
+                           * kD4EeqRad[static_cast<std::size_t>(zi)]
+                       + kD4EeqRad[static_cast<std::size_t>(zj)]
+                             * kD4EeqRad[static_cast<std::size_t>(zj)]);
+                // Use r_vec = R_i − R_j for force direction (consistent F_i −=)
+                const double rx = pos[static_cast<std::size_t>(i)][0]
+                                  - pos[static_cast<std::size_t>(j)][0];
+                const double ry = pos[static_cast<std::size_t>(i)][1]
+                                  - pos[static_cast<std::size_t>(j)][1];
+                const double rz = pos[static_cast<std::size_t>(i)][2]
+                                  - pos[static_cast<std::size_t>(j)][2];
+                const double r2 = rx * rx + ry * ry + rz * rz;
+                if (r2 < 1.0e-24)
+                    continue;
+                const double r = std::sqrt(r2);
+                const double b = std::sqrt(gam);
+                const double dAdr = derf_over_r(r, b);
+                // dE = −(λ_i q_j + λ_j q_i) dA
+                // ∇_i A = (dA/dr)(R_i−R_j)/r  (A depends on |R_i−R_j|)
+                const double coeff =
+                    -(lambda[static_cast<std::size_t>(i)]
+                          * q[static_cast<std::size_t>(j)]
+                      + lambda[static_cast<std::size_t>(j)]
+                            * q[static_cast<std::size_t>(i)]);
+                // dE/dR_i = coeff · ∇_i A
+                // F_i = −dE/dR_i = −coeff · (dA/dr) r̂
+                const double pref = -coeff * dAdr / r;
+                const double fx = pref * rx;
+                const double fy = pref * ry;
+                const double fz = pref * rz;
+                forces[static_cast<std::size_t>(i)][0] += fx;
+                forces[static_cast<std::size_t>(i)][1] += fy;
+                forces[static_cast<std::size_t>(i)][2] += fz;
+                forces[static_cast<std::size_t>(j)][0] -= fx;
+                forces[static_cast<std::size_t>(j)][1] -= fy;
+                forces[static_cast<std::size_t>(j)][2] -= fz;
+            }
+        }
+    } else {
+        std::vector<std::array<double, 3>> dtrans, gtrans;
+        ewald_dir_trans(cell, dtrans);
+        ewald_rec_trans(cell, gtrans);
+        const double alp = ewald_alpha(cell);
+        const double vol = cell[0] * cell[1] * cell[2];
+        const double fac_rec = 4.0 * units::pi / vol;
+
+        for (int i = 0; i < n; ++i) {
+            const int zi = Z[static_cast<std::size_t>(i)];
+            for (int j = 0; j < i; ++j) {
+                const int zj = Z[static_cast<std::size_t>(j)];
+                const double gam =
+                    1.0
+                    / std::sqrt(
+                        kD4EeqRad[static_cast<std::size_t>(zi)]
+                            * kD4EeqRad[static_cast<std::size_t>(zi)]
+                        + kD4EeqRad[static_cast<std::size_t>(zj)]
+                              * kD4EeqRad[static_cast<std::size_t>(zj)]);
+                // Base displacement R_i − R_j (matches amat build)
+                const double r0x = pos[static_cast<std::size_t>(i)][0]
+                                   - pos[static_cast<std::size_t>(j)][0];
+                const double r0y = pos[static_cast<std::size_t>(i)][1]
+                                   - pos[static_cast<std::size_t>(j)][1];
+                const double r0z = pos[static_cast<std::size_t>(i)][2]
+                                   - pos[static_cast<std::size_t>(j)][2];
+
+                // ∇_i A from real-space images of erf(gam r)/r − erf(alp r)/r
+                double gAx = 0.0, gAy = 0.0, gAz = 0.0;
+                constexpr double eps = 1.0e-12;
+                for (const auto& t : dtrans) {
+                    const double vx = r0x + t[0];
+                    const double vy = r0y + t[1];
+                    const double vz = r0z + t[2];
+                    const double r1 = std::sqrt(vx * vx + vy * vy + vz * vz);
+                    if (r1 < eps)
+                        continue;
+                    const double dAdr =
+                        derf_over_r(r1, gam) - derf_over_r(r1, alp);
+                    gAx += dAdr * vx / r1;
+                    gAy += dAdr * vy / r1;
+                    gAz += dAdr * vz / r1;
+                }
+                // Reciprocal: A += cos(G·r) · fac · exp(−g²/4α²)/g²
+                // ∇_i A += −sin(G·r) G · …
+                for (const auto& gvec : gtrans) {
+                    const double g2 = gvec[0] * gvec[0] + gvec[1] * gvec[1]
+                                      + gvec[2] * gvec[2];
+                    if (g2 < eps)
+                        continue;
+                    const double phase =
+                        gvec[0] * r0x + gvec[1] * r0y + gvec[2] * r0z;
+                    const double pref =
+                        -std::sin(phase) * fac_rec
+                        * std::exp(-0.25 * g2 / (alp * alp)) / g2;
+                    gAx += pref * gvec[0];
+                    gAy += pref * gvec[1];
+                    gAz += pref * gvec[2];
+                }
+
+                const double coeff =
+                    -(lambda[static_cast<std::size_t>(i)]
+                          * q[static_cast<std::size_t>(j)]
+                      + lambda[static_cast<std::size_t>(j)]
+                            * q[static_cast<std::size_t>(i)]);
+                // F_i = −coeff · ∇_i A
+                const double fx = -coeff * gAx;
+                const double fy = -coeff * gAy;
+                const double fz = -coeff * gAz;
+                forces[static_cast<std::size_t>(i)][0] += fx;
+                forces[static_cast<std::size_t>(i)][1] += fy;
+                forces[static_cast<std::size_t>(i)][2] += fz;
+                forces[static_cast<std::size_t>(j)][0] -= fx;
+                forces[static_cast<std::size_t>(j)][1] -= fy;
+                forces[static_cast<std::size_t>(j)][2] -= fz;
+            }
+        }
+    }
+}
+
+} // namespace
+
 D4Result dftd4(const std::vector<int>& Z,
                const std::vector<std::array<double, 3>>& pos_bohr,
                const double cell_bohr[3], bool periodic, double s6, double s8,
@@ -886,32 +1485,54 @@ D4Result dftd4(const std::vector<int>& Z,
         return res;
     if (!(grad_h > 0.0) || !std::isfinite(grad_h))
         throw std::runtime_error("D4: grad_h must be positive and finite");
+    if (static_cast<int>(pos_bohr.size()) != n)
+        throw std::runtime_error("D4: Z and pos size mismatch");
+    for (int z : Z)
+        require_z(z);
+    if (periodic
+        && (cell_bohr[0] <= 0.0 || cell_bohr[1] <= 0.0 || cell_bohr[2] <= 0.0))
+        throw std::runtime_error("D4: periodic cell edges must be positive");
 
-    res.energy = dftd4_energy(Z, pos_bohr, cell_bohr, periodic, s6, s8, a1, a2,
-                             ga, gc, wf, charge, cn_cut, disp2_cut, s9,
-                             disp3_cut);
+    const double cell[3] = {cell_bohr[0], cell_bohr[1], cell_bohr[2]};
 
-    // Exact ∇E of the geometry-only energy functional via central differences
-    // of dftd4_energy (CN + EEQ + BJ pair + ATM all move with nuclei).
+    // Two-body always analytic. ATM (s9≠0): central-difference of the ATM
+    // energy alone (CN + neutral C6 + triples), then add to F_2body so
+    // F = −∇(E₂+E_ATM). Cheaper than full 6N EEQ+pair energies and still
+    // conservative for the total functional.
+    dftd4_twobody_grad(Z, pos_bohr, cell, periodic, s6, s8, a1, a2, ga, gc, wf,
+                       charge, cn_cut, disp2_cut, res.energy, res.forces);
+    if (std::abs(s9) <= 1.0e-30)
+        return res;
+
+    auto e_atm_only = [&](const std::vector<std::array<double, 3>>& p) {
+        std::vector<double> cn_d;
+        cn_d4(Z, p, cell, periodic, cn_cut, cn_d);
+        std::vector<double> q0(static_cast<std::size_t>(n), 0.0);
+        std::vector<std::vector<double>> gw0;
+        weight_refs(Z, cn_d, q0, ga, gc, wf, gw0);
+        std::vector<std::vector<double>> c6_atm;
+        atomic_c6(Z, gw0, ga, gc, c6_atm);
+        constexpr double kAlpAtm = 16.0;
+        return disp3_atm(Z, p, cell, periodic, c6_atm, s9, a1, a2, kAlpAtm,
+                         disp3_cut);
+    };
+    const double e_atm0 = e_atm_only(pos_bohr);
+    res.energy += e_atm0;
     std::vector<std::array<double, 3>> pos = pos_bohr;
     for (int i = 0; i < n; ++i) {
         for (int k = 0; k < 3; ++k) {
-            const double x0 = pos[static_cast<std::size_t>(i)]
-                                  [static_cast<std::size_t>(k)];
+            const double x0 =
+                pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)];
             pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)] =
                 x0 + grad_h;
-            const double ep =
-                dftd4_energy(Z, pos, cell_bohr, periodic, s6, s8, a1, a2, ga,
-                             gc, wf, charge, cn_cut, disp2_cut, s9, disp3_cut);
+            const double ep = e_atm_only(pos);
             pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)] =
                 x0 - grad_h;
-            const double em =
-                dftd4_energy(Z, pos, cell_bohr, periodic, s6, s8, a1, a2, ga,
-                             gc, wf, charge, cn_cut, disp2_cut, s9, disp3_cut);
+            const double em = e_atm_only(pos);
             pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)] = x0;
-            // F = −dE/dR
             res.forces[static_cast<std::size_t>(i)]
-                      [static_cast<std::size_t>(k)] = -(ep - em) / (2.0 * grad_h);
+                      [static_cast<std::size_t>(k)] +=
+                -(ep - em) / (2.0 * grad_h);
         }
     }
     return res;
@@ -926,7 +1547,7 @@ namespace {
 /// field that folds E_disp into its total energy stops being conservative.
 /// @param frame        System geometry (Å, Z).
 /// @param m            The method whose members set the D4 parameters.
-/// @param want_forces  Also fill `forces` (6N extra energy evaluations).
+/// @param want_forces  Also fill `forces` (analytic two-body / FD if ATM).
 /// @return Energy [Hartree]; forces [Hartree/Bohr] iff `want_forces`.
 D4Result evaluate_d4(const Frame& frame, const D4& m, bool want_forces) {
     constexpr double kCnCut = 30.0;    // Bohr (dftd4 default)
