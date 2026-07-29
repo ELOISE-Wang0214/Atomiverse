@@ -10,6 +10,15 @@ new pending. Census only rewrites **pending**. Assign: **incomplete ≫ pending*
 bench against **LAMMPS**. MetalWalls only for MW-only rows (mark
 `oracle=metalwalls` in the row rationale).
 
+**Both binaries exist (2026-07-29).** `lmp` on `PATH`; MetalWalls `c8ad175d` at
+`/nobackup/…/work/opt/metalwalls/mw` (rebuild:
+`tools/metalwalls_oracle/build_metalwalls.sh`). A pin must be **a number the
+oracle printed** — never a numpy/Python transcription of ATV's own algorithm,
+never `expected := what_ATV_measured`. Four wave-1..3 pins were self-golden
+(one 6.13 % wrong) and one attributed a Thole number to a code that has no
+Thole; see `.claude/notes/oracle-pin-provenance.md`. "No binary" is no longer a
+valid reason for `literature` or `perf_exempt`.
+
 **Build rule:** workers use **MD-only** cmake (HF/PW/GPW/CUDA/Torch **OFF**,
 MD+KSPACE+TESTS+REGRESSIONS **ON**). See `metalwalls-method-loop.md`.
 

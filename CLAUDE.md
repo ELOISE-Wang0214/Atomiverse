@@ -221,6 +221,18 @@ roadmap. Foothold ≠ capability closed. Stop only when `gaps_remaining=0`.
 isolation worktrees, prune fully-merged `wf/*` tips, wipe builds. Workers must
 not nest long-lived subagents; do not hold N full trees until shift end.
 
+**Pin provenance (binding, 2026-07-29):** a pin is **a number the other code
+printed** — re-runnable as binary + version + input + output line. A
+`tools/*_oracle/` script may **parse oracle output**; it must **never
+reimplement the ATV algorithm** (that agrees to 1e-12 by construction and
+tests nothing). Never seed a pin from ATV's own measurement
+(`expected := what_we_got()`, "record current value as golden"). `oracle:`
+names the code that produced the number, not the paper you read. "No binary"
+is not a reason for `literature` or `perf_exempt` — LAMMPS and MetalWalls both
+build here (`tools/metalwalls_oracle/build_metalwalls.sh`). Four wave-1..3
+"oracle: metalwalls" pins were self-golden and one was 6.13% wrong; see
+`.claude/notes/oracle-pin-provenance.md`.
+
 - Design: `docs/developer/oracle-capability-loop.md`
 - Template: `.grok/workflows/_templates/oracle-capability-loop-template.rhai`
 - Skill: `.agents/skills/create-oracle-loop/` (`/create-oracle-loop`)

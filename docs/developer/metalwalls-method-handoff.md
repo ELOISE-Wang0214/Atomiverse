@@ -1,10 +1,49 @@
 # MetalWalls method loop — handoff
 
-Last land: **wave 5 — 2026-07-27** (10/10 staffed slugs green, all merged into
-`dev` via `merge(wf/<slug>)` commits; harness at `dev` head `ca3b511a`).
-All 10 wave-5 slugs → `## done` (done total **46**). Specs closed (10).
-Pending residual (**3**) and blocked (**4**) remain for the next
-GapCensus/assign. **incomplete_remaining=0**.
+Last land: **real-oracle re-pin — 2026-07-29** (see below). Prior feature land:
+**wave 5 — 2026-07-27** (10/10 staffed slugs green, merged into `dev`;
+done total **46**, specs closed 10). Pending residual (**3**) and blocked
+(**4**) remain for the next GapCensus/assign. **incomplete_remaining=0**.
+
+## Real-oracle re-pin (2026-07-29) — MetalWalls binary now exists
+
+**MetalWalls is built and verified**: `gitlab.com/ampere2/metalwalls` release
+`c8ad175d` (2026-06-18) → `/nobackup/…/work/opt/metalwalls/mw`, GNU 14.3 +
+MPICH + OpenBLAS. Rebuild via `tools/metalwalls_oracle/build_metalwalls.sh`
+(self-checks against upstream `tests/maze/electrodes/LiCl-Al`; must print PASS
+before any pin is taken). Waves 1–5 had pinned MW-only physics from literature
+formulas **because no binary existed** — that fallback is retired.
+
+Ten `oracle: metalwalls` regressions were re-checked against the real binary.
+All ten merged into `dev`; gate green (94/94 domain ctest, all ten regressions).
+
+| Slug | Verdict | Finding |
+| ---- | ------- | ------- |
+| `electrode-charge-predictor` | **atv_bug (fixed)** | `ChargeASPC::compute_coefficients_` computed Lagrange weights `{1,-3,3}` while citing Kolafa ASPC; real MW uses Kolafa K=5 `{22/7,-55/14,55/21,-22/21,5/21,-1/42}`. Fixed; discriminating observable now pinned. |
+| `thomas-fermi-electrode` | **repinned** | Old pin came from `pin_gold_cap.py`, a numpy transcription of `ConstPotBO` itself — self-golden, and **6.13 % wrong**. Script deleted; ATV now 0.18 % from MW. |
+| `piston-electrode-pz` | **repinned** | Old "pin" was `P_target := probe.last_P_z()` — a tautology. Now pinned to MW `electrode_forces.out`; agrees to 1.6e-8 (CODATA drift). |
+| `pim-induced-dipole-bulk` | **repinned** | Thole-damped (a=0.39) number was attributed to MW, but **MW has no Thole damping** (`grep -ri thole` → 0 hits). Physics was right, attribution fabricated. Re-pinned at `thole_a=0`. |
+| `dipole-electrode-joint` | not_expressible | `pin_joint.py` was also a transcription of ATV kernels. MW differs 9 % (Q) / 16 % (μ) — min-image vs Ewald. ATV kernels under a matched 3D lattice sum reproduce MW to **1.2e-8**; provenance claim corrected. |
+| `maze-symplectic-charge-dynamics` | confirmed | MW matches to 1.1e-6 where both compute the same model; MW has no minimum-image mode (num_pbc ∈ {2,3}, Ewald only). |
+| `const-pot-cg-large-electrode` | confirmed | 3.1e-9. |
+| `per-electrode-eta` | confirmed | 8.3e-12 under a common Coulomb constant. |
+| `finite-field-single-electrode` | not_expressible | MW **refuses** `external_field` + `charge_neutrality false` (well-posedness guard, `src/configuration.F90:624`). Nearest legal twin: ATV elastance +9.65 % (real-space sum vs Ewald) — recorded as a capability gap. |
+| `pim-npt-polarizable-il` | not_expressible | ATV truncates the induced-dipole field, MW is Ewald-only; gap decomposed (Thole 0.9 %, cutoff 1.8×, reciprocal tail ~2.9×). ATV kernel confirmed by MW in the isolated-pair limit. |
+
+**Binding rule added** (`.claude/notes/oracle-pin-provenance.md`, CLAUDE.md):
+a pin is a number **the other code printed**; oracle scripts parse oracle
+output and never reimplement ATV's algorithm; never seed a pin from ATV's own
+measurement. "No binary" is no longer a valid reason for `literature` or
+`perf_exempt`.
+
+**Real perf ratios** (\(T_{\mathrm{atv}}/T_{\mathrm{MW}}\), replacing
+`perf_exempt (no MW binary)`): TF electrode **4.4**, PIM bulk **0.77**,
+const-pot CG **0.026**, per-electrode-η **0.09**, PIM-NPT **0.072**.
+
+**Not yet re-pinned** (same treatment owed): `const-pot-md-nvt-short`,
+`const-pot-il-edl-box`, `constant-d-polarization-feedback`,
+`extended-lagrangian-dipoles`, `voronoi-volume-tf`, plus the wave-4
+`oracle: metalwalls` rows.
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
