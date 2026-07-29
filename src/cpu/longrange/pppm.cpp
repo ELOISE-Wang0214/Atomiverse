@@ -22,14 +22,15 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
+// DomainDecomposition is complete without MPI; compute() reads n_local even
+// when the multi-rank branch is dead. Include always so non-MPI builds typecheck.
+#include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/longrange/pme_influence.h"
 #include "atomiverse/cpu/longrange/pme_spline.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
-
-#include "atomiverse/cpu/communication/domain.h"
 #endif
 
 namespace ATV {

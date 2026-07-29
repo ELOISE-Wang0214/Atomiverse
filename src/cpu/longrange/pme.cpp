@@ -14,6 +14,7 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/longrange/pme_influence.h"
@@ -21,8 +22,6 @@
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
-
-#include "atomiverse/cpu/communication/domain.h"
 #endif
 
 namespace ATV {

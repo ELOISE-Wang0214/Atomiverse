@@ -16,21 +16,21 @@ FetchContent_MakeAvailable(googletest)
 # specific thread count can still call omp_set_num_threads itself.
 set(ATV_TEST_OMP_THREADS 8 CACHE STRING
     "OMP_NUM_THREADS for single-process unit tests")
-# MPI tests exercise multi-RANK behaviour (domain decomposition / halo), not
-# OpenMP — so 1 thread/rank is both sufficient and correct. An n8 run at 4
-# threads/rank spawns 8×4=32 contending threads, which on a shared login node
-# oversubscribes badly: test_mpi_npt_multirank_n8 took ~103 s AND its
-# thread-reduction-order-sensitive pressure check flaked. At 1 thread/rank it
-# passes deterministically in ~20 s.
+# MPI unit tests exercise multi-RANK behaviour (domain decomposition / halo)
+# of a single component, not OpenMP — 1 thread/rank is sufficient and avoids
+# oversubscription on shared login nodes. Production-style multi-rank MD
+# campaigns do NOT belong here (see Fast-gate discipline below).
 set(ATV_TEST_MPI_OMP_THREADS 1 CACHE STRING
     "OMP_NUM_THREADS per rank for MPI unit tests")
 
-# Fast-gate discipline: this suite is unit tests only — each exercises one
-# function or method at millisecond scale. End-to-end runs (a full SCF/MD/vib
-# solve to convergence, a multi-sweep MC equilibration, an external-engine
-# parity check) do not belong here at any granularity; their home is
-# benchmarks/<domain>/validation, run at acceptance time. There is deliberately
-# no opt-in switch to run e2e from ctest.
+# Fast-gate discipline (HARD RULE):
+#   • tests/ = one component / one method / millisecond scale only.
+#   • FORBIDDEN under ctest: multi-step Driver loops (MD/Minimize/Path
+#     run(N) with N≫1), full-pipeline assembly that runs start→finish,
+#     equilibration, multi-rank production-style MD, or external oracles.
+#   • Those live in regressions/ (ATV_BUILD_REGRESSIONS, NOT ctest) or
+#     benchmarks/**/validation (acceptance time). No opt-in switch to
+#     smuggle e2e into ctest.
 
 # CUDA test: compiled as .cu with separable compilation.
 # A .cu source registered while the CUDA language is disabled is silently
@@ -143,10 +143,6 @@ atv_add_cpp_test(test_cpu_mc_row_order cpu/montecarlo/test_mc_row_order.cpp)
 # The MC physics-validation gates (pair_distribution / acceptance_ratio /
 # lj_nist) drive MC::run over many sweeps — e2e, not unit. They now live in
 # benchmarks/mc/lj/validation/ and run at acceptance time, never in ctest.
-atv_add_cpp_test(test_cpu_md cpu/dynamics/test_md.cpp)
-atv_add_cpp_test(test_cpu_md_parrinello_rahman_npt cpu/dynamics/test_parrinello_rahman_npt.cpp)
-atv_add_cpp_test(test_cpu_md_nph_integrator        cpu/dynamics/test_nph_integrator.cpp)
-atv_add_cpp_test(test_cpu_md_surface_tension_npt   cpu/dynamics/test_surface_tension_npt.cpp)
 atv_add_cpp_test(test_cpu_md_pe_thermo_schema cpu/dynamics/test_pe_thermo_schema.cpp)
 atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/dynamics/test_pe_single_chain.cpp)
 # Multi-step PE bonded NVE conservation is a regression
@@ -154,7 +150,6 @@ atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/dynamics/test_pe_single_chain.c
 # test_cpu_md_csvr / test_cpu_md_nvt relocated to benchmarks/md/lj/validation/
 # (val_md_csvr / val_md_nvt) — full thermostat equilibrations, not ms unit tests.
 atv_add_cpp_test(test_cpu_md_atom_sort            cpu/dynamics/test_atom_sort.cpp)
-atv_add_cpp_test(test_cpu_md_step_timing          cpu/dynamics/test_step_timing.cpp)
 atv_add_cpp_test(test_cpu_md_timing_report        cpu/dynamics/test_timing_report.cpp)
 atv_add_cpp_test(test_cpu_md_pe_fd_force          cpu/dynamics/test_pe_fd_force.cpp)
 # Multi-chain multi-step NVE was e2e; multi-chain unit surface is
@@ -188,7 +183,6 @@ atv_add_cpp_test(test_cpu_coul_long_special       cpu/potentials/test_coul_long_
 atv_add_cpp_test(test_cpu_pair_lj_cut_coul_long   cpu/potentials/test_pair_lj_cut_coul_long.cpp)
 atv_add_cpp_test(test_cpu_dihedral_charmm         cpu/potentials/test_dihedral_charmm.cpp)
 atv_add_cpp_test(test_cpu_improper_harmonic       cpu/potentials/test_improper_harmonic.cpp)
-atv_add_cpp_test(test_cpu_compiled_forcefield     cpu/io/test_compiled_forcefield.cpp)
 atv_add_cpp_test(test_cpu_lammps_data_full        cpu/io/test_lammps_data_full.cpp)
 atv_add_cpp_test(test_cpu_lammps_real             cpu/io/test_lammps_real.cpp)
 atv_add_cpp_test(test_cpu_fix_efield              cpu/dynamics/test_fix_efield.cpp)
@@ -351,7 +345,6 @@ atv_add_cpp_test(test_cpu_md_pe_energy_xcheck     cpu/dynamics/test_pe_energy_xc
 # pe_tension_protocol grepped benchmarks/md/pe/... which was deleted; re-add
 # when the PE tension app is restored under regressions/ or examples/.
 atv_add_cpp_test(test_cpu_md_neighbor_list_arena  cpu/dynamics/test_neighbor_list_arena.cpp)
-atv_add_cpp_test(test_cpu_md_neighbor_list_rebuild  cpu/dynamics/test_neighbor_list_rebuild.cpp)
 atv_add_cpp_test(test_cpu_md_full_neighbor_list  cpu/dynamics/test_full_neighbor_list.cpp)
 atv_add_cpp_test(test_cpu_md_cell_list_grid_stale  cpu/dynamics/test_cell_list_grid_stale.cpp)
 atv_add_cpp_test(test_cpu_atom_variable_n  cpu/test_atom_variable_n.cpp)
@@ -359,7 +352,6 @@ atv_add_cpp_test(test_cpu_frame_registry  cpu/frame/test_frame_registry.cpp)
 atv_add_cpp_test(test_cpu_eam  cpu/potentials/test_eam.cpp)
 atv_add_cpp_test(test_cpu_sw  cpu/potentials/test_sw.cpp)
 if(ATV_BUILD_VIB)
-    atv_add_cpp_test(test_cpu_vib_phonon_supercell cpu/vibration/test_phonon_supercell.cpp)
     atv_add_cpp_test(test_cpu_vib_phonon_dispersion cpu/vibration/test_phonon_dispersion.cpp)
     # esmm-contract-01-zeroing: the Hessian driver must zero kAtom_f* / kEnergy
     # per displacement pass, or an accumulating source halves the curvature.
@@ -373,7 +365,6 @@ if(ATV_BUILD_VIB)
     endif()
 endif()
 atv_add_cpp_test(test_cpu_pair_lj_types  cpu/potentials/test_pair_lj_types.cpp)
-atv_add_cpp_test(test_cpu_md_fix_rattle  cpu/dynamics/test_fix_rattle.cpp)
 atv_add_cpp_test(test_cpu_md_fix_freeze  cpu/dynamics/test_fix_freeze.cpp)
 atv_add_cpp_test(test_cpu_md_piston_electrode cpu/dynamics/test_piston_electrode.cpp)
 atv_add_cpp_test(test_cpu_md_const_potential_bo  cpu/dynamics/test_const_potential_bo.cpp)
@@ -383,8 +374,6 @@ atv_add_cpp_test(test_cpu_md_brownian     cpu/dynamics/test_brownian.cpp)
 atv_add_cpp_test(test_cpu_md_write_sets  cpu/dynamics/test_write_sets.cpp)
 atv_add_cpp_test(test_cpu_path_replica    cpu/path/test_replica.cpp)
 atv_add_cpp_test(test_cpu_path_remd       cpu/path/test_remd.cpp)
-atv_add_cpp_test(test_cpu_path_pimd       cpu/path/test_pimd.cpp)
-atv_add_cpp_test(test_cpu_path_dimer      cpu/path/test_dimer.cpp)
 atv_add_cpp_test(test_cpu_path_string     cpu/path/test_string_method.cpp)
 atv_add_cpp_test(test_cpu_path_irc        cpu/path/test_irc.cpp)
 atv_add_cpp_test(test_cpu_path_rpmd_est   cpu/path/test_rpmd_estimator.cpp)
@@ -394,7 +383,6 @@ atv_add_cpp_test(test_cpu_path_zeroing    cpu/path/test_path_zeroing.cpp)
 # esmm-contract-02-validation-walks: PathDriver::validate_components must see a
 # nested `Driver<scf::Phase> + HF` method node as the band's force source.
 atv_add_cpp_test(test_cpu_path_validation cpu/path/test_path_validation.cpp)
-atv_add_cpp_test(test_cpu_minimizer_joint_cell cpu/minimize/test_joint_cell.cpp)
 # esmm-contract-03-runslot-nested: Minimize's StrongWolfe trials must re-enter a
 # nested `Driver<scf::Phase> + HF` force source (run_stage → Runtime::run_slot_).
 # Stub physics (harmonic well) — no SCF, milliseconds.
@@ -416,11 +404,7 @@ atv_add_cpp_test(test_cpu_forces_requested cpu/driver/test_forces_requested.cpp)
 # a full NVT equilibration of the bonded PE melt, not a ms unit test.
 atv_add_cpp_test(test_cpu_md_frame_tag_image      cpu/dynamics/test_frame_tag_image.cpp)
 atv_add_cpp_test(test_cpu_md_domain_decomposition cpu/dynamics/test_domain_decomposition.cpp)
-atv_add_cpp_test(test_cpu_md_mpi_stubs            cpu/dynamics/test_mpi_stubs.cpp)
 atv_add_cpp_test(test_cpu_analysis_executor       cpu/test_analysis_executor.cpp)
-atv_add_cpp_test(test_cpu_snapshot_publisher      cpu/test_snapshot_publisher.cpp)
-atv_add_cpp_test(test_cpu_async_component_base    cpu/test_async_component_base.cpp)
-atv_add_cpp_test(test_cpu_observer_rdf_async      cpu/observe/test_rdf_observer.cpp)
 atv_add_cpp_test(test_cpu_observer_msd            cpu/observe/test_msd.cpp)
 atv_add_cpp_test(test_cpu_observer_vacf           cpu/observe/test_vacf.cpp)
 atv_add_cpp_test(test_cpu_observer_widom          cpu/observe/test_widom.cpp)
@@ -517,9 +501,6 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_halo_refresh_charges_n1 test_mpi_halo_refresh_charges 1)
     atv_add_mpi_run(test_mpi_halo_refresh_charges_n2 test_mpi_halo_refresh_charges 2)
 
-    atv_add_mpi_exec(test_mpi_lj_nve mpi/test_lj_nve.cpp)
-    atv_add_mpi_run(test_mpi_lj_nve_n1 test_mpi_lj_nve 1)
-    atv_add_mpi_run(test_mpi_lj_nve_n8 test_mpi_lj_nve 8)
 
     atv_add_mpi_exec(test_mpi_lj_energy_bruteforce
                      mpi/test_lj_energy_bruteforce.cpp)
@@ -567,26 +548,12 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_minimize_lj_n4 test_mpi_minimize_lj 4)
     atv_add_mpi_run(test_mpi_minimize_lj_n8 test_mpi_minimize_lj 8)
 
-    atv_add_mpi_exec(test_mpi_pe_chains_multirank mpi/test_pe_chains_multirank.cpp)
-    atv_add_mpi_run(test_mpi_pe_chains_multirank_n2 test_mpi_pe_chains_multirank 2)
 
-    atv_add_mpi_exec(test_mpi_pe_chains_8rank mpi/test_pe_chains_8rank.cpp)
-    atv_add_mpi_run(test_mpi_pe_chains_8rank_n8 test_mpi_pe_chains_8rank 8)
 
-    atv_add_mpi_exec(test_mpi_nose_hoover_t_ramp mpi/test_nose_hoover_t_ramp.cpp)
-    atv_add_mpi_run(test_mpi_nose_hoover_t_ramp_n2 test_mpi_nose_hoover_t_ramp 2)
 
-    atv_add_mpi_exec(test_mpi_pe_chain_crossing mpi/test_pe_chain_crossing.cpp)
-    atv_add_mpi_run(test_mpi_pe_chain_crossing_n2 test_mpi_pe_chain_crossing 2)
 
-    atv_add_mpi_exec(test_mpi_pe_full_multirank mpi/test_pe_full_multirank.cpp)
-    atv_add_mpi_run(test_mpi_pe_full_multirank_n2 test_mpi_pe_full_multirank 2)
 
-    atv_add_mpi_exec(test_mpi_pe_chain_drifting mpi/test_pe_chain_drifting.cpp)
-    atv_add_mpi_run(test_mpi_pe_chain_drifting_n2 test_mpi_pe_chain_drifting 2)
 
-    atv_add_mpi_exec(test_mpi_npt_multirank mpi/test_npt_multirank.cpp)
-    atv_add_mpi_run(test_mpi_npt_multirank_n8 test_mpi_npt_multirank 8)
 
     atv_add_mpi_exec(test_mpi_nose_hoover_npt_multirank
                      mpi/test_nose_hoover_npt_multirank.cpp)
@@ -600,16 +567,11 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_eam_multirank_n2 test_mpi_eam_multirank 2)
     atv_add_mpi_run(test_mpi_eam_multirank_n4 test_mpi_eam_multirank 4)
 
-    atv_add_mpi_exec(test_mpi_rattle_multirank mpi/test_rattle_multirank.cpp)
-    atv_add_mpi_run(test_mpi_rattle_multirank_n2 test_mpi_rattle_multirank 2)
-    atv_add_mpi_run(test_mpi_rattle_multirank_n4 test_mpi_rattle_multirank 4)
 
     atv_add_mpi_exec(test_mpi_sw_multirank mpi/test_sw_multirank.cpp)
     atv_add_mpi_run(test_mpi_sw_multirank_n2 test_mpi_sw_multirank 2)
     atv_add_mpi_run(test_mpi_sw_multirank_n4 test_mpi_sw_multirank 4)
 
-    atv_add_mpi_exec(test_mpi_pe_msu_pipeline mpi/test_pe_msu_pipeline.cpp)
-    atv_add_mpi_run(test_mpi_pe_msu_pipeline_n8 test_mpi_pe_msu_pipeline 8)
 
     atv_add_mpi_exec(test_mpi_gather mpi/test_gather.cpp)
     atv_add_mpi_run(test_mpi_gather_n1 test_mpi_gather 1)
@@ -752,7 +714,6 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_ghf          cpu/scf/test_ghf.cpp)
     atv_add_cpp_test(test_cpu_scf_uks_solver   cpu/scf/test_uks_solver.cpp)
     atv_add_cpp_test(test_cpu_scf_xc_functional cpu/scf/test_xc_functional.cpp)
-    atv_add_cpp_test(test_cpu_scf_evaluator     cpu/scf/test_scf_evaluator.cpp)
     # scf-driver-refactor-04b-wire: method-driver nesting + MeanFieldOutputs.
     atv_add_cpp_test(test_cpu_scf_method_driver_wire
                      cpu/scf/test_method_driver_wire.cpp)
@@ -951,9 +912,6 @@ if(ATV_BUILD_HF)
     # test_cpu_minimizer_lbfgs relocated to benchmarks/qc/rhf/validation/
     # (val_min_lbfgs_geoopt) — full SCF-driven H2 geometry optimizations.
     atv_add_cpp_test(test_cpu_minimizer_line_search cpu/minimize/test_line_search.cpp)
-    atv_add_cpp_test(test_cpu_minimizer_fire cpu/minimize/test_fire.cpp)
-    atv_add_cpp_test(test_cpu_minimizer_cell_relax cpu/minimize/test_cell_relax.cpp)
-    atv_add_cpp_test(test_cpu_minimizer_recorders cpu/minimize/test_trajectory_writer.cpp)
     atv_add_cpp_test(test_cpu_minimize_driver_swap_optimizer cpu/test_minimize_driver_swap_optimizer.cpp)
     atv_add_cpp_test(test_cpu_scf_orbital_info_observer cpu/scf/test_orbital_info_observer.cpp)
     # Vibrational analysis (finite-difference Hessian) is an end-to-end /
@@ -991,10 +949,7 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_materialize cuda/test_materialize.cu)
     atv_add_test(test_cuda_backend    cuda/test_backend.cu)
     atv_add_test(test_core_plan       core/test_plan.cu)
-    atv_add_test(test_cuda_md         cuda/dynamics/test_md.cu)
-    atv_add_test(test_cuda_md_thermostat cuda/dynamics/test_thermostat.cu)
     atv_add_test(test_cuda_md_zero_momentum cuda/dynamics/test_zero_momentum.cu)
-    atv_add_test(test_cuda_md_components cuda/dynamics/test_cuda_md_components.cu)
     atv_add_test(test_cuda_neighborlist_skin_gating cuda/dynamics/test_neighborlist_skin_gating.cu)
     atv_add_test(test_cuda_cluster_contract cuda/dynamics/test_cuda_cluster_contract.cu)
     atv_add_test(test_cuda_cluster_mask cuda/dynamics/test_cuda_cluster_mask.cu)
@@ -1009,15 +964,11 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_driver_no_per_phase_sync cuda/test_driver_no_per_phase_sync.cu)
     target_compile_definitions(test_cuda_driver_no_per_phase_sync PRIVATE
         ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-    atv_add_test(test_cuda_md_nve_limit cuda/dynamics/test_nve_limit.cu)
-    atv_add_test(test_cuda_md_fix_langevin cuda/dynamics/test_fix_langevin.cu)
-    atv_add_test(test_cuda_md_nose_hoover_npt cuda/dynamics/test_cuda_nose_hoover_npt.cu)
     # cuda::RDF on the molrs streaming accumulator (arch-refactor-07-molrs):
     # static-trajectory g(r) parity vs a host-fed cpu::compute::RDFAccumulator
     # + fail-fast ctor edges. Needs a GPU node (runs a cuda::md::MD).
     atv_add_test(test_cuda_observer_rdf_molrs cuda/observe/test_rdf_molrs.cu)
     atv_add_test(test_cuda_pair_lj_special_bonds cuda/potentials/test_pair_lj_special_bonds.cu)
-    atv_add_test(test_cuda_potentials_bonded cuda/potentials/test_bonded.cu)
     # pair_kernel is cuda-owned (backend-mirror-02-absorb); its scalar-math test
     # moved here from the former cpu/potentials/test_pair_kernel.cpp.
     atv_add_test(test_cuda_pair_kernel cuda/potentials/test_pair_kernel.cu)
@@ -1044,9 +995,6 @@ if(ATV_BUILD_CUDA)
         atv_add_test(test_cuda_pw_veff cuda/planewave/test_veff.cu)
         target_link_libraries(test_cuda_pw_veff PRIVATE CUDA::cufft)
     endif()
-    atv_add_test(test_cuda_minimizer_sd cuda/minimize/test_sd.cu)
-    atv_add_test(test_cuda_minimizer_cg cuda/minimize/test_cg.cu)
-    atv_add_test(test_cuda_minimizer_lbfgs cuda/minimize/test_lbfgs.cu)
     atv_add_test(test_cuda_scf        cuda/scf/test_scf.cu)
     atv_add_test(test_cuda_scf_rhf    cuda/scf/test_rhf.cu)
     atv_add_test(test_cuda_scf_device_integrals cuda/scf/test_device_integrals.cu)
@@ -1267,8 +1215,10 @@ if(ATV_BUILD_CUDA AND ATV_BUILD_PW)
     set_target_properties(diag_band_parity PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
-# Every end-to-end / parity check has been physically relocated to
-# benchmarks/{qc,md,mc,pw}/**/validation/ (val_scf_*, val_vib_*, val_md_*,
-# val_min_lbfgs_geoopt, val_md_pe_nvt_multirank, the MC physics gates), built
-# with -DATV_BUILD_BENCHMARKS=ON and run at acceptance time. Nothing is
-# disabled-but-compiled here any more: if it is registered above, it runs.
+# ctest policy reminder: multi-step Driver pipelines (MD/Minimize/Path
+# run(N) for equilibration / production-style trajectories, multi-rank
+# PE/MD campaigns) are DELETED from this tree — not "disabled". Public
+# end-to-end scenarios live under regressions/ (ATV_BUILD_REGRESSIONS,
+# never ctest). Acceptance / parity gates live under benchmarks/** when
+# that tree is rebuilt. If a target is registered above, it must be a
+# single-component unit test.

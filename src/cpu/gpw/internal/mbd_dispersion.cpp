@@ -14,17 +14,8 @@
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
 
+#include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/linalg/matrix.h"
-
-extern "C" {
-// Eigenvalues of a complex Hermitian matrix (OpenBLAS LAPACK). Explicit
-// workspace sizes — no LWORK=-1 query (same OpenBLAS LAPACK 3.12 issue as
-// dsygvd in eigensolve.h).
-void zheevd_(const char* jobz, const char* uplo, const int* n,
-             std::complex<double>* a, const int* lda, double* w,
-             std::complex<double>* work, const int* lwork, double* rwork,
-             const int* lrwork, int* iwork, const int* liwork, int* info);
-}
 
 namespace ATV {
 namespace cpu {
@@ -36,12 +27,14 @@ using Cplx = std::complex<double>;
 
 // Gauss–Legendre n = 15 on [-1,1] (numpy.polynomial.legendre.leggauss).
 constexpr int kNLeg = 15;
-constexpr double kLegX[kNLeg] = {
-    -0.9879925180204854, -0.9372733924007058, -0.8482065834104272,
-    -0.7244177313601701, -0.5709721726085388, -0.3941513470775634,
-    -0.20119409399743451, 0.0,                 0.20119409399743451,
-    0.3941513470775634,  0.5709721726085388,  0.7244177313601701,
-    0.8482065834104272,  0.9372733924007058,  0.9879925180204854};
+constexpr double kLegX[kNLeg] = {-0.9879925180204854,  -0.9372733924007058,
+                                 -0.8482065834104272,  -0.7244177313601701,
+                                 -0.5709721726085388,  -0.3941513470775634,
+                                 -0.20119409399743451, 0.0,
+                                 0.20119409399743451,  0.3941513470775634,
+                                 0.5709721726085388,   0.7244177313601701,
+                                 0.8482065834104272,   0.9372733924007058,
+                                 0.9879925180204854};
 constexpr double kLegW[kNLeg] = {
     0.030753241996117203, 0.0703660474881084,  0.10715922046717141,
     0.13957067792615444,  0.16626920581699398, 0.1861610000155622,
@@ -112,8 +105,7 @@ void T_erf_coulomb(double Rx, double Ry, double Rz, double sigma,
     const double r5 = r2 * r2 * r;
     const double inv_r5 = 1.0 / r5;
     const double zeta = r / sigma;
-    const double theta =
-        2.0 * zeta / std::sqrt(M_PI) * std::exp(-zeta * zeta);
+    const double theta = 2.0 * zeta / std::sqrt(M_PI) * std::exp(-zeta * zeta);
     const double erf_theta = std::erf(zeta) - theta;
     const double R[3] = {Rx, Ry, Rz};
     for (int a = 0; a < 3; ++a) {
@@ -139,8 +131,7 @@ void T_erfc(double Rx, double Ry, double Rz, double alpha, double T[3][3]) {
     const double r5 = r2 * r2 * r;
     const double ar = alpha * r;
     const double expa = std::exp(-(ar * ar));
-    const double B =
-        (std::erfc(ar) + (2.0 * ar / std::sqrt(M_PI)) * expa) / r3;
+    const double B = (std::erfc(ar) + (2.0 * ar / std::sqrt(M_PI)) * expa) / r3;
     const double C =
         (3.0 * std::erfc(ar)
          + (2.0 * ar / std::sqrt(M_PI)) * (3.0 + 2.0 * ar * ar) * expa)
@@ -215,11 +206,11 @@ std::vector<double> contract_atomic_alpha(const RealMatrix& a_nlc, int n) {
 ///
 /// damping gg: short-range (1−f)×T_erf for rsSCS (no Ewald).
 /// damping !gg: long-range f×T_bare; when periodic, Ewald split + reciprocal.
-RealMatrix dipole_matrix_real(
-    const std::vector<std::array<double, 3>>& pos,
-    const std::vector<double>& R_vdw, const std::vector<double>& sigma,
-    double beta, double a_fermi, bool gg, bool periodic,
-    const double cell[3]) {
+RealMatrix dipole_matrix_real(const std::vector<std::array<double, 3>>& pos,
+                              const std::vector<double>& R_vdw,
+                              const std::vector<double>& sigma, double beta,
+                              double a_fermi, bool gg, bool periodic,
+                              const double cell[3]) {
     const int n = static_cast<int>(pos.size());
     const int n3 = 3 * n;
     RealMatrix dip = xt::zeros<double>({n3, n3});
@@ -244,15 +235,15 @@ RealMatrix dipole_matrix_real(
                 const double Rcz = periodic ? cell[2] * nz : 0.0;
                 for (int i = 0; i < n; ++i) {
                     for (int j = 0; j < n; ++j) {
-                        const double Rx =
-                            pos[static_cast<std::size_t>(i)][0]
-                            - pos[static_cast<std::size_t>(j)][0] + Rcx;
-                        const double Ry =
-                            pos[static_cast<std::size_t>(i)][1]
-                            - pos[static_cast<std::size_t>(j)][1] + Rcy;
-                        const double Rz =
-                            pos[static_cast<std::size_t>(i)][2]
-                            - pos[static_cast<std::size_t>(j)][2] + Rcz;
+                        const double Rx = pos[static_cast<std::size_t>(i)][0]
+                                          - pos[static_cast<std::size_t>(j)][0]
+                                          + Rcx;
+                        const double Ry = pos[static_cast<std::size_t>(i)][1]
+                                          - pos[static_cast<std::size_t>(j)][1]
+                                          + Rcy;
+                        const double Rz = pos[static_cast<std::size_t>(i)][2]
+                                          - pos[static_cast<std::size_t>(j)][2]
+                                          + Rcz;
                         const double r2 = Rx * Rx + Ry * Ry + Rz * Rz;
                         const double r = std::sqrt(r2);
                         // pure-Python pymbd: no real-space cutoff skip inside
@@ -404,10 +395,10 @@ RealMatrix dipole_matrix_real(
 }
 
 /// @brief Complex dipole matrix at k-point (periodic long-range, fermi,dip).
-std::vector<Cplx> dipole_matrix_k(
-    const std::vector<std::array<double, 3>>& pos,
-    const std::vector<double>& R_vdw, double beta, double a_fermi,
-    const double cell[3], const double k_point[3]) {
+std::vector<Cplx> dipole_matrix_k(const std::vector<std::array<double, 3>>& pos,
+                                  const std::vector<double>& R_vdw, double beta,
+                                  double a_fermi, const double cell[3],
+                                  const double k_point[3]) {
     const int n = static_cast<int>(pos.size());
     const int n3 = 3 * n;
     std::vector<Cplx> dip(static_cast<std::size_t>(n3 * n3), Cplx{0.0, 0.0});
@@ -432,15 +423,15 @@ std::vector<Cplx> dipole_matrix_k(
                 const double Rcz = cell[2] * nz;
                 for (int i = 0; i < n; ++i) {
                     for (int j = 0; j < n; ++j) {
-                        const double Rx =
-                            pos[static_cast<std::size_t>(i)][0]
-                            - pos[static_cast<std::size_t>(j)][0] + Rcx;
-                        const double Ry =
-                            pos[static_cast<std::size_t>(i)][1]
-                            - pos[static_cast<std::size_t>(j)][1] + Rcy;
-                        const double Rz =
-                            pos[static_cast<std::size_t>(i)][2]
-                            - pos[static_cast<std::size_t>(j)][2] + Rcz;
+                        const double Rx = pos[static_cast<std::size_t>(i)][0]
+                                          - pos[static_cast<std::size_t>(j)][0]
+                                          + Rcx;
+                        const double Ry = pos[static_cast<std::size_t>(i)][1]
+                                          - pos[static_cast<std::size_t>(j)][1]
+                                          + Rcy;
+                        const double Rz = pos[static_cast<std::size_t>(i)][2]
+                                          - pos[static_cast<std::size_t>(j)][2]
+                                          + Rcz;
                         const double r = std::sqrt(Rx * Rx + Ry * Ry + Rz * Rz);
                         if (r > real_space_cutoff)
                             continue;
@@ -457,7 +448,7 @@ std::vector<Cplx> dipole_matrix_k(
                             -(k_point[0] * Rx + k_point[1] * Ry
                               + k_point[2] * Rz);
                         const Cplx kpref{std::cos(phase_arg),
-                                        std::sin(phase_arg)};
+                                         std::sin(phase_arg)};
                         for (int a = 0; a < 3; ++a) {
                             for (int b = 0; b < 3; ++b) {
                                 const double t =
@@ -480,15 +471,14 @@ std::vector<Cplx> dipole_matrix_k(
     int range_G[3];
     supercell_circum(rec_cell, rec_space_cutoff, range_G);
 
-    const double self = 4.0 * ewald_alpha * ewald_alpha * ewald_alpha
-                        / (3.0 * std::sqrt(M_PI));
+    const double self =
+        4.0 * ewald_alpha * ewald_alpha * ewald_alpha / (3.0 * std::sqrt(M_PI));
     for (int i = 0; i < n; ++i)
         for (int a = 0; a < 3; ++a)
             at(3 * i + a, 3 * i + a) -= self;
 
-    const double ksq0 =
-        k_point[0] * k_point[0] + k_point[1] * k_point[1]
-        + k_point[2] * k_point[2];
+    const double ksq0 = k_point[0] * k_point[0] + k_point[1] * k_point[1]
+                        + k_point[2] * k_point[2];
     if (std::sqrt(ksq0) > 1e-15) {
         const double pref =
             4.0 * M_PI / volume
@@ -528,15 +518,12 @@ std::vector<Cplx> dipole_matrix_k(
                 const double K[3] = {kx, ky, kz};
                 for (int i = 0; i < n; ++i) {
                     for (int j = 0; j < n; ++j) {
-                        const double dx =
-                            pos[static_cast<std::size_t>(i)][0]
-                            - pos[static_cast<std::size_t>(j)][0];
-                        const double dy =
-                            pos[static_cast<std::size_t>(i)][1]
-                            - pos[static_cast<std::size_t>(j)][1];
-                        const double dz =
-                            pos[static_cast<std::size_t>(i)][2]
-                            - pos[static_cast<std::size_t>(j)][2];
+                        const double dx = pos[static_cast<std::size_t>(i)][0]
+                                          - pos[static_cast<std::size_t>(j)][0];
+                        const double dy = pos[static_cast<std::size_t>(i)][1]
+                                          - pos[static_cast<std::size_t>(j)][1];
+                        const double dz = pos[static_cast<std::size_t>(i)][2]
+                                          - pos[static_cast<std::size_t>(j)][2];
                         const double parg = Gx * dx + Gy * dy + Gz * dz;
                         const Cplx fourier{std::cos(parg), std::sin(parg)};
                         for (int a = 0; a < 3; ++a)
@@ -563,15 +550,18 @@ double sum_sqrt_eigvals_hermitian(std::vector<Cplx>& A_colmaj, int n3) {
     int lwork = std::max(2 * n3 + 1, 1);
     int lrwork = std::max(n3, 1);
     int liwork = 1;
+    // Complex workspace; LAPACK sees interleaved re/im doubles (see
+    // linalg/eigensolve.h zheevd_ binding).
     std::vector<Cplx> work(static_cast<std::size_t>(lwork));
     std::vector<double> rwork(static_cast<std::size_t>(lrwork));
     std::vector<int> iwork(static_cast<std::size_t>(liwork));
     int info = 0;
-    zheevd_(&jobz, &uplo, &n, A_colmaj.data(), &lda, w.data(), work.data(),
-            &lwork, rwork.data(), &lrwork, iwork.data(), &liwork, &info);
+    zheevd_(&jobz, &uplo, &n, reinterpret_cast<double*>(A_colmaj.data()), &lda,
+            w.data(), reinterpret_cast<double*>(work.data()), &lwork,
+            rwork.data(), &lrwork, iwork.data(), &liwork, &info);
     if (info != 0)
-        throw std::runtime_error(
-            "GPW MBD: zheevd failed with info=" + std::to_string(info));
+        throw std::runtime_error("GPW MBD: zheevd failed with info="
+                                 + std::to_string(info));
     double sum = 0.0;
     for (int k = 0; k < n3; ++k) {
         if (w[static_cast<std::size_t>(k)] < -1e-10)
@@ -658,9 +648,9 @@ double mbd_rsscs_energy(const std::vector<int>& Z,
             a_dyn[i] = alpha0[i] / (1.0 + (u / omega[i]) * (u / omega[i]));
             sigma[i] = std::cbrt(std::sqrt(2.0 / M_PI) * a_dyn[i] / 3.0);
         }
-        const RealMatrix dip = dipole_matrix_real(
-            pos_bohr, rvdw, sigma, beta, a_fermi, /*gg=*/true, periodic,
-            cell_bohr);
+        const RealMatrix dip =
+            dipole_matrix_real(pos_bohr, rvdw, sigma, beta, a_fermi,
+                               /*gg=*/true, periodic, cell_bohr);
         const RealMatrix a_nlc = screening_matrix(a_dyn, dip);
         alpha_dyn_rsscs[static_cast<std::size_t>(iu)] =
             contract_atomic_alpha(a_nlc, static_cast<int>(n));
@@ -732,9 +722,8 @@ double mbd_rsscs_energy(const std::vector<int>& Z,
             const double kp[3] = {kpts[static_cast<std::size_t>(ik)][0],
                                   kpts[static_cast<std::size_t>(ik)][1],
                                   kpts[static_cast<std::size_t>(ik)][2]};
-            std::vector<Cplx> Tlr =
-                dipole_matrix_k(pos_bohr, rvdw_rsscs, beta, a_fermi, cell_bohr,
-                                kp);
+            std::vector<Cplx> Tlr = dipole_matrix_k(pos_bohr, rvdw_rsscs, beta,
+                                                    a_fermi, cell_bohr, kp);
             // C = diag(ω²) + outer(pre,pre) * T   (Hermitian)
             std::vector<Cplx> Cmat(static_cast<std::size_t>(n3 * n3),
                                    Cplx{0.0, 0.0});
@@ -753,10 +742,8 @@ double mbd_rsscs_energy(const std::vector<int>& Z,
             // Hermitize numerically (kill round-off anti-Hermitian noise)
             for (int p = 0; p < n3; ++p) {
                 for (int q = p; q < n3; ++q) {
-                    const Cplx& a =
-                        Cmat[static_cast<std::size_t>(p + q * n3)];
-                    const Cplx& b =
-                        Cmat[static_cast<std::size_t>(q + p * n3)];
+                    const Cplx& a = Cmat[static_cast<std::size_t>(p + q * n3)];
+                    const Cplx& b = Cmat[static_cast<std::size_t>(q + p * n3)];
                     const Cplx h = 0.5 * (a + std::conj(b));
                     Cmat[static_cast<std::size_t>(p + q * n3)] = h;
                     Cmat[static_cast<std::size_t>(q + p * n3)] = std::conj(h);
@@ -824,13 +811,11 @@ MbdResult mbd_rsscs_pbe(const std::vector<int>& Z,
         for (int d = 0; d < 3; ++d) {
             const double save = pos[i][d];
             pos[i][d] = save + kH;
-            const double ep =
-                mbd_rsscs_energy(Z, pos, cell_bohr, periodic, beta, a_fermi,
-                                 vol_ratio, k_mesh);
+            const double ep = mbd_rsscs_energy(
+                Z, pos, cell_bohr, periodic, beta, a_fermi, vol_ratio, k_mesh);
             pos[i][d] = save - kH;
-            const double em =
-                mbd_rsscs_energy(Z, pos, cell_bohr, periodic, beta, a_fermi,
-                                 vol_ratio, k_mesh);
+            const double em = mbd_rsscs_energy(
+                Z, pos, cell_bohr, periodic, beta, a_fermi, vol_ratio, k_mesh);
             pos[i][d] = save;
             res.forces[i][d] = -(ep - em) / (2.0 * kH);
         }

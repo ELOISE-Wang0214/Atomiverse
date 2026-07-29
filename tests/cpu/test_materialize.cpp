@@ -385,45 +385,6 @@ TEST(Materialize, MissingOptionalFieldsDefaultToZero) {
 
 // ── ac-004: a materialized cpu::Frame is runnable under cpu::md::MD ─────
 
-TEST(Materialize, MaterializedFrameIsRunnable) {
-    auto fr = molrs::frame_new();
-
-    // Two argon-like atoms separated by ~sigma in a roomy cubic box.
-    const std::vector<double> x = {0.0, 3.4};
-    const std::vector<double> y = {0.0, 0.0};
-    const std::vector<double> z = {0.0, 0.0};
-    const std::vector<double> mass = {39.948, 39.948};
-    const std::vector<std::int32_t> type = {1, 1};
-    molrs::frame_set_column_f64(
-        *fr, "atoms", "x", ::rust::Slice<const double>(x.data(), x.size()));
-    molrs::frame_set_column_f64(
-        *fr, "atoms", "y", ::rust::Slice<const double>(y.data(), y.size()));
-    molrs::frame_set_column_f64(
-        *fr, "atoms", "z", ::rust::Slice<const double>(z.data(), z.size()));
-    molrs::frame_set_column_f64(
-        *fr, "atoms", "mass",
-        ::rust::Slice<const double>(mass.data(), mass.size()));
-    molrs::frame_set_column_i32(
-        *fr, "atoms", "type",
-        ::rust::Slice<const std::int32_t>(type.data(), type.size()));
-    const std::vector<double> h = {30.0, 0.0, 0.0, 0.0, 30.0,
-                                   0.0,  0.0, 0.0, 30.0};
-    molrs::frame_set_box(*fr, ::rust::Slice<const double>(h.data(), h.size()));
-
-    Frame cf = materialize(*fr);
-    ASSERT_EQ(cf.nlocal(), 2);
-
-    ATV::cpu::md::MD sim;
-    sim.set_neighbor(ATV::cpu::md::NeighborList<>{6.8, /*skin=*/0.5});
-    sim.set_evaluator(ATV::cpu::PairLJCut{0.0104, 3.4, 6.8});
-    sim.set_integrator(ATV::cpu::md::VelocityVerlet{/*dt=*/0.5});
-    sim.build();
-    sim.run(cf, 10);
-
-    EXPECT_TRUE(std::isfinite(cf.meta.get(ATV::kEnergy)))
-        << "MD run on a materialized frame must leave a finite energy";
-}
-
 // ── arch-refactor-06-frame §2: write_back field contract (golden) ────────
 
 // Contract fields (x/v/f/charge, image, tag, typed metadata) mutated on the

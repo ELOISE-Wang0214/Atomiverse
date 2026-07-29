@@ -152,10 +152,10 @@ std::vector<AccReal> rho_g_to_real(const PWWorkspace& ws) {
     const int nx = ws.fft_nx, ny = ws.fft_ny, nz = ws.fft_nz;
     const int nxc = nx / 2 + 1;
     const int nc = ws.nc;
-    std::vector<fftw_complex> half(static_cast<std::size_t>(nc));
-    for (int i = 0; i < nc; ++i)
-        half[static_cast<std::size_t>(i)][0] =
-            half[static_cast<std::size_t>(i)][1] = 0.0;
+    // fftw_complex is double[2] — not a valid std::vector element type on
+    // libc++. Stage as interleaved doubles and view as fftw_complex*.
+    std::vector<double> half_reim(static_cast<std::size_t>(2 * nc), 0.0);
+    auto* half = reinterpret_cast<fftw_complex*>(half_reim.data());
 
     auto& gv = *ws.gvec;
     for (int ig = 0; ig < ws.n_g; ++ig) {
@@ -178,7 +178,7 @@ std::vector<AccReal> rho_g_to_real(const PWWorkspace& ws) {
                 conj ? -ws.rho_G[ig].imag() : ws.rho_G[ig].imag());
         }
     }
-    ws.fft->c2r(half.data(), rho_r.data());
+    ws.fft->c2r(half, rho_r.data());
     return rho_r;
 }
 
@@ -209,8 +209,9 @@ void load_rho_real_scaled(PWWorkspace& ws, const std::vector<AccReal>& rho_r0,
     const int nx = ws.fft_nx, ny = ws.fft_ny, nz = ws.fft_nz;
     const int nxc = nx / 2 + 1;
     const int nc = ws.nc;
-    std::vector<fftw_complex> half(static_cast<std::size_t>(nc));
-    ws.fft->r2c(rho_r.data(), half.data());
+    std::vector<double> half_reim(static_cast<std::size_t>(2 * nc), 0.0);
+    auto* half = reinterpret_cast<fftw_complex*>(half_reim.data());
+    ws.fft->r2c(rho_r.data(), half);
     AccReal inv_nr = AccReal(1) / AccReal(ws.nr);
     auto& gv = *ws.gvec;
     for (int ig = 0; ig < ws.n_g; ++ig) {
