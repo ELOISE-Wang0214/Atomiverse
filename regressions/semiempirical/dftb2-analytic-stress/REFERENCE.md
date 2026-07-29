@@ -84,14 +84,24 @@ nor the new value is an oracle number — no DFTB+ binary exists on this host
 ## Gaps (still open)
 
 1. **D3 dispersion is absent from the stress.** `DFTB2::d3` contributes to the
-   energy and forces but not to `kStress` — neither the analytic pair virial nor
-   the open-shell strain-FD path (which differentiates `scc_total`, excluding
-   dispersion) sees it. Setting `d3 = true` with `with_stress = true` silently
-   yields an electronic+repulsive-only stress. A D3 virial is owed.
-2. **No periodic case.** Both this gate and the geometry are a molecule in a
-   20 Å box, so the stress is never checked against the Γ-point lattice-summed
-   energy path, where the min-image force/virial expression is not the gradient
-   of the lattice-summed energy (`dftb2-periodic-forces` remains ○).
+   energy and forces but not to `kStress` — the analytic pair virial does not
+   see it. Setting `d3 = true` with `with_stress = true` silently yields an
+   electronic+repulsive-only stress. A D3 virial is owed.
+2. **No periodic case, and the self-image virial is missing.** This gate's
+   geometry is a molecule in a 20 Å box, so only the \(a<b\) pair virial is
+   exercised. The pair walk (`src/cpu/semiempirical/dftb2.cpp:1325`,
+   `for (int b = a + 1; ...)`) skips self-images (\(a=a\), \(T\neq0\)). Those
+   exert zero nuclear force — so forces are unaffected and
+   `reg_dftb2-periodic-forces` is green — but they **do** carry a virial once a
+   lattice image falls inside the SK / γ / repulsive cutoff, so under dense
+   Γ-PBC (e.g. the 2.8 Å C-chain cell) the analytic stress is incomplete.
+   A periodic strain-FD gate plus the self-image virial are owed together.
+
+**Closed 2026-07-29:** the open-shell branch no longer falls back to multi-SCC
+strain FD — `analytic_forces_restricted` / `analytic_forces_unrestricted` were
+folded into one spin-resolved `analytic_forces_stress` that also emits the
+virial, and this case's numbers are unchanged
+(`regressions/semiempirical/dftb2-spin-analytic-stress`).
 
 ## Perf
 

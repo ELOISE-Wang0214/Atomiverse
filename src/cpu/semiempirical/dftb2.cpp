@@ -1,7 +1,8 @@
 /// @file src/cpu/semiempirical/dftb2.cpp
 /// SCC-DFTB2 multi-element: mio-1-1 H–H pin + sketch (spin + analytic F) + 3ob.
-/// Closed-shell analytic nuclear forces on BOTH SK sets; MioSketch adds the
-/// collinear open-shell gradient and the closed-form pair-virial cell stress.
+/// Closed-shell analytic nuclear forces on BOTH SK sets; MioSketch runs closed
+/// shell AND collinear open shell through ONE spin-resolved closed-form
+/// gradient + pair-virial cell stress (`analytic_forces_stress`).
 /// Γ-point PBC (MioSketch): lattice-summed H0/S, screened γ, and repulsive.
 /// Multi-k (MioSketch restricted): Bloch-phased complex H0(k)/S(k), MP mesh.
 /// Optional additive Grimme D3(BJ) dispersion (molecular sum, analytic forces).
@@ -1217,20 +1218,62 @@ SccResult scc_energy_unrestricted(
 }
 
 
-/// Closed-form nuclear gradient for **collinear unrestricted** SCC-DFTB2
-/// (fixed Δq, m; dual α/β densities). Spin W is geometry-independent.
-/// Lattice-image walk matches Γ-point energy (H⁰/S/γ/rep); self-images (a=a,
-/// T≠0) have r = |T| only and contribute zero nuclear force.
-void analytic_forces_unrestricted(
+/// Closed-form nuclear gradient (+ optional intensive cell stress) for
+/// **collinear spin-resolved** SCC-DFTB2 on the MioSketch tables.
+///
+/// ONE assembly serves both spin cases: the restricted closed shell is the
+/// degenerate limit \(C^\alpha=C^\beta\), \(\varepsilon^\alpha=\varepsilon^\beta\),
+/// \(n_\alpha=n_\beta=n_{\mathrm{occ}}\), \(m\equiv 0\) — i.e.
+/// \(P^\alpha=P^\beta=P/2\), \(W^\alpha=W^\beta=W/2\). There is deliberately no
+/// second copy of this contraction: the wrong-sign \(\gamma\) gradient of
+/// 2026-07-28 survived precisely because it was written out three times.
+///
+/// Forces: \(F=-\nabla E\) [eV/Å]. Stress: \(\sigma=-(1/\Omega)\partial
+/// E/\partial\varepsilon\) [eV/Å³] Voigt (xx,yy,zz,xy,xz,yz) — the pair virial
+/// of the very same bond terms, since affine strain maps every bond
+/// \(R\to(1+\varepsilon)R\).
+///
+/// Per ordered pair \(a<b\) and lattice image \(T\), bond \(R=R_b+T-R_a\):
+///
+/// | term | contribution to \(\partial E/\partial R\) |
+/// | ---- | ----------------------------------------- |
+/// | Hellmann–Feynman | \(\sum_\sigma P^\sigma\,\partial H^0/\partial R\) |
+/// | Pulay | \(\sum_\sigma[P^\sigma\tfrac12(\varepsilon^\sigma_a+\varepsilon^\sigma_b)-W^\sigma]\,\partial S/\partial R\) |
+/// | SCC \(\gamma\) | \(\Delta q_a\Delta q_b\,\partial\gamma_{ab}/\partial R\) (**total** Mulliken \(\Delta q\)) |
+/// | repulsive | \(\partial E_{\mathrm{rep}}/\partial R\) |
+///
+/// with \(\varepsilon^\sigma_A=\sum_B\gamma_{AB}\Delta q_B+\sigma W_A m_A\) and
+/// \(W^\sigma_{\mu\nu}=\sum_{o\in\mathrm{occ}\,\sigma}\varepsilon^\sigma_o
+/// C^\sigma_{\mu o}C^\sigma_{\nu o}\).
+///
+/// **The spin polarization sits in the Pulay slot — it does not vanish.**
+/// \(E_{\mathrm{spin}}=\tfrac12\sum_A W_A m_A^2\) carries no *explicit*
+/// geometry dependence (\(W_A\) is a constant atomic parameter and \(m_A\) is
+/// held at its SCC value), but \(m_A\) depends on geometry through \(S\).
+/// Stationarity of the SCC functional (\(\partial E/\partial P^\sigma=H^\sigma\),
+/// \(C^{\sigma\mathsf T}SC^\sigma=I\)) converts that response into exactly the
+/// \(\pm W_A m_A\) half of \(\varepsilon^\sigma_A\) multiplying
+/// \(\partial S/\partial R\) in the table. Replacing \(\varepsilon^\sigma\) by
+/// the charge-only shift breaks both \(F=-\nabla E\) and the virial for every
+/// system whose spin shift varies across atoms. (It is *uniform* for
+/// homonuclear O₂ — a uniform \(cS\) shift leaves the generalized eigenvectors
+/// invariant — which is why that case cannot detect the omission.)
+///
+/// **Γ-PBC:** walks the same lattice images as `build_h0_s` / `gamma_pair` /
+/// `repulsive_energy`, not min-image. Self-images (\(a=a\), \(T\neq0\)) exert
+/// zero nuclear force and are skipped; in a dense periodic cell they do carry
+/// a virial — an open gap shared with the shipped restricted path, recorded in
+/// `regressions/semiempirical/dftb2-analytic-stress/REFERENCE.md`.
+void analytic_forces_stress(
     int n_at, int n_ao, int n_alpha, int n_beta,
     const std::vector<const DftbElementRow*>& el, const std::vector<int>& ao0,
     const int* type, const StorageReal* x, const StorageReal* y,
     const StorageReal* z, const cpu::Box& box, const std::vector<double>& dq,
     const std::vector<double>& mspin, const linalg::RealMatrix& Ca,
     const linalg::RealMatrix& Cb, const linalg::RealVector& eps_a_orb,
-    const linalg::RealVector& eps_b_orb, AccReal* fx, AccReal* fy,
-    AccReal* fz) {
-    // Atom shifts ε^σ_A = Σ_B γ_AB Δq_B ± W_A m_A (γ_AB already lattice-summed).
+    const linalg::RealVector& eps_b_orb, AccReal* fx, AccReal* fy, AccReal* fz,
+    bool want_forces, double* stress_voigt /* nullable, length 6 */) {
+    // ε^σ_A = Σ_B γ_AB Δq_B ± W_A m_A (γ_AB already lattice-summed).
     std::vector<double> eps_at_a(static_cast<std::size_t>(n_at), 0.0);
     std::vector<double> eps_at_b(static_cast<std::size_t>(n_at), 0.0);
     for (int a = 0; a < n_at; ++a) {
@@ -1268,6 +1311,9 @@ void analytic_forces_unrestricted(
                                 xt::zeros<double>({n_ao, n_ao}),
                                 xt::zeros<double>({n_ao, n_ao})};
 
+    // Accumulate ∂E/∂ε (before −1/Ω) in Voigt order.
+    double dE_de[6] = {0, 0, 0, 0, 0, 0};
+
     const auto images = lattice_images_for(box, el);
 
     for (int a = 0; a < n_at; ++a) {
@@ -1303,7 +1349,8 @@ void analytic_forces_unrestricted(
                 if (r < 1e-12)
                     continue;
                 const double dir[3] = {dx / r, dy / r, dz / r};
-                double dE_dbond[3] = {0, 0, 0};
+                // ∂E/∂bond for this image = the force on atom a (F_b = −F_a).
+                double F_a[3] = {0, 0, 0};
 
                 if (r <= rcut) {
                     for (int k = 0; k < 3; ++k) {
@@ -1324,132 +1371,13 @@ void analytic_forces_unrestricted(
                                        - Wb(ia + i, ib + j) * ds;
                             }
                         // Factor 2: only the A–B upper block is contracted.
-                        dE_dbond[k] += 2.0 * acc;
-                    }
-                    const double dErep_dr =
-                        pair_repulsive_dE_dr(type[a], type[b], r);
-                    for (int k = 0; k < 3; ++k)
-                        dE_dbond[k] += dErep_dr * dir[k];
-                }
-
-                // Lattice γ: each image of γ(|R+T|) contributes independently.
-                // E² = ½Σ_AB γ_AB Δq_A Δq_B with γ_AB = Σ_T γ(|R+T|); a<b
-                // pair term is γ_AB Δq_A Δq_B so ∂E²/∂bond_T = Δq_A Δq_B dγ/dr.
-                if (r <= rcut) {
-                    const double dgdR =
-                        dgamma_dr(r, ea.hubbard_u, eb.hubbard_u);
-                    for (int k = 0; k < 3; ++k)
-                        dE_dbond[k] += dqa * dqb * dgdR * dir[k];
-                }
-
-                // Spin energy −½ Σ W m²: W constant, m fixed ⇒ no geometry term.
-
-                fx[a] += static_cast<AccReal>(dE_dbond[0]);
-                fy[a] += static_cast<AccReal>(dE_dbond[1]);
-                fz[a] += static_cast<AccReal>(dE_dbond[2]);
-                fx[b] -= static_cast<AccReal>(dE_dbond[0]);
-                fy[b] -= static_cast<AccReal>(dE_dbond[1]);
-                fz[b] -= static_cast<AccReal>(dE_dbond[2]);
-            }
-        }
-    }
-}
-
-/// Closed-form nuclear gradient (+ optional intensive stress) for **restricted**
-/// SCC-DFTB2 (fixed Δq). Forces: F=−∇E [eV/Å]. Stress: σ=−(1/Ω)∂E/∂ε [eV/Å³]
-/// Voigt (xx,yy,zz,xy,xz,yz) via pair virial of the same bond terms.
-///
-/// **Γ-PBC:** walks the same lattice images as `build_h0_s` / `gamma_pair` /
-/// `repulsive_energy` (not min-image only). Self-images contribute zero F.
-void analytic_forces_restricted(
-    int n_at, int n_ao, int n_occ, const std::vector<const DftbElementRow*>& el,
-    const std::vector<int>& ao0, const int* type, const StorageReal* x,
-    const StorageReal* y, const StorageReal* z, const cpu::Box& box,
-    const std::vector<double>& dq, const linalg::RealMatrix& C,
-    const linalg::RealVector& eps, AccReal* fx, AccReal* fy, AccReal* fz,
-    bool want_forces, double* stress_voigt /* nullable, length 6 */) {
-    std::vector<double> dV(static_cast<std::size_t>(n_at), 0.0);
-    for (int a = 0; a < n_at; ++a) {
-        double shift = 0;
-        for (int b = 0; b < n_at; ++b)
-            shift += gamma_pair(a, b, el, x, y, z, box)
-                     * dq[static_cast<std::size_t>(b)];
-        dV[static_cast<std::size_t>(a)] = shift;
-    }
-
-    linalg::RealMatrix P = xt::zeros<double>({n_ao, n_ao});
-    linalg::RealMatrix W = xt::zeros<double>({n_ao, n_ao});
-    for (int o = 0; o < n_occ; ++o)
-        for (int mu = 0; mu < n_ao; ++mu)
-            for (int nu = 0; nu < n_ao; ++nu) {
-                P(mu, nu) += 2.0 * C(mu, o) * C(nu, o);
-                W(mu, nu) += 2.0 * eps(o) * C(mu, o) * C(nu, o);
-            }
-
-    linalg::RealMatrix dH0[3] = {xt::zeros<double>({n_ao, n_ao}),
-                                 xt::zeros<double>({n_ao, n_ao}),
-                                 xt::zeros<double>({n_ao, n_ao})};
-    linalg::RealMatrix dS[3] = {xt::zeros<double>({n_ao, n_ao}),
-                                xt::zeros<double>({n_ao, n_ao}),
-                                xt::zeros<double>({n_ao, n_ao})};
-
-    // Accumulate ∂E/∂ε (before −1/Ω) in Voigt order.
-    double dE_de[6] = {0, 0, 0, 0, 0, 0};
-
-    const auto images = lattice_images_for(box, el);
-
-    for (int a = 0; a < n_at; ++a) {
-        const auto& ea = *el[static_cast<std::size_t>(a)];
-        const int ia = ao0[static_cast<std::size_t>(a)];
-        const double xa = static_cast<double>(x[a]);
-        const double ya = static_cast<double>(y[a]);
-        const double za = static_cast<double>(z[a]);
-        for (int b = a + 1; b < n_at; ++b) {
-            const auto& eb = *el[static_cast<std::size_t>(b)];
-            const int ib = ao0[static_cast<std::size_t>(b)];
-            const double xb = static_cast<double>(x[b]);
-            const double yb = static_cast<double>(y[b]);
-            const double zb = static_cast<double>(z[b]);
-            const double rcut = pair_rcut_A(ea, eb, type[a], type[b]);
-            const auto& sk = pair_sk(type[a], type[b]);
-            const double dqa = dq[static_cast<std::size_t>(a)];
-            const double dqb = dq[static_cast<std::size_t>(b)];
-            const double shift = 0.5 * (dV[static_cast<std::size_t>(a)]
-                                        + dV[static_cast<std::size_t>(b)]);
-            const int na = ea.n_ao;
-            const int nb = eb.n_ao;
-
-            for (const auto& T : images) {
-                const double dx = xb + T.tx - xa;
-                const double dy = yb + T.ty - ya;
-                const double dz = zb + T.tz - za;
-                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
-                if (r < 1e-12)
-                    continue;
-                const double dir[3] = {dx / r, dy / r, dz / r};
-                // Pair force contribution on atom a (F_b = −F_a).
-                double F_a[3] = {0, 0, 0};
-
-                if (r <= rcut) {
-                    for (int k = 0; k < 3; ++k) {
-                        dH0[k] = xt::zeros<double>({n_ao, n_ao});
-                        dS[k] = xt::zeros<double>({n_ao, n_ao});
-                    }
-                    fill_sk_block_deriv(ea, eb, sk, dx, dy, dz, r, dH0, dS, ia,
-                                        ib);
-                    for (int k = 0; k < 3; ++k) {
-                        double acc = 0;
-                        for (int i = 0; i < na; ++i)
-                            for (int j = 0; j < nb; ++j) {
-                                const double p = P(ia + i, ib + j);
-                                const double w = W(ia + i, ib + j);
-                                const double dh = dH0[k](ia + i, ib + j);
-                                const double ds = dS[k](ia + i, ib + j);
-                                acc += p * (dh + shift * ds) - w * ds;
-                            }
                         F_a[k] += 2.0 * acc;
                     }
 
+                    // Lattice γ: each image of γ(|R+T|) contributes
+                    // independently. E² = ½Σ_AB γ_AB Δq_A Δq_B with
+                    // γ_AB = Σ_T γ(|R+T|); the a<b pair term is
+                    // γ_AB Δq_A Δq_B, so ∂E²/∂bond_T = Δq_A Δq_B dγ/dr.
                     const double dgdR =
                         dgamma_dr(r, ea.hubbard_u, eb.hubbard_u);
                     for (int k = 0; k < 3; ++k)
@@ -1628,84 +1556,34 @@ double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, double mix_beta,
     if (multi_k)
         return energy;
 
-    // Restricted closed shell has a closed-form gradient AND a closed-form pair
-    // virial; collinear open shell has the closed-form gradient only, so its
-    // stress still falls back to multi-SCC affine strain-FD.
-    const bool analytic =
-        !occ.unrestricted && res.n_occ > 0 && res.C.shape(0) > 0;
-    const bool analytic_open = occ.unrestricted && res.Ca.shape(0) > 0;
+    // Closed shell and collinear open shell take the SAME closed-form gradient
+    // + pair virial: the restricted case is the α/β-degenerate limit. The
+    // open-shell multi-SCC affine strain-FD stress fallback is gone.
+    const bool have_orbitals =
+        occ.unrestricted ? (res.Ca.shape(0) > 0) : (res.C.shape(0) > 0);
+    if (!((with_forces || with_stress) && have_orbitals))
+        return energy;
 
-    if ((with_forces || with_stress) && analytic) {
-        double stress_buf[6] = {0, 0, 0, 0, 0, 0};
-        analytic_forces_restricted(
-            n_at, n_ao, res.n_occ, el, ao0, type, x, y, z, f.box, res.dq,
-            res.C, res.eps, fx, fy, fz, with_forces,
-            with_stress ? stress_buf : nullptr);
-        if (with_stress) {
-            for (int v = 0; v < 6; ++v)
-                out_stress[static_cast<std::size_t>(v)] = stress_buf[v];
-            auto& st = f.meta.get(kStress);
-            for (int v = 0; v < 6; ++v)
-                st[static_cast<std::size_t>(v)] += stress_buf[v];
-        }
-    } else {
-        if (with_forces && analytic_open) {
-            // Collinear open shell: closed-form dual α/β gradient.
-            analytic_forces_unrestricted(
-                n_at, n_ao, res.n_alpha, res.n_beta, el, ao0, type, x, y, z,
-                f.box, res.dq, res.spin, res.Ca, res.Cb, res.eps_a, res.eps_b,
-                fx, fy, fz);
-        }
-        // else: no orbitals (empty system) — leave forces unchanged
-        if (with_stress) {
-            // Multi-SCC affine strain-FD of E (open-shell fallback).
-            constexpr double h_s = 2.0e-4;
-            const double vol0 = f.box.volume();
-            if (vol0 <= 0.0)
-                throw std::runtime_error(
-                    "DFTB2: non-positive box volume for stress");
-            // Snapshot geometry
-            std::vector<StorageReal> x0(static_cast<std::size_t>(n_at));
-            std::vector<StorageReal> y0(static_cast<std::size_t>(n_at));
-            std::vector<StorageReal> z0(static_cast<std::size_t>(n_at));
-            for (int a = 0; a < n_at; ++a) {
-                x0[static_cast<std::size_t>(a)] = x[a];
-                y0[static_cast<std::size_t>(a)] = y[a];
-                z0[static_cast<std::size_t>(a)] = z[a];
-            }
-            const Mat3 cell0 = f.box.cell();
-            auto& st = f.meta.get(kStress);
-            for (int v = 0; v < 6; ++v) {
-                auto restore = [&]() {
-                    for (int a = 0; a < n_at; ++a) {
-                        x[a] = x0[static_cast<std::size_t>(a)];
-                        y[a] = y0[static_cast<std::size_t>(a)];
-                        z[a] = z0[static_cast<std::size_t>(a)];
-                    }
-                    f.box.set_cell(cell0);
-                };
-                restore();
-                apply_affine_strain(f, v, h_s);
-                // Stress FD is Γ-only (multi-k returns earlier).
-                const int gamma_mesh[3] = {1, 1, 1};
-                const double ep =
-                    scc_total(n_at, n_ao, occ, el, ao0, type, x, y, z, f.box,
-                              scc_tol, max_scc, mix_beta, gamma_mesh,
-                              /*time_reversal=*/true)
-                        .energy;
-                restore();
-                apply_affine_strain(f, v, -h_s);
-                const double em =
-                    scc_total(n_at, n_ao, occ, el, ao0, type, x, y, z, f.box,
-                              scc_tol, max_scc, mix_beta, gamma_mesh,
-                              /*time_reversal=*/true)
-                        .energy;
-                restore();
-                const double dE_de = (ep - em) / (2.0 * h_s);
-                const double sig = -dE_de / vol0;
-                out_stress[static_cast<std::size_t>(v)] = sig;
-                st[static_cast<std::size_t>(v)] += sig;
-            }
+    double stress_buf[6] = {0, 0, 0, 0, 0, 0};
+    if (occ.unrestricted)
+        analytic_forces_stress(n_at, n_ao, res.n_alpha, res.n_beta, el, ao0,
+                               type, x, y, z, f.box, res.dq, res.spin, res.Ca,
+                               res.Cb, res.eps_a, res.eps_b, fx, fy, fz,
+                               with_forces,
+                               with_stress ? stress_buf : nullptr);
+    else
+        // Restricted: C^α = C^β = C, ε^α = ε^β = ε, n_α = n_β = n_occ,
+        // m ≡ 0 ⇒ P^α = P^β = P/2, W^α = W^β = W/2.
+        analytic_forces_stress(n_at, n_ao, res.n_occ, res.n_occ, el, ao0, type,
+                               x, y, z, f.box, res.dq, res.spin, res.C, res.C,
+                               res.eps, res.eps, fx, fy, fz, with_forces,
+                               with_stress ? stress_buf : nullptr);
+
+    if (with_stress) {
+        auto& st = f.meta.get(kStress);
+        for (int v = 0; v < 6; ++v) {
+            out_stress[static_cast<std::size_t>(v)] = stress_buf[v];
+            st[static_cast<std::size_t>(v)] += stress_buf[v];
         }
     }
     return energy;

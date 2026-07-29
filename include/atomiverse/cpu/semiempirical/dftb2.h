@@ -47,10 +47,12 @@ enum class DftbSkSet {
 ///   (HF + Pulay + SCC γ + repulsive; spin shifts on ∂S) use the **same
 ///   lattice-image walk** as the energy — not min-image only — so
 ///   \(F=-\nabla E\) under Γ-PBC (`reg_dftb2-periodic-forces`,
-///   `reg_dftb2-analytic-forces`, `reg_dftb2-spin-analytic-forces`). Closed shell
-///   also offers an analytic intensive cell stress on `kStress` [eV/Å³] — the
-///   pair virial of those same image bond terms (`reg_dftb2-analytic-stress`);
-///   open shell falls back to multi-SCC affine strain-FD.
+///   `reg_dftb2-analytic-forces`, `reg_dftb2-spin-analytic-forces`). Both spin
+///   cases also offer an **analytic** intensive cell stress on `kStress`
+///   [eV/Å³] — the pair virial of those same image bond terms, spin-resolved
+///   over the α/β channels (`reg_dftb2-analytic-stress`,
+///   `reg_dftb2-spin-analytic-stress`). No strain-FD is left on the MioSketch
+///   product path.
 /// - `sk_set = ThreeOb`: `basis_data/dftb_3ob_tables.h` 3ob-3-1 radial H/S +
 ///   repulsive (Gaus et al., JCTC 2013; organic CHNO). Closed shell: **analytic**
 ///   nuclear forces (same HF + Pulay + γ + repulsive assembly as MioSketch, on
@@ -102,8 +104,11 @@ class DFTB2 : public cpu::Semiempirical {
     bool with_forces = true;
     /// @brief When true, write intensive cell stress to `kStress` [eV/Å³].
     ///
-    /// Restricted MioSketch: closed-form pair virial of the analytic force
-    /// terms. Open-shell / ThreeOb: multi-SCC affine strain-FD of total E.
+    /// MioSketch (restricted **and** collinear open shell): closed-form
+    /// spin-resolved pair virial of the analytic force terms — the α/β
+    /// Hellmann–Feynman + Pulay ∂S (including the ±W_A m_A spin shift), the
+    /// SCC γ virial on the total Mulliken Δq, and the repulsive pair virial.
+    /// ThreeOb: multi-SCC affine strain-FD of total E.
     /// **Excludes the `d3` dispersion term on both paths** — see
     /// `regressions/semiempirical/dftb2-analytic-stress/REFERENCE.md` Gaps.
     /// Multi-k (`any k_mesh[d] > 1`) does not support stress.

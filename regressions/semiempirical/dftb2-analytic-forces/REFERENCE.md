@@ -88,10 +88,12 @@ consequence of (1) and (2): the old number was a limit-cycle snapshot over a
 double-counting route that was wrong at second order. It is not an oracle
 value and no DFTB+ identity is claimed for it.
 
-**Still open:** the open-shell gradient is only exercised at \(\Delta q = 0\)
-(O₂ is homonuclear), so `analytic_forces_unrestricted`'s \(\gamma\) term
-carries the corrected sign but no gate. An open-shell \(\Delta q \ne 0\)
-case is owed.
+**Closed 2026-07-29:** the owed open-shell \(\Delta q \ne 0\) gate landed as
+the **NO doublet** in `regressions/semiempirical/dftb2-spin-analytic-stress`,
+and `analytic_forces_unrestricted` / `analytic_forces_restricted` were folded
+into one spin-resolved `analytic_forces_stress`, so a sign defect in the
+\(\gamma\) or Pulay term can no longer survive in one copy while being fixed in
+another.
 
 ## Perf
 
