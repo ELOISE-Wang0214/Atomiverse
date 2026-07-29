@@ -43,19 +43,21 @@ tools/tb_oracle/
 | `inputs/dftbplus/h2_mio_scc/` | DFTB+ | H₂ mio-1-1 absolute E pin twin (`reg_dftb2-dftbplus-energy-pin`) |
 | `inputs/dftbplus/dftb2-periodic-gamma/` | DFTB+ | Γ-PBC C-chain geometry twin (ATV Hamiltonian pin) |
 | `inputs/dftbplus/dftb2-periodic-forces/` | DFTB+ | Off-eq Γ-PBC C-chain force twin (analytic vs re-SCC FD) |
-| `inputs/dftbplus/dftb2-kpoints/` | DFTB+ | 4×1×1 MP multi-k C-chain twin (`reg_dftb2-kpoints`) |
+| `inputs/dftbplus/dftb2-kpoints/` | DFTB+ | 4×1×1 MP multi-k C-chain twin (`reg_dftb2-kpoints`; energy-only) |
 | `inputs/dftbplus/dftb0_h2.note` | DFTB+ | H₂ non-SCC DFTB0 pin twin (`reg_dftb0-h2`; shares the mio-1-1 H₂ transcript) |
+| `inputs/dftbplus/dftb3_h2o_mio_note.md` | DFTB+ | H₂O SCC-DFTB3 formula / module boundary (`reg_dftb3-water-mio`) |
 | `inputs/dftbplus/dftb2_analytic_forces_note.md` | DFTB+ | Formula-level force module boundary (MioSketch) |
 | `inputs/dftbplus/dftb2_spin_analytic_forces_note.md` | DFTB+ | Collinear open-shell force module boundary (O₂) |
 | `inputs/dftbplus/dftb2_analytic_forces_threeob_note.md` | DFTB+ | ThreeOb closed-form F vs re-SCC FD (formula) |
 | `inputs/dftbplus/dftb2_analytic_stress_note.md` | DFTB+ | Cell-stress module boundary (pair virial; formula) |
-| `inputs/dftbplus/dftb2-dispersion-d3/` | s-dftd3 | Water-dimer D3(BJ) geometry twin (`reg_dftb2-dispersion-d3`) |
-| `inputs/mopac/` | OpenMOPAC | **empty on `dev`** — seed with AM1/RM1/PM* pins (Phase B) |
-| `inputs/xtb/` | xtb | **empty on `dev`** — seed with GFN pins (Phase C, late) |
+| `inputs/dftbplus/dftb2-dispersion-d3/` | s-dftd3 | Water-dimer **molecular** D3(BJ) geometry twin (`reg_dftb2-dispersion-d3`) |
+| `inputs/mopac/` | OpenMOPAC | **absent on `dev`** — seed with AM1/RM1/PM* pins (Phase B) |
+| `inputs/xtb/` | xtb | **absent on `dev`** — seed with GFN pins (Phase C, late) |
 
-Every twin above is on `dev` as of the 2026-07-28 merge wave (DFTB0, D3
-water-dimer, spin force, ThreeOb force, stress). The one still-unmerged tip is
-`wf/dftb3-water-mio`, whose DFTB3 water twin arrives if/when that branch lands.
+Every twin above is on `dev` as of harness wave 3 (2026-07-29; includes
+DFTB3 note + kpoints/periodic-forces twins). GapCensus wave-4: still need
+periodic-D3 / multi-k-force twins when those pending slugs staff; mopac/xtb
+trees still empty.
 
 ## How to pin (operator / worker)
 

@@ -33,15 +33,18 @@ on MioSketch (`reg_dftb2-periodic-gamma`) with **lattice-image-consistent
 nuclear forces** under PBC (`reg_dftb2-periodic-forces`). **Monkhorst–Pack
 k-mesh** beyond Γ ships for closed-shell MioSketch **energy**
 (`k_mesh` / `k_time_reversal` members; `reg_dftb2-kpoints`); multi-k analytic
-forces/stress remain ○. Opt-in **Grimme D3(BJ)** dispersion ships as an
-additive molecular correction with its own analytic gradient (`DFTB2::d3`,
-`reg_dftb2-dispersion-d3`); a periodic D3 lattice sum remains ○. Non-SCC
-**DFTB0** ships (`reg_dftb0-h2`). **GFN0-xTB toy** (`XtbGfn0`, `reg_h2o_gfn0`)
-remains a sketch. **DFTB3** energy ships (`reg_dftb3-water-mio`) after its
-third-order potential was corrected to be the derivative of its own energy;
-DFTB3 analytic forces remain ○ (`dftb3-analytic-forces`). **Analytic stress**
-ships on restricted MioSketch (`reg_dftb2-analytic-stress`). Wave-3 TB staff
-closed 2026-07-29. TD depth and GFN1/2 remain ○.
+forces/stress remain ○ (`dftb2-multi-k-forces`). Opt-in **Grimme D3(BJ)**
+dispersion ships as an additive **molecular** correction with its own analytic
+gradient (`DFTB2::d3`, `reg_dftb2-dispersion-d3`); a periodic D3 lattice sum
+remains ○ (`dftb2-dispersion-d3-periodic`). Non-SCC **DFTB0** ships
+(`reg_dftb0-h2`). **GFN0-xTB toy** (`XtbGfn0`, `reg_h2o_gfn0`) remains a
+sketch. **DFTB3** energy ships (`reg_dftb3-water-mio`) after its third-order
+potential was corrected to be the derivative of its own energy; DFTB3 analytic
+forces remain ○ (`dftb3-analytic-forces`). **Analytic stress** ships on
+restricted MioSketch (`reg_dftb2-analytic-stress`); ThreeOb and open-shell
+stress still use multi-SCC strain-FD (`dftb2-analytic-stress-threeob`,
+`dftb2-spin-analytic-stress`). Wave-3 TB staff closed 2026-07-29; GapCensus
+wave-4 (2026-07-29) refilled Phase A deepens — TD depth and GFN1/2 remain ○.
 Loop queue: `docs/developer/tb-method-queue.md`. Family oracles: OpenMOPAC
 (NDDO) / DFTB+ (DFTB) / xtb (GFN) — see `tools/tb_oracle/README.md`.
 
@@ -97,9 +100,10 @@ identity on mio-1-1 H–H ships (`reg_dftb2-dftbplus-energy-pin`); 3ob CH4 has a
 DFTB+ pin under pure SCC-DFTB2. **Γ-point PBC** lattice-sum energy **and**
 lattice-image nuclear forces ship; **multi-k energy** (Monkhorst–Pack) ships
 for closed-shell MioSketch. **Multi-k forces/stress**, **DFTB3** analytic
-forces, **periodic D3**, and **TD-DFTB** remain ○. Oracle for all DFTB rows:
-**DFTB+** (never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 → spin
-product depth → …
+forces, **periodic D3**, **ThreeOb / open-shell analytic stress**, and
+**TD-DFTB** remain ○ (queue Phase A). Oracle for all DFTB rows: **DFTB+**
+(never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 F → TD → NDDO PM →
+GFN late.
 
 ## 3. Extended Tight-Binding Methods
 
