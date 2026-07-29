@@ -5,6 +5,20 @@ Last land: **real-oracle re-pin — 2026-07-29** (see below). Prior feature land
 done total **46**, specs closed 10). Pending residual (**3**) and blocked
 (**4**) remain for the next GapCensus/assign. **incomplete_remaining=0**.
 
+
+## Residual queue product land — 2026-07-29 (not a new wave)
+
+Closed the three remaining **pending** rows without GapCensus/staff_count wave:
+
+| slug | Regression | notes |
+|------|------------|-------|
+| `nanoporous-carbon-const-pot` | `reg_nanoporous-carbon-const-pot` | slit-pore C + ConstPotBO + occupancy |
+| `maze-molten-salt-al` | `reg_maze-molten-salt-al` | Fumi–Tosi + Al MaZe + short NVT |
+| `thermo-integration-capacitance` | `reg_thermo-integration-capacitance` | C=Q/Ψ + soft-Coul TI + ChargingWork |
+
+**pending=0.** **blocked=4** unchanged (CUDA / AIM-DAIM / ML / hybrid DFT — out of
+this CPU classical loop by stated gate; not silently unblocked).
+
 ## Real-oracle re-pin (2026-07-29) — MetalWalls binary now exists
 
 **MetalWalls is built and verified**: `gitlab.com/ampere2/metalwalls` release

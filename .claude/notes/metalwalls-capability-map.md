@@ -49,7 +49,7 @@ foothold→true symplectic (`ConstPotMaZe.symplectic`), D-field ~→✓
 (`FixDfield.polarization_feedback`), Voronoi TF ○→✓ (`VoronoiVolume`), XL
 dipoles ○→✓ (`PimXlDipole`), FQ/QEq ○→✓ (`cpu::md::QEq`), PIM-NPT IL and
 planar const-pot+IL scenarios ~→✓ (`reg_pim-npt-polarizable-il`,
-`reg_const-pot-il-edl-box`). Residual open: nanoporous carbon product,
+`reg_const-pot-il-edl-box`). Residual open: nanoporous carbon product ✓ (slit-pore reg 2026-07-29),
 molten-salt+Al+MaZe product box, TI capacitance workflow.
 
 ---
@@ -249,7 +249,7 @@ that post-solve refresh.
 | Blue energy / CDC desalination | ✓ | ○ | Product workflow |
 | Finite-field single electrode | ✓ | ✓ | Dufils foothold |
 | TF gold capacitor | ✓ | ✓ | `thomas-fermi-electrode` |
-| Molten salt + Al + MaZe | ✓ | ~ | MaZe + Fumi–Tosi NL footholds ✓; product box open (`maze-molten-salt-al`) |
+| Molten salt + Al + MaZe | ✓ | ✓ | MaZe + Fumi–Tosi NL footholds ✓; product box ✓ (`maze-molten-salt-al` 2026-07-29) |
 | Piston constant \(P_z\) | ✓ | ✓ | `piston-electrode-pz` |
 | PLUMED constrained ion | ✓ | ~ ATV bias | PLUMED bridge **out of scope** |
 | TIP4P water | ✓ | ✓ | four-site + multi-topology vsites |

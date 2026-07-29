@@ -33,10 +33,8 @@ done=36; `## in_progress` empty).
 `PairGaussianCoul` + `PairBorn` NeighborList bulk paths, `FixDfield`,
 `FixMove`, `ChargeChargeAutocorr`, `ElastanceObserver`,
 `reg_const-pot-tip4p-edl`. Map §1/§3/§8/§9 marks flipped accordingly
-(2026-07-27 re-audit). Residual pending re-verified open against tree: no QEq,
-no Voronoi, no XL dipoles, per-electrode \(\eta\) still a single shared
-`ConstPotBO::eta`, no halo/MPI handling in `ConstPot*`, no PIM-NPT / IL-EDL /
-nanoporous / TI regressions. Open MD/electrochem specs: **none**. Unmerged
+(2026-07-27 re-audit). Post-residual (2026-07-29): pending empty; nanoporous / molten-salt-Al / TI
+product regressions closed. Blocked (4) unchanged (out-of-loop gates). Open MD/electrochem specs: **none**. Unmerged
 in-scope `wf/<slug>` ahead_of_dev: **none**. **Preserved:** in_progress (0);
 blocked (4); done (36).
 **Foothold ≠ closed (drives new rows):** `ConstPotMaZe` is a CG+ASPC adiabatic
@@ -58,18 +56,11 @@ reachable (MaZe + Fumi–Tosi NL footholds) but unbuilt.
 
 ## pending
 
-### E9 / scenarios — production EDL (beyond wave-4 aqueous staff)
-
-- [ ] `nanoporous-carbon-const-pot` | Nanoporous carbon geometry + const-pot (product) | electrochem | slit / pore carbon + electrolyte | — | \(Q\), occupancy proxy | **oracle=metalwalls**; map §9 nanoporous ○ (after E1 production depth)
-- [ ] `maze-molten-salt-al` | Molten-salt + Al wall + MaZe MW example scenario | electrochem | Fumi–Tosi NL salt + Al const-pot walls | — | \(Q\), \(g(r)\) proxy, short NVT | **oracle=metalwalls**; map §9 molten salt ~ (MaZe + Fumi–Tosi NL footholds landed wave-4; product box unbuilt — new 2026-07-27)
-
-### E10 — TI residual (after charge-tool observers)
-
-- [ ] `thermo-integration-capacitance` | Soft-core / λ TI workflow for electrode capacitance | electrochem | parallel-plate | — | \(\Delta A\) / \(C\) proxy | **oracle=literature**; map E10 TI workflow; soft-core pairs already ✓
+*(empty — residual E9/E10 product rows closed 2026-07-29)*
 
 ## in_progress
 
-*(empty — wave 5 merged and harnessed 2026-07-27)*
+*(empty)*
 
 ## blocked
 
@@ -150,3 +141,12 @@ reachable (MaZe + Fumi–Tosi NL footholds) but unbuilt.
 | [x] `pim-npt-polarizable-il` | `regressions/md/pim-npt-polarizable-il` | metalwalls (offline numpy Thole-PIM pin; MW JOSS 2020, Thole 1981) | perf_exempt |
 | [x] `voronoi-volume-tf` | `regressions/md/voronoi-volume-tf` | metalwalls | perf_exempt |
 | [x] `const-pot-il-edl-box` | `regressions/md/const-pot-il-edl-box` | metalwalls | perf_exempt |
+
+### Residual product — 2026-07-29 (merged → `dev`; not a new census wave)
+
+| slug | Regression | oracle | ratio |
+| ---- | ---------- | ------ | ----- |
+| [x] `nanoporous-carbon-const-pot` | `regressions/md/nanoporous-carbon-const-pot` | metalwalls (slit-pore composition) | perf_exempt |
+| [x] `maze-molten-salt-al` | `regressions/md/maze-molten-salt-al` | metalwalls (MaZe + Fumi–Tosi product) | perf_exempt |
+| [x] `thermo-integration-capacitance` | `regressions/md/thermo-integration-capacitance` | literature (Reed/Scalfi C; Beutler TI) | perf_exempt |
+
