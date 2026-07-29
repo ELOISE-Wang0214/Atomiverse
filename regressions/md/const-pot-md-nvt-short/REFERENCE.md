@@ -1,82 +1,44 @@
 # Reference — constant-potential MD NVT short trajectory
 
-```text
 oracle: metalwalls
-oracle_version: algorithm Siepmann–Sprik / Reed / Scalfi BO (MetalWalls-class);
-  no MetalWalls binary or LAMMPS ELECTRODE package available offline on worker
-  (LAMMPS 30 Mar 2026 packages: EXTRA-*, KSPACE, MANYBODY — no ELECTRODE)
-```
+oracle_version: MetalWalls release 20.05, git **c8ad175d** (2026-06-18),
+binary at `/nobackup/proj/disk/teoroo/personal/jicli594/work/opt/metalwalls/mw`
+oracle_kind: real binary (re-pinned 2026-07-29)
 
 ## Map slice
 
-E1 product (capability map §1 P0): fluctuating electrode charges at fixed
-potential, frozen walls, classical Coulomb MD. Composition on `cpu::md::MD`.
+E1 product: fluctuating electrode charges at fixed potential, frozen walls,
+classical Coulomb MD on `cpu::md::MD`.
 
-## Algorithm pin (offline, not a live binary)
+## Geometry
 
-Electrode charges \(Q\) minimise the Gaussian-charge energy (Siepmann & Sprik,
-*J. Chem. Phys.* **102**, 511 (1995); Reed, Lanning, Madden, *J. Chem. Phys.*
-**126**, 084704 (2007); Scalfi *et al.*, *Chem. Rev.* **122**, 10899 (2022);
-MetalWalls JOSS 2020, 10.21105/joss.02373):
+- Box 14×14×20 Å; walls 2×2 at z = 2 / 18 Å (types 2/3); 4 Na⁺ + 4 Cl⁻
+- Ψ = ∓0.5 V, Gaussian w = 0.5 Å (η = 2 Å⁻¹)
+- Soft LJ + CoulLong/PME (α = 0.3 Å⁻¹); NVT 400 × 0.5 fs at 300 K
 
-\[
-A Q = \Psi - \Phi_{\mathrm{electrolyte}},\qquad
-\sum_i Q_i = -Q_{\mathrm{electrolyte}}
-\]
+## Pin (MetalWalls c8ad175d)
 
-with Gaussian width \(w\):
+Twin: `tools/metalwalls_oracle/inputs/metalwalls/const-pot-md-nvt-short/mw_twin/`
+(`runtime_pbc3.inpt`, `num_pbc 3` matches ATV's 3D PME cell).
 
-\[
-A_{ii} = k_e\sqrt{2/\pi}/w,\quad
-A_{ij}=k_e\,\mathrm{erf}\!\big(r_{ij}/(w\sqrt2)\big)/r_{ij}\ (i\neq j).
-\]
+From `mw_output/total_charges.out`:
 
-\(k_e = \texttt{units::coulomb} = 14.399645\,\mathrm{eV·Å}/e^2\).
-\(\Phi\) is the min-image Gaussian-smeared potential of non-electrode charges.
-Force path remains point-charge `CoulLong` + `KSpacePME` (Gaussian force
-kernels are `gaussian-electrode-charge`).
+| step | Q_C1 [e] | Q_C2 [e] |
+|------|----------|----------|
+| 0 | **−9.711155787094686×10⁻²** | **+9.711155787094686×10⁻²** |
+| 1 | −9.742254974821957×10⁻² | +9.742254974821957×10⁻² |
 
-## Geometry (regression)
+## Assertions
 
-| Species | type | role |
-| --- | ---: | --- |
-| Na⁺ | 0 | mobile electrolyte |
-| Cl⁻ | 1 | mobile electrolyte |
-| left wall | 2 | frozen electrode at \(\Psi_L\) |
-| right wall | 3 | frozen electrode at \(\Psi_R\) |
-
-- Box: orthorhombic \(L_x=L_y=12\) Å, \(L_z=20\) Å
-- Walls: \(2\times2\) atoms at \(z=2\) Å (type 2) and \(z=18\) Å (type 3)
-- Electrolyte: 4 Na⁺ + 4 Cl⁻ on a staggered mid-slab lattice
-- \(\Psi_L=-0.5\,\mathrm{V}\), \(\Psi_R=+0.5\,\mathrm{V}\), \(w=0.5\) Å
-- Soft LJ (`ε=0.05` eV, `σ=2.0` Å) + `CoulLong`/`PME` (`α=0.3` Å⁻¹, cutoff 6 Å)
-- NVT: `VelocityVerlet` + `NoseHoover`, \(T=300\) K, `τ_T=100` fs, `dt=0.5` fs,
-  400 steps
-
-## Observables and tolerances
-
-| Check | Bound | Rationale |
-| --- | --- | --- |
-| Vacuum-style polarity after first BO solve | \(Q_L<0<Q_R\) | Higher-\(\Psi\) plate is positive (capacitor) |
-| Electroneutrality | \(\|Q_L+Q_R\|\le 10^{-8}\) e | Neutral electrolyte ⇒ electrode neutrality |
-| Finite thermo | \(E,K\) finite every chunk | Smoke stability / no NaN |
-| Finite charges | all \(q_i\) finite | Charge solve stability |
-| Freeze | wall \(\Delta x\le 10^{-10}\) Å, \|v\|≤10^{-12} | FixFreeze |
-| End polarity | \(Q_L<0<Q_R\) | Polarity survives short NVT |
-
-Continuum order-of-magnitude (optional diagnostic, not a hard gate): vacuum
-parallel-plate \(C\approx A/(4\pi k_e d)\) with \(A=L_x L_y\), \(d\approx 16\) Å,
-\(\Delta\Psi=1\) V gives \(|Q|\sim 0.05\,e\) scale; atomistic Gaussian BO is
-the same sign and similar magnitude on this toy grid.
+| Check | Bound |
+| ----- | ----- |
+| Polarity after step 1 | Q_L < 0 < Q_R |
+| Neutrality | \|Q_L+Q_R\| ≤ 1e-8 e |
+| Soft \|Q\| vs MW step-0 | 5 % rel (PME vs Ewald residual ~3 %) |
+| Finite E/K/charges over NVT | no NaN |
+| Freeze walls | Δx ≤ 1e-10 Å |
+| End polarity | Q_L < 0 < Q_R |
 
 ## Perf
 
-```text
-perf_exempt: true
-perf_exempt_reason: no MetalWalls binary and no LAMMPS ELECTRODE package on
-  the offline worker; cannot fair-bench vs oracle twin for this MW-only path
-```
-
-## Units
-
-eV, Å, fs, amu, eV/Å, K, charge e, potential V (= eV/e).
+`perf_exempt` — short product trajectory; fair wall ratio deferred.

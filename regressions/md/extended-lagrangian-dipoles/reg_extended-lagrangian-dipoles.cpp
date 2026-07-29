@@ -144,18 +144,18 @@ void run_traj(Pot& pot, int nsteps, double dt,
 } // namespace
 
 int main() {
-    // ── Part 1: stationary two-site literature-form pin ────────────────
-    // Applequist/Thole closed-form SCC pin (same numbers as
-    // pim-induced-dipole-bulk): the XL fixed point at a stationary geometry
-    // must BE the SCF solution — cold and warm launches alike.
-    const double E_pin = -0.12040946414707571;  // [eV]
-    const double F_pin = 0.040341072868572643;  // [eV/Å] on site A (+x)
-    const double tol_e = 1e-9;
-    const double tol_f = 1e-8;
+    // ── Part 1: stationary two-site pin vs real MetalWalls (thole_a = 0) ─
+    // Same MW-expressible gate A as pim-induced-dipole-bulk (c8ad175d):
+    // E_pol = ΔCoulomb(pol − α=0), F = ΔF. MW has no Thole damping.
+    // XL fixed point at a stationary geometry must BE the SCF solution.
+    const double E_pin = -2.4397739572766e-01; // [eV]  −8.9660039191731e-3 Ha
+    const double F_pin = 3.4926913376021e-01;  // [eV/Å] +6.7922032485569e-3 Ha/a0
+    const double tol_e = 1e-7 * std::fabs(E_pin);
+    const double tol_f = 1e-7 * std::fabs(F_pin);
 
     cpu::Frame f2 = two_site();
     cpu::Context ctx;
-    cpu::PimXlDipole xl(20.0, {0.0, 1.0, 1.5}, 0.39, /*xl_order=*/5,
+    cpu::PimXlDipole xl(20.0, {0.0, 1.0, 1.5}, /*thole_a=*/0.0, /*xl_order=*/5,
                         /*pol_tol=*/1e-12, /*pol_max_iter=*/200);
     xl.build({ctx, f2});
 
