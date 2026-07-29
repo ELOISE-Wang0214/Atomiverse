@@ -16,11 +16,9 @@ namespace semiempirical {
 /// Electronic tight-binding without self-consistent charge: Slater–Koster
 /// H0/S from static in-tree tables, generalized eigen, band energy + pair
 /// repulsive. No Hubbard / γ / Δq iteration (contrast @ref DFTB2). Tables:
-/// H–H from transcribed DFTB.org mio-1-1 (`basis_data/dftb_mio_hh_sk.h`, read
-/// through `internal/mio_hh_table.h` — the same grid and interpolation the
-/// SCC path uses); other H/C/N/O pairs from the mio-style sketches in
-/// `basis_data/dftb_mio_tables.h`. Supported Z: 1, 6, 7, 8; any other element
-/// or missing pair throws.
+/// all ordered H/C/N/O pairs from transcribed DFTB.org mio-1-1
+/// (`basis_data/dftb_mio_sk_tables.h` via `internal/mio_sk_table.h` /
+/// `MioSketchPair`). Supported Z: 1, 6, 7, 8; any other element throws.
 ///
 /// Oracle for pins: **DFTB+** 24.1 (non-SCC / DFTB0 path). For a homonuclear
 /// diatomic the Mulliken fluctuations vanish by symmetry, so DFTB2 reduces to

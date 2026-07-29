@@ -57,7 +57,7 @@ DFTB+ detailed components (documentation only):
 
 - Public API: `cpu::Evaluate` + `cpu::semiempirical::DFTB2` with
   `sk_set = DftbSkSet::ThreeOb`, `with_forces = false`.
-- Assert `|E_ATV − (−87.86856831)| ≤ 0.05` eV (linear SK interp + Ohno–Klopman
+- Assert `|E_ATV − (−87.86856831)| ≤ 0.05` eV (SK tables + Elstner
   γ vs DFTB+ poly-interp / γ implementation residual).
 
 ## Unmoved by the 2026-07-28 SCC repair — this is the control

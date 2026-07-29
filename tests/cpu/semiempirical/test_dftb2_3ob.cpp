@@ -98,7 +98,8 @@ TEST(DFTB23ob, DistinctFromMioSketch) {
     b.with_forces = false;
     b.build({ctx, f2});
     b.launch({ctx, f2, 0, 0});
-    EXPECT_GT(std::fabs(a.last_energy() - b.last_energy()), 0.5);
+    // Both paths use real tables now; residual is SK-set difference only.
+    EXPECT_GT(std::fabs(a.last_energy() - b.last_energy()), 0.05);
 }
 
 namespace {

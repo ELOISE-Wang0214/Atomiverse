@@ -18,15 +18,13 @@ using namespace ATV;
 
 namespace {
 
-// Provisional ATV Hamiltonian-twin pin [eV] at the geometry below
-// (scc_tol=1e-10, max_scc=50). Measured 2026-07-28 Release. NOT a DFTB.org
-// mio-1-1 absolute energy — DFTB+ oracle still owed (no DFTB+ on this host).
-// It IS now a converged self-consistent energy: residual 2.3e-14 e at 6 SCC
-// iterations, and identical for max_scc = 49 / 50 / 51.
-// Supersedes -107.618793920072, which was a snapshot of a non-convergent
-// Picard limit cycle selected by the parity of max_scc, taken over a
-// double-counting route that carried a spurious Sum_A V_A q0_A term.
-constexpr double kPinEnergyEV = -94.273801189131;
+// ATV Hamiltonian-twin pin [eV] at the geometry below after full mio-1-1
+// H/C/N/O SK transcription (2026-07-29). scc_tol=1e-10. Third-order U^d are
+// still sketches, so this is NOT a DFTB+ absolute DFTB3 number — it is the
+// deterministic ATV DFTB3 energy on real mio SK + sketch U^d.
+// Supersedes sketch-era -94.536037348400.
+// Re-pinned after stable equal-U ∂γ/∂U for E³ (2026-07-29). ATV twin: U^d sketch.
+constexpr double kPinEnergyEV = -111.204208212956;
 constexpr double kPinTolEV = 1e-6;
 
 cpu::Frame make_water() {

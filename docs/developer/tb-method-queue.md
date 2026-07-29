@@ -443,8 +443,8 @@ Named here per the iron law; belongs to that loop's owner to fix.
 | DFTB2 analytic stress | ✓ | restricted + open shell + ThreeOb + multi-k + self-image virial; **no strain-FD left** | **closed** for MioSketch/3ob |
 | DFTB3 | ✓ E + **analytic F** | molecular min-image only | deepen: **no PBC / k / stress / open shell / ThreeOb / D3 on DFTB3** |
 | Dispersion D3 | ✓ molecular + **periodic** | `d3` + `d3_periodic` + `d3_cutoff`; F and σ gated | orthorhombic only; no ATM |
-| TD-DFTB | ✓ foothold | `DFTB2::td_casida` energies | no oscillator strengths, no excited-state F, no LC |
-| Multi-k | ✓ E + F + σ | restricted Mio only | open shell + ThreeOb multi-k throw; no Fermi smearing |
+| TD-DFTB | ✓ foothold | `DFTB2::td_casida` energies + \(f\) | no excited-state F, no LC |
+| Multi-k | ✓ E + F + σ | restricted + **collinear open shell** Mio | ThreeOb multi-k throw; no Fermi smearing |
 | AM1 / RM1 | ✓ + **mopac pins** | absolute ΔHf pins; RM1 params repaired | closed-form multipole F still ○ |
 | PM3 / PM6 / PM7 | ○ | no types | Phase B **oracle=mopac** |
 | GFN1/2 / IPEA / PBC / spin | ○ | `XtbGfn0` toy only | Phase C **oracle=xtb** |
@@ -462,11 +462,8 @@ provisional until it lands.
 ### Phase A — DFTB ladder (oracle = DFTB+)
 
 Staff these before NDDO product depth and before GFN-xTB.
-**Prefer Recover of `## in_progress` over new pending.** Wave-4 assigned all
-remaining Phase A rows — pending Phase A empty until GapCensus refills.
+**Prefer Recover of `## in_progress` over new pending.**
 
-- [ ] `dftb-gamma-units-fix` | **Head of the ladder.** γ_AB adds Å² to eV⁻² and drops `units::coulomb`; correct both call sites (`dftb2.cpp`, `dftb3_scc.cpp`), re-derive every polar MioSketch drift pin in one pass, confirm `dftb2-dftbplus-energy-pin` (Δq = 0) is bit-unchanged, and decide whether the sketch U values were tuned against the broken form | dftb2/dftb3 | all polar mio cases | E / F / σ / q | **oracle=dftb+**; see `.claude/notes/dftb-gamma-units-defect.md`
-- [ ] `dftb3-periodic-forces` | DFTB3 beyond molecular min-image: lattice-image Γ-PBC energy + analytic F (DFTB2 already has all of it) | dftb3 | small periodic cell | E / F | **oracle=dftb+**; DFTB3 analytic F **landed** wave 4
 - [ ] `nddo-sharp-discriminator` | Water is a mild NDDO gate (RM1 sits 0.06 kcal/mol from experiment). Add CO₂ (RM1 −81.55 vs exp −94.05) or CO (−13.87 vs −26.42) so the pin discriminates the *method*, not thermochemistry | nddo | CO2 / CO | ΔHf | **oracle=mopac**; OpenMOPAC ships an RM1 CO₂ transcript
 
 ### Phase B — NDDO product depth (oracle = OpenMOPAC)
@@ -482,46 +479,50 @@ Seed `tools/tb_oracle/inputs/mopac/` with the first hard pin (assign-w4 staffs
 - [ ] `pm6-water-forces` | PM6 forces vs OpenMOPAC / FD | nddo/pm6 | H2O off-eq | F | **oracle=mopac**
 - [ ] `pm7-water-energy` | PM7 energy vs OpenMOPAC | nddo/pm7 | H2O | E | **oracle=mopac**; after PM6 foothold
 
-### Phase C — GFN-xTB (oracle = xtb) — late only
+### Phase C — GFN-xTB (oracle = xtb) — product ladder open
 
-xTB is **not** DFTB3++. Staff only when Phase A ground-state DFTB is green
-or operator forces `theme=gfn|xtb`. Seed `tools/tb_oracle/inputs/xtb/` with
-the first hard pin.
+xTB is **not** DFTB3++. Prefer after DFTB γ fix + DFTB3 PBC if possible, but
+operator may force `theme=gfn|xtb`. Seed `tools/tb_oracle/inputs/xtb/`.
+**Staff order:** `gfn0-beyond-toy` → `gfn1` / `gfn2-water` → forces → then
+`gfn-xtb-analytic-hessian` / `stda-xtb` (unlocked after production GFN energy).
 
 - [ ] `gfn0-beyond-toy` | Lift GFN0 past H/C/O sketch tables toward production GFN0 (+ REFERENCE/`oracle:` line; `h2o_gfn0` still lacks REFERENCE) | xtb | multi-element | E | **oracle=xtb|literature**
 - [ ] `gfn1-xtb-organic` | GFN1-xTB energy | xtb | small organic | E [eV] | **oracle=xtb**
 - [ ] `gfn2-xtb-water` | Production GFN2-xTB energy | xtb | H2O | E [eV] | **oracle=xtb**
 - [ ] `gfn2-xtb-forces` | GFN2-xTB analytic forces | xtb | H2O off-eq | F | **oracle=xtb**
+- [ ] `gfn-xtb-analytic-hessian` | GFN FD Hessian via `cpu::vib::Hessian` once product GFN forces exist | xtb/vib | small | ω | **oracle=xtb**; VIB=ON exception like `se-analytic-hessian`; after `gfn2-xtb-forces`
+- [ ] `stda-xtb` | sTDA-xTB excitations on production GFN ground state | xtb | small organic | ω_exc | **oracle=xtb|literature**; after `gfn2-xtb-water`
 - [ ] `ipea-xtb-small` | IPEA-xTB energy foothold | xtb | small | E | **oracle=xtb**; after GFN2 energy
 - [ ] `periodic-gfn-xtb` | Periodic GFN-xTB Γ / PBC energy | xtb | small cell | E | **oracle=xtb**
 - [ ] `spin-gfn-xtb` | Spin-polarized GFN-xTB | xtb | open shell | E / spin | **oracle=xtb**; after GFN2
 
 ## in_progress
 
-_(empty — all 8 assign-wave-4 slugs merged to `dev`; see `## done`)_
+_(empty)_
 
-## blocked
+## permanent rules / scope-out (never pending)
 
-Reasons are harness knowledge, not queue prose:
-**`.claude/notes/tb-blocked-capabilities.md`**. A row leaves this list only when
-its stated gate is actually removed — never because a wave was short of work,
-and never by switching oracle families.
+Not work items — see `.claude/notes/tb-blocked-capabilities.md`.
 
+- [!] `mopac-as-dftb-oracle` | **forbidden pattern** — never pin DFTB to OpenMOPAC
+- [!] `gfn-ff` | **scope-out** — classical GFN-FF → MD / force-field surface, not this loop
+- [!] `om3-nddo` | **permanent** — OM3 not in OpenMOPAC primary surface; no family-locked pin without expanding the oracle set (Thiel OMx). Not a missing ATV gate.
 
-- [!] `noncollinear-spin-dftb` | blocked — needs collinear spin-DFTB first (**collinear product foothold exists; noncollinear still blocked**)
-- [!] `dftb-plus-u` | blocked — needs SCC base + Hubbard-U design note
-- [!] `spin-orbit-dftb` | blocked — needs specialized SOC / SK design; not ladder-head
-- [!] `om3-nddo` | blocked — OM3 not in OpenMOPAC primary surface; no family-locked pin (Thiel OMx out of loop oracles)
-- [!] `se-analytic-hessian` | blocked — needs `ATV_BUILD_VIB` / `cpu::vib::Hessian`; SE-only cmake keeps VIB **OFF**
-- [!] `gfn-xtb-analytic-hessian` | blocked — same VIB gate; xtb semi-numeric Hessian is product-later
-- [!] `gfn-ff` | blocked — classical GFN-FF, **scope-out** of electronic SE/TB loop (never pending)
-- [!] `stda-xtb` | blocked — needs production GFN ground state first
-- [!] `mopac-as-dftb-oracle` | **forbidden pattern** — never pin DFTB to OpenMOPAC (never pending)
+## blocked (science predecessors — multi-wave)
+
+- [!] `noncollinear-spin-dftb` | collinear product exists; noncollinear needs spinor 2×2 density (new layout, not a flag)
+- [!] `spin-orbit-dftb` | SOC/SK design; after noncollinear
 
 ## done
 
 _(footholds + wave-1/2/3/4 product depth on `dev`)_
 
+- [x] `se-analytic-hessian` | `cpu::vib::Hessian` + DFTB2 forces on H₂; symmetric H, linear ω≈4500 cm⁻¹ | `reg_se-analytic-hessian` | **oracle=literature** (structural); needs `ATV_BUILD_VIB=ON`
+- [x] `dftb-plus-u` | DFTB2 Dudarev equal-filling \(E_U\) on O water; formula identity; forces throw | `reg_dftb-plus-u` | design `.claude/notes/dftb-plus-u.md`
+- [x] `dftb-gamma-units-fix` / Elstner γ | eV·Å units then full DFTB+ Elstner `expGamma` (`internal/dftb_gamma.h`); H₂O/CH₄ DFTB+ pins closed; equal-U ∂γ/∂U for DFTB3 F | 2026-07-29 | note: `.claude/notes/dftb-vs-dftbplus-cleanup.md`
+- [x] `dftb3-periodic-forces` | DFTB3 Γ-PBC lattice-image energy + analytic F | `reg_dftb3-periodic-forces` | **oracle=dftb+** (formula / FD identity)
+- [x] `td-dftb-oscillator-strengths` | Casida length-form \(f\) + \(\boldsymbol{\mu}\) on `DFTB2::td_casida` (triplets dark) | unit + `reg_td-dftb-h2` | deepen of `td-dftb-h2`
+- [x] `dftb2-multi-k-open-shell` | Collinear multi-k dual α/β H(k) + dual-channel analytic F | unit `KMeshOpenShell*` | deepen of multi-k
 - [x] `rm1-water-mopac-energy` | Absolute OpenMOPAC RM1 ΔHf(H₂O) pin at the RM1-optimized geometry; **fixed RM1 free-atom energies** (`eisol`/`aq` were AM1-derived — 19 kcal/mol error) + `calpar` identity unit gate | `reg_rm1-water-mopac-energy` | **oracle=mopac** (OpenMOPAC PARAM survey + Scientia Plena 2016)
 - [x] `am1-water-mopac-energy` | First hard OpenMOPAC pin on the NDDO surface: AM1 ΔHf / E / charges at the AM1-optimized geometry; seeds `tools/tb_oracle/inputs/mopac/` | `reg_am1-water-mopac-energy` | **oracle=mopac** (MOPAC 7.00 transcript; Dewar 1985)
 - [x] `td-dftb-h2` | Linear-response TD-DFTB (Casida) foothold — `DFTB2::td_casida`, singlet + triplet energies, molecular restricted MioSketch | `reg_td-dftb-h2` | **oracle=literature** (Niehaus 2001 formalism; **no absolute pin exists** — structural gates only)

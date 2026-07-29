@@ -8,6 +8,8 @@
 #include <string>
 #include <utility>
 
+#include "atomiverse/cpu/semiempirical/internal/dftb_gamma.h"
+
 namespace ATV {
 namespace cpu {
 namespace semiempirical {
@@ -43,10 +45,8 @@ double Dftb3Scc::gamma(int a, int b) const {
     const std::size_t ib = static_cast<std::size_t>(b);
     if (a == b)
         return u_[ia];
-    // Ohno-Klopman-like: γ_AB = 1/sqrt(R² + τ²), τ = ½(1/U_A + 1/U_B).
-    const double tau = 0.5 * (1.0 / u_[ia] + 1.0 / u_[ib]);
-    const double r = r_[ia * u_.size() + ib];
-    return 1.0 / std::sqrt(r * r + tau * tau);
+    // DFTB+ Elstner form (same kernel as DFTB2) — see internal/dftb_gamma.h.
+    return dftb_gamma::gamma_eV(r_[ia * u_.size() + ib], u_[ia], u_[ib]);
 }
 
 double Dftb3Scc::gamma_charge_derivative(int a, int b) const {
@@ -54,36 +54,25 @@ double Dftb3Scc::gamma_charge_derivative(int a, int b) const {
     const std::size_t ib = static_cast<std::size_t>(b);
     if (a == b)
         return ud_[ia]; // γ_AA = U_A ⇒ ∂γ_AA/∂q_A = dU_A/dq_A
-    // Γ_AB = (∂γ_AB/∂U_A)(dU_A/dq_A), ∂γ/∂U_A = τ/(R²+τ²)^{3/2} · ½/U_A².
-    const double tau = 0.5 * (1.0 / u_[ia] + 1.0 / u_[ib]);
-    const double r = r_[ia * u_.size() + ib];
-    const double den = r * r + tau * tau;
-    return (tau / std::pow(den, 1.5)) * (0.5 / (u_[ia] * u_[ia])) * ud_[ia];
+    return dftb_gamma::gamma_charge_eV(r_[ia * u_.size() + ib], u_[ia], u_[ib],
+                                       ud_[ia]);
 }
 
 double Dftb3Scc::gamma_distance_derivative(int a, int b) const {
     if (a == b)
         return 0.0; // γ_AA = U_A carries no geometry
-    // ∂/∂R (R² + τ²)^{-1/2} = −R γ³.
-    const double g = gamma(a, b);
     const std::size_t ia = static_cast<std::size_t>(a);
     const std::size_t ib = static_cast<std::size_t>(b);
-    const double r = r_[ia * u_.size() + ib];
-    return -r * g * g * g;
+    return dftb_gamma::dgamma_dr_eV(r_[ia * u_.size() + ib], u_[ia], u_[ib]);
 }
 
 double Dftb3Scc::gamma_charge_distance_derivative(int a, int b) const {
     if (a == b)
         return 0.0; // Γ_AA = U^d_A carries no geometry
-    // Γ_AB = τ (R²+τ²)^{-3/2} · ½/U_A² · U^d_A
-    //   ⇒ ∂Γ_AB/∂R = −3 R τ (R²+τ²)^{-5/2} · ½/U_A² · U^d_A.
     const std::size_t ia = static_cast<std::size_t>(a);
     const std::size_t ib = static_cast<std::size_t>(b);
-    const double tau = 0.5 * (1.0 / u_[ia] + 1.0 / u_[ib]);
-    const double r = r_[ia * u_.size() + ib];
-    const double den = r * r + tau * tau;
-    return -3.0 * r * tau / std::pow(den, 2.5) * (0.5 / (u_[ia] * u_[ia]))
-           * ud_[ia];
+    return dftb_gamma::gamma_charge_dr_eV(r_[ia * u_.size() + ib], u_[ia],
+                                          u_[ib], ud_[ia]);
 }
 
 double

@@ -17,7 +17,7 @@ method remains **DFTB+** once bit-identical SK tables ship
 Self-consistent-charge DFTB2 (Elstner et al., *Phys. Rev. B* **58**, 7260
 (1998), DOI [10.1103/PhysRevB.58.7260](https://doi.org/10.1103/PhysRevB.58.7260))
 at the **Γ-point**: lattice-summed two-center \(H^0\) and \(S\), screened
-Ohno–Klopman-like \(\gamma\), and exponential repulsive within the static
+DFTB+ Elstner \(\gamma\), and exponential repulsive within the static
 pair cutoff from `basis_data/dftb_mio_tables.h`. No k-mesh; no Ewald
 long-range Coulomb (γ is real-space truncated at \(R_\mathrm{cut}\)).
 
@@ -51,18 +51,17 @@ images; lattice-sum H/S differs from a single min-image molecular dimer.
 
 | Quantity | Value | Unit | Tol |
 |----------|-------|------|-----|
-| Total energy \(E\) | **−113.5976598145** | eV | ±0.05 eV |
+| Total energy \(E\) | **−94.5030857189** | eV | ±0.05 eV |
 
 Also required: \(|E - E_\mathrm{mol}| > 0.05\) eV where \(E_\mathrm{mol}\) is
 the same dimer in a 20 Å cubic box (molecular limit).
 
-## Unmoved by the 2026-07-28 SCC repair
+## Re-pin (2026-07-29)
 
-`E = −113.5976598145 eV` (Γ-PBC) and `−90.9958822966 eV` (isolated dimer) are
-byte-unchanged across the charge-mixing, double-counting and γ-gradient fixes.
-The homonuclear C chain has Δq ≡ 0 by symmetry, so E² = 0 and the spurious
-Σ_A V_A q⁰_A term vanishes. Like `spin-dftb2-o2` this is a control, not a check
-of the Δq-dependent machinery.
+Full mio-1-1 C–C SK tables replace the sketch pair scales; Γ-PBC energy
+moved from −113.60 eV (sketch) to **−94.503 eV**. Homonuclear Δq ≡ 0 so
+Elstner γ is inert here — this is an H⁰/repulsive twin, not an SCC check.
+Still **not** a DFTB+ absolute pin (no offline C-chain twin input yet).
 
 ## Perf
 

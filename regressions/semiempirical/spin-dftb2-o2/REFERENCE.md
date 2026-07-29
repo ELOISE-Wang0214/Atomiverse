@@ -19,7 +19,7 @@ No live OpenMOPAC / DFTB+ / xtb inside ctest.
 
 Collinear unrestricted SCC-DFTB2:
 
-- Charge SCC: \(\gamma_{AB}\) (Ohno–Klopman-like) + Hubbard \(U\) (Elstner
+- Charge SCC: \(\gamma_{AB}\) (DFTB+ Elstner short-range) + Hubbard \(U\) (Elstner
   et al., *Phys. Rev. B* **58**, 7260 (1998),
   DOI [10.1103/PhysRevB.58.7260](https://doi.org/10.1103/PhysRevB.58.7260)).
 - Spin channel: atom-averaged \(W_A\) shifts

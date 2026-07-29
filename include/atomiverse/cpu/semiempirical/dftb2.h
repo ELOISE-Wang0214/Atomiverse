@@ -187,6 +187,23 @@ class DFTB2 : public cpu::Semiempirical {
     /// imaginary-residue check inside the multi-k gradient.
     bool k_time_reversal = true;
 
+    /// @brief Per-Z DFTB+U effective Hubbard \(U_{\mathrm{eff}}\) [eV].
+    ///
+    /// Index = atomic number \(Z\) (1…95). Zero means off for that element.
+    /// After the SCC, a Dudarev equal-filling correction is added on the
+    /// atomic Mulliken population \(n_A = n_{\mathrm{val},A}-\Delta q_A\):
+    ///
+    /// \[
+    ///   E_U = \sum_A \tfrac12 U_A\, n_A\bigl(1 - n_A/N_A\bigr),\quad
+    ///   N_A = 2\,n_{\mathrm{AO},A}
+    /// \]
+    ///
+    /// (mean occupation of \(N_A\) spin-orbitals). MioSketch Γ only.
+    /// Forces: central FD of \(E_{\mathrm{SCC}}+E_U\) (re-SCC). Stress and
+    /// multi-k throw when any \(U_{\mathrm{eff}}\) is nonzero.
+    /// See `.claude/notes/dftb-plus-u.md`.
+    std::array<double, 96> u_eff{};
+
     DFTB2() = default;
 
     std::string name() const override { return "dftb2"; }
@@ -199,6 +216,9 @@ class DFTB2 : public cpu::Semiempirical {
 
     /// @brief Last D3(BJ) dispersion energy [eV] (0 when `d3` is false).
     double last_e_disp() const { return e_disp_; }
+
+    /// @brief Last DFTB+U Dudarev correction [eV] (0 when all `u_eff` are 0).
+    double last_e_u() const { return e_u_; }
 
     /// @brief SCC residual max|Δq_out − Δq_in| at exit [e]; below `scc_tol`
     ///        whenever `launch` returned (it throws otherwise).
@@ -238,7 +258,7 @@ class DFTB2 : public cpu::Semiempirical {
     /// **not** read a cached ground state, so it is independent of whether (or
     /// where) `launch()` last ran. Cost is one extra SCC solve.
     ///
-    /// **Energies only** — no oscillator strengths, no transition dipoles, no
+    /// **Energies + oscillator strengths** (length form, singlet). No
     /// excited-state gradients. **Parameter caveat:** only the H onsite /
     /// Hubbard \(U\) and the H–H Slater–Koster + repulsive grids are
     /// transcribed mio-1-1; every other `MioSketch` pair (and every spin
@@ -280,6 +300,7 @@ class DFTB2 : public cpu::Semiempirical {
   private:
     double energy_ = 0;
     double e_disp_ = 0;
+    double e_u_ = 0;
     double scc_residual_ = 0;
     int scc_iterations_ = 0;
     std::array<double, 6> last_stress_{};

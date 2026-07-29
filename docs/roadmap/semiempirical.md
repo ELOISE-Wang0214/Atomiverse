@@ -59,14 +59,11 @@ multi-SCC strain-FD product path is left on DFTB2**, and the virial now carries
 the self-image A–(A+T) bonds it previously dropped (a 14% σ error on a dense
 periodic cell). Wave-4 TB staff closed 2026-07-29.
 
-**Open defect (blocks pin fidelity):** `γ_AB` in the MioSketch DFTB2/DFTB3 path
-is dimensionally inconsistent — it adds Å² to eV⁻² and omits `units::coulomb`,
-so γ_AA = U_A is accidentally correct while γ_AB(R→∞) is 14.4× too small. Every
-polar MioSketch number below is provisional until `dftb-gamma-units-fix` lands;
-the one absolute DFTB+ pin (H₂, Δq ≡ 0) is unaffected. See
-`.claude/notes/dftb-gamma-units-defect.md`.
-Loop queue: `docs/developer/tb-method-queue.md`. Family oracles: OpenMOPAC
-(NDDO) / DFTB+ (DFTB) / xtb (GFN) — see `tools/tb_oracle/README.md`.
+**γ_AB (2026-07-29):** MioSketch DFTB2/DFTB3 use the DFTB+ **Elstner**
+short-range kernel (`internal/dftb_gamma.h`, `1/R − expGamma`). History:
+`.claude/notes/dftb-vs-dftbplus-cleanup.md`. Loop queue:
+`docs/developer/tb-method-queue.md`. Family oracles: OpenMOPAC (NDDO) /
+DFTB+ (DFTB) / xtb (GFN) — see `tools/tb_oracle/README.md`.
 
 ## 1. Semiempirical Quantum Methods
 
@@ -80,7 +77,7 @@ Loop queue: `docs/developer/tb-method-queue.md`. Family oracles: OpenMOPAC
 | OM3                             |  ○  |   ○  |   ○  |
 | Semiempirical nuclear forces (product path) |  ✓  |   ○  |   ○  |
 | Semiempirical closed-form integral-derivative forces |  ○  |   ○  |   ○  |
-| Semiempirical analytic Hessian  |  ○  |   ○  |   ○  |
+| Semiempirical analytic Hessian  |  ✓  |   ○  |   ○  |
 | AM1 heat of formation (MOPAC-style ΔHf) |  ✓  |   ○  |   ○  |
 
 The NDDO core (overlap, one-electron core Hamiltonian, two-electron integrals,
@@ -101,7 +98,7 @@ multipole derivatives stay ○. Analytic Hessian remains finite-difference via
 | DFTB3                     |  ✓  |   ○  |   ○  |
 | Spin-polarized DFTB       |  ✓  |   ○  |   ○  |
 | Noncollinear-spin DFTB    |  ○  |   ○  |   ○  |
-| DFTB+U                    |  ○  |   ○  |   ○  |
+| DFTB+U                    |  ✓  |   ○  |   ○  |
 | Dispersion-corrected DFTB |  ✓  |   ○  |   ○  |
 | Spin-orbit DFTB           |  ○  |   ○  |   ○  |
 | Periodic DFTB             |  ✓  |   ○  |   ○  |
@@ -124,22 +121,20 @@ lattice-image nuclear forces ship; **multi-k energy** (Monkhorst–Pack) ships
 for closed-shell MioSketch. **TD-DFTB** ships as a linear-response Casida
 foothold on the restricted MioSketch ground state
 (`DFTB2::td_casida`; Niehaus et al., PRB **63**, 085108 (2001);
-`reg_td-dftb-h2`): **energies only** (no oscillator strengths, no excited-state
-gradients), singlet + triplet, molecular Γ only. It has **no absolute oracle** —
-no `dftb+` binary on the pin host and no published H₂/mio-1-1 excitation energy
-exists, so it is gated on the λ→0 single-particle limit, Ω symmetry, the
-transition-charge sum rule and analytic two-level identities; see its
-`REFERENCE.md` `Gaps` (which also records a **pre-existing γ_AB units defect**
-shared with the DFTB3 ground state — see `.claude/notes/`). Wave 4 also landed
+`reg_td-dftb-h2`): **energies + oscillator strengths** (length form; triplets
+dark), no excited-state gradients, singlet + triplet, molecular Γ only. It has
+**no absolute energy oracle** for H₂/mio-1-1 excitations, so it is gated on the
+λ→0 single-particle limit, Ω symmetry, the transition-charge sum rule, analytic
+two-level identities, and \(f\geq0\); see its `REFERENCE.md` `Gaps`.
+**γ_AB** is DFTB+ Elstner (`internal/dftb_gamma.h`). Wave 4 also landed
 **multi-k analytic forces + stress**, **DFTB3 analytic forces**, **periodic
-lattice-sum D3**, and **ThreeOb / open-shell analytic stress**, so no
-strain-FD product path is left on DFTB2. Still ○: **TD-DFTB oscillator
-strengths / excited-state gradients**, **long-range-corrected TD-DFTB**,
-**multi-k open shell**, **ThreeOb multi-k**, and **DFTB3 beyond molecular
-min-image** (no PBC / k-mesh / stress / open shell / ThreeOb / D3 on the DFTB3
-path). Oracle for all DFTB rows: **DFTB+**
-(never OpenMOPAC). Ladder: DFTB0 → DFTB2 depth → DFTB3 F → TD → NDDO PM →
-GFN late.
+lattice-sum D3**, and **ThreeOb / open-shell analytic stress**. **Multi-k
+collinear open shell** (dual α/β H(k) + dual-channel forces) ships 2026-07-29.
+Still ○: **TD-DFTB excited-state gradients**, **long-range-corrected TD-DFTB**,
+**ThreeOb multi-k**, and **DFTB3 beyond molecular min-image** (no k-mesh /
+stress / open shell / ThreeOb / D3 on the DFTB3 path — Γ-PBC forces do ship).
+Oracle for all DFTB rows: **DFTB+** (never OpenMOPAC). Ladder: DFTB0 → DFTB2
+depth → DFTB3 F → TD → NDDO PM → GFN late.
 
 ## 3. Extended Tight-Binding Methods
 

@@ -70,7 +70,8 @@ int main() {
 
     // Hard pin: ATV mio-style Hamiltonian twin (see REFERENCE.md).
     // Offline DFTB+ absolute identity needs SK fidelity (not this slug).
-    constexpr double kE_pin_eV = -142.1382039484;
+    // Re-pinned after full mio-1-1 O–O + Elstner γ (2026-07-29). ATV twin.
+    constexpr double kE_pin_eV = -177.2425823576;
     const double de = std::fabs(e - kE_pin_eV);
     std::printf("  |E - pin|=%.6e eV (tol 5e-2)\n", de);
     if (de > 5e-2) {

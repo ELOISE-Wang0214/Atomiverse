@@ -46,7 +46,7 @@ ParameterSet → SK → H/S → eigen → P → SCC(Hubbard, γ) → repulsive �
    transcription; length [Bohr], energy [Ha] in-header; public surface eV/Å).
 2. **Electronic structure.** Assemble \(H^0\), \(S\); solve the generalized
    eigenproblem; build density matrix \(P\); Mulliken \(\Delta q_A\).
-3. **SCC.** Second-order charge correction via Ohno–Klopman-type \(\gamma_{AB}\)
+3. **SCC.** Second-order charge correction via DFTB+ Elstner \(\gamma_{AB}\)`
    and atomic Hubbard \(U_A\) until \(\max|\Delta q|\) drops below `scc_tol`.
 4. **Total energy.** Electronic + SCC + repulsive (public
    `frame.meta.get(kEnergy)` [eV]).
@@ -213,7 +213,7 @@ Conversion: \(E[\mathrm{eV}] = E[\mathrm{Ha}] \times 27.211386245988\).
 | Finite energy | required | — | finite | Product gate |
 
 Tolerance rationale (REFERENCE): residual budget covers linear SK
-interpolation and Ohno–Klopman \(\gamma\) vs DFTB+ poly-interp / \(\gamma\)
+interpolation and Elstner \(\gamma\) vs DFTB+ poly-interp / \(\gamma\)
 implementation differences. A **50 meV** e2e band fails gross SK-set / geometry
 / method mistakes while accepting small table-interp residuals.
 

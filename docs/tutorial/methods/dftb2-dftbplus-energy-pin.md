@@ -50,7 +50,7 @@ E_{\mathrm{rep}} = \sum_{A<B} V_{\mathrm{rep}}^{AB}(R_{AB}).
 \]
 
 Here \(H^0_{μν}\) and \(S_{μν}\) are assembled from two-centre SK radial tables
-(H \(s\) only for H₂), \(\gamma_{AB}\) is the screened Hubbard kernel (Klopman–Ohno
+(H \(s\) only for H₂), \(\gamma_{AB}\) is the screened Hubbard kernel (DFTB+ Elstner
 form with atomic \(U_A\)), and \(\Delta q_A\) are Mulliken charge fluctuations
 from the neutral valence reference. At homonuclear H₂ symmetry,
 \(\Delta q_A = 0\), so \(E_{\mathrm{SCC}} = 0\) and the pin reduces to band +

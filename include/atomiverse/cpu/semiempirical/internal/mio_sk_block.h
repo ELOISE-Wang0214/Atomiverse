@@ -16,11 +16,11 @@ namespace internal {
 ///        evaluated at a bond vector.
 ///
 /// Owns the two-centre Slater–Koster algebra every DFTB method needs: the
-/// radial sketch channels \f$H_{ss\sigma},H_{sp\sigma},H_{pp\sigma},H_{pp\pi}\f$
-/// (and their overlap partners), the direction-cosine rotation into the AO
-/// block, and the **analytic derivative of that same block** with respect to
-/// the bond vector. H–H is special-cased onto the transcribed mio-1-1 grid
-/// (`MioHHTable`) exactly as the energy path reads it.
+/// radial mio-1-1 channels \f$H_{ss\sigma},H_{sp\sigma},H_{pp\sigma},H_{pp\pi}\f$
+/// (and their overlap partners) from `MioSkTable`, the direction-cosine
+/// rotation into the AO block, and the **analytic derivative of that same
+/// block** with respect to the bond vector. All H/C/N/O ordered pairs read the
+/// transcribed mio-1-1 grids (no exponential sketch on this path).
 ///
 /// The value routine (@ref add_block) and the derivative routine
 /// (@ref set_block_derivative) live on one type on purpose: DFTB2 and DFTB3
@@ -40,7 +40,7 @@ class MioSketchPair {
     /// @brief Bind one ordered element pair and its static SK row.
     /// @param a Element row of atom A (the block's row atom).
     /// @param b Element row of atom B (the block's column atom).
-    /// @param sk Sketch SK row for (Z_A, Z_B); ignored for the H–H mio path.
+    /// @param sk Legacy sketch row; ignored — radial data come from MioSkTable.
     /// @note Holds references to `constexpr` static table rows — construct at
     ///       the use site, do not outlive the caller's frame.
     MioSketchPair(const basis_data::DftbElementRow& a,

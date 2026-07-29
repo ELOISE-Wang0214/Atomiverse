@@ -64,8 +64,9 @@ int main() {
         return 1;
     }
 
-    // Hard pin: ATV mio-style Hamiltonian twin (see REFERENCE.md).
-    constexpr double kE_ref_eV = -113.5976598145;
+    // Hard pin: ATV Hamiltonian twin with full mio-1-1 C–C tables
+    // (re-pinned 2026-07-29; Δq≡0 so γ form is inert — shift is SK, not SCC).
+    constexpr double kE_ref_eV = -94.5030857189;
     constexpr double kE_tol_eV = 0.05;
     if (std::fabs(e - kE_ref_eV) > kE_tol_eV) {
         std::printf("FAIL energy pin: got %.10f want %.10f ± %.3f eV\n", e,

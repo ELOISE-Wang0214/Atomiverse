@@ -1,9 +1,9 @@
 /// @file regressions/semiempirical/h2o_dftb2_mio/reg_h2o_dftb2_mio.cpp
-/// @brief H2O SCC-DFTB2 with static mio-style SK tables — energy + force gate.
+/// @brief H2O SCC-DFTB2 with transcribed mio-1-1 SK — energy + force gate.
 ///
-/// Domain: Elstner et al., Phys. Rev. B 58, 7260 (1998). In-tree H/C/N/O
-/// tables (not a full DFTB.org mio-1-1 dump). Hard-coded gates are pinned to
-/// this implementation's deterministic energy/forces at the stated geometry.
+/// Domain: Elstner et al., Phys. Rev. B 58, 7260 (1998). Static H/C/N/O
+/// mio-1-1 tables (`dftb_mio_sk_tables.h`). Absolute energy pin vs DFTB+ 24.1
+/// (tol covers residual ~0.037 eV; see REFERENCE.md).
 ///
 /// Exit non-zero on failure. Public API only. <= 60 s.
 #include <cmath>
@@ -62,11 +62,18 @@ int main() {
         std::printf("FAIL non-finite energy\n");
         return 1;
     }
-    // Bound polyatomic: total energy must be finite and non-zero.
-    if (std::fabs(e) < 1e-3) {
-        std::printf("FAIL energy near zero\n");
+    // DFTB+ 24.1 + mio-1-1 SCC at this geometry: −110.9590 eV
+    // (tools/tb_oracle/inputs/dftbplus/h2o_mio_scc/). ATV residual ~0.037 eV
+    // after full SK transcription (Hubbard-U / mixer detail still open).
+    constexpr double kDftbPlusEV = -110.9590;
+    constexpr double kAbsTolEV = 0.05;
+    if (std::fabs(e - kDftbPlusEV) > kAbsTolEV) {
+        std::printf("FAIL |E-DFTB+| = %.6f > tol %.3f eV (got %.8f)\n",
+                    std::fabs(e - kDftbPlusEV), kAbsTolEV, e);
         return 1;
     }
+    std::printf("  vs DFTB+ 24.1: pin %.4f  |dE|=%.6f eV (tol %.3f)\n",
+                kDftbPlusEV, std::fabs(e - kDftbPlusEV), kAbsTolEV);
 
     double f2 = 0;
     for (int i = 0; i < 3; ++i) {

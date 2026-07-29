@@ -1,7 +1,11 @@
 # Atomiverse
 
-Atomiverse is a C++/CUDA molecular-simulation engine. One shared
-**Driver / Component** API spans several methods:
+Atomiverse is a next-generation engine for multiscale, multiphysics atomistic
+simulation. Dual backends (CPU + CUDA) share one **Driver / Component** API
+across classical MD, Monte Carlo, geometry optimization, vibration, and
+electronic structure (Gaussian SCF, plane-wave DFT, GPW, NDDO/AM1, DFTB).
+
+Methods include:
 
 - **Classical molecular dynamics** — Lennard-Jones and bonded force fields, NVE/NVT/NPT.
 - **Geometry optimization** — L-BFGS / conjugate-gradient on ab-initio forces.
@@ -10,6 +14,7 @@ Atomiverse is a C++/CUDA molecular-simulation engine. One shared
 - **Plane-wave DFT** — Kohn-Sham LDA for periodic crystals.
 - **Gaussian-and-plane-waves (GPW) DFT** — Gaussian-basis Kohn-Sham with
   grid-based Hartree/XC and GTH pseudopotentials (experimental).
+- **Semiempirical / tight-binding** — NDDO (AM1/RM1), SCC-DFTB2/3 (mio/3ob), TD-DFTB.
 - **Ab-initio molecular dynamics** — the MD loop driven by SCF forces.
 
 Everything in this README and in `docs/` targets the **C++ API**. For the

@@ -48,7 +48,7 @@ E = \sum_i n_i\,\varepsilon_i
 \]
 
 where \(\Delta q_A\) are Mulliken charge fluctuations, \(\gamma_{AB}\) is the
-screened Ohno–Klopman-like Coulomb kernel (Hubbard \(U\) at short range,
+screened Elstner Coulomb kernel (Hubbard \(U\) at short range,
 \(1/R\) tail), and \(E_{\mathrm{rep}}\) is the short-range pair repulsive.
 Double counting of the SCC piece follows the DFTB+ convention.
 

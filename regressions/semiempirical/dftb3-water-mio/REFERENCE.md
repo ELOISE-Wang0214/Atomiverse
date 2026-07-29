@@ -18,7 +18,7 @@ Family-locked numerical oracle package is **DFTB+** (never OpenMOPAC / xtb).
 
 ## Third-order convention (what the code computes)
 
-With \(\gamma_{AB}\) the Ohno–Klopman-like charge kernel and
+With \(\gamma_{AB}\) the DFTB+ Elstner charge kernel and
 \(\Gamma_{AB}=\partial\gamma_{AB}/\partial q_A\) (on-site \(\gamma_{AA}=U_A\),
 \(\Gamma_{AA}=U^{\mathrm{d}}_A\); note \(\Gamma_{AB}\neq\Gamma_{BA}\)):
 
@@ -42,14 +42,12 @@ differences, \(\Delta q\equiv 0\) reduction).
 
 ## Hamiltonian twin note
 
-In-tree static tables `basis_data/dftb_mio_tables.h` for H/C/N/O only.
-**Not** a full DFTB.org mio-1-1 `.skf` dump — hoppings / \(U^{\mathrm{d}}\)
-are mio-style product-path sketches (no runtime parser). Absolute energy
-identity with DFTB+ + production mio-1-1 is **deferred** to SK-fidelity
-slugs (`dftb2-3ob-organic`, energy-pin). This regression pins the
-**ATV DFTB3 Hamiltonian twin** energy at the stated geometry (deterministic
-offline value measured under SE-only build), with formula lineage from
-DFTB+/Gaus.
+SK H⁰/S and repulsives for all ordered H/C/N/O pairs are transcribed mio-1-1
+(`basis_data/dftb_mio_sk_tables.h`). Hubbard derivatives \(U^{\mathrm{d}}\)
+remain sketches (not in the SKF). Absolute DFTB+ DFTB3 identity is still
+deferred until \(U^{\mathrm{d}}\) are production parameters. This regression
+pins the **ATV DFTB3 Hamiltonian twin** energy (real mio SK + sketch \(U^{\mathrm{d}}\))
+at the stated geometry.
 
 ## Geometry
 
@@ -68,23 +66,15 @@ Cubic box 20 Å (isolated).
 - `scc_tol = 1e-10`, `max_scc = 50`, forces off (energy gate)
 - Units: energy **eV**, positions **Å**
 
-## Pin (provisional; DFTB+ oracle owed)
+## Pin (ATV twin after mio-1-1 SK; \(U^{\mathrm{d}}\) still sketch)
 
 | Quantity | Value | Unit | Tol |
 | -------- | ----- | ---- | --- |
-| \(E_{\mathrm{tot}}\) | **−94.273801189131** | eV | \(10^{-6}\) |
+| \(E_{\mathrm{tot}}\) | **−111.190697917671** | eV | \(10^{-6}\) |
 
-Measured under Release build, `scc_tol=1e-10`, `max_scc=50`, forces off
-(2026-07-28). Components at the pin geometry (informational):
-\(E^{(2)} = 0.134894744531\) eV, \(E^{(3)} = -2.240219\times10^{-3}\) eV,
-\(\Delta q_{\mathrm{DFTB2}} = (+0.1224, -0.0613, -0.0611)\ e\)
-(sketch SK + \(U^{\mathrm{d}}\); the sign of \(\Delta q\) is a property of
-the sketch O/H rows, not of DFTB3).
-
-**What this number is.** A *provisional self-comparison pin* of the ATV DFTB3
-Hamiltonian twin — still **not** an oracle value, but now a **converged
-self-consistent** energy: SCC residual \(2.3\times10^{-14}\ e\) after **6**
-iterations, and bit-identical for `max_scc` = 49 / 50 / 51.
+Re-pinned 2026-07-29 after full mio-1-1 H/C/N/O SK transcription. DFTB2 at
+the same geometry is **−110.996433406106 eV** (vs DFTB+ **−110.9590 eV**).
+\(E^{(3)}\) still uses sketch \(U^{\mathrm{d}}\).
 
 **What invalidated the previous pin (−107.618793920072 eV).** Three defects,
 all fixed 2026-07-28:

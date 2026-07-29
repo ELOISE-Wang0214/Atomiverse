@@ -22,6 +22,24 @@ oracle: mopac|dftb+|xtb|literature
 oracle_version: <package version or formula citation>
 ```
 
+## DFTB+ install (Arrhenius / this clone, 2026-07-29)
+
+Prebuilt **DFTB+ 24.1** + **mio-1-1** / **3ob-3-1** live outside git
+(`molcrafts/software/`):
+
+```bash
+source tools/tb_oracle/setup_dftbplus_env.sh
+# PATH → …/software/dftbplus-24.1/bin/dftb+
+# ATV_DFTBPLUS_SK_MIO → …/software/dftb-params/mio-1-1
+# ATV_DFTBPLUS_SK_3OB → …/software/dftb-params/3ob-3-1
+
+tools/tb_oracle/run_dftbplus_pin.sh tools/tb_oracle/inputs/dftbplus/h2_mio_scc mio
+```
+
+Smoke: H₂ / mio-1-1 / SCC @ 0.74 Å → **−18.36635052 eV** (= ATV
+`reg_dftb2-dftbplus-energy-pin`). Details: `molcrafts/software/README.md` and
+`.claude/notes/dftb-vs-dftbplus-cleanup.md`.
+
 ## Layout
 
 ```text

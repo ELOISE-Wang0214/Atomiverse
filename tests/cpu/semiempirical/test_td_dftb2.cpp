@@ -98,6 +98,28 @@ TEST(TdDftb2, ZeroCouplingReproducesKsGaps) {
             << "state " << s << " [eV]";
 }
 
+/// Oscillator strengths are non-negative for singlets; triplets are dark.
+TEST(TdDftb2, OscillatorStrengthSingletNonNegativeTripletZero) {
+    auto f = make_water();
+    const auto d = tight_dftb2();
+    const auto s =
+        d.td_casida(f, 4, cpu::semiempirical::TdDftbChannel::singlet);
+    ASSERT_EQ(s.oscillator_strength.size(), 4u);
+    ASSERT_EQ(s.transition_dipole.size(), 12u);
+    double f_sum = 0;
+    for (double fi : s.oscillator_strength) {
+        EXPECT_GE(fi, -1e-12);
+        f_sum += fi;
+    }
+    // At least one bright-ish state in the window (water has UV intensity).
+    EXPECT_GT(f_sum, 1e-6);
+
+    const auto t =
+        d.td_casida(f, 2, cpu::semiempirical::TdDftbChannel::triplet);
+    for (double fi : t.oscillator_strength)
+        EXPECT_NEAR(fi, 0.0, 1e-14);
+}
+
 /// The same limit in the triplet channel — the kernel, not the channel, is
 /// what the λ → 0 limit removes.
 TEST(TdDftb2, ZeroCouplingReproducesKsGapsTriplet) {

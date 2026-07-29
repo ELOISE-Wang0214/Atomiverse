@@ -67,8 +67,8 @@ int main() {
         return 1;
     }
 
-    // Hard pin: ATV mio-style Hamiltonian twin (see REFERENCE.md).
-    constexpr double kE_ref_eV = -98.9944775364;
+    // Hard pin: ATV twin with full mio-1-1 C–C (re-pinned 2026-07-29).
+    constexpr double kE_ref_eV = -91.5579236054;
     constexpr double kE_tol_eV = 0.05;
     if (std::fabs(e - kE_ref_eV) > kE_tol_eV) {
         std::printf("FAIL energy pin: got %.10f want %.10f ± %.3f eV\n", e,
@@ -85,7 +85,7 @@ int main() {
     }
 
     // Γ must still match the published periodic-gamma pin within tol.
-    constexpr double kE_gamma_ref = -113.5976598145;
+    constexpr double kE_gamma_ref = -94.5030857189;
     if (std::fabs(e_gamma - kE_gamma_ref) > 0.05) {
         std::printf("FAIL Γ control pin: got %.10f want %.10f\n", e_gamma,
                     kE_gamma_ref);

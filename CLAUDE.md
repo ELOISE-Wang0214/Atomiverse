@@ -30,11 +30,11 @@ mol_project:
 
 ## What this repo is
 
-Atomiverse is a dual-backend (CPU + CUDA) molecular-simulation engine with one
-shared Driver/Component API spanning classical MD, Monte Carlo, geometry
-optimization, vibrational analysis, and electronic structure (Gaussian SCF,
-plane-wave DFT, GPW, NDDO/AM1). C++20, `ATV::` namespace. Active development is
-on **`dev`**.
+Atomiverse is a next-generation engine for multiscale, multiphysics atomistic
+simulation. Dual backends (CPU + CUDA) share one Driver/Component API across
+classical MD, Monte Carlo, geometry optimization, vibration, and electronic
+structure (Gaussian SCF, plane-wave DFT, GPW, NDDO/AM1, DFTB). C++20, `ATV::`
+namespace. Active development is on **`dev`**.
 
 ## Where things live
 

@@ -1,11 +1,10 @@
 /// @file src/cpu/semiempirical/dftb3.cpp
-/// SCC-DFTB3 multi-element (H/C/N/O) with static mio-style SK tables.
-/// H–H reads the shared transcribed mio-1-1 grid (`internal/mio_hh_table.h`),
-/// the same one DFTB0/DFTB2 read, so DFTB3 reduces to DFTB2 exactly when the
-/// charge fluctuations vanish. Nuclear forces are the CLOSED-FORM gradient at
-/// the converged SCC density — Hellmann–Feynman + Pulay + the second- AND
-/// third-order charge-kernel radial derivatives + repulsive — sharing the SK
-/// block/derivative kernel (`internal/mio_sk_block.h`) with DFTB2.
+/// SCC-DFTB3 multi-element (H/C/N/O) with transcribed mio-1-1 SK tables.
+/// All ordered pairs share `MioSkTable` / `MioSketchPair` with DFTB0/DFTB2, so
+/// DFTB3 reduces to DFTB2 exactly when charge fluctuations vanish. Nuclear
+/// forces are the CLOSED-FORM gradient at the converged SCC density —
+/// Hellmann–Feynman + Pulay + the second- AND third-order charge-kernel
+/// radial derivatives + repulsive.
 #include "atomiverse/cpu/semiempirical/dftb3.h"
 
 #include <algorithm>
@@ -16,12 +15,16 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/linalg/matrix.h"
+#include "atomiverse/cpu/semiempirical/basis_data/dftb_mio_sk_tables.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h"
 #include "atomiverse/cpu/semiempirical/internal/dftb3_scc.h"
-#include "atomiverse/cpu/semiempirical/internal/mio_hh_table.h"
+#include "atomiverse/cpu/semiempirical/internal/dftb_gamma.h"
 #include "atomiverse/cpu/semiempirical/internal/mio_sk_block.h"
+#include "atomiverse/cpu/semiempirical/internal/mio_sk_table.h"
 #include "atomiverse/cpu/semiempirical/internal/scc_mixer.h"
 
 namespace ATV {
@@ -63,27 +66,158 @@ const DftbPairRepRow& pair_rep(int za, int zb) {
                              + std::to_string(za) + "-" + std::to_string(zb));
 }
 
-/// H–H reaches as far as the transcribed mio grid; sketch pairs use r_cut [Å].
+/// mio-1-1 pair cutoff [Å] (SK grid + distFudge).
 double pair_rcut_A(const DftbElementRow& ea, const DftbElementRow& eb) {
-    if (ea.z == 1 && eb.z == 1)
-        return internal::MioHHTable{}.cutoff();
-    return std::max(ea.r_cut, eb.r_cut);
+    return internal::MioSkTable{ea.z, eb.z}.cutoff();
 }
 
-/// Pair repulsive energy [eV]: mio-1-1 spline for H–H, sketch exponential else.
+/// Pair repulsive energy [eV] from the transcribed mio-1-1 spline.
 double pair_repulsive_eV(int za, int zb, double r_A) {
-    if (za == 1 && zb == 1)
-        return internal::MioHHTable{}.repulsive(r_A);
-    const auto& rep = pair_rep(za, zb);
-    return rep.a * std::exp(-rep.b * r_A);
+    return internal::MioSkTable{za, zb}.repulsive(r_A);
 }
 
 /// Radial derivative of @ref pair_repulsive_eV [eV/Å].
 double pair_repulsive_dE_dr(int za, int zb, double r_A) {
-    if (za == 1 && zb == 1)
-        return internal::MioHHTable{}.d_repulsive_dr(r_A);
-    const auto& rep = pair_rep(za, zb);
-    return -rep.a * rep.b * std::exp(-rep.b * r_A);
+    return internal::MioSkTable{za, zb}.d_repulsive_dr(r_A);
+}
+
+// ── Γ-point lattice walk (same shape as DFTB2) ─────────────────────────
+
+struct LatVec {
+    double tx = 0, ty = 0, tz = 0;
+};
+
+std::vector<LatVec> enumerate_lattice(const Mat3& cell, double max_cut) {
+    double col_len[3];
+    for (int d = 0; d < 3; ++d) {
+        const double cx = static_cast<double>(cell(0, d));
+        const double cy = static_cast<double>(cell(1, d));
+        const double cz = static_cast<double>(cell(2, d));
+        col_len[d] = std::sqrt(cx * cx + cy * cy + cz * cz);
+        if (col_len[d] < 1e-9)
+            throw std::runtime_error("DFTB3: degenerate cell edge");
+    }
+    int nmax[3];
+    for (int d = 0; d < 3; ++d)
+        nmax[d] =
+            std::max(1, static_cast<int>(std::ceil(max_cut / col_len[d])) + 1);
+    std::vector<LatVec> out;
+    for (int n0 = -nmax[0]; n0 <= nmax[0]; ++n0)
+        for (int n1 = -nmax[1]; n1 <= nmax[1]; ++n1)
+            for (int n2 = -nmax[2]; n2 <= nmax[2]; ++n2) {
+                const double tx = n0 * static_cast<double>(cell(0, 0))
+                                  + n1 * static_cast<double>(cell(0, 1))
+                                  + n2 * static_cast<double>(cell(0, 2));
+                const double ty = n0 * static_cast<double>(cell(1, 0))
+                                  + n1 * static_cast<double>(cell(1, 1))
+                                  + n2 * static_cast<double>(cell(1, 2));
+                const double tz = n0 * static_cast<double>(cell(2, 0))
+                                  + n1 * static_cast<double>(cell(2, 1))
+                                  + n2 * static_cast<double>(cell(2, 2));
+                out.push_back({tx, ty, tz});
+            }
+    return out;
+}
+
+std::vector<LatVec>
+lattice_images_for(const cpu::Box& box,
+                   const std::vector<const DftbElementRow*>& el) {
+    double max_cut = 0;
+    for (const auto* e : el)
+        max_cut = std::max(max_cut, e->r_cut);
+    for (std::size_t i = 0; i < basis_data::kMioSkNPairs; ++i) {
+        const auto& p = basis_data::kMioSkPairs[i];
+        max_cut = std::max(max_cut, internal::MioSkTable{p.za, p.zb}.cutoff());
+    }
+    if (max_cut < 1e-12)
+        max_cut = 1.0;
+    return enumerate_lattice(box.cell(), max_cut);
+}
+
+/// DFTB+ Elstner γ(R) [eV] at one separation (not lattice-summed).
+double gamma1(double r, double ua, double ub) {
+    return internal::dftb_gamma::gamma_eV(r, ua, ub);
+}
+
+double dgamma1_dr(double r, double ua, double ub) {
+    return internal::dftb_gamma::dgamma_dr_eV(r, ua, ub);
+}
+
+/// Γ_AB = ∂γ/∂q_A at one r (not lattice-summed).
+double gamma_charge1(double r, double ua, double ub, double uda) {
+    return internal::dftb_gamma::gamma_charge_eV(r, ua, ub, uda);
+}
+
+double gamma_charge1_dr(double r, double ua, double ub, double uda) {
+    return internal::dftb_gamma::gamma_charge_dr_eV(r, ua, ub, uda);
+}
+
+/// Lattice-summed γ_AB [eV] (DFTB2-style, cut at SK rcut).
+double gamma_pair_lat(int a, int b, const std::vector<const DftbElementRow*>& el,
+                      const StorageReal* x, const StorageReal* y,
+                      const StorageReal* z, const cpu::Box& box,
+                      const std::vector<LatVec>& images) {
+    const double ua = el[static_cast<std::size_t>(a)]->hubbard_u;
+    const double ub = el[static_cast<std::size_t>(b)]->hubbard_u;
+    const double rcut = pair_rcut_A(*el[static_cast<std::size_t>(a)],
+                                    *el[static_cast<std::size_t>(b)]);
+    const double xa = static_cast<double>(x[a]);
+    const double ya = static_cast<double>(y[a]);
+    const double za = static_cast<double>(z[a]);
+    const double xb = static_cast<double>(x[b]);
+    const double yb = static_cast<double>(y[b]);
+    const double zb = static_cast<double>(z[b]);
+    double g = 0;
+    for (const auto& T : images) {
+        const double dx = xb + T.tx - xa;
+        const double dy = yb + T.ty - ya;
+        const double dz = zb + T.tz - za;
+        const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+        if (r < 1e-12) {
+            if (a == b)
+                g += ua;
+            continue;
+        }
+        if (r > rcut)
+            continue;
+        g += gamma1(r, ua, ub);
+    }
+    return g;
+}
+
+double gamma_charge_pair_lat(int a, int b,
+                             const std::vector<const DftbElementRow*>& el,
+                             const StorageReal* x, const StorageReal* y,
+                             const StorageReal* z, const cpu::Box& box,
+                             const std::vector<LatVec>& images) {
+    // Γ_AB = ∂γ_AB/∂q_A lattice sum.
+    const double ua = el[static_cast<std::size_t>(a)]->hubbard_u;
+    const double ub = el[static_cast<std::size_t>(b)]->hubbard_u;
+    const double uda = el[static_cast<std::size_t>(a)]->hubbard_du;
+    const double rcut = pair_rcut_A(*el[static_cast<std::size_t>(a)],
+                                    *el[static_cast<std::size_t>(b)]);
+    const double xa = static_cast<double>(x[a]);
+    const double ya = static_cast<double>(y[a]);
+    const double za = static_cast<double>(z[a]);
+    const double xb = static_cast<double>(x[b]);
+    const double yb = static_cast<double>(y[b]);
+    const double zb = static_cast<double>(z[b]);
+    double g = 0;
+    for (const auto& T : images) {
+        const double dx = xb + T.tx - xa;
+        const double dy = yb + T.ty - ya;
+        const double dz = zb + T.tz - za;
+        const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+        if (r < 1e-12) {
+            if (a == b)
+                g += uda;
+            continue;
+        }
+        if (r > rcut)
+            continue;
+        g += gamma_charge1(r, ua, ub, uda);
+    }
+    return g;
 }
 
 /// One converged DFTB3 solve at a frozen geometry.
@@ -118,21 +252,14 @@ SccSolution solve_scc(const cpu::Frame& f, const int* type,
                       const std::vector<const DftbElementRow*>& el,
                       const std::vector<int>& ao0, int n_at, int n_ao,
                       int n_occ, double scc_tol, int max_scc, double mix_beta) {
-    auto dist_vec = [&](int i, int j, double& dx, double& dy, double& dz) {
-        dx = static_cast<double>(x[j] - x[i]);
-        dy = static_cast<double>(y[j] - y[i]);
-        dz = static_cast<double>(z[j] - z[i]);
-        f.box.min_image(dx, dy, dz);
-        return std::sqrt(dx * dx + dy * dy + dz * dz);
-    };
+    const std::size_t n = static_cast<std::size_t>(n_at);
+    const auto images = lattice_images_for(f.box, el);
 
     linalg::RealMatrix H0 = xt::zeros<double>({n_ao, n_ao});
     linalg::RealMatrix S = xt::zeros<double>({n_ao, n_ao});
-    // Row-major n×n minimum-image distances of this geometry [Å].
-    std::vector<double> dist(static_cast<std::size_t>(n_at)
-                                 * static_cast<std::size_t>(n_at),
-                             0.0);
-    const std::size_t n = static_cast<std::size_t>(n_at);
+    // Min-image distances for Dftb3Scc (molecular kernel API); lattice-summed
+    // γ is applied via gamma_pair_lat below for the potential/energy.
+    std::vector<double> dist(n * n, 0.0);
 
     for (int a = 0; a < n_at; ++a) {
         const auto& ea = *el[static_cast<std::size_t>(a)];
@@ -145,38 +272,60 @@ SccSolution solve_scc(const cpu::Frame& f, const int* type,
                 S(ia + p, ia + p) = 1.0;
             }
         }
-        for (int b = a + 1; b < n_at; ++b) {
+    }
+    // Lattice-summed directed SK blocks (all ordered pairs, all images).
+    for (int a = 0; a < n_at; ++a) {
+        const auto& ea = *el[static_cast<std::size_t>(a)];
+        const int ia = ao0[static_cast<std::size_t>(a)];
+        const double xa = static_cast<double>(x[a]);
+        const double ya = static_cast<double>(y[a]);
+        const double za = static_cast<double>(z[a]);
+        for (int b = 0; b < n_at; ++b) {
             const auto& eb = *el[static_cast<std::size_t>(b)];
-            double dx, dy, dz;
-            const double r = dist_vec(a, b, dx, dy, dz);
-            dist[static_cast<std::size_t>(a) * n + static_cast<std::size_t>(b)] =
-                r;
-            dist[static_cast<std::size_t>(b) * n + static_cast<std::size_t>(a)] =
-                r;
-            if (r > pair_rcut_A(ea, eb))
-                continue;
-            internal::MioSketchPair{ea, eb, pair_sk(type[a], type[b])}.add_block(
-                dx, dy, dz, r, H0, S, ia, ao0[static_cast<std::size_t>(b)]);
+            const int ib = ao0[static_cast<std::size_t>(b)];
+            const double rcut = pair_rcut_A(ea, eb);
+            const auto& sk = pair_sk(type[a], type[b]);
+            const double xb = static_cast<double>(x[b]);
+            const double yb = static_cast<double>(y[b]);
+            const double zb = static_cast<double>(z[b]);
+            double rmin = 1e300;
+            for (const auto& T : images) {
+                const double dx = xb + T.tx - xa;
+                const double dy = yb + T.ty - ya;
+                const double dz = zb + T.tz - za;
+                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (r < 1e-12)
+                    continue;
+                rmin = std::min(rmin, r);
+                if (r > rcut)
+                    continue;
+                internal::MioSketchPair{ea, eb, sk}.add_block(dx, dy, dz, r, H0,
+                                                               S, ia, ib);
+            }
+            if (rmin < 1e299)
+                dist[static_cast<std::size_t>(a) * n
+                     + static_cast<std::size_t>(b)] = rmin;
         }
     }
-    // The a<b walk writes only strictly-upper entries (ao0 is cumulative, so
-    // every (a,b) block has row < col) and the onsite pass writes only the
-    // diagonal — mirroring the strict upper triangle completes the symmetric
-    // H⁰/S without a second directed pass.
-    for (int mu = 0; mu < n_ao; ++mu)
-        for (int nu = mu + 1; nu < n_ao; ++nu) {
-            H0(nu, mu) = H0(mu, nu);
-            S(nu, mu) = S(mu, nu);
-        }
 
     std::vector<double> hubbard_u(n);
     std::vector<double> hubbard_du(n);
+    // Precompute lattice-summed γ and Γ for the SCC kernel.
+    std::vector<double> G(n * n), Gd(n * n);
     for (int a = 0; a < n_at; ++a) {
         hubbard_u[static_cast<std::size_t>(a)] =
             el[static_cast<std::size_t>(a)]->hubbard_u;
         hubbard_du[static_cast<std::size_t>(a)] =
             el[static_cast<std::size_t>(a)]->hubbard_du;
+        for (int b = 0; b < n_at; ++b) {
+            G[static_cast<std::size_t>(a) * n + static_cast<std::size_t>(b)] =
+                gamma_pair_lat(a, b, el, x, y, z, f.box, images);
+            Gd[static_cast<std::size_t>(a) * n + static_cast<std::size_t>(b)] =
+                gamma_charge_pair_lat(a, b, el, x, y, z, f.box, images);
+        }
     }
+    // Dftb3Scc kept for pair_energy_distance_derivative API on min-image r
+    // (forces walk images explicitly and recompute one-body γ kernels).
     const internal::Dftb3Scc scc(hubbard_u, hubbard_du, dist);
 
     std::vector<double> dq(n, 0.0);
@@ -190,8 +339,34 @@ SccSolution solve_scc(const cpu::Frame& f, const int* type,
     constexpr int kSccMixDepth = 6;
     internal::ChargeMixer mixer(mix_beta, kSccMixDepth);
 
+    auto potential_lat = [&](const std::vector<double>& q) {
+        // V²_A = Σ_B γ_AB Δq_B; V³ as in Dftb3Scc::third_order_potential.
+        std::vector<double> v(n, 0.0);
+        for (int a = 0; a < n_at; ++a) {
+            double s2 = 0;
+            for (int b = 0; b < n_at; ++b)
+                s2 += G[static_cast<std::size_t>(a) * n
+                        + static_cast<std::size_t>(b)]
+                      * q[static_cast<std::size_t>(b)];
+            const double dqa = q[static_cast<std::size_t>(a)];
+            double s3 = 0;
+            for (int b = 0; b < n_at; ++b) {
+                const double dqb = q[static_cast<std::size_t>(b)];
+                s3 += (2.0 / 3.0) * dqa
+                      * Gd[static_cast<std::size_t>(a) * n
+                           + static_cast<std::size_t>(b)]
+                      * dqb;
+                s3 += (1.0 / 3.0) * dqb * dqb
+                      * Gd[static_cast<std::size_t>(b) * n
+                           + static_cast<std::size_t>(a)];
+            }
+            v[static_cast<std::size_t>(a)] = s2 + s3;
+        }
+        return v;
+    };
+
     for (int it = 0; it < max_scc; ++it) {
-        const std::vector<double> dV = scc.potential(dq);
+        const std::vector<double> dV = potential_lat(dq);
 
         linalg::RealMatrix H = H0;
         for (int a = 0; a < n_at; ++a) {
@@ -254,14 +429,40 @@ SccSolution solve_scc(const cpu::Frame& f, const int* type,
     for (int mu = 0; mu < n_ao; ++mu)
         for (int nu = 0; nu < n_ao; ++nu)
             out.e_h0 += P(mu, nu) * H0(mu, nu);
-    out.e2 = scc.second_order_energy(dq);
-    out.e3 = scc.third_order_energy(dq);
+    // E² / E³ with lattice-summed γ / Γ.
     for (int a = 0; a < n_at; ++a)
-        for (int b = a + 1; b < n_at; ++b)
-            out.e_rep += pair_repulsive_eV(
-                type[a], type[b],
-                dist[static_cast<std::size_t>(a) * n
-                     + static_cast<std::size_t>(b)]);
+        for (int b = 0; b < n_at; ++b) {
+            const double dqa = dq[static_cast<std::size_t>(a)];
+            const double dqb = dq[static_cast<std::size_t>(b)];
+            out.e2 += 0.5
+                      * G[static_cast<std::size_t>(a) * n
+                          + static_cast<std::size_t>(b)]
+                      * dqa * dqb;
+            out.e3 += (1.0 / 3.0)
+                      * Gd[static_cast<std::size_t>(a) * n
+                           + static_cast<std::size_t>(b)]
+                      * dqa * dqa * dqb;
+        }
+    // Lattice-summed repulsive (unordered images, factor ½ for double count).
+    for (int a = 0; a < n_at; ++a) {
+        const double xa = static_cast<double>(x[a]);
+        const double ya = static_cast<double>(y[a]);
+        const double za = static_cast<double>(z[a]);
+        for (int b = 0; b < n_at; ++b) {
+            const double xb = static_cast<double>(x[b]);
+            const double yb = static_cast<double>(y[b]);
+            const double zb = static_cast<double>(z[b]);
+            for (const auto& T : images) {
+                const double dx = xb + T.tx - xa;
+                const double dy = yb + T.ty - ya;
+                const double dz = zb + T.tz - za;
+                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (r < 1e-12)
+                    continue;
+                out.e_rep += 0.5 * pair_repulsive_eV(type[a], type[b], r);
+            }
+        }
+    }
     out.dq = std::move(dq);
     out.C = std::move(C);
     out.eps = std::move(eps);
@@ -291,8 +492,38 @@ void analytic_forces(int n_at, int n_ao,
                      const StorageReal* z, const cpu::Box& box,
                      const SccSolution& sol, AccReal* fx, AccReal* fy,
                      AccReal* fz) {
-    const internal::Dftb3Scc& scc = *sol.scc;
-    const std::vector<double> dV = scc.potential(sol.dq);
+    const auto images = lattice_images_for(box, el);
+    const std::size_t n = static_cast<std::size_t>(n_at);
+
+    // Lattice-summed V for the Pulay shift (same kernel as the SCC solve).
+    std::vector<double> G(n * n), Gd(n * n);
+    for (int a = 0; a < n_at; ++a)
+        for (int b = 0; b < n_at; ++b) {
+            G[static_cast<std::size_t>(a) * n + static_cast<std::size_t>(b)] =
+                gamma_pair_lat(a, b, el, x, y, z, box, images);
+            Gd[static_cast<std::size_t>(a) * n + static_cast<std::size_t>(b)] =
+                gamma_charge_pair_lat(a, b, el, x, y, z, box, images);
+        }
+    std::vector<double> dV(n, 0.0);
+    for (int a = 0; a < n_at; ++a) {
+        double s2 = 0;
+        for (int b = 0; b < n_at; ++b)
+            s2 += G[static_cast<std::size_t>(a) * n + static_cast<std::size_t>(b)]
+                  * sol.dq[static_cast<std::size_t>(b)];
+        const double dqa = sol.dq[static_cast<std::size_t>(a)];
+        double s3 = 0;
+        for (int b = 0; b < n_at; ++b) {
+            const double dqb = sol.dq[static_cast<std::size_t>(b)];
+            s3 += (2.0 / 3.0) * dqa
+                  * Gd[static_cast<std::size_t>(a) * n
+                       + static_cast<std::size_t>(b)]
+                  * dqb;
+            s3 += (1.0 / 3.0) * dqb * dqb
+                  * Gd[static_cast<std::size_t>(b) * n
+                       + static_cast<std::size_t>(a)];
+        }
+        dV[static_cast<std::size_t>(a)] = s2 + s3;
+    }
 
     linalg::RealMatrix P = xt::zeros<double>({n_ao, n_ao});
     linalg::RealMatrix W = xt::zeros<double>({n_ao, n_ao});
@@ -310,66 +541,91 @@ void analytic_forces(int n_at, int n_ao,
                                 xt::zeros<double>({n_ao, n_ao}),
                                 xt::zeros<double>({n_ao, n_ao})};
 
+    // All ordered (a,b) and images T of B — F on a from ∂/∂R_a of each bond.
     for (int a = 0; a < n_at; ++a) {
         const auto& ea = *el[static_cast<std::size_t>(a)];
         const int ia = ao0[static_cast<std::size_t>(a)];
         const int na = ea.n_ao;
-        for (int b = a + 1; b < n_at; ++b) {
+        const double xa = static_cast<double>(x[a]);
+        const double ya = static_cast<double>(y[a]);
+        const double za = static_cast<double>(z[a]);
+        const double ua = ea.hubbard_u;
+        const double uda = ea.hubbard_du;
+        const double dqa = sol.dq[static_cast<std::size_t>(a)];
+
+        for (int b = 0; b < n_at; ++b) {
             const auto& eb = *el[static_cast<std::size_t>(b)];
             const int ib = ao0[static_cast<std::size_t>(b)];
             const int nb = eb.n_ao;
+            const double ub = eb.hubbard_u;
+            const double udb = eb.hubbard_du;
+            const double dqb = sol.dq[static_cast<std::size_t>(b)];
+            const double rcut = pair_rcut_A(ea, eb);
+            const auto& sk_ab = pair_sk(type[a], type[b]);
+            const double xb = static_cast<double>(x[b]);
+            const double yb = static_cast<double>(y[b]);
+            const double zb = static_cast<double>(z[b]);
+            const double shift =
+                0.5 * (dV[static_cast<std::size_t>(a)]
+                       + dV[static_cast<std::size_t>(b)]);
 
-            double dx = static_cast<double>(x[b] - x[a]);
-            double dy = static_cast<double>(y[b] - y[a]);
-            double dz = static_cast<double>(z[b] - z[a]);
-            box.min_image(dx, dy, dz);
-            const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
-            if (r < 1e-12)
-                continue;
-            const double dir[3] = {dx / r, dy / r, dz / r};
+            for (const auto& T : images) {
+                const double dx = xb + T.tx - xa;
+                const double dy = yb + T.ty - ya;
+                const double dz = zb + T.tz - za;
+                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (r < 1e-12)
+                    continue;
+                const double dir[3] = {dx / r, dy / r, dz / r};
+                double F_a[3] = {0, 0, 0};
 
-            // Force on atom a from this pair; F_b = −F_a.
-            double F_a[3] = {0, 0, 0};
-
-            if (r <= pair_rcut_A(ea, eb)) {
-                for (int k = 0; k < 3; ++k) {
-                    dH0[k] = xt::zeros<double>({n_ao, n_ao});
-                    dS[k] = xt::zeros<double>({n_ao, n_ao});
+                if (r <= rcut) {
+                    for (int k = 0; k < 3; ++k) {
+                        dH0[k] = xt::zeros<double>({n_ao, n_ao});
+                        dS[k] = xt::zeros<double>({n_ao, n_ao});
+                    }
+                    // Only the A→B directed block for this ordered (a,b,T).
+                    // The (b,a,−T) image is visited separately in the a↔b walk.
+                    internal::MioSketchPair{ea, eb, sk_ab}.set_block_derivative(
+                        dx, dy, dz, r, dH0, dS, ia, ib);
+                    for (int k = 0; k < 3; ++k) {
+                        double acc = 0;
+                        for (int i = 0; i < na; ++i)
+                            for (int j = 0; j < nb; ++j) {
+                                const double p = P(ia + i, ib + j);
+                                const double w = W(ia + i, ib + j);
+                                acc += p * (dH0[k](ia + i, ib + j)
+                                            + shift * dS[k](ia + i, ib + j))
+                                       - w * dS[k](ia + i, ib + j);
+                            }
+                        // R = R_b+T−R_a ⇒ ∂/∂R_a = −∂/∂R ⇒ F_a = +acc.
+                        F_a[k] += acc;
+                    }
                 }
-                internal::MioSketchPair{ea, eb, pair_sk(type[a], type[b])}
-                    .set_block_derivative(dx, dy, dz, r, dH0, dS, ia, ib);
-                const double shift = 0.5
-                                     * (dV[static_cast<std::size_t>(a)]
-                                        + dV[static_cast<std::size_t>(b)]);
-                for (int k = 0; k < 3; ++k) {
-                    double acc = 0;
-                    for (int i = 0; i < na; ++i)
-                        for (int j = 0; j < nb; ++j) {
-                            const double p = P(ia + i, ib + j);
-                            const double w = W(ia + i, ib + j);
-                            const double dh = dH0[k](ia + i, ib + j);
-                            const double ds = dS[k](ia + i, ib + j);
-                            acc += p * (dh + shift * ds) - w * ds;
-                        }
-                    // ×2: the symmetric (b,a) block contributes the same.
-                    F_a[k] += 2.0 * acc;
-                }
+
+                // Fixed-Δq ∂(E²+E³)/∂r + repulsive for this ordered image.
+                // Energy uses ½ Σ_{a,b,T} for E²/E_rep and ⅓ Σ for E³; the
+                // partner (b,a,−T) supplies the matching half.
+                const double dE_dr =
+                    0.5 * dqa * dqb * dgamma1_dr(r, ua, ub)
+                    + (1.0 / 6.0)
+                          * (dqa * dqa * dqb * gamma_charge1_dr(r, ua, ub, uda)
+                             + dqb * dqb * dqa
+                                   * gamma_charge1_dr(r, ub, ua, udb))
+                    + 0.5 * pair_repulsive_dE_dr(type[a], type[b], r);
+                // ∂r/∂R_a = −r̂ ⇒ F_a = +(dE_dr) r̂; F_b = −F_a.
+                // Self-images (a=b): F_a and −F_a cancel — correct, bond T is
+                // nuclear-coordinate independent (DFTB2 same).
+                for (int k = 0; k < 3; ++k)
+                    F_a[k] += dE_dr * dir[k];
+
+                fx[a] += static_cast<AccReal>(F_a[0]);
+                fy[a] += static_cast<AccReal>(F_a[1]);
+                fz[a] += static_cast<AccReal>(F_a[2]);
+                fx[b] -= static_cast<AccReal>(F_a[0]);
+                fy[b] -= static_cast<AccReal>(F_a[1]);
+                fz[b] -= static_cast<AccReal>(F_a[2]);
             }
-
-            // Fixed-Δq second- + third-order charge kernel, then repulsive.
-            // ∂r/∂R_a = −r̂ ⇒ F_a = −∂E/∂R_a = +(∂E/∂r) r̂.
-            const double dE_dr =
-                scc.pair_energy_distance_derivative(a, b, sol.dq)
-                + pair_repulsive_dE_dr(type[a], type[b], r);
-            for (int k = 0; k < 3; ++k)
-                F_a[k] += dE_dr * dir[k];
-
-            fx[a] += static_cast<AccReal>(F_a[0]);
-            fy[a] += static_cast<AccReal>(F_a[1]);
-            fz[a] += static_cast<AccReal>(F_a[2]);
-            fx[b] -= static_cast<AccReal>(F_a[0]);
-            fy[b] -= static_cast<AccReal>(F_a[1]);
-            fz[b] -= static_cast<AccReal>(F_a[2]);
         }
     }
 }

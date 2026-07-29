@@ -14,7 +14,7 @@
 
 Self-consistent-charge **DFTB3** (Gaus, Cui, Elstner, *J. Chem. Theory Comput.*
 **7**, 931 (2011)) extends Elstner SCC-DFTB2 by a third-order charge-fluctuation
-term \(E^{(3)}\) built from the charge derivative of the Ohno–Klopman kernel
+term \(E^{(3)}\) built from the charge derivative of the Elstner \(\gamma\) kernel
 (\(\Gamma_{AB}=\partial\gamma_{AB}/\partial q_A\), on-site \(U^{\mathrm{d}}\)).
 Atomiverse ships a concrete method `cpu::semiempirical::DFTB3` with parameters as
 public members (no `*Config` bag, no `make_*` / `build_*`), bound into
@@ -46,7 +46,7 @@ E^{(2)}=\tfrac12\sum_{AB}\gamma_{AB}\,\Delta q_A\Delta q_B,\qquad
 E^{(3)}=\tfrac13\sum_{AB}\Delta q_A^{2}\,\Delta q_B\,\Gamma_{AB}.
 \]
 
-Here \(\gamma_{AB}\) is the Ohno–Klopman-like charge kernel (on-site
+Here \(\gamma_{AB}\) is the DFTB+ Elstner charge kernel (on-site
 \(\gamma_{AA}=U_A\)), \(\Gamma_{AB}=\partial\gamma_{AB}/\partial q_A\)
 (\(\Gamma_{AB}\neq\Gamma_{BA}\); on-site \(\Gamma_{AA}=U^{\mathrm{d}}_A\)),
 and \(\Delta q_A\) are Mulliken charge fluctuations from the neutral valence

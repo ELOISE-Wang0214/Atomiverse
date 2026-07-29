@@ -15,7 +15,7 @@
 
 **Self-consistent-charge DFTB2** (Elstner *et al.*) at the **Γ point** for a
 periodic cell: lattice-summed two-center \(H^0\) and \(S\), screened
-Ohno–Klopman-like \(\gamma\), and pair repulsive within static SK cutoffs.
+DFTB+ Elstner \(\gamma\) (short-range expGamma), and pair repulsive within static SK cutoffs.
 The product gate is a minimal **1-D carbon dimer crystal** (two C per
 orthorhombic cell) under `cpu::Evaluate` + `cpu::semiempirical::DFTB2`
 (default `DftbSkSet::MioSketch`). Energy is written to

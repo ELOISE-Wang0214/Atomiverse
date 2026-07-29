@@ -41,9 +41,9 @@ namespace semiempirical {
 /// `regressions/semiempirical/dftb3-analytic-forces/`. This is **not** a
 /// finite-difference path: one SCC solve per force evaluation, not \f$6N+1\f$.
 ///
-/// **Limitations:** minimum-image molecular pairs only (no lattice-image
-/// Γ-PBC / k-mesh walk — that is DFTB2's), closed shell only, no cell stress,
-/// no dispersion.
+/// **PBC:** Γ-point lattice-image walk for H⁰/S, γ/Γ, repulsive, and analytic
+/// forces (same shape as DFTB2 MioSketch). Closed shell only; no multi-k,
+/// no cell stress, no dispersion.
 ///
 /// Units on the public surface: energy [eV], positions [Å], forces [eV/Å].
 ///

@@ -35,13 +35,28 @@ enum class TdDftbChannel { singlet, triplet };
 /// @brief Vertical excitation energies and the assembled Casida quantities of
 ///        one TD-DFTB linear-response solve.
 ///
-/// Energies only — this foothold ships no oscillator strengths, no transition
-/// dipoles and no excited-state gradients. Every field is a plain value type;
-/// nothing here is an input parameter bag.
+/// Vertical excitation energies, Casida matrix, and oscillator strengths.
+/// Excited-state gradients are still out of scope. Every field is a plain
+/// value type; nothing here is an input parameter bag.
 struct TdDftbResult {
     /// @brief Excitation energies \(\omega_n\) [eV], ascending,
     ///        `n_states` entries.
     std::vector<double> energy_ev;
+
+    /// @brief Dimensionless oscillator strengths \(f_n\) (length form),
+    ///        `n_states` entries, same order as `energy_ev`.
+    ///
+    /// Singlet (Casida \(\Omega F=\omega^2 F\), \(F^\top F=I\)):
+    /// \(f_I=\frac{2}{3\omega_I}\big|\sum_{ia}\sqrt{2}\,F^I_{ia}
+    /// \sqrt{\varepsilon_a-\varepsilon_i}\,\boldsymbol{\mu}_{ia}\big|^2\)
+    /// with pair dipoles \(\boldsymbol{\mu}_{ia}=\sum_A q^{ia}_A\mathbf{R}_A\)
+    /// [e·Å]. Triplet channel is spin-forbidden in the dipole approximation
+    /// → \(f_I=0\).
+    std::vector<double> oscillator_strength;
+
+    /// @brief Transition dipoles \(\boldsymbol{\mu}_I\) [e·Å] for each state,
+    ///        row-major `[n_states, 3]` (x,y,z). Zero for triplets.
+    std::vector<double> transition_dipole;
 
     /// @brief The `n_states` lowest single-particle (Kohn–Sham-like) gaps
     ///        \(\varepsilon_a-\varepsilon_i\) [eV], ascending.

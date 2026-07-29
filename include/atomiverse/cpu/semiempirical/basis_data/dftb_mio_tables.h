@@ -2,15 +2,15 @@
 /// @brief Static multi-element SK parameter tables for SCC-DFTB2/3 (H/C/N/O).
 ///
 /// In-tree data only — nothing is parsed at build or run time (GPW
-/// `gpw_tables.h` pattern). Values are **mio-style** order-of-magnitude
-/// hoppings / Hubbard U / Hubbard derivatives / repulsive pairs for
-/// product-path multi-element DFTB2 (Elstner et al., Phys. Rev. B 58, 7260
+/// `gpw_tables.h` pattern). Element onsite / Hubbard U and pair **SK + repulsive** for H/C/N/O
+/// are transcribed mio-1-1 (`dftb_mio_sk_tables.h`). Hubbard
+/// derivatives \(U^{\mathrm{d}}\) and spin W remain sketches for
+/// the DFTB3 / collinear product path. Sketch `DftbPairSkRow` /
+/// `DftbPairRepRow` below are retained only as unused fallback
+/// documentation — energy/force paths read `MioSkTable`. DFTB2 (Elstner et al., Phys. Rev. B 58, 7260
 /// (1998), DOI 10.1103/PhysRevB.58.7260) and DFTB3 (Gaus et al., J. Chem.
-/// Theory Comput. 7, 931 (2011), DOI 10.1021/ct100684s). They are not
-/// bit-identical to a full DFTB.org mio-1-1 dump for every pair. **H**
-/// onsite/U and the **H–H** pair use transcribed mio-1-1 data
-/// (`dftb_mio_hh_sk.h`); other pairs, the Hubbard derivatives, and the spin
-/// constants remain sketches. Unsupported Z throws at lookup.
+/// Theory Comput. 7, 931 (2011), DOI 10.1021/ct100684s). SK H⁰/S and repulsives match mio-1-1 for every ordered pair among
+/// H/C/N/O. Hubbard derivatives and spin constants remain sketches. Unsupported Z throws at lookup.
 ///
 /// Units in this header: energy [eV], length [Å], Hubbard U [eV], Hubbard
 /// derivative \(U^{\mathrm{d}}\) [eV], spin constant W [eV], valence electron
@@ -79,10 +79,10 @@ struct DftbPairRepRow {
 // Spin W is an atom-averaged sketch scale (negative → high-spin preference in
 // the collinear channel).
 inline constexpr DftbElementRow kDftbElements[] = {
-    {1, "H", 1, 1.0, -6.492647642847, 0.0, 11.415176530192, -1.36, 3.5, -0.50},
-    {6, "C", 4, 4.0, -12.50, -3.99, 10.0, -2.50, 4.5, -0.80},
-    {7, "N", 4, 5.0, -16.0, -5.5, 11.5, -3.20, 4.5, -0.90},
-    {8, "O", 4, 6.0, -18.5, -7.0, 13.4, -3.81, 4.5, -1.00},
+    {1, "H", 1, 1.0, -6.492647642847, 0.000000000000, 11.415176530192, -1.36, 5.810366, -0.50},
+    {6, "C", 4, 4.0, -13.738803605321, -5.288671967091, 9.923992563912, -2.50, 5.810366, -0.80},
+    {7, "N", 4, 5.0, -17.415287197432, -7.094769768916, 11.725386333396, -3.20, 5.810366, -0.90},
+    {8, "O", 4, 6.0, -23.914249514572, -9.037763156895, 13.480520746262, -3.81, 5.810366, -1.00},
 };
 inline constexpr std::size_t kDftbNElements =
     sizeof(kDftbElements) / sizeof(kDftbElements[0]);

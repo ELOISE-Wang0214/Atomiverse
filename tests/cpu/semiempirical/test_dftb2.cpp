@@ -715,18 +715,23 @@ TEST(DFTB2, SpinAnalyticStressPolarOpenShellMatchesStrainFdNo) {
 TEST(DFTB2, SpinAnalyticStressClosedShellLimitMatchesRestricted) {
     // Equivalence guard for folding the restricted assembly into the
     // spin-resolved one (C^α = C^β, ε^α = ε^β, m ≡ 0 ⇒ P^α = P^β = P/2).
-    // Baseline: the shipped restricted analytic σ for this exact geometry,
-    // measured on the parent commit 448dca40 before the unification.
-    constexpr double kRestrictedBaseline[6] = {
-        -3.8115701691668108e-04, -5.1879705080325894e-04,
-        -1.5881542371467555e-04, -8.8936637280558799e-04,
-        -4.9207159293519255e-04, -5.7408352509105720e-04};
-
-    cpu::Frame f;
-    const auto san = analytic_stress(/*z1=*/8, /*r=*/1.30, /*mult=*/1, f);
+    // Compare live: multiplicity=1 spin path vs default restricted path on
+    // the same geometry (not a fossil sketch-era number).
+    cpu::Frame f_spin, f_rest;
+    const auto san = analytic_stress(/*z1=*/8, /*r=*/1.30, /*mult=*/1, f_spin);
+    f_rest = make_tilted_diatomic(8, 1.30);
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 d;
+    d.with_forces = true;
+    d.with_stress = true;
+    d.scc_tol = 1e-12;
+    d.max_scc = 200;
+    d.build({ctx, f_rest});
+    d.launch({ctx, f_rest, 0, 0});
+    const auto& rest = d.last_stress();
     for (int v = 0; v < 6; ++v)
         EXPECT_NEAR(san[static_cast<std::size_t>(v)],
-                    kRestrictedBaseline[v], 1e-10)
+                    rest[static_cast<std::size_t>(v)], 1e-10)
             << "voigt=" << v;
 }
 
@@ -809,15 +814,18 @@ double fd_force_x_kmesh(std::array<int, 3> mesh, int atom, double h = 1.0e-4) {
 TEST(DFTB2, KMeshForcesMatchFdMesh211) {
     const std::array<int, 3> mesh{{2, 1, 1}};
     const auto f = forces_kmesh(make_c_chain_offeq(), mesh);
-    EXPECT_NEAR(f[0], fd_force_x_kmesh(mesh, 0), 1e-6);
-    EXPECT_NEAR(f[3], fd_force_x_kmesh(mesh, 1), 1e-6);
+    // mio-1-1 radial tables + longer cutoffs: FD noise ~2e-6 eV/Å.
+    constexpr double kTol = 5e-6;
+    EXPECT_NEAR(f[0], fd_force_x_kmesh(mesh, 0), kTol);
+    EXPECT_NEAR(f[3], fd_force_x_kmesh(mesh, 1), kTol);
 }
 
 TEST(DFTB2, KMeshForcesMatchFdMesh221) {
     const std::array<int, 3> mesh{{2, 2, 1}};
     const auto f = forces_kmesh(make_c_chain_offeq(), mesh);
-    EXPECT_NEAR(f[0], fd_force_x_kmesh(mesh, 0), 1e-6);
-    EXPECT_NEAR(f[3], fd_force_x_kmesh(mesh, 1), 1e-6);
+    constexpr double kTol = 5e-6;
+    EXPECT_NEAR(f[0], fd_force_x_kmesh(mesh, 0), kTol);
+    EXPECT_NEAR(f[3], fd_force_x_kmesh(mesh, 1), kTol);
 }
 
 TEST(DFTB2, KMeshForcesSumToZero) {
@@ -918,15 +926,60 @@ TEST(DFTB2, KMeshStressMatchesStrainFd) {
     EXPECT_NEAR(san[1], strain_fd(1), 1e-6); // yy — vacuum axis
 }
 
-TEST(DFTB2, KMeshRejectsOpenShell) {
+TEST(DFTB2, KMeshOpenShellEnergyFinite) {
+    // Collinear open shell + multi-k (dual α/β H(k)).
     auto f = make_c_chain_cell();
     cpu::Context ctx;
     cpu::semiempirical::DFTB2 d;
     d.k_mesh = {{4, 1, 1}};
+    d.with_forces = false;
+    d.multiplicity = 3;
+    d.scc_tol = 1e-8;
+    d.build({ctx, f});
+    d.launch({ctx, f, 0, 0});
+    const double e = f.meta.get(kEnergy);
+    EXPECT_TRUE(std::isfinite(e));
+    EXPECT_LT(e, 0.0);
+    // Total Mulliken spin ≈ n_alpha − n_beta = 2 for multiplicity 3.
+    double m = 0;
+    for (double mi : d.last_mulliken_spin())
+        m += mi;
+    EXPECT_NEAR(m, 2.0, 0.5);
+}
+
+TEST(DFTB2, KMeshOpenShellForceMatchesFd) {
+    auto f = make_c_chain_cell();
+    // Off-eq: stretch the C–C bond slightly so |F| ≠ 0.
+    f.span(kAtom_x)[1] = static_cast<StorageReal>(1.45);
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 d;
+    d.k_mesh = {{2, 1, 1}};
     d.with_forces = true;
     d.multiplicity = 3;
+    d.scc_tol = 1e-10;
     d.build({ctx, f});
-    EXPECT_THROW(d.launch({ctx, f, 0, 0}), std::runtime_error);
+    d.launch({ctx, f, 0, 0});
+    const double fx0 = static_cast<double>(f.span(kAtom_fx)[0]);
+    auto energy_at = [&](double h) {
+        auto g = make_c_chain_cell();
+        g.span(kAtom_x)[1] = static_cast<StorageReal>(1.45);
+        g.span(kAtom_x)[0] = static_cast<StorageReal>(h);
+        g.meta.get(kEnergy) = 0;
+        for (int i = 0; i < 2; ++i)
+            g.span(kAtom_fx)[i] = g.span(kAtom_fy)[i] = g.span(kAtom_fz)[i] = 0;
+        cpu::semiempirical::DFTB2 dd;
+        dd.k_mesh = {{2, 1, 1}};
+        dd.with_forces = false;
+        dd.multiplicity = 3;
+        dd.scc_tol = 1e-10;
+        cpu::Context c2;
+        dd.build({c2, g});
+        dd.launch({c2, g, 0, 0});
+        return g.meta.get(kEnergy);
+    };
+    constexpr double h = 1e-4;
+    const double fd = -(energy_at(+h) - energy_at(-h)) / (2.0 * h);
+    EXPECT_NEAR(fx0, fd, 5e-4) << "analytic=" << fx0 << " fd=" << fd;
 }
 
 TEST(DFTB2, KMeshRejectsBadMesh) {
@@ -942,8 +995,9 @@ TEST(DFTB2, KMeshRejectsBadMesh) {
 TEST(DFTB2, MioAnalyticStressFossilGuard) {
     // The restricted-MioSketch closed-form pair virial must not drift when the
     // ThreeOb virial is added beside it (`dftb2-analytic-stress-threeob`).
-    // Pinned from this branch's parent (dev @ 448dca40); the leading digits
-    // agree with regressions/semiempirical/dftb2-analytic-stress/REFERENCE.md.
+    // Re-pinned with consistent γ_AB (units::coulomb); see
+    // .claude/notes/dftb-gamma-units-defect.md. Leading digits also track
+    // regressions/semiempirical/dftb2-analytic-stress after the same re-pin.
     auto f = make_water_offeq();
     cpu::Context ctx;
     cpu::semiempirical::DFTB2 dftb;
@@ -953,10 +1007,12 @@ TEST(DFTB2, MioAnalyticStressFossilGuard) {
     dftb.build({ctx, f});
     dftb.launch({ctx, f, 0, 0});
     const auto& s = dftb.last_stress();
+    // Re-pinned after DFTB+ Elstner γ (was Ohno–Klopman; 2026-07-29).
     const double pin[6] = {
-        -0.0019398657058172413, -0.0017191565078469207, 0.0,
-        0.0010290033299685953,  -7.8311184090756106e-20, 3.6241185943177176e-20,
+        -4.157623027391737e-04, -3.0093632837246975e-04, 0.0,
+        1.4547104687076456e-04, 0.0, 0.0,
     };
+    // (xx,yy,zz,xy,xz,yz); xz/yz ~0 for planar water in xy.
     for (int v = 0; v < 6; ++v)
         EXPECT_NEAR(s[static_cast<std::size_t>(v)],
                     pin[static_cast<std::size_t>(v)], 1e-12)

@@ -175,7 +175,7 @@ below cannot produce one.
 ## Blocking defect found in the ground state (NOT fixed here)
 
 `src/cpu/semiempirical/dftb2.cpp:118` (and the identical
-`src/cpu/semiempirical/dftb3_scc.cpp:41`) implement the Klopman–Ohno γ as
+`internal/dftb_gamma.h`) implement the DFTB+ Elstner γ as
 
 ```cpp
 double gamma_ab(double r, double ua, double ub) {          // r [Å], U [eV]

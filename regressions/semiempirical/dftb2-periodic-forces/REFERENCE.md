@@ -15,7 +15,7 @@ the same Γ-point lattice walk. Family numerical oracle remains **DFTB+**.
 ## Method
 
 Self-consistent-charge DFTB2 at the **Γ-point** with lattice-summed \(H^0\),
-\(S\), screened Ohno–Klopman \(\gamma\), and exponential repulsive (same as
+\(S\), screened Elstner \(\gamma\), and exponential repulsive (same as
 `dftb2-periodic-gamma`). Nuclear forces are the **closed-form** fixed-\(\Delta q\)
 gradient (Hellmann–Feynman + Pulay + \(\partial\gamma\) + \(\partial E_{\mathrm{rep}}\))
 walked over **all lattice images within \(r_{\mathrm{cut}}\)** — not min-image

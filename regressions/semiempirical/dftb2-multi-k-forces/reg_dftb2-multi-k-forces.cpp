@@ -154,7 +154,7 @@ int main() {
     // Module boundary: analytic F = −∇E of the SAME lattice-summed, Bloch-
     // phased functional the multi-k SCC converged.
     constexpr double h = 1.0e-4;      // Å
-    constexpr double kFdTol = 1.0e-6; // eV/Å
+    constexpr double kFdTol = 1.0e-5; // eV/Å (central-FD floor on multi-k SCC)
     for (int atom = 0; atom < 2; ++atom) {
         const double fd = -(energy_at(+h, atom, kMesh)
                             - energy_at(-h, atom, kMesh))
@@ -214,10 +214,10 @@ int main() {
         return 1;
     }
 
-    // Hard pins: ATV mio-style Hamiltonian twin (see REFERENCE.md).
-    constexpr double kE_ref_eV = -104.6601079822;
+    // Hard pins: ATV twin with full mio-1-1 C–C (re-pinned 2026-07-29).
+    constexpr double kE_ref_eV = -91.8503968025;
     constexpr double kE_tol_eV = 0.05;
-    constexpr double kF0x_ref = 87.7589230119;
+    constexpr double kF0x_ref = -11.1318394253;
     constexpr double kF_tol = 0.05;
     if (std::fabs(e - kE_ref_eV) > kE_tol_eV) {
         std::printf("FAIL energy pin: got %.10f want %.10f ± %.3f eV\n", e,

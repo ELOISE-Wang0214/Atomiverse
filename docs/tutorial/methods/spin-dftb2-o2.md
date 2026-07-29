@@ -32,7 +32,7 @@ mio-1-1). Primary gates: total energy twin + total Mulliken spin
 spin channel (Köhler / Frauenheim shape; DFTB+ spin module analogue):
 
 - Minimal valence LCAO from Slater–Koster \(H^0(R)\), \(S(R)\) tables.
-- Charge SCC: Ohno–Klopman-like \(\gamma_{AB}\) + onsite Hubbard \(U\).
+- Charge SCC: DFTB+ Elstner \(\gamma_{AB}\) + onsite Hubbard \(U\).
 - Spin: atom-averaged constant \(W_A\) shifts the spin-dependent potential;
   dual \(\alpha/\beta\) generalized eigenproblems per SCC cycle.
 - Repulsive pair potential \(E_{\mathrm{rep}}\) from the same SK set.

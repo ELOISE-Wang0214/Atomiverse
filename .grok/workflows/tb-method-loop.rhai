@@ -55,10 +55,13 @@ extra_law += "FORBIDDEN: OpenMOPAC as DFTB reference; DFTB+ as PM6/PM7 reference
 extra_law += "ARCH ONLY (no energy pins): SCINE Sparrow = unified NDDO+TB API shape; CP2K = Evaluate/MD/opt embed patterns. ";
 extra_law += "ASSIGN LADDER: DFTB0 → DFTB2 depth (analytic F) → DFTB3 → spin-DFTB → NDDO PM ladder → GFN-xTB last. ";
 extra_law += "SE-ONLY cmake (cmake_flags): ON = SEMIEMPIRICAL + EVALUATE + TESTS + REGRESSIONS; ";
-extra_law += "FORBIDDEN ON: HF PW GPW CUDA TORCH MD MC MINIMIZER VIB PATH KSPACE POTENTIALS NEIGHBOR. ";
+extra_law += "FORBIDDEN ON by default: HF PW GPW CUDA TORCH MD MC MINIMIZER VIB PATH KSPACE POTENTIALS NEIGHBOR. ";
+extra_law += "EXCEPTION: slugs se-analytic-hessian / gfn-xtb-analytic-hessian may add -DATV_BUILD_VIB=ON only for their tree; never HF/MD/CUDA. ";
 extra_law += "Always-on core (frame/driver/component/io/linalg) is the only base stack. ";
 extra_law += "Default delivery: Evaluate + Semiempirical Component; no public *Config; no make_*/build_*; static in-tree tables only. ";
 extra_law += "Do NOT build reg_am1_water_bomd / reg_am1_water_minimize (need MD/MINIMIZER OFF). ";
+extra_law += "Blocked science rows (noncollinear, +U, SOC, OM3) stay blocked until their gate note lands — never promote to fill a short wave. ";
+extra_law += "Permanent rules mopac-as-dftb-oracle and gfn-ff are never pending. ";
 extra_law += "REFERENCE.md must state oracle: mopac|dftb+|xtb|literature and oracle_version. ";
 extra_law += "DFTB impl template (conceptual): ParameterSet→SK→H/S→eigen→P→SCC(Hubbard,γ)→repulsive→E/F/stress. ";
 extra_law += "Temps: /tmp/atv-* /tmp/tb_oracle_* /tmp/mopac_* /tmp/dftbplus_* /tmp/xtb_*. ";

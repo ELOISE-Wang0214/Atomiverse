@@ -22,8 +22,10 @@ using namespace ATV;
 // sigma_g -> sigma_u channel. These are Atomiverse's own converged values,
 // pinned to catch silent drift — no DFTB+ identity is claimed (no dftb+ binary
 // exists on this host and no published TD-DFTB/mio-1-1 H2 value was located).
+// Gap/T1 unchanged by γ form for H2 ground state (Δq≡0); S1 re-pinned because
+// the Casida kernel couples with γ_AB (Elstner form, 2026-07-29).
 static constexpr double kH2GapEv = 15.44081455;
-static constexpr double kH2SingletEv = 22.41789842;
+static constexpr double kH2SingletEv = 16.39162450;
 static constexpr double kH2TripletEv = 15.01024822;
 static constexpr double kSnapshotTolEv = 1.0e-6;
 
@@ -87,6 +89,20 @@ int main() {
                 s.ks_gap_ev[0], s.energy_ev[0], t.energy_ev[0]);
     std::printf("  q_H1=%.10f  q_H2=%.10f e\n", s.transition_charge[0],
                 s.transition_charge[1]);
+    std::printf("  f_S1=%.6e  f_T1=%.6e (triplet dark)\n",
+                s.oscillator_strength.empty() ? -1.0
+                                              : s.oscillator_strength[0],
+                t.oscillator_strength.empty() ? -1.0
+                                              : t.oscillator_strength[0]);
+    if (s.oscillator_strength.empty() || s.oscillator_strength[0] < -1e-12) {
+        std::printf("FAIL H2 singlet oscillator strength missing/negative\n");
+        return 1;
+    }
+    if (t.oscillator_strength.empty()
+        || std::fabs(t.oscillator_strength[0]) > 1e-12) {
+        std::printf("FAIL H2 triplet must be dipole-dark (f≈0)\n");
+        return 1;
+    }
 
     if (s.n_pair != 1 || t.n_pair != 1) {
         std::printf("FAIL H2 must have exactly one occ->virt pair (got %d)\n",

@@ -47,7 +47,7 @@ per unordered pair \(A\neq B\), bond \(\mathbf{R}=\mathbf{R}_B-\mathbf{R}_A\):
 
 \(\Gamma_{AB}\neq\Gamma_{BA}\), so **both** third-order orderings carry a radial
 derivative — the same asymmetry that makes \(V^{(3)}\) need two contractions.
-For the in-tree Ohno–Klopman-like kernel
+For the in-tree DFTB+ Elstner kernel
 (\(\gamma_{AB}=(R^2+\tau^2)^{-1/2}\), \(\tau=\tfrac12(1/U_A+1/U_B)\)):
 
 \[
