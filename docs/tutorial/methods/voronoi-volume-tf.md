@@ -217,13 +217,13 @@ Source: REFERENCE.md perf block; handoff
 | Field | Value |
 | ----- | ----- |
 | `perf_exempt` | **true** |
-| `perf_exempt_reason` | no MetalWalls binary on agent host for a fair TF/Voronoi wall twin; LAMMPS has no TF electrode feature; run is a sub-second algebraic solve + 32-site tessellation |
+| `perf_exempt_reason` | tiny elastance + 32-site Voronoi; wall ratio would measure Ewald setup, not the TF/Voronoi companion (Q pins are real MW c8ad175d, re-pinned 2026-07-29) |
 | `ratio_atv_over_oracle` | **n/a** |
 | `within_10x` | exempt |
 
-Do **not** invent wall-clock ratios. When a MetalWalls binary is available,
-re-run the offline fair bench, record version + walls, and replace
-`perf_exempt` in REFERENCE.
+Q pins match MetalWalls `total_charges.out` (same values as
+`thomas-fermi-electrode` for the fixed-density cases; halved Voronoi volume
+hardens the diagonal). Do **not** invent wall-clock ratios.
 
 ## Limitations
 

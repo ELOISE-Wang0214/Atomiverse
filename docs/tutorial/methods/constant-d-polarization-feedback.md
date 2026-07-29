@@ -8,7 +8,7 @@
 | Regression | `regressions/md/constant-d-polarization-feedback/` |
 | Public API | `cpu::md::FixDfield(Dx, Dy, Dz)` with member `polarization_feedback` (default `false`); accessors `last_energy()`, `last_Pz()`, `last_Ez()` (Component, `Bias` kind, on `cpu::md::MD`, default `post_force` +100) |
 | Roadmap / queue | `docs/developer/metalwalls-method-queue.md` wave 5; map "Displacement D-field" → ✓★ (P2) |
-| Oracle | **MetalWalls** physics — closed-form literature pins (Zhang & Sprik 2016; Cox & Sprik 2019); no MW binary → `perf_exempt` |
+| Oracle | **literature** intentional — Zhang & Sprik 2016 / Cox & Sprik 2019 closed-form constant-D; not a 1:1 MW twin |
 
 ## Summary
 

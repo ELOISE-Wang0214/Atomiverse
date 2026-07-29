@@ -20,9 +20,10 @@ matrix \(A\) is rebuilt and inverted each `pre_force` step; force evaluation
 remains point-charge `CoulLong` + `KSpacePME` (full Gaussian force kernels are
 the separate slug `gaussian-electrode-charge`). Product gate
 `reg_const-pot-md-nvt-short` asserts electrode polarity, electroneutrality,
-freeze immobility, and finite thermo/charges over 400 steps. Fair wall vs a
-MetalWalls or LAMMPS ELECTRODE twin is **`perf_exempt`** (no binary / package
-on the offline worker).
+freeze immobility, finite thermo/charges over 400 steps, and a soft \|Q\| pin
+(~5 %) against **MetalWalls c8ad175d** (`num_pbc 3` twin; ATV uses PME).
+Fair wall-clock ratio remains **`perf_exempt`** (product trajectory; not a
+kernel microbench).
 
 ## Method
 

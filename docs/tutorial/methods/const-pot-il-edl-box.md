@@ -8,7 +8,7 @@
 | Regression | `regressions/md/const-pot-il-edl-box/` |
 | Public API | `cpu::md::ConstPotBO` (CG + ASPC members `use_cg`, `cg_tol`, `predictor_order`), `cpu::md::FixFreeze`, `cpu::ElectrodeChargeObserver`, `cpu::PotentialProfile`, `cpu::SpeciesDensityProfile` — all Components on `cpu::md::MD` |
 | Roadmap / queue | `docs/developer/metalwalls-method-queue.md` → map §9 planar graphene + const-pot + IL (wave 5, 2026-07-27) |
-| Oracle | **MetalWalls**-form BO algebra (offline numpy pin; no `mw` binary on host, no LAMMPS ELECTRODE in the available `lmp`) |
+| Oracle | **MetalWalls git c8ad175d** — empty capacitor re-pinned 2026-07-29; with-IL absolute Q not expressible under image-sum elastance |
 
 ## Summary
 
@@ -20,13 +20,14 @@ case. Two planar honeycomb (graphene-like) carbon walls held at
 MetalWalls graphite Gaussian width) sandwich a non-polarizable single-site
 coarse-grained ionic liquid (12 cations + 12 anions, BMIM⁺/PF₆⁻-like), with
 LJ + `CoulLong` + `KSpacePME` forces and a short Nosé–Hoover NVT run. The
-regression pins two deterministic step-0 Born–Oppenheimer solves (empty
-capacitor and with-IL) against an independent offline numpy implementation of
-the same algebra to **1e−6 e**, asserts the physical EDL screening enhancement
-\(|Q|_{\mathrm{IL}}/|Q|_{\mathrm{empty}} \approx 3.13 > 1\), then checks
-run-time invariants over 600 fs: electrode neutrality, capacitive polarity,
-frozen walls, \(\Psi(z)\) sign, and exact ion-density-profile normalization.
-Fair wall vs MetalWalls is **`perf_exempt`** (no MW binary on the agent host).
+regression pins the empty-capacitor step-0 BO solve against **real MetalWalls
+c8ad175d** (\(|Q|\approx 0.2076\,e\), `xy_image_range=80`), asserts EDL
+screening enhancement \(|Q|_{\mathrm{IL}} > |Q|_{\mathrm{empty}}\) (absolute
+with-IL \(Q\) under image-sum is not MW-expressible — MW Ewald gives
+\(|Q|\approx 4.82\,e\)), then checks run-time invariants over 600 fs:
+electrode neutrality, capacitive polarity, frozen walls, \(\Psi(z)\) sign,
+and ion-density-profile normalization. Fair wall vs MetalWalls is
+**`perf_exempt`** (product box).
 
 ## Method
 
@@ -50,8 +51,8 @@ Production path details (all public members, no Config bag):
   the extrapolated charge history — the MetalWalls production path.
 - η = **1.805132 Å⁻¹**: the MetalWalls graphite Gaussian width
   (0.955234 bohr⁻¹, MW example inputs).
-- `xy_image_range = 0` (min-image electrode algebra; the documented E1
-  foothold level — no full electrode Ewald matrix in v1).
+- `xy_image_range = 80` (truncated xy-image elastance; empty capacitor
+  approaches MW 2D-Ewald; with-IL absolute \(Q\) still model-gapped).
 
 ### System (production EDL box)
 
@@ -78,26 +79,25 @@ interaction site. The regression pins solver algebra and physics invariants,
 
 ### Offline oracle pin
 
-No MetalWalls binary is installed on this host and LAMMPS ELECTRODE is not
-built into the available `lmp`, so the pin is an **independent offline numpy
-implementation of the same MW-form BO algebra** on the exact deterministic
-initial geometry
-(`tools/metalwalls_oracle/inputs/metalwalls/const-pot-il-edl-box/pin_il_edl.py`):
-Gaussian self \(k_e\,\eta\sqrt{2/\pi}\), Gaussian–Gaussian
-\(\mathrm{erf}((\eta/\sqrt2)r)/r\), Gaussian–point \(\mathrm{erf}(\eta r)/r\),
-min-image, electrode-only neutrality projection; direct
-`numpy.linalg.solve` vs ATV CG at tol 1e-12 (scipy 1.18.0 / numpy 2.5.1,
-x86_64 login node, 2026-07-27).
+MetalWalls binary **c8ad175d** at
+`…/work/opt/metalwalls/mw`. Twin inputs:
+`tools/metalwalls_oracle/inputs/metalwalls/const-pot-il-edl-box/mw_twin/`.
+
+| case | MW \(Q_{\mathrm{left}}\) [e] |
+|------|------------------------------|
+| empty | **−2.076457628129008×10⁻¹** |
+| with-IL | −4.818386149307364 (ATV image-sum does not match; gate order only) |
+
+The wave-5 `pin_il_edl.py` min-image self-golden is **retired**.
 
 ### Key exclusions (non-goals of this slug)
 
 - Live MetalWalls or LAMMPS inside ctest (offline pin only).
-- Full electrode Ewald / MW reciprocal matrix (`xy_image_range = 0` v1).
+- Full electrode Ewald matrix (ATV still uses truncated xy-image elastance).
 - Polarizable IL (Thole/PIM is the sibling `pim-npt-polarizable-il`).
 - All-atom IL force field / FF-sensitive observables (single-site CG only).
 - Nanoporous-carbon geometry (pending sibling `nanoporous-carbon-const-pot`).
 - New Driver category, public `*Config` bags, `make_*` / `build_*` factories.
-- Fair wall-clock twin vs a MetalWalls binary (none on agent host).
 
 ## Implementation
 

@@ -8,7 +8,7 @@
 | Regression | `regressions/md/extended-lagrangian-dipoles/` |
 | Public API | `cpu::PimXlDipole` (`Potential`; on `cpu::md::MD` at `force`, or `cpu::Evaluate`) |
 | Roadmap / queue | `docs/developer/metalwalls-method-queue.md` wave 5; map §2 "XL dipoles" ~ → ✓ |
-| Oracle | **MetalWalls** capability (JOSS **5**, 2373 (2020) §2); literature-form pins (no MW binary → `perf_exempt`) |
+| Oracle | **MetalWalls c8ad175d** for stationary PIM (`thole_a=0`); XL dynamics = scheme self-check (Albaugh 2015 / Niklasson 2009) |
 
 ## Summary
 
