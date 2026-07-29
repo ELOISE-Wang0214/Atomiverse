@@ -1,4 +1,15 @@
-"""CPU geometry minimization with typed phases and explicit loop policies."""
+"""CPU geometry minimization — categorical setters matching C++.
+
+Mirrors ``cpu::minimizer::Minimize`` (headers under ``cpu/minimize/``)::
+
+    opt = Minimize()
+    opt.set_optimizer(LBFGS(memory=5, alpha0=0.02, max_ls=8))
+    opt.add_criterion(ForceConverged(ftol=0.5, …))  # optional
+    opt.set_evaluator(PairLJCut(…))
+    opt.set_neighbor(NeighborList(…))
+    opt.build()
+    result = opt.run(frame, max_iter)
+"""
 
 from __future__ import annotations
 
@@ -12,8 +23,8 @@ _PHASE_MAP: dict[str, object] = {
     "end_of_step": _cpp.MinimizePhase.end_of_step,
 }
 
-_DRIVER_DISPATCH: dict[type, str] = {
-    _cpp.LBFGS: "add_lbfgs",
+_EVALUATOR_DISPATCH: dict[type, str] = {
+    _cpp.PairLJCut: "set_evaluator_pair_lj_cut",
 }
 
 _PHASE_DISPATCH: dict[type, str] = {
@@ -23,7 +34,7 @@ _PHASE_DISPATCH: dict[type, str] = {
 
 
 class PhaseBuilder:
-    """Fluent builder returned by :meth:`Minimize.on`."""
+    """Fluent builder returned by :meth:`Minimize.on` (escape hatch)."""
 
     def __init__(self, cpp_builder: object) -> None:
         self._cpp = cpp_builder
@@ -43,9 +54,13 @@ class PhaseBuilder:
 class Minimize:
     """Geometry-minimization driver for the CPU backend.
 
-    The optimizer is a component and convergence is an independent handler.
-    ``run`` updates the borrowed ``molrs.Frame`` in place and returns only
-    loop-control metadata.
+    Parameters
+    ----------
+    convergence : ForceConverged, optional
+        Stop policy. If omitted, C++ ``install_defaults()`` attaches a
+        default ``ForceConverged`` at build time.
+    device : str, optional
+        Execution backend. v1 accepts only ``"cpu"``.
     """
 
     def __init__(
@@ -58,29 +73,59 @@ class Minimize:
                 f"device={device!r}: GPU minimization is deferred; "
                 "only device='cpu' is supported"
             )
-        if convergence is None:
-            convergence = _cpp.ForceConverged()
-        if type(convergence) is not _cpp.ForceConverged:
-            raise TypeError("convergence must be a ForceConverged policy")
         self.device = device
-        self._cpp = _cpp.Minimize(convergence)
+        self._cpp = _cpp.Minimize()
         self._built = False
+        if convergence is not None:
+            self.add_criterion(convergence)
 
-    def add(self, component: object) -> Minimize:
-        """Add an optimizer component with its default typed bindings."""
-        method_name = _DRIVER_DISPATCH.get(type(component))
-        if method_name is None:
-            supported = ", ".join(t.__name__ for t in _DRIVER_DISPATCH)
+    def set_optimizer(self, component: object) -> Minimize:
+        """Install the optimizer (``Minimize::set_optimizer``)."""
+        if type(component) is not _cpp.LBFGS:
             raise TypeError(
-                f"Cannot add {type(component).__name__} directly. "
-                f"Supported optimizer components: {supported}"
+                f"set_optimizer expects LBFGS, got {type(component).__name__}"
+            )
+        self._cpp.set_optimizer(component)
+        self._built = False
+        return self
+
+    def set_evaluator(self, component: object) -> Minimize:
+        """Register an energy/force source (``Driver::set_evaluator``)."""
+        method_name = _EVALUATOR_DISPATCH.get(type(component))
+        if method_name is None:
+            supported = ", ".join(t.__name__ for t in _EVALUATOR_DISPATCH)
+            raise TypeError(
+                f"set_evaluator does not support {type(component).__name__}. "
+                f"Supported: {supported}"
             )
         getattr(self._cpp, method_name)(component)
         self._built = False
         return self
 
+    def set_neighbor(self, component: object) -> Minimize:
+        """Install the neighbor list (``Driver::set_neighbor``)."""
+        if type(component) is not _cpp.NeighborList:
+            raise TypeError(
+                f"set_neighbor expects NeighborList, got "
+                f"{type(component).__name__}"
+            )
+        self._cpp.set_neighbor(component)
+        self._built = False
+        return self
+
+    def add_criterion(self, criterion: object) -> Minimize:
+        """Attach a termination criterion (``Driver::add_criterion``)."""
+        if type(criterion) is not _cpp.ForceConverged:
+            raise TypeError(
+                f"add_criterion expects ForceConverged, got "
+                f"{type(criterion).__name__}"
+            )
+        self._cpp.add_criterion(criterion)
+        self._built = False
+        return self
+
     def on(self, phase: str) -> PhaseBuilder:
-        """Return a builder for one minimizer-specific phase."""
+        """Escape hatch for explicit phase binding."""
         cpp_phase = _PHASE_MAP.get(phase)
         if cpp_phase is None:
             valid = ", ".join(f'"{p}"' for p in _PHASE_MAP)
@@ -94,7 +139,11 @@ class Minimize:
         self._built = True
 
     def run(self, frame: object, max_iter: int) -> object:
-        """Optimize ``frame`` for at most ``max_iter`` iterations."""
+        """Optimize ``frame`` for at most ``max_iter`` iterations.
+
+        Returns a :class:`MinimizeResult` with loop-control metadata.
+        Geometry / energy / forces are written back into *frame*.
+        """
         if not self._built:
             self.build()
         return self._cpp.run(frame, max_iter)
@@ -108,4 +157,10 @@ LBFGS = _cpp.LBFGS
 ForceConverged = _cpp.ForceConverged
 MinimizeResult = _cpp.MinimizeResult
 
-__all__ = ["Minimize", "LBFGS", "ForceConverged", "MinimizeResult"]
+__all__ = [
+    "Minimize",
+    "LBFGS",
+    "ForceConverged",
+    "MinimizeResult",
+    "PhaseBuilder",
+]

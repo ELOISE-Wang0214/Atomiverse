@@ -60,9 +60,19 @@ class TestMDDriverBuild:
     def test_dt_shorthand_builds(self, full_lj_md):
         full_lj_md.build()
 
-    def test_phase_builder_chain(self):
+    def test_categorical_setters(self):
+        sim = MD()
+        sim.set_integrator(VelocityVerlet(0.001))
+        sim.set_neighbor(NeighborList(8.5))
+        sim.set_evaluator(LJCut(0.0104, 3.4, 8.5))
+        sim.set_thermo(100)
+        sim.build()
+
+    def test_phase_escape_hatch(self):
         sim = MD(dt=0.001)
-        sim.on("force").add(NeighborList(8.5), order=-10).add(LJCut(0.0104, 3.4, 8.5))
+        sim.on("force").add(NeighborList(8.5), order=-10).add(
+            LJCut(0.0104, 3.4, 8.5)
+        )
         sim.build()
 
     def test_invalid_phase_raises(self):
@@ -73,7 +83,8 @@ class TestMDDriverBuild:
     def test_repr(self):
         sim = MD(dt=0.001)
         assert "not built" in repr(sim)
-        sim.on("force").add(NeighborList(8.5), order=-10).add(LJCut(0.0104, 3.4, 8.5))
+        sim.set_neighbor(NeighborList(8.5))
+        sim.set_evaluator(LJCut(0.0104, 3.4, 8.5))
         sim.build()
         assert "built" in repr(sim)
 
@@ -137,7 +148,8 @@ class TestMDRunOnMolrsFrame:
         """A molrs.Frame without atom positions fails loud."""
         frame = molrs.Frame()
         sim = MD(dt=0.001)
-        sim.on("force").add(NeighborList(8.5), order=-10).add(LJCut(0.0104, 3.4, 8.5))
+        sim.set_neighbor(NeighborList(8.5))
+        sim.set_evaluator(LJCut(0.0104, 3.4, 8.5))
         with pytest.raises(RuntimeError, match="atoms"):
             sim.run(frame, 1)
 
@@ -159,11 +171,11 @@ class TestTopLevelConvenience:
         assert av.MD is MD
         assert av.PairLJCut is LJCut
         cutoff = 8.5
-        sim = av.MD(dt=0.001)
-        sim.add(av.InitVelocity(10.0, 42))
-        sim.on("force").add(av.NeighborList(cutoff), order=-10).add(
-            av.PairLJCut(0.0104, 3.4, cutoff)
-        )
+        sim = av.MD()
+        sim.set_integrator(av.VelocityVerlet(0.001))
+        sim.set_observer(av.InitVelocity(10.0, 42))
+        sim.set_neighbor(av.NeighborList(cutoff))
+        sim.set_evaluator(av.PairLJCut(0.0104, 3.4, cutoff))
         x_before = np.asarray(argon_frame["atoms"]["x"]).copy()
         sim.run(argon_frame, 10)
         x_after = np.asarray(argon_frame["atoms"]["x"])

@@ -11,8 +11,9 @@ from atomiverse.potentials.pair import LJCut
 
 
 def make_minimize() -> Minimize:
-    opt = Minimize(
-        convergence=ForceConverged(
+    opt = Minimize()
+    opt.add_criterion(
+        ForceConverged(
             ftol=0.05,
             rms_ftol=0.03,
             max_dtol=0.002,
@@ -20,10 +21,9 @@ def make_minimize() -> Minimize:
             etol=1e-5,
         )
     )
-    opt.add(LBFGS(memory=5, alpha0=0.01, max_ls=10))
-    opt.on("force").add(NeighborList(8.5, 0.3), order=-10).add(
-        LJCut(0.0104, 3.4, 8.5)
-    )
+    opt.set_optimizer(LBFGS(memory=5, alpha0=0.01, max_ls=10))
+    opt.set_neighbor(NeighborList(8.5, 0.3))
+    opt.set_evaluator(LJCut(0.0104, 3.4, 8.5))
     return opt
 
 

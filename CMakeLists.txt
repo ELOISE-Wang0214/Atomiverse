@@ -110,9 +110,10 @@ if(NOT ATV_DOCS_ONLY)
     option(ATV_BUILD_XC_ORACLE
            "Build libxc-backed XC oracle (test-only scaffolding; deletable after native parity is locked in)"
            OFF)
-    # Default: git submodule at ${CMAKE_SOURCE_DIR}/molrs (see .gitmodules).
-    # Override with -DATV_MOLRS_PATH=... only for local experiments; CI and
-    # normal builds use the submodule pin.
+    # Hard dependency: molrs git submodule at ${CMAKE_SOURCE_DIR}/molrs
+    # (see .gitmodules). CI and normal builds use this pin only.
+    # -DATV_MOLRS_PATH=... is for local experiments; it still runs the
+    # CXX API contract check and never replaces the submodule pin in git.
     set(ATV_MOLRS_PATH "${CMAKE_SOURCE_DIR}/molrs" CACHE PATH
         "Path to molrs source tree (default: git submodule ./molrs)")
     include("${CMAKE_SOURCE_DIR}/cmake/MolrsContract.cmake")
@@ -120,9 +121,20 @@ if(NOT ATV_DOCS_ONLY)
         message(FATAL_ERROR
             "molrs not found at ATV_MOLRS_PATH='${ATV_MOLRS_PATH}'.\n"
             "  Init the submodule:  git submodule update --init --recursive molrs\n"
-            "  Or point explicitly: -DATV_MOLRS_PATH=/path/to/molrs")
+            "  (molrs is a required git submodule — do not vendor or pip-install it for C++)")
+    endif()
+    if(NOT ATV_MOLRS_PATH STREQUAL "${CMAKE_SOURCE_DIR}/molrs")
+        message(WARNING
+            "ATV_MOLRS_PATH='${ATV_MOLRS_PATH}' overrides the ./molrs submodule. "
+            "CI uses the submodule pin; prefer `git submodule update --init molrs`.")
     endif()
     atv_validate_molrs_source_contract("${ATV_MOLRS_PATH}")
+    atv_detect_molrs_wham("${ATV_MOLRS_PATH}" ATV_MOLRS_HAS_WHAM)
+    if(ATV_MOLRS_HAS_WHAM)
+        message(STATUS "molrs WhamCompute: available (cpu/observe/wham enabled)")
+    else()
+        message(STATUS "molrs WhamCompute: not in this pin (cpu/observe/wham skipped)")
+    endif()
     option(ATV_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
     # The nanobind module is a shared object linking the static atomiverse
     # and fetched-dependency archives (spdlog, ...): everything must be PIC.
@@ -243,7 +255,6 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/observe/msd.cpp
         src/cpu/observe/vacf.cpp
         src/cpu/observe/trajectory_metrics.cpp
-        src/cpu/observe/wham.cpp
         src/cpu/record/thermo.cpp
         src/cpu/record/xyz.cpp
         src/cpu/record/timing_report.cpp
@@ -522,6 +533,14 @@ if(NOT ATV_DOCS_ONLY)
         ATV_MOLRS_CXX_API_VERSION=${ATV_MOLRS_CXX_API_VERSION}
         ATV_MOLRS_CXX_REQUIRED_CAPABILITIES=${ATV_MOLRS_CXX_REQUIRED_CAPABILITIES})
     atv_apply_product_module_defs(atomiverse)
+
+    # Multi-window WHAM façade — only when the molrs submodule pin exports
+    # WhamCompute (see atv_detect_molrs_wham). Keeps the submodule pin buildable
+    # before that surface lands in MolCrafts/molrs.
+    if(ATV_MOLRS_HAS_WHAM)
+        target_sources(atomiverse PRIVATE src/cpu/observe/wham.cpp)
+        target_compile_definitions(atomiverse PUBLIC ATV_HAS_MOLRS_WHAM=1)
+    endif()
 
     if(ATV_BUILD_HF)
         target_sources(atomiverse PRIVATE

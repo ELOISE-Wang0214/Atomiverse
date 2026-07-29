@@ -1,15 +1,21 @@
 /// @file python/src/bindings/bind_md.cpp
-/// @brief MD driver + component bindings, with the launcher dispatch seam.
+/// @brief MD driver + component bindings aligned with the C++ categorical API.
 ///
-/// Component classes are bound as the `cpu::task::*Params` mirrors (the
-/// TaskSpec allow-list IS the binding surface — Python-visible names and
-/// constructor signatures are unchanged). `MD` binds an `MdHandle` that
-/// materializes the real C++ component at each `add_*` call AND appends the
-/// codec entry, so `run()` can either execute the driver directly (serial
-/// path, byte-identical to before) or — when `LauncherGate` reports the
-/// process is rank 0 of the MPI launcher — pack the mirror into a
-/// `TaskSpec` and hand it to the task protocol (one broadcast, all ranks
-/// compute, gathered result written back into the SAME molrs.Frame).
+/// Public surface mirrors ``examples/07_md_lj.cpp`` and ``cpu::md::MD``:
+///
+/// @code
+///   sim.set_evaluator(PairLJCut{…});
+///   sim.set_neighbor(NeighborList{…});
+///   sim.set_integrator(VelocityVerlet{…});
+///   sim.set_thermostat(NoseHoover{…});
+///   sim.set_observer(InitVelocity{…});
+///   sim.set_thermo(N);
+///   sim.build(); sim.run(frame, n_steps);
+/// @endcode
+///
+/// Component classes are bound as ``cpu::task::*Params`` mirrors so the MPI
+/// launcher TaskSpec path stays byte-compatible. ``MdHandle`` materializes the
+/// real C++ components on each setter and records the mirror entry.
 
 #include "molrs_frame_bridge.h"
 
@@ -47,48 +53,43 @@ using cpu::task::MDComponentEntry;
 
 namespace {
 
-/// The bound MD driver plus the TaskSpec mirror of its registrations.
-/// Python sees this as class `MD` with the same method surface as before.
+/// Bound MD driver + TaskSpec mirror of its registrations.
 struct MdHandle {
     cpu::md::MD driver;
     std::vector<MDComponentEntry> mirror;
 
-    /// Materialize the real component from its params mirror, register it
-    /// on the driver (default-binding or explicit), and record the entry.
     template <typename Params, typename Component>
-    void add(const Params& p, Component comp,
-             std::optional<MDBinding> binding) {
-        if (binding) {
-            driver.on(binding->phase).add(std::move(comp), binding->order);
-        } else {
-            // Categorical only — no public Driver::add.
-            using P = std::decay_t<Params>;
-            if constexpr (std::is_same_v<P, cpu::task::PairLJCutParams>
-                          || std::is_same_v<P, cpu::task::BondHarmonicParams>
-                          || std::is_same_v<P, cpu::task::AngleHarmonicParams>
-                          || std::is_same_v<P,
-                                            cpu::task::DihedralMultiHarmonicParams>)
-                driver.set_evaluator(std::move(comp));
-            else if constexpr (std::is_same_v<P, cpu::task::NeighborListParams>)
-                driver.set_neighbor(std::move(comp));
-            else if constexpr (std::is_same_v<P, cpu::task::VelocityVerletParams>)
-                driver.set_integrator(std::move(comp));
-            else if constexpr (std::is_same_v<P, cpu::task::NoseHooverParams>)
-                driver.set_thermostat(std::move(comp));
-            else if constexpr (std::is_same_v<P, cpu::task::InitVelocityParams>)
-                driver.set_observer(std::move(comp));
-            else if constexpr (std::is_same_v<P, cpu::task::ThermoParams>)
-                driver.set_thermo(
-                    static_cast<const cpu::task::ThermoParams&>(p).freq);
-            else
-                driver.set_observer(std::move(comp));
-        }
+    void set_categorical(const Params& p, Component comp) {
+        using P = std::decay_t<Params>;
+        if constexpr (std::is_same_v<P, cpu::task::PairLJCutParams>
+                      || std::is_same_v<P, cpu::task::BondHarmonicParams>
+                      || std::is_same_v<P, cpu::task::AngleHarmonicParams>
+                      || std::is_same_v<P,
+                                        cpu::task::DihedralMultiHarmonicParams>)
+            driver.set_evaluator(std::move(comp));
+        else if constexpr (std::is_same_v<P, cpu::task::NeighborListParams>)
+            driver.set_neighbor(std::move(comp));
+        else if constexpr (std::is_same_v<P, cpu::task::VelocityVerletParams>)
+            driver.set_integrator(std::move(comp));
+        else if constexpr (std::is_same_v<P, cpu::task::NoseHooverParams>)
+            driver.set_thermostat(std::move(comp));
+        else if constexpr (std::is_same_v<P, cpu::task::InitVelocityParams>)
+            driver.set_observer(std::move(comp));
+        else if constexpr (std::is_same_v<P, cpu::task::ThermoParams>)
+            driver.set_thermo(
+                static_cast<const cpu::task::ThermoParams&>(p).freq);
+        else
+            driver.set_observer(std::move(comp));
+        mirror.push_back(MDComponentEntry{p, std::nullopt});
+    }
+
+    /// Escape hatch: explicit phase + order (maps to Driver::on(phase).add).
+    template <typename Params, typename Component>
+    void add_on_phase(const Params& p, Component comp, MDBinding binding) {
+        driver.on(binding.phase).add(std::move(comp), binding.order);
         mirror.push_back(MDComponentEntry{p, binding});
     }
 
-    /// Run on a borrowed molrs.Frame: launcher-hosted rank 0 dispatches
-    /// through the task protocol; every other shape runs the driver
-    /// directly (the pre-seam path, byte-identical).
     void run(nb::object frame_obj, int n_steps) {
         const cpu::task::LauncherGate gate;
         if (!gate.active()) {
@@ -105,9 +106,6 @@ struct MdHandle {
         cpu::Frame result(0);
         {
             nb::gil_scoped_release release;
-            // main's dispatcher already handshook with the workers; this
-            // is the extension module's own copy of the library, so it
-            // constructs its dispatcher handshake-free (task_protocol.h).
             cpu::task::TaskDispatcher dispatcher(MPI_COMM_WORLD,
                                                  cpu::task::kProtocolVersion,
                                                  /*handshake=*/false);
@@ -118,7 +116,6 @@ struct MdHandle {
     }
 };
 
-/// Fluent builder returned by MdHandle::on(phase).
 struct MdPhaseBuilder {
     MdHandle* handle;
     ATV::md::Phase phase;
@@ -127,7 +124,6 @@ struct MdPhaseBuilder {
 } // namespace
 
 void bind_md(nb::module_& m) {
-    // ── Phase enum ──
     nb::enum_<md::Phase>(m, "Phase", "MD phase sequence (LAMMPS-style).")
         .value("initial_integrate", md::Phase::initial_integrate)
         .value("pre_force", md::Phase::pre_force)
@@ -136,8 +132,7 @@ void bind_md(nb::module_& m) {
         .value("final_integrate", md::Phase::final_integrate)
         .value("end_of_step", md::Phase::end_of_step);
 
-    // ── Component params (the TaskSpec allow-list IS the binding surface;
-    //     Python-visible class names + ctor signatures are unchanged) ──
+    // ── Component params (TaskSpec allow-list = binding surface) ──
 
     nb::class_<cpu::task::VelocityVerletParams>(
         m, "VelocityVerlet", "Symplectic velocity-Verlet integrator.")
@@ -238,35 +233,85 @@ void bind_md(nb::module_& m) {
             nb::arg("freq"),
             "Construct with output frequency (every N steps).");
 
-    // ── MD Driver handle ──
+    // ── MD driver (categorical setters) ──
     nb::class_<MdHandle>(m, "MD", "Molecular dynamics driver (CPU backend).")
         .def(nb::init<>())
         .def(
-            "add_velocity_verlet",
+            "set_integrator",
             [](MdHandle& self, const cpu::task::VelocityVerletParams& p) {
-                self.add(p, cpu::md::VelocityVerlet{p.dt}, std::nullopt);
+                self.set_categorical(p, cpu::md::VelocityVerlet{p.dt});
             },
-            nb::arg("comp"))
+            nb::arg("comp"), "LAMMPS-style set_integrator (VelocityVerlet).")
         .def(
-            "add_init_velocity",
-            [](MdHandle& self, const cpu::task::InitVelocityParams& p) {
-                self.add(p, cpu::md::InitVelocity{p.temperature, p.seed},
-                         std::nullopt);
-            },
-            nb::arg("comp"))
-        .def(
-            "add_nose_hoover",
+            "set_thermostat",
             [](MdHandle& self, const cpu::task::NoseHooverParams& p) {
-                self.add(p, cpu::md::NoseHoover{p.T_start, p.tau_T, p.dt},
-                         std::nullopt);
+                self.set_categorical(
+                    p, cpu::md::NoseHoover{p.T_start, p.tau_T, p.dt});
+            },
+            nb::arg("comp"), "LAMMPS-style set_thermostat (NoseHoover).")
+        .def(
+            "set_observer",
+            [](MdHandle& self, const cpu::task::InitVelocityParams& p) {
+                self.set_categorical(
+                    p, cpu::md::InitVelocity{p.temperature, p.seed});
+            },
+            nb::arg("comp"), "LAMMPS-style set_observer (e.g. InitVelocity).")
+        .def(
+            "set_evaluator_pair_lj_cut",
+            [](MdHandle& self, const cpu::task::PairLJCutParams& p) {
+                self.set_categorical(
+                    p, cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff});
             },
             nb::arg("comp"))
+        .def(
+            "set_evaluator_bond_harmonic",
+            [](MdHandle& self, const cpu::task::BondHarmonicParams& p) {
+                self.set_categorical(p, cpu::BondHarmonic{p.K, p.r0});
+            },
+            nb::arg("comp"))
+        .def(
+            "set_evaluator_angle_harmonic",
+            [](MdHandle& self, const cpu::task::AngleHarmonicParams& p) {
+                self.set_categorical(p, cpu::AngleHarmonic{p.K, p.theta0});
+            },
+            nb::arg("comp"))
+        .def(
+            "set_evaluator_dihedral_multi_harmonic",
+            [](MdHandle& self,
+               const cpu::task::DihedralMultiHarmonicParams& p) {
+                self.set_categorical(p, cpu::DihedralMultiHarmonic{p.Cn});
+            },
+            nb::arg("comp"))
+        .def(
+            "set_neighbor",
+            [](MdHandle& self, const cpu::task::NeighborListParams& p) {
+                self.set_categorical(p,
+                                     cpu::md::NeighborList<>{p.cutoff, p.skin});
+            },
+            nb::arg("comp"), "LAMMPS-style set_neighbor.")
+        .def(
+            "set_thermo",
+            [](MdHandle& self, int every) {
+                self.set_categorical(cpu::task::ThermoParams{every},
+                                     cpu::Thermo{every});
+            },
+            nb::arg("every"), "LAMMPS-style set_thermo(N) print cadence.")
+        .def(
+            "set_record",
+            [](MdHandle& self, const cpu::task::ThermoParams& p) {
+                // Thermo as a record/observer-style component via set_thermo.
+                self.set_categorical(p, cpu::Thermo{p.freq});
+            },
+            nb::arg("comp"),
+            "Register a recorder; Thermo is installed via set_thermo cadence.")
         .def(
             "on",
             [](MdHandle& self, md::Phase phase) {
                 return MdPhaseBuilder{&self, phase};
             },
-            nb::arg("phase"))
+            nb::arg("phase"),
+            "Escape hatch: explicit phase binding (prefer categorical "
+            "setters).")
         .def(
             "build", [](MdHandle& self) { self.driver.build(); },
             "Compile the execution plan.")
@@ -278,16 +323,16 @@ void bind_md(nb::module_& m) {
              [](MdHandle& self) { self.driver.enable_timing(); })
         .def("summary", [](MdHandle& self) { return self.driver.summary(); });
 
-    // ── PhaseBuilder ──
+    // ── PhaseBuilder escape hatch ──
     nb::class_<MdPhaseBuilder>(m, "PhaseBuilder",
                                "Fluent builder for explicit phase binding.")
         .def(
             "add_pair_lj_cut",
             [](MdPhaseBuilder& self, const cpu::task::PairLJCutParams& p,
                int order) -> MdPhaseBuilder& {
-                self.handle->add(p,
-                                 cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff},
-                                 MDBinding{self.phase, order});
+                self.handle->add_on_phase(
+                    p, cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff},
+                    MDBinding{self.phase, order});
                 return self;
             },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
@@ -295,8 +340,9 @@ void bind_md(nb::module_& m) {
             "add_neighbor_list",
             [](MdPhaseBuilder& self, const cpu::task::NeighborListParams& p,
                int order) -> MdPhaseBuilder& {
-                self.handle->add(p, cpu::md::NeighborList<>{p.cutoff, p.skin},
-                                 MDBinding{self.phase, order});
+                self.handle->add_on_phase(
+                    p, cpu::md::NeighborList<>{p.cutoff, p.skin},
+                    MDBinding{self.phase, order});
                 return self;
             },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
@@ -304,8 +350,8 @@ void bind_md(nb::module_& m) {
             "add_bond_harmonic",
             [](MdPhaseBuilder& self, const cpu::task::BondHarmonicParams& p,
                int order) -> MdPhaseBuilder& {
-                self.handle->add(p, cpu::BondHarmonic{p.K, p.r0},
-                                 MDBinding{self.phase, order});
+                self.handle->add_on_phase(p, cpu::BondHarmonic{p.K, p.r0},
+                                          MDBinding{self.phase, order});
                 return self;
             },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
@@ -313,8 +359,8 @@ void bind_md(nb::module_& m) {
             "add_angle_harmonic",
             [](MdPhaseBuilder& self, const cpu::task::AngleHarmonicParams& p,
                int order) -> MdPhaseBuilder& {
-                self.handle->add(p, cpu::AngleHarmonic{p.K, p.theta0},
-                                 MDBinding{self.phase, order});
+                self.handle->add_on_phase(p, cpu::AngleHarmonic{p.K, p.theta0},
+                                          MDBinding{self.phase, order});
                 return self;
             },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
@@ -323,8 +369,8 @@ void bind_md(nb::module_& m) {
             [](MdPhaseBuilder& self,
                const cpu::task::DihedralMultiHarmonicParams& p,
                int order) -> MdPhaseBuilder& {
-                self.handle->add(p, cpu::DihedralMultiHarmonic{p.Cn},
-                                 MDBinding{self.phase, order});
+                self.handle->add_on_phase(p, cpu::DihedralMultiHarmonic{p.Cn},
+                                          MDBinding{self.phase, order});
                 return self;
             },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
@@ -332,8 +378,8 @@ void bind_md(nb::module_& m) {
             "add_thermo",
             [](MdPhaseBuilder& self, const cpu::task::ThermoParams& p,
                int order) -> MdPhaseBuilder& {
-                self.handle->add(p, cpu::Thermo{p.freq},
-                                 MDBinding{self.phase, order});
+                self.handle->add_on_phase(p, cpu::Thermo{p.freq},
+                                          MDBinding{self.phase, order});
                 return self;
             },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference);

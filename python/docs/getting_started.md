@@ -138,14 +138,15 @@ atoms.insert("type", np.zeros(n, dtype=np.int32))
 frame["atoms"] = atoms
 frame.box = molrs.Box.cube(n_cells * a0)
 
-# 2. Configure the MD driver
+# 2. Configure the MD driver (categorical setters — same as C++)
 epsilon, sigma, cutoff = 0.0104, 3.4, 8.5   # LJ-Ar [eV, Å, Å]
 
-sim = av.MD(dt=0.001)                        # timestep [fs]
-sim.add(av.InitVelocity(temperature=10.0, seed=42))
-sim.on("force").add(av.NeighborList(cutoff), order=-10) \
-               .add(av.PairLJCut(epsilon, sigma, cutoff))
-sim.on("end_of_step").add(av.Thermo(100))
+sim = av.MD()
+sim.set_integrator(av.VelocityVerlet(0.001))   # timestep [fs]
+sim.set_observer(av.InitVelocity(temperature=10.0, seed=42))
+sim.set_neighbor(av.NeighborList(cutoff))
+sim.set_evaluator(av.PairLJCut(epsilon, sigma, cutoff))
+sim.set_thermo(100)
 
 # 3. Run (build() is called automatically)
 sim.run(frame, 1000)
@@ -167,11 +168,12 @@ names (`av.PairLJCut is av.potentials.pair.LJCut`). The quickstart above
 uses the convenience names; the same driver in canonical style:
 
 ```python
-sim = av.md.MD(dt=0.001)
-sim.add(av.md.InitVelocity(temperature=10.0, seed=42))
-sim.on("force").add(av.neighbor.NeighborList(cutoff), order=-10) \
-               .add(av.potentials.pair.LJCut(epsilon, sigma, cutoff))
-sim.on("end_of_step").add(av.recorder.Thermo(100))
+sim = av.md.MD()
+sim.set_integrator(av.md.integrator.VelocityVerlet(0.001))
+sim.set_observer(av.md.InitVelocity(temperature=10.0, seed=42))
+sim.set_neighbor(av.neighbor.NeighborList(cutoff))
+sim.set_evaluator(av.potentials.pair.LJCut(epsilon, sigma, cutoff))
+sim.set_thermo(100)
 ```
 
 The full mapping table lives in `help(atomiverse)`.
@@ -200,12 +202,11 @@ termination policy are separate objects; state stays in one `molrs.Frame` and
 the return value carries only loop control metadata:
 
 ```python
-opt = av.Minimize(
-    convergence=av.ForceConverged(ftol=0.05, rms_ftol=0.03)
-)
-opt.add(av.LBFGS(memory=5, alpha0=0.01, max_ls=10))
-opt.on("force").add(av.NeighborList(cutoff, 0.3), order=-10) \
-               .add(av.PairLJCut(epsilon, sigma, cutoff))
+opt = av.Minimize()
+opt.add_criterion(av.ForceConverged(ftol=0.05, rms_ftol=0.03))
+opt.set_optimizer(av.LBFGS(memory=5, alpha0=0.01, max_ls=10))
+opt.set_neighbor(av.NeighborList(cutoff, 0.3))
+opt.set_evaluator(av.PairLJCut(epsilon, sigma, cutoff))
 
 result = opt.run(frame, max_iter=100)
 print(result.iterations, result.converged, result.stop_reason)
@@ -229,24 +230,29 @@ naming the field.
 
 ### MD driver
 
-Components register through two paths, mirroring the C++ API:
+Components register through **categorical setters**, mirroring the C++
+`cpu::md::MD` / `Driver` API (same shape as `examples/07_md_lj.cpp`):
 
-- `sim.add(comp)` — components with default phase bindings
-  (`VelocityVerlet`, `InitVelocity`, `NoseHoover`).
-- `sim.on(phase).add(comp, order=0)` — explicit phase binding, where
-  *phase* is one of `"initial_integrate"`, `"pre_force"`, `"force"`,
-  `"post_force"`, `"final_integrate"`, `"end_of_step"`.
+- `sim.set_integrator(VelocityVerlet(dt))`
+- `sim.set_thermostat(NoseHoover(T, tau_T, dt))`
+- `sim.set_observer(InitVelocity(T, seed))`
+- `sim.set_neighbor(NeighborList(cutoff, skin=-1))`
+- `sim.set_evaluator(PairLJCut / BondHarmonic / …)` — plural energy sources
+- `sim.set_thermo(N)` — LAMMPS-style print cadence
 
-| Component | Phase | Description |
-|-----------|-------|-------------|
-| `VelocityVerlet(dt)` | initial/final integrate | Symplectic integrator |
-| `InitVelocity(T, seed)` | build-time | Maxwell-Boltzmann init |
-| `NoseHoover(T_target, tau_T, dt)` | initial/final integrate | NVT thermostat |
-| `NeighborList(cutoff, skin=-1)` | force (order −10) | Cell-list pair builder |
-| `PairLJCut(ε, σ, cutoff)` | force | Lennard-Jones 12-6 |
-| `BondHarmonic(K, r0)` | force | Bond stretching |
-| `AngleHarmonic(K, θ0)` | force | Angle bending |
-| `DihedralMultiHarmonic(Cn)` | force | Dihedral potential |
+Escape hatch for custom phase/order: `sim.on(phase).add(comp, order=0)`.
+
+| Setter | Component | Description |
+|--------|-----------|-------------|
+| `set_integrator` | `VelocityVerlet(dt)` | Symplectic integrator |
+| `set_observer` | `InitVelocity(T, seed)` | Maxwell-Boltzmann init |
+| `set_thermostat` | `NoseHoover(T, tau_T, dt)` | NVT thermostat |
+| `set_neighbor` | `NeighborList(cutoff, skin=-1)` | Cell-list pair builder |
+| `set_evaluator` | `PairLJCut(ε, σ, cutoff)` | Lennard-Jones 12-6 |
+| `set_evaluator` | `BondHarmonic(K, r0)` | Bond stretching |
+| `set_evaluator` | `AngleHarmonic(K, θ0)` | Angle bending |
+| `set_evaluator` | `DihedralMultiHarmonic(Cn)` | Dihedral potential |
+| `set_thermo` | `N` (int) | Thermo print every N steps |
 | `Thermo(freq)` | end_of_step | Thermodynamic output |
 
 ### Units

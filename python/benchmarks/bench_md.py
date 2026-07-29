@@ -58,27 +58,28 @@ def make_fcc_frame(n_cells: int, a0: float = 5.26) -> "molrs.Frame":
 
 
 def build_bare_vv(dt: float = 0.001) -> av.MD:
-    sim = av.MD(dt=dt)
-    sim.add(av.InitVelocity(10.0, 42))
+    sim = av.MD()
+    sim.set_integrator(av.VelocityVerlet(dt))
+    sim.set_observer(av.InitVelocity(10.0, 42))
     return sim
 
 
 def build_lj_md(dt: float = 0.001, cutoff: float = 8.5) -> av.MD:
-    sim = av.MD(dt=dt)
-    sim.add(av.InitVelocity(10.0, 42))
-    sim.on("force").add(av.NeighborList(cutoff), order=-10).add(
-        av.PairLJCut(0.0104, 3.4, cutoff)
-    )
+    sim = av.MD()
+    sim.set_integrator(av.VelocityVerlet(dt))
+    sim.set_observer(av.InitVelocity(10.0, 42))
+    sim.set_neighbor(av.NeighborList(cutoff))
+    sim.set_evaluator(av.PairLJCut(0.0104, 3.4, cutoff))
     return sim
 
 
 def build_nvt_md(dt: float = 0.001, cutoff: float = 8.5, T: float = 100.0) -> av.MD:
-    sim = av.MD(dt=dt)
-    sim.add(av.InitVelocity(T, 42))
-    sim.add(av.NoseHoover(T, 100.0, dt))
-    sim.on("force").add(av.NeighborList(cutoff), order=-10).add(
-        av.PairLJCut(0.0104, 3.4, cutoff)
-    )
+    sim = av.MD()
+    sim.set_integrator(av.VelocityVerlet(dt))
+    sim.set_observer(av.InitVelocity(T, 42))
+    sim.set_thermostat(av.NoseHoover(T, 100.0, dt))
+    sim.set_neighbor(av.NeighborList(cutoff))
+    sim.set_evaluator(av.PairLJCut(0.0104, 3.4, cutoff))
     return sim
 
 

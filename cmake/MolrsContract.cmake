@@ -6,15 +6,18 @@
 #
 # Pin policy:
 #   - molrs is a **git submodule** at ./molrs (.gitmodules → MolCrafts/molrs).
-#     The recorded submodule commit is the authoritative source pin.
+#     The recorded submodule commit (gitlink mode 160000) is the authoritative
+#     source pin. Always: `git submodule update --init --recursive molrs`.
+#   - ATV_MOLRS_PATH defaults to ${CMAKE_SOURCE_DIR}/molrs (the submodule).
+#     Overrides are for local experiments only; CI must use the submodule.
 #   - ATV_MOLRS_CXX_API_VERSION must match molrs-cxxapi/CXX_API_VERSION exactly.
-#   - ATV_MOLRS_GIT_REF documents the intended release tag for that pin
-#     (informational; bump it when advancing the submodule to a new tag).
+#   - ATV_MOLRS_GIT_REF documents the intended release / commit for that pin
+#     (informational; bump it when advancing the submodule gitlink).
 #   - Local -DATV_MOLRS_PATH overrides do not bypass the CXX API version check.
 set(ATV_MOLRS_CXX_API_VERSION 1)
 set(ATV_MOLRS_CXX_REQUIRED_CAPABILITIES 7) # Frame-block v2 | Element | AM1-BCC
-set(ATV_MOLRS_GIT_REF "b8f6084121c26c64d05b27116bf5135d4f86dc36" CACHE STRING
-    "Documented MolCrafts/molrs ref matching the ./molrs submodule pin (v0.9.0 + smarts/GAFF gates)")
+set(ATV_MOLRS_GIT_REF "c1e4f69ba4835bbc2d0d80d68ada90f21325b8cf" CACHE STRING
+    "Documented MolCrafts/molrs ref matching the ./molrs submodule pin (dev)")
 
 function(atv_validate_molrs_source_contract molrs_root)
     set(version_file "${molrs_root}/molrs-cxxapi/CXX_API_VERSION")
@@ -45,4 +48,19 @@ function(atv_validate_molrs_source_contract molrs_root)
             "ATV_MOLRS_PATH='${molrs_root}'. Local path overrides do not "
             "bypass the contract.")
     endif()
+endfunction()
+
+# Optional molrs surface: multi-window WHAM (WhamCompute) is not yet on every
+# pin. Detect from the CXX bridge source so Atomiverse compiles against the
+# submodule even before WHAM lands in molrs.
+function(atv_detect_molrs_wham molrs_root out_var)
+    set(_bridge "${molrs_root}/molrs-cxxapi/src/bridge.rs")
+    set(_has OFF)
+    if(EXISTS "${_bridge}")
+        file(READ "${_bridge}" _bridge_txt)
+        if(_bridge_txt MATCHES "WhamCompute")
+            set(_has ON)
+        endif()
+    endif()
+    set(${out_var} ${_has} PARENT_SCOPE)
 endfunction()

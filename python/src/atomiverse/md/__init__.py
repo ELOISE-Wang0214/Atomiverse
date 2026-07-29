@@ -1,11 +1,21 @@
 """OOP Molecular Dynamics driver — operates directly on a ``molrs.Frame``.
 
+Mirrors the C++ categorical API on ``cpu::md::MD`` (headers under
+``cpu/dynamics/``)::
+
+    sim = MD()
+    sim.set_evaluator(PairLJCut(...))
+    sim.set_neighbor(NeighborList(...))
+    sim.set_integrator(VelocityVerlet(dt))
+    sim.set_thermo(200)
+    sim.build()
+    sim.run(frame, 1000)
+
 The driver borrows the ``molrs.Frame`` for the duration of :meth:`MD.run`:
 the C++ side materializes a transient execution frame, advances it, and
 writes positions / velocities / forces / energy back into the *same*
-``molrs.Frame``. Energy, kinetic energy, conserved energy, and stress are
-exact-dtype ``molrs.MetaValue`` entries in ``frame.meta``; they are never
-synthetic blocks. Atomiverse never owns a separate Frame data type.
+``molrs.Frame``. Global results use exact-dtype ``molrs.MetaValue`` entries
+in ``frame.meta``.
 """
 
 from __future__ import annotations
@@ -13,7 +23,7 @@ from __future__ import annotations
 from atomiverse._binding import _cpp
 
 # ---------------------------------------------------------------------------
-# Phase name → C++ enum
+# Phase name → C++ enum (escape hatch for on(phase).add)
 # ---------------------------------------------------------------------------
 _PHASE_MAP: dict[str, object] = {
     "initial_integrate": _cpp.Phase.initial_integrate,
@@ -24,15 +34,15 @@ _PHASE_MAP: dict[str, object] = {
     "end_of_step": _cpp.Phase.end_of_step,
 }
 
-# ---------------------------------------------------------------------------
-# Component dispatch tables
-# ---------------------------------------------------------------------------
-_DRIVER_DISPATCH: dict[type, str] = {
-    _cpp.VelocityVerlet: "add_velocity_verlet",
-    _cpp.InitVelocity: "add_init_velocity",
-    _cpp.NoseHoover: "add_nose_hoover",
+# Evaluator types → typed C++ setter (plural set_evaluator)
+_EVALUATOR_DISPATCH: dict[type, str] = {
+    _cpp.PairLJCut: "set_evaluator_pair_lj_cut",
+    _cpp.BondHarmonic: "set_evaluator_bond_harmonic",
+    _cpp.AngleHarmonic: "set_evaluator_angle_harmonic",
+    _cpp.DihedralMultiHarmonic: "set_evaluator_dihedral_multi_harmonic",
 }
 
+# Escape-hatch phase builder dispatch
 _PHASE_DISPATCH: dict[type, str] = {
     _cpp.PairLJCut: "add_pair_lj_cut",
     _cpp.NeighborList: "add_neighbor_list",
@@ -44,12 +54,10 @@ _PHASE_DISPATCH: dict[type, str] = {
 
 
 class PhaseBuilder:
-    """Fluent builder returned by :meth:`MD.on`.
+    """Fluent builder returned by :meth:`MD.on` (escape hatch).
 
-    Example::
-
-        sim.on("force").add(av.NeighborList(cutoff=8.5), order=-10) \\
-                       .add(av.PairLJCut(epsilon=0.01, sigma=3.4, cutoff=8.5))
+    Prefer the categorical setters (``set_evaluator``, ``set_neighbor``, …).
+    Use ``on(phase).add`` only when you need an explicit phase or order.
     """
 
     def __init__(self, cpp_builder: object) -> None:
@@ -74,28 +82,21 @@ class MD:
     Parameters
     ----------
     dt : float, optional
-        Timestep in fs.  If provided, a ``VelocityVerlet`` integrator
-        is added automatically.
+        Timestep in fs. If provided, calls ``set_integrator(VelocityVerlet(dt))``.
     device : str, optional
-        Execution backend, PyTorch-style.  v1 accepts only ``"cpu"``;
+        Execution backend, PyTorch-style. v1 accepts only ``"cpu"``;
         any other value raises ``ValueError`` before any compute.
 
-    Example::
+    Example (mirrors ``examples/07_md_lj.cpp``)::
 
-        import numpy as np
-        import molrs
         import atomiverse as av
 
-        frame = molrs.Frame()
-        atoms = molrs.Block()
-        atoms.insert("x", x); atoms.insert("y", y); atoms.insert("z", z)
-        atoms.insert("mass", m); atoms.insert("type", t)
-        frame["atoms"] = atoms
-
-        sim = av.MD(dt=0.001)
-        sim.add(av.InitVelocity(temperature=10.0, seed=42))
-        sim.on("force").add(av.NeighborList(cutoff=8.5), order=-10)
-        sim.on("force").add(av.PairLJCut(epsilon=0.01, sigma=3.4, cutoff=8.5))
+        sim = av.MD()
+        sim.set_evaluator(av.PairLJCut(0.0104, 3.4, 8.5))
+        sim.set_neighbor(av.NeighborList(8.5, 0.5))
+        sim.set_integrator(av.VelocityVerlet(1.0))
+        sim.set_thermo(200)
+        sim.build()
         sim.run(frame, 1000)
     """
 
@@ -111,36 +112,96 @@ class MD:
         self._cpp = _cpp.MD()
         self._built = False
         if dt is not None:
-            self.add(_cpp.VelocityVerlet(dt))
+            self.set_integrator(_cpp.VelocityVerlet(dt))
 
     # ------------------------------------------------------------------
-    # Component registration
+    # Categorical setters (LAMMPS-shaped; match cpu::md::MD / Driver)
     # ------------------------------------------------------------------
 
-    def add(self, component: object) -> MD:
-        """Add a component that has default phase bindings.
-
-        Supported: ``VelocityVerlet``, ``InitVelocity``, ``NoseHoover``.
-        For phase-specific components use :meth:`on`.
-        """
-        method_name = _DRIVER_DISPATCH.get(type(component))
-        if method_name is None:
-            supported = ", ".join(t.__name__ for t in _DRIVER_DISPATCH)
+    def set_integrator(self, component: object) -> MD:
+        """Install the time integrator (``cpu::md::MD::set_integrator``)."""
+        if type(component) is not _cpp.VelocityVerlet:
             raise TypeError(
-                f"Cannot add {type(component).__name__} directly. "
-                f"Use sim.on(phase).add() instead.  "
-                f"Driver-level components: {supported}"
+                f"set_integrator expects VelocityVerlet, got "
+                f"{type(component).__name__}"
+            )
+        self._cpp.set_integrator(component)
+        self._built = False
+        return self
+
+    def set_thermostat(self, component: object) -> MD:
+        """Install a thermostat (``cpu::md::MD::set_thermostat``)."""
+        if type(component) is not _cpp.NoseHoover:
+            raise TypeError(
+                f"set_thermostat expects NoseHoover, got "
+                f"{type(component).__name__}"
+            )
+        self._cpp.set_thermostat(component)
+        self._built = False
+        return self
+
+    def set_observer(self, component: object) -> MD:
+        """Install an observer (``Driver::set_observer``).
+
+        v1 supports ``InitVelocity`` (Maxwell–Boltzmann seeding).
+        """
+        if type(component) is not _cpp.InitVelocity:
+            raise TypeError(
+                f"set_observer expects InitVelocity, got "
+                f"{type(component).__name__}"
+            )
+        self._cpp.set_observer(component)
+        self._built = False
+        return self
+
+    def set_evaluator(self, component: object) -> MD:
+        """Register an energy/force source (``Driver::set_evaluator``, plural)."""
+        method_name = _EVALUATOR_DISPATCH.get(type(component))
+        if method_name is None:
+            supported = ", ".join(t.__name__ for t in _EVALUATOR_DISPATCH)
+            raise TypeError(
+                f"set_evaluator does not support {type(component).__name__}. "
+                f"Supported: {supported}"
             )
         getattr(self._cpp, method_name)(component)
         self._built = False
         return self
 
-    def on(self, phase: str) -> PhaseBuilder:
-        """Return a :class:`PhaseBuilder` for explicit phase binding.
+    def set_neighbor(self, component: object) -> MD:
+        """Install the neighbor list (``Driver::set_neighbor``)."""
+        if type(component) is not _cpp.NeighborList:
+            raise TypeError(
+                f"set_neighbor expects NeighborList, got "
+                f"{type(component).__name__}"
+            )
+        self._cpp.set_neighbor(component)
+        self._built = False
+        return self
 
-        *phase* is one of: ``"initial_integrate"``, ``"pre_force"``,
-        ``"force"``, ``"post_force"``, ``"final_integrate"``,
-        ``"end_of_step"``.
+    def set_thermo(self, every: int) -> MD:
+        """Set thermo print cadence (``Driver::set_thermo(N)``)."""
+        self._cpp.set_thermo(int(every))
+        self._built = False
+        return self
+
+    def set_record(self, component: object) -> MD:
+        """Install a recorder. v1: ``Thermo`` maps to ``set_thermo(freq)``."""
+        if type(component) is _cpp.Thermo:
+            # Thermo is constructed as Thermo(freq); extract via set_record
+            # binding which re-applies set_thermo.
+            self._cpp.set_record(component)
+            self._built = False
+            return self
+        raise TypeError(
+            f"set_record expects Thermo, got {type(component).__name__}"
+        )
+
+    def on(self, phase: str) -> PhaseBuilder:
+        """Escape hatch: explicit phase binding.
+
+        Prefer categorical setters. *phase* is one of:
+        ``initial_integrate``, ``pre_force``, ``force``, ``post_force``,
+        ``final_integrate``, ``end_of_step``.
         """
         cpp_phase = _PHASE_MAP.get(phase)
         if cpp_phase is None:
@@ -164,23 +225,10 @@ class MD:
         *frame* is a ``molrs.Frame``. The C++ driver borrows it, materializes
         a transient execution frame, advances it, and writes
         positions / velocities / forces / energy back into *frame* in place.
-
-        Parameters
-        ----------
-        frame : molrs.Frame
-            System state. Must carry an ``atoms`` block with
-            ``x, y, z, type`` columns (``mass`` required for MD). Global
-            results are typed entries in ``frame.meta``.
-        n_steps : int
-            Number of MD steps to advance.
         """
         if not self._built:
             self.build()
         self._cpp.run(frame, n_steps)
-
-    # ------------------------------------------------------------------
-    # Diagnostics
-    # ------------------------------------------------------------------
 
     def enable_timing(self) -> None:
         """Enable per-component timing."""
@@ -195,7 +243,8 @@ class MD:
         return f"MD({state})"
 
 
-# InitVelocity's canonical home is ``atomiverse.md`` (cpu/md/init.h has no
-# finer category); integrators and thermostats live in the sibling modules
-# ``atomiverse.md.integrator`` / ``atomiverse.md.thermostat``.
+# InitVelocity lives next to MD (cpu/dynamics/init.h); integrators and
+# thermostats live in sibling modules.
 InitVelocity = _cpp.InitVelocity
+
+__all__ = ["MD", "InitVelocity", "PhaseBuilder"]

@@ -154,12 +154,14 @@ class TestDeviceParameter:
         from atomiverse.neighbor import NeighborList
         from atomiverse.potentials.pair import LJCut
 
+        from atomiverse.md.integrator import VelocityVerlet
+
         cutoff = 8.5
-        sim = MD(dt=0.001, device="cpu")
-        sim.add(InitVelocity(10.0, 42))
-        sim.on("force").add(NeighborList(cutoff), order=-10).add(
-            LJCut(0.0104, 3.4, cutoff)
-        )
+        sim = MD(device="cpu")
+        sim.set_integrator(VelocityVerlet(0.001))
+        sim.set_observer(InitVelocity(10.0, 42))
+        sim.set_neighbor(NeighborList(cutoff))
+        sim.set_evaluator(LJCut(0.0104, 3.4, cutoff))
         sim.run(argon_frame, 5)
         energy = float(argon_frame.meta["energy"].value)
         assert np.isfinite(energy)

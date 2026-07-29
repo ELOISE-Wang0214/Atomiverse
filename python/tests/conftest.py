@@ -20,10 +20,11 @@ from atomiverse._binding import extension_available
 _HAS_EXT = extension_available()
 if _HAS_EXT:
     from atomiverse.md import MD, InitVelocity
+    from atomiverse.md.integrator import VelocityVerlet
     from atomiverse.neighbor import NeighborList
     from atomiverse.potentials.pair import LJCut
 else:
-    MD = InitVelocity = NeighborList = LJCut = None  # type: ignore[misc, assignment]
+    MD = InitVelocity = VelocityVerlet = NeighborList = LJCut = None  # type: ignore[misc, assignment]
 
 
 # Pure-Python tests that must run without the C++ extension.
@@ -89,12 +90,13 @@ def argon_frame(n_atoms: int) -> "molrs.Frame":
 
 @pytest.fixture
 def full_lj_md():
-    """Full LJ MD via deep canonical paths: md.MD + md.InitVelocity +
-    neighbor.NeighborList + potentials.pair.LJCut."""
+    """Full LJ MD via categorical setters (mirrors examples/07_md_lj.cpp)."""
     if not _HAS_EXT:
         pytest.skip("C++ extension (_atomiverse) not installed")
     cutoff = 8.5
-    sim = MD(dt=0.001)
-    sim.add(InitVelocity(10.0, 42))
-    sim.on("force").add(NeighborList(cutoff), order=-10).add(LJCut(0.0104, 3.4, cutoff))
+    sim = MD()
+    sim.set_integrator(VelocityVerlet(0.001))
+    sim.set_observer(InitVelocity(10.0, 42))
+    sim.set_neighbor(NeighborList(cutoff))
+    sim.set_evaluator(LJCut(0.0104, 3.4, cutoff))
     return sim

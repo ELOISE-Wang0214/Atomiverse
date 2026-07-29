@@ -112,14 +112,13 @@ _DEAD_CPP_ATTRS: tuple[str, ...] = (
 
 @pytest.fixture
 def canonical_lj_md() -> "av.MD":
-    """Canonical-name LJ MD: VelocityVerlet(dt) + InitVelocity +
-    NeighborList + PairLJCut on the force phase (conftest params)."""
+    """Canonical-name LJ MD via categorical setters (C++-aligned)."""
     cutoff = 8.5
-    sim = av.MD(dt=0.001)
-    sim.add(av.InitVelocity(10.0, 42))
-    sim.on("force").add(av.NeighborList(cutoff), order=-10).add(
-        av.PairLJCut(0.0104, 3.4, cutoff)
-    )
+    sim = av.MD()
+    sim.set_integrator(av.VelocityVerlet(0.001))
+    sim.set_observer(av.InitVelocity(10.0, 42))
+    sim.set_neighbor(av.NeighborList(cutoff))
+    sim.set_evaluator(av.PairLJCut(0.0104, 3.4, cutoff))
     return sim
 
 

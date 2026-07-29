@@ -65,13 +65,15 @@ class TestMolpyInterop:
     def test_molpy_frame_runs_atv_lj_md(self) -> None:
         """A molpy-built system runs a 10-step atv LJ MD; the energy
         written back into the same frame is finite."""
+        from atomiverse.md.integrator import VelocityVerlet
+
         frame = _molpy_argon_frame()
         cutoff = 8.5
-        sim = MD(dt=0.001)
-        sim.add(InitVelocity(10.0, 42))
-        sim.on("force").add(NeighborList(cutoff), order=-10).add(
-            LJCut(0.0104, 3.4, cutoff)
-        )
+        sim = MD()
+        sim.set_integrator(VelocityVerlet(0.001))
+        sim.set_observer(InitVelocity(10.0, 42))
+        sim.set_neighbor(NeighborList(cutoff))
+        sim.set_evaluator(LJCut(0.0104, 3.4, cutoff))
         sim.run(frame, 10)
         assert "scalars" not in frame.keys()
         energy_meta = frame.meta["energy"]

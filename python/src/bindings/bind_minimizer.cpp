@@ -1,5 +1,15 @@
 /// @file python/src/bindings/bind_minimizer.cpp
-/// @brief CPU Minimize + LBFGS bindings over the typed TaskSpec v3 path.
+/// @brief CPU Minimize + LBFGS bindings aligned with the C++ categorical API.
+///
+/// Public surface mirrors ``cpu::minimizer::Minimize``:
+///
+/// @code
+///   opt.set_optimizer(LBFGS{…});
+///   opt.add_criterion(ForceConverged{…});  // optional; default in build
+///   opt.set_evaluator(PairLJCut{…});
+///   opt.set_neighbor(NeighborList{…});
+///   opt.build(); opt.run(frame, max_iter);
+/// @endcode
 
 #include "molrs_frame_bridge.h"
 
@@ -34,41 +44,45 @@ using cpu::task::MinimizeComponentEntry;
 using cpu::task::TaskResult;
 
 struct MinimizeHandle {
-    explicit MinimizeHandle(ForceConvergedParams convergence_)
-        : convergence(std::move(convergence_)) {
-        // Validate through the exact wire-boundary type used by launcher runs.
-        (void)cpu::task::TaskSpec{cpu::task::MinimizeTask{{}, 1, convergence}};
-        driver.add_criterion(cpu::ForceConverged{
-            convergence.ftol, convergence.rms_ftol, convergence.max_dtol,
-            convergence.rms_dtol, convergence.etol});
-    }
-
     cpu::minimizer::Minimize driver;
     std::vector<MinimizeComponentEntry> mirror;
-    ForceConvergedParams convergence;
+    ForceConvergedParams convergence{};
+    bool user_criterion = false;
 
     template <typename Params, typename Component>
-    void add(const Params& p, Component component,
-             std::optional<MinimizeBinding> binding) {
-        if (binding) {
-            driver.on(binding->phase).add(std::move(component), binding->order);
-        } else {
-            using P = std::decay_t<Params>;
-            if constexpr (std::is_same_v<P, cpu::task::PairLJCutParams>)
-                driver.set_evaluator(std::move(component));
-            else if constexpr (std::is_same_v<P, cpu::task::NeighborListParams>)
-                driver.set_neighbor(std::move(component));
-            else if constexpr (std::is_same_v<P, cpu::task::LBFGSParams>)
-                driver.set_optimizer(std::move(component));
-            else
-                driver.set_observer(std::move(component));
-        }
+    void set_categorical(const Params& p, Component component) {
+        using P = std::decay_t<Params>;
+        if constexpr (std::is_same_v<P, cpu::task::PairLJCutParams>)
+            driver.set_evaluator(std::move(component));
+        else if constexpr (std::is_same_v<P, cpu::task::NeighborListParams>)
+            driver.set_neighbor(std::move(component));
+        else if constexpr (std::is_same_v<P, cpu::task::LBFGSParams>)
+            driver.set_optimizer(std::move(component));
+        else
+            driver.set_observer(std::move(component));
+        mirror.push_back(MinimizeComponentEntry{p, std::nullopt});
+    }
+
+    template <typename Params, typename Component>
+    void add_on_phase(const Params& p, Component component,
+                      MinimizeBinding binding) {
+        driver.on(binding.phase).add(std::move(component), binding.order);
         mirror.push_back(MinimizeComponentEntry{p, binding});
     }
 
+    void add_criterion(const ForceConvergedParams& c) {
+        driver.add_criterion(cpu::ForceConverged{c.ftol, c.rms_ftol, c.max_dtol,
+                                                 c.rms_dtol, c.etol});
+        convergence = c;
+        user_criterion = true;
+    }
+
     TaskResult run(nb::object frame_obj, int max_iter) {
+        // TaskSpec always carries a convergence policy (defaults if unset).
+        const ForceConvergedParams conv =
+            user_criterion ? convergence : ForceConvergedParams{};
         const cpu::task::TaskSpec spec{cpu::task::MinimizeTask{
-            mirror, static_cast<std::int64_t>(max_iter), convergence}};
+            mirror, static_cast<std::int64_t>(max_iter), conv}};
         const cpu::task::LauncherGate gate;
         if (!gate.active()) {
             auto frame = borrow_molrs_frame(frame_obj);
@@ -149,23 +163,52 @@ void bind_minimizer(nb::module_& m) {
 
     nb::class_<MinimizeHandle>(m, "Minimize",
                                "CPU geometry-minimization driver.")
-        .def(nb::init<ForceConvergedParams>(), nb::arg("convergence"))
+        .def(nb::init<>(),
+             "Default construct; ForceConverged is auto-installed at build "
+             "unless add_criterion is called.")
         .def(
-            "add_lbfgs",
+            "set_optimizer",
             [](MinimizeHandle& self, const cpu::task::LBFGSParams& p) {
-                self.add(p, cpu::minimizer::LBFGS{p.memory, p.alpha0, p.max_ls},
-                         std::nullopt);
+                self.set_categorical(
+                    p, cpu::minimizer::LBFGS{p.memory, p.alpha0, p.max_ls});
             },
-            nb::arg("component"))
+            nb::arg("comp"), "LAMMPS-style set_optimizer (e.g. LBFGS).")
+        .def(
+            "set_evaluator_pair_lj_cut",
+            [](MinimizeHandle& self, const cpu::task::PairLJCutParams& p) {
+                self.set_categorical(
+                    p, cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff});
+            },
+            nb::arg("comp"))
+        .def(
+            "set_neighbor",
+            [](MinimizeHandle& self, const cpu::task::NeighborListParams& p) {
+                self.set_categorical(p,
+                                     cpu::md::NeighborList<>{p.cutoff, p.skin});
+            },
+            nb::arg("comp"))
+        .def(
+            "add_criterion",
+            [](MinimizeHandle& self, const ForceConvergedParams& c) {
+                self.add_criterion(c);
+            },
+            nb::arg("criterion"),
+            "Attach a ForceConverged stop policy (replaces the build default).")
         .def(
             "on",
             [](MinimizeHandle& self, minimizer::Phase phase) {
                 return MinimizePhaseBuilder{&self, phase};
             },
-            nb::arg("phase"))
+            nb::arg("phase"),
+            "Escape hatch: explicit phase binding (prefer categorical "
+            "setters).")
         .def("build", [](MinimizeHandle& self) { self.driver.build(); })
-        .def("run", &MinimizeHandle::run, nb::arg("frame"),
-             nb::arg("max_iter"));
+        .def("run", &MinimizeHandle::run, nb::arg("frame"), nb::arg("max_iter"))
+        .def("converged",
+             [](const MinimizeHandle& self) { return self.driver.converged(); })
+        .def("stop_reason", [](const MinimizeHandle& self) {
+            return self.driver.stop_reason();
+        });
 
     nb::class_<MinimizePhaseBuilder>(
         m, "MinimizePhaseBuilder",
@@ -174,9 +217,9 @@ void bind_minimizer(nb::module_& m) {
             "add_pair_lj_cut",
             [](MinimizePhaseBuilder& self, const cpu::task::PairLJCutParams& p,
                int order) -> MinimizePhaseBuilder& {
-                self.handle->add(p,
-                                 cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff},
-                                 MinimizeBinding{self.phase, order});
+                self.handle->add_on_phase(
+                    p, cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff},
+                    MinimizeBinding{self.phase, order});
                 return self;
             },
             nb::arg("component"), nb::arg("order") = 0,
@@ -186,8 +229,9 @@ void bind_minimizer(nb::module_& m) {
             [](MinimizePhaseBuilder& self,
                const cpu::task::NeighborListParams& p,
                int order) -> MinimizePhaseBuilder& {
-                self.handle->add(p, cpu::md::NeighborList<>{p.cutoff, p.skin},
-                                 MinimizeBinding{self.phase, order});
+                self.handle->add_on_phase(
+                    p, cpu::md::NeighborList<>{p.cutoff, p.skin},
+                    MinimizeBinding{self.phase, order});
                 return self;
             },
             nb::arg("component"), nb::arg("order") = 0,
