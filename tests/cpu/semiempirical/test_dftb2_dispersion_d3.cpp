@@ -18,8 +18,8 @@ cpu::Frame water_dimer() {
     // Spec geometry (Å); cubic box 20 Å (isolated).
     cpu::Frame f(6);
     const double xyz[6][3] = {
-        {0.000, 0.000, 0.000},  {0.757, 0.000, 0.586},  {-0.757, 0.000, 0.586},
-        {0.000, 0.000, 2.900},  {0.757, 0.000, 3.486},  {-0.757, 0.000, 3.486},
+        {0.000, 0.000, 0.000}, {0.757, 0.000, 0.586}, {-0.757, 0.000, 0.586},
+        {0.000, 0.000, 2.900}, {0.757, 0.000, 3.486}, {-0.757, 0.000, 3.486},
     };
     const int Z[6] = {8, 1, 1, 8, 1, 1};
     for (int i = 0; i < 6; ++i) {
@@ -203,9 +203,9 @@ TEST(DFTB2DispersionD3, ForcesMatchCentralFDOfEDisp) {
             const double ed_p = e_disp_at(std::move(fp));
             const double ed_m = e_disp_at(std::move(fm));
             const double f_fd = -(ed_p - ed_m) / (2.0 * h);
-            const double err =
-                std::abs(f_d3[static_cast<std::size_t>(a)][static_cast<std::size_t>(k)]
-                         - f_fd);
+            const double err = std::abs(
+                f_d3[static_cast<std::size_t>(a)][static_cast<std::size_t>(k)]
+                - f_fd);
             max_err = std::max(max_err, err);
         }
     }
@@ -239,10 +239,9 @@ TEST(DFTB2DispersionD3, StressIncludesD3) {
     // D3 must change the stress and land on kStress.
     double max_diff = 0.0;
     for (int v = 0; v < 6; ++v) {
-        max_diff = std::max(
-            max_diff,
-            std::abs(st_on[static_cast<std::size_t>(v)]
-                     - st_off[static_cast<std::size_t>(v)]));
+        max_diff =
+            std::max(max_diff, std::abs(st_on[static_cast<std::size_t>(v)]
+                                        - st_off[static_cast<std::size_t>(v)]));
         EXPECT_NEAR(st_meta[static_cast<std::size_t>(v)],
                     st_on[static_cast<std::size_t>(v)], 1e-14);
     }
@@ -255,22 +254,18 @@ TEST(DFTB2DispersionD3, StressIncludesD3) {
         sig_d3[static_cast<std::size_t>(v)] =
             st_on[static_cast<std::size_t>(v)]
             - st_off[static_cast<std::size_t>(v)];
-    const double tr =
-        sig_d3[0] + sig_d3[1] + sig_d3[2];
+    const double tr = sig_d3[0] + sig_d3[1] + sig_d3[2];
 
     constexpr double h = 1.0e-4;
     auto scale_frame = [](cpu::Frame f, double s) {
         const int n = f.nlocal();
         for (int a = 0; a < n; ++a) {
-            f.span(kAtom_x)[a] =
-                static_cast<StorageReal>(static_cast<double>(f.span(kAtom_x)[a])
-                                         * s);
-            f.span(kAtom_y)[a] =
-                static_cast<StorageReal>(static_cast<double>(f.span(kAtom_y)[a])
-                                         * s);
-            f.span(kAtom_z)[a] =
-                static_cast<StorageReal>(static_cast<double>(f.span(kAtom_z)[a])
-                                         * s);
+            f.span(kAtom_x)[a] = static_cast<StorageReal>(
+                static_cast<double>(f.span(kAtom_x)[a]) * s);
+            f.span(kAtom_y)[a] = static_cast<StorageReal>(
+                static_cast<double>(f.span(kAtom_y)[a]) * s);
+            f.span(kAtom_z)[a] = static_cast<StorageReal>(
+                static_cast<double>(f.span(kAtom_z)[a]) * s);
         }
         f.box.scale_isotropic(s); // h ← s h (edges × s for orthorhombic)
         return f;
@@ -354,23 +349,22 @@ TEST(DFTB2DispersionD3Periodic, ForcesMatchCentralFDOfEDisp) {
     for (int a = 0; a < n; ++a) {
         for (int k = 0; k < 3; ++k) {
             const double f_an = static_cast<double>(
-                (k == 0) ? f_on.span(kAtom_fx)[a] - f_off.span(kAtom_fx)[a]
+                (k == 0)   ? f_on.span(kAtom_fx)[a] - f_off.span(kAtom_fx)[a]
                 : (k == 1) ? f_on.span(kAtom_fy)[a] - f_off.span(kAtom_fy)[a]
                            : f_on.span(kAtom_fz)[a] - f_off.span(kAtom_fz)[a]);
             auto fp = water_dimer_in_box(kBox);
             auto fm = water_dimer_in_box(kBox);
-            StorageReal* sp = (k == 0) ? fp.span(kAtom_x)
+            StorageReal* sp = (k == 0)   ? fp.span(kAtom_x)
                               : (k == 1) ? fp.span(kAtom_y)
                                          : fp.span(kAtom_z);
-            StorageReal* sm = (k == 0) ? fm.span(kAtom_x)
+            StorageReal* sm = (k == 0)   ? fm.span(kAtom_x)
                               : (k == 1) ? fm.span(kAtom_y)
                                          : fm.span(kAtom_z);
             sp[a] = static_cast<StorageReal>(static_cast<double>(sp[a]) + h);
             sm[a] = static_cast<StorageReal>(static_cast<double>(sm[a]) - h);
-            const double f_fd =
-                -(e_disp_periodic_at(std::move(fp))
-                  - e_disp_periodic_at(std::move(fm)))
-                / (2.0 * h);
+            const double f_fd = -(e_disp_periodic_at(std::move(fp))
+                                  - e_disp_periodic_at(std::move(fm)))
+                                / (2.0 * h);
             max_err = std::max(max_err, std::abs(f_an - f_fd));
         }
     }
@@ -417,9 +411,9 @@ TEST(DFTB2DispersionD3Periodic, StressTraceMatchesVolumeDerivative) {
         return f;
     };
     constexpr double h = 1.0e-4;
-    const double dE_ds =
-        (e_disp_periodic_at(scaled(1.0 + h)) - e_disp_periodic_at(scaled(1.0 - h)))
-        / (2.0 * h);
+    const double dE_ds = (e_disp_periodic_at(scaled(1.0 + h))
+                          - e_disp_periodic_at(scaled(1.0 - h)))
+                         / (2.0 * h);
     const double dE_dlnV = dE_ds / 3.0;
     const double vol = water_dimer_in_box(kBox).box.volume();
     ASSERT_GT(vol, 0.0);

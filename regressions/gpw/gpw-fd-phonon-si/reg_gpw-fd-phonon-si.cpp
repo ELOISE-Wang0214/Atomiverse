@@ -38,7 +38,7 @@ using namespace ATV;
 namespace {
 
 // Atomiverse-convergent twin (REFERENCE: 8 Å / 150 Ry, ~3 s/SCF, UKS triplet).
-constexpr double kL = 8.0;     // Å
+constexpr double kL = 8.0;      // Å
 constexpr double kBond = 2.246; // Å Si–Si
 constexpr double kCutoffRy = 150.0;
 constexpr double kMix = 0.2;
@@ -224,8 +224,9 @@ int main() {
         if (std::abs(by_abs[static_cast<std::size_t>(k)]) < kZeroModeTol)
             ++n_zero;
     if (n_zero != kNZeroModes) {
-        std::printf("FAIL: got %d of %d near-zero modes (|omega| < %.0f cm^-1)\n",
-                    n_zero, kNZeroModes, kZeroModeTol);
+        std::printf(
+            "FAIL: got %d of %d near-zero modes (|omega| < %.0f cm^-1)\n",
+            n_zero, kNZeroModes, kZeroModeTol);
         return 1;
     }
 

@@ -183,8 +183,7 @@ void accumulate_atm_c9(const std::vector<int>& Z,
             for (int tbx = -m[0]; tbx <= m[0]; ++tbx)
                 for (int tby = -m[1]; tby <= m[1]; ++tby)
                     for (int tbz = -m[2]; tbz <= m[2]; ++tbz) {
-                        if (jatom == iatom && tbx == 0 && tby == 0
-                            && tbz == 0)
+                        if (jatom == iatom && tbx == 0 && tby == 0 && tbz == 0)
                             continue;
                         const double rax = pos_bohr[iatom][0];
                         const double ray = pos_bohr[iatom][1];
@@ -202,8 +201,7 @@ void accumulate_atm_c9(const std::vector<int>& Z,
                             dxab * dxab + dyab * dyab + dzab * dzab;
                         if (r2ab >= rcut2 || r2ab <= 1.0e-12)
                             continue;
-                        const bool is000 =
-                            (tbx == 0 && tby == 0 && tbz == 0);
+                        const bool is000 = (tbx == 0 && tby == 0 && tbz == 0);
                         // Avoid double-counting AB: only iatom <= jatom in
                         // the home cell; for B in another cell keep all AB
                         // with iatom as the home-cell anchor (CP2K NL).
@@ -244,15 +242,12 @@ void accumulate_atm_c9(const std::vector<int>& Z,
                                             params.c6ab[zc][za];
                                         if (refs_bc.empty() || refs_ca.empty())
                                             continue;
-                                        const double rcx =
-                                            pos_bohr[katom][0]
-                                            + tcx * cell_bohr[0];
-                                        const double rcy =
-                                            pos_bohr[katom][1]
-                                            + tcy * cell_bohr[1];
-                                        const double rcz =
-                                            pos_bohr[katom][2]
-                                            + tcz * cell_bohr[2];
+                                        const double rcx = pos_bohr[katom][0]
+                                                           + tcx * cell_bohr[0];
+                                        const double rcy = pos_bohr[katom][1]
+                                                           + tcy * cell_bohr[1];
+                                        const double rcz = pos_bohr[katom][2]
+                                                           + tcz * cell_bohr[2];
                                         const double dxbc = rbx - rcx;
                                         const double dybc = rby - rcy;
                                         const double dzbc = rbz - rcz;
@@ -269,8 +264,7 @@ void accumulate_atm_c9(const std::vector<int>& Z,
                                                             + dzca * dzca;
                                         if (r2ca >= rcut2)
                                             continue;
-                                        const double r2abc =
-                                            r2ab * r2bc * r2ca;
+                                        const double r2abc = r2ab * r2bc * r2ca;
                                         if (r2abc <= 0.001)
                                             continue;
                                         // Empirical scaling gate (CP2K)
@@ -282,8 +276,7 @@ void accumulate_atm_c9(const std::vector<int>& Z,
                                         if (iatom == jatom || iatom == katom
                                             || jatom == katom)
                                             fac = 0.5;
-                                        if (iatom == jatom
-                                            && iatom == katom)
+                                        if (iatom == jatom && iatom == katom)
                                             fac = 1.0 / 3.0;
                                         fac *= fac0;
 
@@ -303,10 +296,10 @@ void accumulate_atm_c9(const std::vector<int>& Z,
                                             -std::sqrt(cc6ab * cc6bc * cc6ca);
                                         const double rabc =
                                             std::pow(r2abc, 1.0 / 6.0);
-                                        const double r0 = std::cbrt(
-                                            params.r0ab[za][zb]
-                                            * params.r0ab[zb][zc]
-                                            * params.r0ab[zc][za]);
+                                        const double r0 =
+                                            std::cbrt(params.r0ab[za][zb]
+                                                      * params.r0ab[zb][zc]
+                                                      * params.r0ab[zc][za]);
                                         double fdabc, dfdabc;
                                         // α=16 (paper; CP2K post-2017 fix)
                                         damping_d3(rabc, r0, 4.0 / 3.0, 16.0,
@@ -315,13 +308,11 @@ void accumulate_atm_c9(const std::vector<int>& Z,
                                         const double s2 = r2ab + r2ca - r2bc;
                                         const double s3 = r2ca + r2bc - r2ab;
                                         const double ang =
-                                            0.375 * s1 * s2 * s3 / r2abc
-                                            + 1.0;
+                                            0.375 * s1 * s2 * s3 / r2abc + 1.0;
                                         const double r2abc15 =
                                             std::pow(r2abc, 1.5);
-                                        const double e9 =
-                                            s9 * fac * fdabc * c9 * ang
-                                            / r2abc15;
+                                        const double e9 = s9 * fac * fdabc * c9
+                                                          * ang / r2abc15;
                                         energy -= e9;
 
                                         // Explicit geometry forces (CP2K).
@@ -332,9 +323,8 @@ void accumulate_atm_c9(const std::vector<int>& Z,
                                             rcx - rbx, rcy - rby, rcz - rbz};
                                         const double rca[3] = {
                                             rax - rcx, ray - rcy, raz - rcz};
-                                        double de91 =
-                                            s9 * fac * dfdabc * c9 * ang
-                                            / r2abc15;
+                                        double de91 = s9 * fac * dfdabc * c9
+                                                      * ang / r2abc15;
                                         de91 = -de91 / 3.0 * rabc + 3.0 * e9;
                                         const double dea =
                                             s9 * fac * fdabc * c9
@@ -346,21 +336,20 @@ void accumulate_atm_c9(const std::vector<int>& Z,
                                         // orientation but apply the opposite
                                         // force_a/force_b assignment so F=−∇E
                                         // matches finite differences of E.
-                                        auto add_leg =
-                                            [&](const double rleg[3],
-                                                double r2leg, double sm,
-                                                int ia, int ib) {
-                                                for (int d = 0; d < 3; ++d) {
-                                                    const double fdij =
-                                                        de91 * rleg[d]
-                                                            / r2leg
-                                                        + dea * s123 * rleg[d]
-                                                              / r2leg
-                                                        - dea * sm * rleg[d];
-                                                    forces[ia][d] += fdij;
-                                                    forces[ib][d] -= fdij;
-                                                }
-                                            };
+                                        auto add_leg = [&](const double rleg[3],
+                                                           double r2leg,
+                                                           double sm, int ia,
+                                                           int ib) {
+                                            for (int d = 0; d < 3; ++d) {
+                                                const double fdij =
+                                                    de91 * rleg[d] / r2leg
+                                                    + dea * s123 * rleg[d]
+                                                          / r2leg
+                                                    - dea * sm * rleg[d];
+                                                forces[ia][d] += fdij;
+                                                forces[ib][d] -= fdij;
+                                            }
+                                        };
                                         // AB: sm = s2*s3 + s1*s3 − s1*s2
                                         add_leg(rab, r2ab,
                                                 s2 * s3 + s1 * s3 - s1 * s2,

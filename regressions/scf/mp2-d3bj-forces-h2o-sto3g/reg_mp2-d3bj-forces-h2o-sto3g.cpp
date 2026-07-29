@@ -33,8 +33,8 @@ using namespace ATV;
 cpu::Frame water_dimer() {
     cpu::Frame f(6);
     const double xyz[6][3] = {
-        {0.000, 0.000, 0.000},  {0.757, 0.000, 0.586},  {-0.757, 0.000, 0.586},
-        {0.000, 0.000, 2.900},  {0.757, 0.000, 3.486},  {-0.757, 0.000, 3.486},
+        {0.000, 0.000, 0.000}, {0.757, 0.000, 0.586}, {-0.757, 0.000, 0.586},
+        {0.000, 0.000, 2.900}, {0.757, 0.000, 3.486}, {-0.757, 0.000, 3.486},
     };
     const int Z[6] = {8, 1, 1, 8, 1, 1};
     for (int i = 0; i < 6; ++i) {
@@ -95,7 +95,8 @@ int main() {
     for (int A = 0; A < n; ++A)
         for (int d = 0; d < 3; ++d) {
             const double f_ev = units::convert(
-                d3_f_au[static_cast<std::size_t>(A)][static_cast<std::size_t>(d)],
+                d3_f_au[static_cast<std::size_t>(A)]
+                       [static_cast<std::size_t>(d)],
                 units::Force::HartreePerBohr, units::Force::eVPerAngstrom);
             d3_max = std::max(d3_max, std::fabs(f_ev));
         }
@@ -128,9 +129,9 @@ int main() {
             const double e_p = e_mp2_d3bj(displaced(frame, A, d, +h_ang));
             const double e_m = e_mp2_d3bj(displaced(frame, A, d, -h_ang));
             const double dE_dR_ha_bohr = (e_p - e_m) / (2.0 * h_bohr);
-            const double f_fd = -units::convert(dE_dR_ha_bohr,
-                                               units::Force::HartreePerBohr,
-                                               units::Force::eVPerAngstrom);
+            const double f_fd =
+                -units::convert(dE_dR_ha_bohr, units::Force::HartreePerBohr,
+                                units::Force::eVPerAngstrom);
             const double f_an = res.forces(A, d);
             const double err = std::fabs(f_an - f_fd);
             max_err = std::max(max_err, err);

@@ -177,7 +177,8 @@ TEST(GpwThreadReproducibility, CompactIntegratePotentialIsThreadIndependent) {
 
     for (int w : kWidths) {
         set_width(w);
-        EXPECT_EQ(integrate_potential(cbg, nb, V_r), ref) << "thread count " << w;
+        EXPECT_EQ(integrate_potential(cbg, nb, V_r), ref)
+            << "thread count " << w;
     }
     // Same width twice: catches a split that follows the schedule, not the count.
     set_width(16);
@@ -227,14 +228,11 @@ TEST(GpwThreadReproducibility, XcGridPadeLsdEnergyIsThreadIndependent) {
     std::vector<double> rho_b(static_cast<std::size_t>(ng));
     for (long i = 0; i < ng; ++i) {
         const double t = static_cast<double>(i);
-        rho_a[static_cast<std::size_t>(i)] =
-            0.22 + 0.18 * std::sin(0.0007 * t);
-        rho_b[static_cast<std::size_t>(i)] =
-            0.11 + 0.09 * std::cos(0.0011 * t);
+        rho_a[static_cast<std::size_t>(i)] = 0.22 + 0.18 * std::sin(0.0007 * t);
+        rho_b[static_cast<std::size_t>(i)] = 0.11 + 0.09 * std::cos(0.0011 * t);
     }
 
-    const double ref =
-        ATV::cpu::gpw::xc_grid_pade_lsd(grid, rho_a, rho_b).e_xc;
+    const double ref = ATV::cpu::gpw::xc_grid_pade_lsd(grid, rho_a, rho_b).e_xc;
     ASSERT_NE(ref, 0.0);
 
     for (int w : kWidths) {
@@ -306,7 +304,7 @@ TEST(GpwThreadReproducibility, IntegratePotentialKIsThreadIndependent) {
 
     const ATV::cpu::gpw::internal::KpointBasisGrid kbg =
         ATV::cpu::gpw::internal::build_kpoint_basis_grid(grid, basis, kpts,
-                                                        1e-10);
+                                                         1e-10);
     const ATV::cpu::gpw::internal::CplxMatrix ref =
         ATV::cpu::gpw::internal::integrate_potential_k(kbg, 0, V_r);
 

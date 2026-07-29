@@ -26,8 +26,8 @@ using namespace ATV;
 cpu::Frame water_dimer() {
     cpu::Frame f(6);
     const double xyz[6][3] = {
-        {0.000, 0.000, 0.000},  {0.757, 0.000, 0.586},  {-0.757, 0.000, 0.586},
-        {0.000, 0.000, 2.900},  {0.757, 0.000, 3.486},  {-0.757, 0.000, 3.486},
+        {0.000, 0.000, 0.000}, {0.757, 0.000, 0.586}, {-0.757, 0.000, 0.586},
+        {0.000, 0.000, 2.900}, {0.757, 0.000, 3.486}, {-0.757, 0.000, 3.486},
     };
     const int Z[6] = {8, 1, 1, 8, 1, 1};
     for (int i = 0; i < 6; ++i) {
@@ -77,8 +77,7 @@ int main() {
                 f_d3[static_cast<std::size_t>(A)][static_cast<std::size_t>(d)],
                 units::Force::HartreePerBohr, units::Force::eVPerAngstrom);
             d3_max = std::max(d3_max, std::fabs(f_disp_ev));
-            const double df =
-                g_on.forces(A, d) - g_off.forces(A, d); // eV/Å
+            const double df = g_on.forces(A, d) - g_off.forces(A, d); // eV/Å
             const double err = std::fabs(df - f_disp_ev);
             max_err = std::max(max_err, err);
             net[d] += g_on.forces(A, d);

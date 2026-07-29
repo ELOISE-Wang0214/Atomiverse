@@ -113,10 +113,10 @@ double worst_fd_residual(const Method& method, double h_bohr) {
             displace(f, a, d, h_ang);
             // F = −dE/dR, in Hartree/Bohr
             const double fd = -(ep - em) / (2.0 * h_bohr);
-            worst = std::max(
-                worst,
-                std::abs(fd - fa[static_cast<std::size_t>(a)]
-                                 [static_cast<std::size_t>(d)]));
+            worst =
+                std::max(worst, std::abs(fd
+                                         - fa[static_cast<std::size_t>(a)]
+                                             [static_cast<std::size_t>(d)]));
         }
     }
     return worst;
@@ -134,7 +134,8 @@ double max_abs(const std::vector<std::array<double, 3>>& f) {
 }
 
 /// @brief eV/Å per Hartree/Bohr — the public-surface scale of a residual.
-constexpr double kHaBohrInEvAng = 1.0 / ATV::units::kEvPerAngstromInHartreePerBohr;
+constexpr double kHaBohrInEvAng =
+    1.0 / ATV::units::kEvPerAngstromInHartreePerBohr;
 
 } // namespace
 
@@ -321,8 +322,7 @@ TEST(ScfDispersionSwitch, ThrowsOnAtomCountMismatch) {
     const Frame f = water_dimer();
     GradientResult gr;
     gr.forces = xt::zeros<double>({3, 3});
-    EXPECT_THROW(add_dispersion_forces(f, true, false, gr),
-                 std::runtime_error);
+    EXPECT_THROW(add_dispersion_forces(f, true, false, gr), std::runtime_error);
 }
 
 #endif // ATV_HAS_HF

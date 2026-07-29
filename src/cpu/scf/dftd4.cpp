@@ -167,8 +167,9 @@ void apply_cn_forces(const std::vector<double>& dEdCN,
         if (std::abs(de) < 1.0e-30)
             continue;
         for (const auto& d : dcn[static_cast<std::size_t>(i)]) {
-            const double drk = std::sqrt(d.rik[0] * d.rik[0] + d.rik[1] * d.rik[1]
-                                         + d.rik[2] * d.rik[2]);
+            const double drk =
+                std::sqrt(d.rik[0] * d.rik[0] + d.rik[1] * d.rik[1]
+                          + d.rik[2] * d.rik[2]);
             if (drk < 1.0e-14)
                 continue;
             const double s = de * d.dval / drk;
@@ -188,8 +189,9 @@ void apply_cn_forces(const std::vector<double>& dEdCN,
 }
 
 /// @brief Dense linear solve A x = b (partial pivoting); A is ndim×ndim row-major.
-void solve_linear(const std::vector<double>& Aflat, const std::vector<double>& b,
-                  int ndim, std::vector<double>& sol) {
+void solve_linear(const std::vector<double>& Aflat,
+                  const std::vector<double>& b, int ndim,
+                  std::vector<double>& sol) {
     std::vector<double> aug(static_cast<std::size_t>(ndim * (ndim + 1)));
     for (int i = 0; i < ndim; ++i) {
         for (int j = 0; j < ndim; ++j)
@@ -866,44 +868,44 @@ double disp3_atm(const std::vector<int>& Z,
         const int iz = Z[static_cast<std::size_t>(iat)];
         for (int jat = 0; jat <= iat; ++jat) {
             const int jz = Z[static_cast<std::size_t>(jat)];
-            const double c6ij =
-                c6[static_cast<std::size_t>(jat)][static_cast<std::size_t>(iat)];
+            const double c6ij = c6[static_cast<std::size_t>(jat)]
+                                  [static_cast<std::size_t>(iat)];
             const double r0ij =
                 a1
                     * std::sqrt(3.0 * kD4R4r2[static_cast<std::size_t>(jz)]
                                 * kD4R4r2[static_cast<std::size_t>(iz)])
                 + a2;
             for (const auto& tj : trans) {
-                const double vij0 =
-                    pos[static_cast<std::size_t>(jat)][0] + tj[0]
-                    - pos[static_cast<std::size_t>(iat)][0];
-                const double vij1 =
-                    pos[static_cast<std::size_t>(jat)][1] + tj[1]
-                    - pos[static_cast<std::size_t>(iat)][1];
-                const double vij2 =
-                    pos[static_cast<std::size_t>(jat)][2] + tj[2]
-                    - pos[static_cast<std::size_t>(iat)][2];
+                const double vij0 = pos[static_cast<std::size_t>(jat)][0]
+                                    + tj[0]
+                                    - pos[static_cast<std::size_t>(iat)][0];
+                const double vij1 = pos[static_cast<std::size_t>(jat)][1]
+                                    + tj[1]
+                                    - pos[static_cast<std::size_t>(iat)][1];
+                const double vij2 = pos[static_cast<std::size_t>(jat)][2]
+                                    + tj[2]
+                                    - pos[static_cast<std::size_t>(iat)][2];
                 const double r2ij = vij0 * vij0 + vij1 * vij1 + vij2 * vij2;
                 if (r2ij > cutoff2 || r2ij < eps)
                     continue;
                 for (int kat = 0; kat <= jat; ++kat) {
                     const int kz = Z[static_cast<std::size_t>(kat)];
-                    const double c6ik =
-                        c6[static_cast<std::size_t>(kat)]
-                          [static_cast<std::size_t>(iat)];
-                    const double c6jk =
-                        c6[static_cast<std::size_t>(kat)]
-                          [static_cast<std::size_t>(jat)];
+                    const double c6ik = c6[static_cast<std::size_t>(kat)]
+                                          [static_cast<std::size_t>(iat)];
+                    const double c6jk = c6[static_cast<std::size_t>(kat)]
+                                          [static_cast<std::size_t>(jat)];
                     const double c9 =
                         -s9 * std::sqrt(std::abs(c6ij * c6ik * c6jk));
                     const double r0ik =
                         a1
-                            * std::sqrt(3.0 * kD4R4r2[static_cast<std::size_t>(kz)]
+                            * std::sqrt(3.0
+                                        * kD4R4r2[static_cast<std::size_t>(kz)]
                                         * kD4R4r2[static_cast<std::size_t>(iz)])
                         + a2;
                     const double r0jk =
                         a1
-                            * std::sqrt(3.0 * kD4R4r2[static_cast<std::size_t>(kz)]
+                            * std::sqrt(3.0
+                                        * kD4R4r2[static_cast<std::size_t>(kz)]
                                         * kD4R4r2[static_cast<std::size_t>(jz)])
                         + a2;
                     const double r0 = r0ij * r0ik * r0jk;
@@ -943,14 +945,11 @@ double disp3_atm(const std::vector<int>& Z,
                         const double r5 = r3 * r2;
 
                         const double fdmp =
-                            1.0
-                            / (1.0
-                               + 6.0 * std::pow(r0 / r1, alp / 3.0));
-                        const double ang =
-                            0.375
-                                * (r2ij + r2jk - r2ik) * (r2ij - r2jk + r2ik)
-                                * (-r2ij + r2jk + r2ik) / r5
-                            + 1.0 / r3;
+                            1.0 / (1.0 + 6.0 * std::pow(r0 / r1, alp / 3.0));
+                        const double ang = 0.375 * (r2ij + r2jk - r2ik)
+                                               * (r2ij - r2jk + r2ik)
+                                               * (-r2ij + r2jk + r2ik) / r5
+                                           + 1.0 / r3;
                         const double rr = ang * fdmp;
                         // Per-atom: energy_i -= dE/3 with dE = rr*c9*triple
                         // → total E += -rr*c9*triple
@@ -993,7 +992,8 @@ double dftd4_energy(const std::vector<int>& Z,
     weight_refs(Z, cn_d, q, ga, gc, wf, gw);
     std::vector<std::vector<double>> c6;
     atomic_c6(Z, gw, ga, gc, c6);
-    double e = disp2(Z, pos_bohr, cell, periodic, c6, s6, s8, a1, a2, disp2_cut);
+    double e =
+        disp2(Z, pos_bohr, cell, periodic, c6, s6, s8, a1, a2, disp2_cut);
 
     // ATM three-body: reweight C6 at q = 0 (dftd4 disp.f90).
     if (std::abs(s9) > 1.0e-30) {
@@ -1133,10 +1133,9 @@ void dftd4_twobody_grad(const std::vector<int>& Z,
             double dgwk_ir = 0.0;
             if (inv_norm != 0.0) {
                 // ∂(e/W)/∂cn = (e' W − e W') / W²
-                dgwk_ir =
-                    (dexpw[static_cast<std::size_t>(ir)] * norm_sum
-                     - expw[static_cast<std::size_t>(ir)] * dnorm_sum)
-                    * inv_norm * inv_norm;
+                dgwk_ir = (dexpw[static_cast<std::size_t>(ir)] * norm_sum
+                           - expw[static_cast<std::size_t>(ir)] * dnorm_sum)
+                          * inv_norm * inv_norm;
             } else {
                 gwk_ir = (std::abs(maxcn - cnr) < 1.0e-12) ? 1.0 : 0.0;
                 dgwk_ir = 0.0;
@@ -1283,11 +1282,13 @@ void dftd4_twobody_grad(const std::vector<int>& Z,
 
             // dE/dgw through this pair's c6
             for (int ir = 1; ir <= nrefi; ++ir)
-                dEdgw[static_cast<std::size_t>(i)][static_cast<std::size_t>(ir)]
-                    += pair_dedc6 * dc6_dgwi[static_cast<std::size_t>(ir)];
+                dEdgw[static_cast<std::size_t>(i)]
+                     [static_cast<std::size_t>(ir)] +=
+                    pair_dedc6 * dc6_dgwi[static_cast<std::size_t>(ir)];
             for (int jr = 1; jr <= nrefj; ++jr)
-                dEdgw[static_cast<std::size_t>(j)][static_cast<std::size_t>(jr)]
-                    += pair_dedc6 * dc6_dgwj[static_cast<std::size_t>(jr)];
+                dEdgw[static_cast<std::size_t>(j)]
+                     [static_cast<std::size_t>(jr)] +=
+                    pair_dedc6 * dc6_dgwj[static_cast<std::size_t>(jr)];
         }
     }
 
@@ -1297,17 +1298,17 @@ void dftd4_twobody_grad(const std::vector<int>& Z,
     for (int i = 0; i < n; ++i) {
         const int nref = nref_of(Z[static_cast<std::size_t>(i)]);
         for (int ir = 1; ir <= nref; ++ir) {
-            const double degw =
-                dEdgw[static_cast<std::size_t>(i)][static_cast<std::size_t>(ir)];
+            const double degw = dEdgw[static_cast<std::size_t>(i)]
+                                     [static_cast<std::size_t>(ir)];
             // gw = gwk * zeta
             dEdCN_d4[static_cast<std::size_t>(i)] +=
-                degw * zet[static_cast<std::size_t>(i)]
-                          [static_cast<std::size_t>(ir)]
+                degw
+                * zet[static_cast<std::size_t>(i)][static_cast<std::size_t>(ir)]
                 * dgwk_dcn[static_cast<std::size_t>(i)]
                           [static_cast<std::size_t>(ir)];
             dEdq[static_cast<std::size_t>(i)] +=
-                degw * gwk[static_cast<std::size_t>(i)]
-                          [static_cast<std::size_t>(ir)]
+                degw
+                * gwk[static_cast<std::size_t>(i)][static_cast<std::size_t>(ir)]
                 * dzet_dq[static_cast<std::size_t>(i)]
                          [static_cast<std::size_t>(ir)];
         }
@@ -1332,9 +1333,8 @@ void dftd4_twobody_grad(const std::vector<int>& Z,
         const double cni = cn_eeq_v[static_cast<std::size_t>(i)];
         const double eps = 1.0e-14;
         const double s = std::sqrt(cni + eps);
-        const double dx_dcn =
-            kD4EeqKcn[static_cast<std::size_t>(zi)] * (0.5 * cni + eps)
-            / (s * s * s);
+        const double dx_dcn = kD4EeqKcn[static_cast<std::size_t>(zi)]
+                              * (0.5 * cni + eps) / (s * s * s);
         // dE_charge/dR via x: λ_i · dx_i  →  dE/dCN_eeq += λ_i · dx/dcn
         dEdCN_eeq[static_cast<std::size_t>(i)] +=
             lambda[static_cast<std::size_t>(i)] * dx_dcn;
@@ -1371,11 +1371,10 @@ void dftd4_twobody_grad(const std::vector<int>& Z,
                 const double dAdr = derf_over_r(r, b);
                 // dE = −(λ_i q_j + λ_j q_i) dA
                 // ∇_i A = (dA/dr)(R_i−R_j)/r  (A depends on |R_i−R_j|)
-                const double coeff =
-                    -(lambda[static_cast<std::size_t>(i)]
-                          * q[static_cast<std::size_t>(j)]
-                      + lambda[static_cast<std::size_t>(j)]
-                            * q[static_cast<std::size_t>(i)]);
+                const double coeff = -(lambda[static_cast<std::size_t>(i)]
+                                           * q[static_cast<std::size_t>(j)]
+                                       + lambda[static_cast<std::size_t>(j)]
+                                             * q[static_cast<std::size_t>(i)]);
                 // dE/dR_i = coeff · ∇_i A
                 // F_i = −dE/dR_i = −coeff · (dA/dr) r̂
                 const double pref = -coeff * dAdr / r;
@@ -1442,19 +1441,18 @@ void dftd4_twobody_grad(const std::vector<int>& Z,
                         continue;
                     const double phase =
                         gvec[0] * r0x + gvec[1] * r0y + gvec[2] * r0z;
-                    const double pref =
-                        -std::sin(phase) * fac_rec
-                        * std::exp(-0.25 * g2 / (alp * alp)) / g2;
+                    const double pref = -std::sin(phase) * fac_rec
+                                        * std::exp(-0.25 * g2 / (alp * alp))
+                                        / g2;
                     gAx += pref * gvec[0];
                     gAy += pref * gvec[1];
                     gAz += pref * gvec[2];
                 }
 
-                const double coeff =
-                    -(lambda[static_cast<std::size_t>(i)]
-                          * q[static_cast<std::size_t>(j)]
-                      + lambda[static_cast<std::size_t>(j)]
-                            * q[static_cast<std::size_t>(i)]);
+                const double coeff = -(lambda[static_cast<std::size_t>(i)]
+                                           * q[static_cast<std::size_t>(j)]
+                                       + lambda[static_cast<std::size_t>(j)]
+                                             * q[static_cast<std::size_t>(i)]);
                 // F_i = −coeff · ∇_i A
                 const double fx = -coeff * gAx;
                 const double fy = -coeff * gAy;
@@ -1574,10 +1572,9 @@ D4Result evaluate_d4(const Frame& frame, const D4& m, bool want_forces) {
     }
     const double cell[3] = {0.0, 0.0, 0.0};
     if (!want_forces) {
-        res.energy =
-            dftd4_energy(Z, pos, cell, /*periodic=*/false, m.s6, m.s8, m.a1,
-                         m.a2, m.ga, m.gc, m.wf, m.charge, kCnCut, kDisp2Cut,
-                         m.s9);
+        res.energy = dftd4_energy(Z, pos, cell, /*periodic=*/false, m.s6, m.s8,
+                                  m.a1, m.a2, m.ga, m.gc, m.wf, m.charge,
+                                  kCnCut, kDisp2Cut, m.s9);
         return res;
     }
     return dftd4(Z, pos, cell, /*periodic=*/false, m.s6, m.s8, m.a1, m.a2, m.ga,
