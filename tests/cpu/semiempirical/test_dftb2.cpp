@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <utility>
+#include <vector>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
@@ -766,12 +767,164 @@ TEST(DFTB2, KMesh41x1DiffersFromGamma) {
     EXPECT_GT(std::fabs(e_k - e_gamma), 0.01);
 }
 
-TEST(DFTB2, KMeshRejectsForces) {
+namespace {
+
+/// Analytic multi-k forces [eV/Å] as a flat (3·N) vector, Frame in / Frame out.
+std::vector<double> forces_kmesh(cpu::Frame g, std::array<int, 3> mesh,
+                                 bool time_reversal = true) {
+    g.meta.get(kEnergy) = 0;
+    for (int i = 0; i < g.nlocal(); ++i)
+        g.span(kAtom_fx)[i] = g.span(kAtom_fy)[i] = g.span(kAtom_fz)[i] = 0;
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 d;
+    d.with_forces = true;
+    d.scc_tol = 1e-12;
+    d.max_scc = 80;
+    d.k_mesh = mesh;
+    d.k_time_reversal = time_reversal;
+    d.build({ctx, g});
+    d.launch({ctx, g, 0, 0});
+    std::vector<double> out;
+    for (int i = 0; i < g.nlocal(); ++i) {
+        out.push_back(static_cast<double>(g.span(kAtom_fx)[i]));
+        out.push_back(static_cast<double>(g.span(kAtom_fy)[i]));
+        out.push_back(static_cast<double>(g.span(kAtom_fz)[i]));
+    }
+    return out;
+}
+
+/// −dE/dx of the multi-k energy at atom `atom`, central difference (h in Å).
+double fd_force_x_kmesh(std::array<int, 3> mesh, int atom, double h = 1.0e-4) {
+    auto gp = make_c_chain_offeq();
+    auto gm = make_c_chain_offeq();
+    gp.span(kAtom_x)[atom] += static_cast<StorageReal>(h);
+    gm.span(kAtom_x)[atom] -= static_cast<StorageReal>(h);
+    return -(energy_kmesh(std::move(gp), mesh)
+             - energy_kmesh(std::move(gm), mesh))
+           / (2.0 * h);
+}
+
+} // namespace
+
+TEST(DFTB2, KMeshForcesMatchFdMesh211) {
+    const std::array<int, 3> mesh{{2, 1, 1}};
+    const auto f = forces_kmesh(make_c_chain_offeq(), mesh);
+    EXPECT_NEAR(f[0], fd_force_x_kmesh(mesh, 0), 1e-6);
+    EXPECT_NEAR(f[3], fd_force_x_kmesh(mesh, 1), 1e-6);
+}
+
+TEST(DFTB2, KMeshForcesMatchFdMesh221) {
+    const std::array<int, 3> mesh{{2, 2, 1}};
+    const auto f = forces_kmesh(make_c_chain_offeq(), mesh);
+    EXPECT_NEAR(f[0], fd_force_x_kmesh(mesh, 0), 1e-6);
+    EXPECT_NEAR(f[3], fd_force_x_kmesh(mesh, 1), 1e-6);
+}
+
+TEST(DFTB2, KMeshForcesSumToZero) {
+    const auto f = forces_kmesh(make_c_chain_offeq(), {{4, 1, 1}});
+    for (int k = 0; k < 3; ++k)
+        EXPECT_NEAR(f[k] + f[3 + k], 0.0, 1e-10);
+}
+
+TEST(DFTB2, KMeshForcesAreNonTrivialAtOffEqGeometry) {
+    const auto f = forces_kmesh(make_c_chain_offeq(), {{4, 1, 1}});
+    EXPECT_GT(std::fabs(f[0]), 1e-3);
+}
+
+TEST(DFTB2, KMesh111ForcesMatchGammaForces) {
+    // {1,1,1} must keep routing to the real Γ analytic gradient, bit for bit.
+    const auto f_mesh = forces_kmesh(make_c_chain_offeq(), {{1, 1, 1}});
+    cpu::Frame g = make_c_chain_offeq();
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 d;
+    d.with_forces = true;
+    d.scc_tol = 1e-12;
+    d.max_scc = 80;
+    d.build({ctx, g});
+    d.launch({ctx, g, 0, 0});
+    for (int i = 0; i < 2; ++i)
+        EXPECT_NEAR(f_mesh[3 * i],
+                    static_cast<double>(g.span(kAtom_fx)[i]), 1e-10);
+}
+
+TEST(DFTB2, KMeshForcesAreTimeReversalInvariant) {
+    // Folding ±k is exact (P(−k) = conj P(k)); the unfolded run additionally
+    // arms the imaginary-residue gate inside the multi-k gradient. The 3×1×1
+    // mesh contains Γ, which is self-paired and gated in both runs.
+    const auto folded = forces_kmesh(make_c_chain_offeq(), {{3, 1, 1}}, true);
+    const auto full = forces_kmesh(make_c_chain_offeq(), {{3, 1, 1}}, false);
+    for (std::size_t i = 0; i < folded.size(); ++i)
+        EXPECT_NEAR(folded[i], full[i], 1e-12);
+}
+
+TEST(DFTB2, PeriodicAnalyticStressMatchesStrainFdCChain) {
+    // Γ-PBC cell whose OWN images sit inside r_cut (Lx = 2.8 Å < 4.5 Å): the
+    // self-image A–(A+T) bonds carry no nuclear force but do scale with the
+    // cell, so the pair virial must include them.
+    auto f = make_c_chain_offeq();
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 dftb;
+    dftb.with_forces = false;
+    dftb.with_stress = true;
+    dftb.scc_tol = 1e-12;
+    dftb.max_scc = 80;
+    dftb.build({ctx, f});
+    dftb.launch({ctx, f, 0, 0});
+
+    const auto& san = dftb.last_stress();
+    constexpr double h = 2.0e-4;
+    const double vol = f.box.volume();
+    ASSERT_GT(vol, 0.0);
+    auto strain_fd = [&](int voigt) {
+        auto fp = make_c_chain_offeq();
+        auto fm = make_c_chain_offeq();
+        apply_strain_voigt(fp, voigt, h);
+        apply_strain_voigt(fm, voigt, -h);
+        return -(energy_only(fp) - energy_only(fm)) / (2.0 * h) / vol;
+    };
+    EXPECT_NEAR(san[0], strain_fd(0), 1e-6); // xx — chain axis
+    EXPECT_NEAR(san[1], strain_fd(1), 1e-6); // yy — vacuum axis
+}
+
+TEST(DFTB2, KMeshStressMatchesStrainFd) {
+    // The MP mesh lives in fractional coordinates, so an affine strain touches
+    // only the image bonds — the multi-k virial is the same pair sum.
+    const std::array<int, 3> mesh{{2, 1, 1}};
+    auto f = make_c_chain_offeq();
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 d;
+    d.with_forces = false;
+    d.with_stress = true;
+    d.scc_tol = 1e-12;
+    d.max_scc = 80;
+    d.k_mesh = mesh;
+    d.build({ctx, f});
+    d.launch({ctx, f, 0, 0});
+
+    const auto& san = d.last_stress();
+    constexpr double h = 2.0e-4;
+    const double vol = f.box.volume();
+    ASSERT_GT(vol, 0.0);
+    auto strain_fd = [&](int voigt) {
+        auto fp = make_c_chain_offeq();
+        auto fm = make_c_chain_offeq();
+        apply_strain_voigt(fp, voigt, h);
+        apply_strain_voigt(fm, voigt, -h);
+        return -(energy_kmesh(std::move(fp), mesh)
+                 - energy_kmesh(std::move(fm), mesh))
+               / (2.0 * h) / vol;
+    };
+    EXPECT_NEAR(san[0], strain_fd(0), 1e-6); // xx — chain axis
+    EXPECT_NEAR(san[1], strain_fd(1), 1e-6); // yy — vacuum axis
+}
+
+TEST(DFTB2, KMeshRejectsOpenShell) {
     auto f = make_c_chain_cell();
     cpu::Context ctx;
     cpu::semiempirical::DFTB2 d;
     d.k_mesh = {{4, 1, 1}};
     d.with_forces = true;
+    d.multiplicity = 3;
     d.build({ctx, f});
     EXPECT_THROW(d.launch({ctx, f, 0, 0}), std::runtime_error);
 }

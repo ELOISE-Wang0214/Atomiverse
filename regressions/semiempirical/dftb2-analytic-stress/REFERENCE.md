@@ -94,17 +94,24 @@ nor the new value is an oracle number — no DFTB+ binary exists on this host
    into one spin-resolved `analytic_forces_stress` that also emits the virial;
    this case's numbers are unchanged
    (`regressions/semiempirical/dftb2-spin-analytic-stress`).
-3. **No periodic case, and the self-image virial is missing.** This gate's
-   geometry is a molecule in a 20 Å box, so only the \(a<b\) pair virial is
-   exercised, and the stress is never checked against the Γ-point
-   lattice-summed energy path. The pair walk in
-   `src/cpu/semiempirical/dftb2.cpp` (`for (int b = a + 1; ...)`) skips
-   self-images (\(a=a\), \(T\neq0\)). Those exert zero nuclear force — so
-   forces are unaffected and `reg_dftb2-periodic-forces` is green — but they
-   **do** carry a virial once a lattice image falls inside the SK / γ /
-   repulsive cutoff, so under dense Γ-PBC (e.g. a 2.8 Å C-chain cell) the
-   analytic stress is incomplete. A periodic strain-FD gate plus the
-   self-image virial are owed together.
+3. ~~**No periodic case.**~~ **Closed 2026-07-29** (`dftb2-multi-k-forces`).
+   This gate's geometry is still a molecule in a 20 Å box, and the numbers above
+   are bit-unchanged — but the defect it was pointing at was real and is fixed:
+   the pair virial walked ordered pairs \(a<b\) only, so it dropped the
+   self-image \(A\)–\((A+\mathbf T)\) bond terms. Those carry no nuclear force
+   (the bond is \(\mathbf T\), independent of every nuclear coordinate) but do
+   scale with the cell, so they belong in the virial and only in the virial.
+   Invisible here (every self-image is beyond \(r_{\mathrm{cut}}\)); on a
+   periodic C-chain cell (\(L_x = 2.8\) Å < \(r_{\mathrm{cut}} = 4.5\) Å) it was
+   a 14% error, \(\sigma_{xx}\) analytic \(-0.31716963\) vs strain-FD
+   \(-0.37019871\) eV/Å³. With the self-image \(H^0/S/\gamma/E_\mathrm{rep}\)
+   virial terms added, the residual is \(<10^{-6}\) eV/Å³ and the periodic case
+   is unit-gated by `tests/cpu/semiempirical/test_dftb2.cpp`
+   `PeriodicAnalyticStressMatchesStrainFdCChain` plus the multi-k strain-FD
+   gate in `regressions/semiempirical/dftb2-multi-k-forces/`.
+
+   The self-image virial is carried on the **spin-resolved** assembly, so it
+   applies to the open-shell path as well as the restricted one.
 
 ## Perf
 
