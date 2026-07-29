@@ -37,7 +37,7 @@ done=36; `## in_progress` empty).
 product closed. Blocked emptied same day — CUDA/E11/E12/hybrid DFT are
 **off-queue deferred** (map ownership), not active blocked debt. Open MD/electrochem specs: **none**. Unmerged
 in-scope `wf/<slug>` ahead_of_dev: **none**. **Preserved:** in_progress (0);
-blocked (4); done (36).
+blocked emptied 2026-07-29 (off-queue deferred); done includes residual product.
 **Foothold ≠ closed (drives new rows):** `ConstPotMaZe` is a CG+ASPC adiabatic
 foothold — Coretti symplectic mass-zero constrained dynamics deferred
 in-header; `FixDfield` is a vacuum \(E\equiv D\) foothold — no self-consistent
