@@ -62,4 +62,3 @@ ctest --test-dir "${BUILD_DIR}" \
   --timeout "${TEST_TIMEOUT}" \
   --output-on-failure \
   -E 'no_alloc|^test_mpi_|scrub|module_dag|module_off|compatibility_surface|molrs_source_contract'
-)
