@@ -378,6 +378,122 @@ TEST(DFTB2, PeriodicGammaDiffersFromIsolatedDimer) {
     EXPECT_GT(std::fabs(e_pbc - e_mol), 0.05);
 }
 
+/// Off-eq 1-D C dimer cell: r≠Lx/2 so left/right lattice images differ → |F|≠0.
+cpu::Frame make_c_chain_offeq(double r_cc = 1.20, double Lx = 2.8,
+                              double Ly = 12.0, double Lz = 12.0) {
+    cpu::Frame f(2);
+    f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 6;
+    f.span(kAtom_x)[0] = 0.0;
+    f.span(kAtom_y)[0] = 0.0;
+    f.span(kAtom_z)[0] = 0.0;
+    f.span(kAtom_x)[1] = static_cast<StorageReal>(r_cc);
+    f.span(kAtom_y)[1] = 0.0;
+    f.span(kAtom_z)[1] = 0.0;
+    for (int i = 0; i < 2; ++i) {
+        f.span(kAtom_mass)[i] = 12.011;
+        f.span(kAtom_tag)[i] = i + 1;
+        f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
+    }
+    f.box = cpu::Box::orthorhombic(Lx, Ly, Lz);
+    f.meta.get(kEnergy) = 0;
+    return f;
+}
+
+TEST(DFTB2, PeriodicAnalyticForceMatchesFdCChain) {
+    // Lattice-summed energy vs lattice-summed analytic F (not min-image only).
+    auto f = make_c_chain_offeq();
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 dftb;
+    dftb.with_forces = true;
+    dftb.scc_tol = 1e-12;
+    dftb.max_scc = 80;
+    dftb.build({ctx, f});
+    dftb.launch({ctx, f, 0, 0});
+    EXPECT_TRUE(std::isfinite(dftb.last_energy()));
+
+    const double fx0 = static_cast<double>(f.span(kAtom_fx)[0]);
+    const double fx1 = static_cast<double>(f.span(kAtom_fx)[1]);
+    const double fy0 = static_cast<double>(f.span(kAtom_fy)[0]);
+    const double fz0 = static_cast<double>(f.span(kAtom_fz)[0]);
+    EXPECT_TRUE(std::isfinite(fx0));
+    EXPECT_GT(fx0 * fx0 + fy0 * fy0 + fz0 * fz0, 1e-8);
+    // Action-reaction / zero net force (no external field).
+    EXPECT_NEAR(fx0 + fx1, 0.0, 1e-6);
+    EXPECT_NEAR(static_cast<double>(f.span(kAtom_fy)[0] + f.span(kAtom_fy)[1]),
+                0.0, 1e-6);
+    EXPECT_NEAR(static_cast<double>(f.span(kAtom_fz)[0] + f.span(kAtom_fz)[1]),
+                0.0, 1e-6);
+
+    constexpr double h = 1.0e-4;
+    constexpr double kFdTol = 1e-5; // eV/Å; stationary SCC ⇒ FD-exact
+    {
+        auto gp = make_c_chain_offeq();
+        auto gm = make_c_chain_offeq();
+        gp.span(kAtom_x)[0] += static_cast<StorageReal>(h);
+        gm.span(kAtom_x)[0] -= static_cast<StorageReal>(h);
+        const double fd = -(energy_only(gp) - energy_only(gm)) / (2.0 * h);
+        EXPECT_NEAR(fx0, fd, kFdTol) << "C0 Fx analytic=" << fx0
+                                     << " fd=" << fd;
+    }
+    {
+        auto gp = make_c_chain_offeq();
+        auto gm = make_c_chain_offeq();
+        gp.span(kAtom_x)[1] += static_cast<StorageReal>(h);
+        gm.span(kAtom_x)[1] -= static_cast<StorageReal>(h);
+        const double fd = -(energy_only(gp) - energy_only(gm)) / (2.0 * h);
+        EXPECT_NEAR(fx1, fd, kFdTol) << "C1 Fx analytic=" << fx1
+                                     << " fd=" << fd;
+    }
+}
+
+TEST(DFTB2, PeriodicAnalyticForceMatchesFdWaterTightBox) {
+    // Polar system under PBC: Δq≠0 so lattice γ force terms are live.
+    // L=4.0 Å puts O/H images inside C/O r_cut (4.5 Å) while still finite.
+    auto make_water_pbc = []() {
+        auto f = make_water_offeq();
+        f.box = cpu::Box::orthorhombic(4.0, 4.0, 4.0);
+        return f;
+    };
+    auto f = make_water_pbc();
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 dftb;
+    dftb.with_forces = true;
+    dftb.scc_tol = 1e-12;
+    dftb.max_scc = 80;
+    dftb.build({ctx, f});
+    dftb.launch({ctx, f, 0, 0});
+    EXPECT_TRUE(std::isfinite(dftb.last_energy()));
+
+    constexpr double h = 1.0e-4;
+    constexpr double kFdTol = 1e-5;
+    {
+        auto gp = make_water_pbc();
+        auto gm = make_water_pbc();
+        gp.span(kAtom_x)[0] += static_cast<StorageReal>(h);
+        gm.span(kAtom_x)[0] -= static_cast<StorageReal>(h);
+        const double fd = -(energy_only(gp) - energy_only(gm)) / (2.0 * h);
+        EXPECT_NEAR(static_cast<double>(f.span(kAtom_fx)[0]), fd, kFdTol);
+    }
+    {
+        auto gp = make_water_pbc();
+        auto gm = make_water_pbc();
+        gp.span(kAtom_y)[1] += static_cast<StorageReal>(h);
+        gm.span(kAtom_y)[1] -= static_cast<StorageReal>(h);
+        const double fd = -(energy_only(gp) - energy_only(gm)) / (2.0 * h);
+        EXPECT_NEAR(static_cast<double>(f.span(kAtom_fy)[1]), fd, kFdTol);
+    }
+
+    double net[3] = {0, 0, 0};
+    for (int i = 0; i < 3; ++i) {
+        net[0] += static_cast<double>(f.span(kAtom_fx)[i]);
+        net[1] += static_cast<double>(f.span(kAtom_fy)[i]);
+        net[2] += static_cast<double>(f.span(kAtom_fz)[i]);
+    }
+    EXPECT_NEAR(net[0], 0.0, 1e-6);
+    EXPECT_NEAR(net[1], 0.0, 1e-6);
+    EXPECT_NEAR(net[2], 0.0, 1e-6);
+}
+
 TEST(DFTB2, MolecularLimitLargeBoxStable) {
     // Two large-box H2 runs should agree (lattice sum only sees T=0).
     const double e1 = energy_only(make_h2(0.74));
