@@ -2647,6 +2647,218 @@ void DFTB2::launch(const LaunchContext& ctx) {
     }
 }
 
+// ── Linear-response TD-DFTB (Casida) ────────────────────────────────────
+//
+// Niehaus, Suhai, Della Sala, Lugli, Elstner, Seifert, Frauenheim,
+// Phys. Rev. B 63, 085108 (2001). Lives in this translation unit so the
+// Slater-Koster / gamma / SCC machinery above is REUSED (anonymous-namespace
+// names stay visible for the rest of the TU) rather than extracted into
+// one-shot helpers or duplicated in a second method.
+
+TdDftbResult DFTB2::td_casida(const Frame& frame, int n_states,
+                              TdDftbChannel channel, int n_occ_window,
+                              int n_virt_window,
+                              double coupling_scale) const {
+    // Dense Casida path only; matches the RKS::tddft n_ov cap.
+    constexpr int kMaxPairs = 512;
+
+    if (sk_set != DftbSkSet::MioSketch)
+        throw std::runtime_error(
+            "DFTB2::td_casida: MioSketch SK path only (linear response is not "
+            "implemented on the 3ob tables)");
+    if (k_mesh[0] != 1 || k_mesh[1] != 1 || k_mesh[2] != 1)
+        throw std::runtime_error(
+            "DFTB2::td_casida: Gamma point only (k_mesh must be {1,1,1}); "
+            "periodic linear response is not implemented");
+    if (multiplicity != 1)
+        throw std::runtime_error(
+            "DFTB2::td_casida: closed-shell reference only (multiplicity must "
+            "be 1); spin-polarized TD-DFTB is not implemented");
+    if (n_states < 1)
+        throw std::invalid_argument("DFTB2::td_casida: n_states must be >= 1");
+    if (n_occ_window < 0 || n_virt_window < 0)
+        throw std::invalid_argument(
+            "DFTB2::td_casida: occupied/virtual window must be >= 0 (0 = all)");
+    if (!std::isfinite(coupling_scale) || coupling_scale < 0.0)
+        throw std::invalid_argument(
+            "DFTB2::td_casida: coupling_scale must be finite and >= 0");
+    if (!(mix_beta > 0.0) || mix_beta > 1.0)
+        throw std::invalid_argument(
+            "DFTB2::td_casida: mix_beta must be in (0, 1]");
+
+    const int n_at = frame.nlocal();
+    if (n_at < 1)
+        throw std::invalid_argument("DFTB2::td_casida: empty frame");
+    const int* type = frame.span(kAtom_type).data();
+    const StorageReal* x = frame.span(kAtom_x).data();
+    const StorageReal* y = frame.span(kAtom_y).data();
+    const StorageReal* z = frame.span(kAtom_z).data();
+
+    // Element rows + atomic-orbital offsets: the same walk launch_mio does.
+    std::vector<const DftbElementRow*> el(static_cast<std::size_t>(n_at));
+    std::vector<int> ao0(static_cast<std::size_t>(n_at) + 1, 0);
+    double n_elec = -static_cast<double>(charge);
+    for (int a = 0; a < n_at; ++a) {
+        el[static_cast<std::size_t>(a)] = &element_row(type[a]);
+        n_elec += el[static_cast<std::size_t>(a)]->n_val;
+        ao0[static_cast<std::size_t>(a) + 1] =
+            ao0[static_cast<std::size_t>(a)]
+            + el[static_cast<std::size_t>(a)]->n_ao;
+    }
+    const int n_ao = ao0[static_cast<std::size_t>(n_at)];
+    if (n_ao < 1)
+        throw std::runtime_error("DFTB2::td_casida: no basis functions");
+
+    const Occupancy occ = resolve_occupancy(n_elec, multiplicity);
+    if (occ.unrestricted)
+        throw std::runtime_error(
+            "DFTB2::td_casida: odd electron count — closed-shell reference "
+            "required");
+    const int n_occ = occ.n_alpha;
+    const int n_virt = n_ao - n_occ;
+    if (n_occ < 1 || n_virt < 1)
+        throw std::runtime_error(
+            "DFTB2::td_casida: need at least one occupied and one virtual "
+            "orbital (n_occ=" + std::to_string(n_occ)
+            + ", n_virt=" + std::to_string(n_virt) + ")");
+
+    // Ground state at THIS geometry — no cached state, no launch-order coupling.
+    const SccResult gs = scc_energy_restricted(n_at, n_ao, n_occ, el, ao0, type,
+                                               x, y, z, frame.box, scc_tol,
+                                               max_scc, mix_beta);
+
+    // Overlap and gamma from the same builders the energy path uses.
+    linalg::RealMatrix H0, S;
+    build_h0_s(n_at, n_ao, el, ao0, type, x, y, z, frame.box, H0, S);
+    std::vector<double> gamma(static_cast<std::size_t>(n_at) * n_at, 0.0);
+    for (int a = 0; a < n_at; ++a)
+        for (int b = 0; b < n_at; ++b)
+            gamma[static_cast<std::size_t>(a) * n_at + b] =
+                gamma_pair(a, b, el, x, y, z, frame.box);
+
+    // Active window: the n_o highest occupied and n_v lowest virtual orbitals.
+    const int n_o = (n_occ_window == 0) ? n_occ : std::min(n_occ_window, n_occ);
+    const int n_v =
+        (n_virt_window == 0) ? n_virt : std::min(n_virt_window, n_virt);
+    const int n_pair = n_o * n_v;
+    if (n_pair > kMaxPairs)
+        throw std::runtime_error(
+            "DFTB2::td_casida: pair space " + std::to_string(n_pair)
+            + " exceeds the dense cap " + std::to_string(kMaxPairs)
+            + " — narrow n_occ_window / n_virt_window (no iterative solver)");
+    if (n_states > n_pair)
+        throw std::invalid_argument(
+            "DFTB2::td_casida: n_states " + std::to_string(n_states)
+            + " exceeds the " + std::to_string(n_pair)
+            + " occupied->virtual pairs in the window");
+
+    TdDftbResult out;
+    out.n_pair = n_pair;
+    out.n_atoms = n_at;
+    out.channel = channel;
+    out.coupling_scale = coupling_scale;
+    out.pair_occ.resize(static_cast<std::size_t>(n_pair));
+    out.pair_virt.resize(static_cast<std::size_t>(n_pair));
+    std::vector<double> de(static_cast<std::size_t>(n_pair), 0.0);
+    for (int io = 0; io < n_o; ++io) {
+        const int i = n_occ - n_o + io;
+        for (int iv = 0; iv < n_v; ++iv) {
+            const int a = n_occ + iv;
+            const std::size_t p = static_cast<std::size_t>(io) * n_v + iv;
+            out.pair_occ[p] = i;
+            out.pair_virt[p] = a;
+            de[p] = gs.eps(a) - gs.eps(i);
+            if (!(de[p] > 0.0))
+                throw std::runtime_error(
+                    "DFTB2::td_casida: non-positive orbital gap eps_"
+                    + std::to_string(a) + " - eps_" + std::to_string(i) + " = "
+                    + std::to_string(de[p])
+                    + " eV — the Casida sqrt(eps_a - eps_i) form requires a "
+                      "gapped closed-shell reference");
+        }
+    }
+
+    // Mulliken transition charges q^{ia}_A = 1/2 sum_{mu in A}
+    //   (c_{mu i} (S c_a)_mu + c_{mu a} (S c_i)_mu).
+    const linalg::RealMatrix SC = xt::linalg::dot(S, gs.C);
+    std::vector<int> ao_atom(static_cast<std::size_t>(n_ao), 0);
+    for (int a = 0; a < n_at; ++a)
+        for (int m = ao0[static_cast<std::size_t>(a)];
+             m < ao0[static_cast<std::size_t>(a) + 1]; ++m)
+            ao_atom[static_cast<std::size_t>(m)] = a;
+    out.transition_charge.assign(
+        static_cast<std::size_t>(n_pair) * n_at, 0.0);
+    for (int p = 0; p < n_pair; ++p) {
+        const int i = out.pair_occ[static_cast<std::size_t>(p)];
+        const int a = out.pair_virt[static_cast<std::size_t>(p)];
+        double* qp = out.transition_charge.data()
+                     + static_cast<std::size_t>(p) * n_at;
+        for (int mu = 0; mu < n_ao; ++mu)
+            qp[ao_atom[static_cast<std::size_t>(mu)]] +=
+                0.5 * (gs.C(mu, i) * SC(mu, a) + gs.C(mu, a) * SC(mu, i));
+    }
+
+    // Coupling kernel K and the Casida matrix Omega [eV^2]. Assembled exactly
+    // as written — never re-symmetrized, so its symmetry stays a real check.
+    out.casida_ev2.assign(static_cast<std::size_t>(n_pair) * n_pair, 0.0);
+    for (int p = 0; p < n_pair; ++p) {
+        const double* qp = out.transition_charge.data()
+                           + static_cast<std::size_t>(p) * n_at;
+        for (int r = 0; r < n_pair; ++r) {
+            const double* qr = out.transition_charge.data()
+                               + static_cast<std::size_t>(r) * n_at;
+            double k = 0.0;
+            if (channel == TdDftbChannel::singlet) {
+                for (int a = 0; a < n_at; ++a)
+                    for (int b = 0; b < n_at; ++b)
+                        k += qp[a]
+                             * gamma[static_cast<std::size_t>(a) * n_at + b]
+                             * qr[b];
+            } else {
+                // Magnetization kernel is on-site: gamma^m_AB = delta_AB W_A.
+                for (int a = 0; a < n_at; ++a)
+                    k += qp[a] * el[static_cast<std::size_t>(a)]->spin_w
+                         * qr[a];
+            }
+            k *= coupling_scale;
+            double om = 2.0
+                        * std::sqrt(de[static_cast<std::size_t>(p)]) * k
+                        * std::sqrt(de[static_cast<std::size_t>(r)]);
+            if (p == r)
+                om += de[static_cast<std::size_t>(p)]
+                      * de[static_cast<std::size_t>(p)];
+            out.casida_ev2[static_cast<std::size_t>(p) * n_pair + r] = om;
+        }
+    }
+
+    linalg::RealMatrix omega = xt::zeros<double>({n_pair, n_pair});
+    for (int p = 0; p < n_pair; ++p)
+        for (int r = 0; r < n_pair; ++r)
+            omega(p, r) =
+                out.casida_ev2[static_cast<std::size_t>(p) * n_pair + r];
+    // Energies only — the eigenvectors (the X+Y response amplitudes) would be
+    // needed for transition dipoles, which this foothold does not ship.
+    const auto lambda = xt::linalg::eigvalsh(omega); // ascending
+
+    out.energy_ev.resize(static_cast<std::size_t>(n_states));
+    for (int s = 0; s < n_states; ++s) {
+        const double lam = lambda(s);
+        if (lam < 0.0)
+            throw std::runtime_error(
+                "DFTB2::td_casida: negative Casida root omega^2 = "
+                + std::to_string(lam)
+                + " eV^2 (imaginary excitation — response instability); no "
+                  "fallback value");
+        out.energy_ev[static_cast<std::size_t>(s)] = std::sqrt(lam);
+    }
+
+    std::vector<double> de_sorted = de;
+    std::sort(de_sorted.begin(), de_sorted.end());
+    out.ks_gap_ev.assign(de_sorted.begin(),
+                         de_sorted.begin() + n_states);
+    return out;
+}
+
 } // namespace semiempirical
 } // namespace cpu
 } // namespace ATV

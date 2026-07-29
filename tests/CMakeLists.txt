@@ -254,6 +254,7 @@ atv_add_cpp_test(test_cpu_dftb0                   cpu/semiempirical/test_dftb0.c
 atv_add_cpp_test(test_cpu_dftb2_sk                cpu/semiempirical/test_dftb2_sk.cpp)
 atv_add_cpp_test(test_cpu_dftb2_3ob               cpu/semiempirical/test_dftb2_3ob.cpp)
 atv_add_cpp_test(test_cpu_dftb2_dispersion_d3     cpu/semiempirical/test_dftb2_dispersion_d3.cpp)
+atv_add_cpp_test(test_cpu_td_dftb2                cpu/semiempirical/test_td_dftb2.cpp)
 atv_add_cpp_test(test_cpu_dftb3                   cpu/semiempirical/test_dftb3.cpp)
 atv_add_cpp_test(test_cpu_dftb3_scc               cpu/semiempirical/test_dftb3_scc.cpp)
 atv_add_cpp_test(test_cpu_scc_mixer               cpu/semiempirical/test_scc_mixer.cpp)

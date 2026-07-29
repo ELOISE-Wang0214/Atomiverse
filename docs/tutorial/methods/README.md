@@ -111,6 +111,16 @@ binary on host (`perf_exempt`).
 | Γ-PBC analytic nuclear forces (off-eq C chain) | [dftb2-periodic-forces](dftb2-periodic-forces.md) | `regressions/semiempirical/dftb2-periodic-forces` | literature (+ family dftb+) | **perf_exempt** |
 | Multi-k SCC-DFTB2 (4×1×1 C chain) | [dftb2-kpoints](dftb2-kpoints.md) | `regressions/semiempirical/dftb2-kpoints` | dftb+ family (+ ATV mio-style pin) | **perf_exempt** |
 | SCC-DFTB3 H₂O (mio-style; third-order \(E\)) | [dftb3-water-mio](dftb3-water-mio.md) | `regressions/semiempirical/dftb3-water-mio` | dftb+ formula-Gaus2011 (Hamiltonian twin) | **perf_exempt** |
+## Index — TB / SE capability wave 4 (2026-07-29)
+
+Offline family-locked pins only. Oracle = **DFTB+** for DFTB family rows; a
+row may carry `oracle: literature` (formalism) when no DFTB+ binary and no
+published value for the exact geometry + SK set exist — the REFERENCE `Gaps`
+section must then say so explicitly and the case ships structural gates only.
+
+| Method | Page | Regression | Oracle |
+| ------ | ---- | ---------- | ------ |
+| Linear-response TD-DFTB (Casida) H₂ singlet/triplet | [td-dftb-h2](td-dftb-h2.md) | `regressions/semiempirical/td-dftb-h2` | literature (formalism; **no absolute pin** — `perf_exempt`) |
 
 ## Index — MetalWalls capability wave 1 (2026-07-23)
 

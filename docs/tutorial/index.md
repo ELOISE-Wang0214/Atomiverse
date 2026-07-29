@@ -136,6 +136,19 @@ Full index: [methods/README](methods/README.md). Final harness-wave-3 batch
 | Γ-PBC analytic nuclear forces (off-eq C chain) | [dftb2-periodic-forces](methods/dftb2-periodic-forces.md) | `regressions/semiempirical/dftb2-periodic-forces` | literature + family dftb+ (`perf_exempt`) |
 | Multi-k SCC-DFTB2 (4×1×1 C chain) | [dftb2-kpoints](methods/dftb2-kpoints.md) | `regressions/semiempirical/dftb2-kpoints` | dftb+ family (`perf_exempt`) |
 | SCC-DFTB3 H₂O (mio-style; third-order \(E\)) | [dftb3-water-mio](methods/dftb3-water-mio.md) | `regressions/semiempirical/dftb3-water-mio` | dftb+ formula-Gaus2011 (`perf_exempt`) |
+### TB / SE capability wave 4 (semiempirical + tight-binding)
+
+Offline OpenMOPAC / DFTB+ / xtb pins only — see
+[tb-method-handoff](../developer/tb-method-handoff.md) and `tools/tb_oracle/`.
+Family-locked oracles: NDDO → OpenMOPAC; DFTB* → DFTB+; GFN-xTB → xtb. A row
+may carry `oracle: literature` (formalism only) when neither an oracle binary
+nor a published value for the exact geometry + SK set exists; the case then
+ships structural gates and says so in its REFERENCE `Gaps`.
+Full index: [methods/README](methods/README.md).
+
+| Method | Page | Regression | Oracle |
+|--------|------|------------|--------|
+| Linear-response TD-DFTB (Casida) H₂ singlet/triplet | [td-dftb-h2](methods/td-dftb-h2.md) | `regressions/semiempirical/td-dftb-h2` | literature (formalism; **no absolute pin**, `perf_exempt`) |
 
 ### MetalWalls capability wave 1 (classical electrochem + LAMMPS-overlap MD)
 
