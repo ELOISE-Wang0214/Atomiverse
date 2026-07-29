@@ -181,3 +181,29 @@ numerically); timing gains appear only for larger systems
 - Jensen, *Introduction to Computational Chemistry* (SCF bottleneck / scaling).
 - Weigend, *Phys. Chem. Chem. Phys.* **8**, 1057 (2006); Essmann et al., *J. Chem. Phys.* **103**, 8577 (1995).
 - Greengard & Rokhlin, *J. Comput. Phys.* **73**, 325 (1987); White et al., *Chem. Phys. Lett.* **230**, 8 (1994).
+
+## QM/MM electrostatic coupling (esmm Wave 2)
+
+Declare the QM region with the `kAtomQmZ` mask column (0 = MM, >0 = QM with
+atomic number Z). Hand any embedding-capable engine to `QmmmElectrostatic`
+via `set_engine`. MM–MM interactions use ordinary pair styles; the coupling
+owns QM–MM cross terms and third-law site forces.
+
+```cpp
+frame.blocks.at("atoms").insert("qm_z",
+    cpu::ColumnSpec{ColDType::Int, 1, ColGroup::Core, 0, kColNone, kDynamicFieldId});
+auto qm = frame.span(cpu::kAtomQmZ);
+qm[0] = 8; qm[1] = 1; qm[2] = 1; // water QM
+
+cpu::QmmmElectrostatic qmmm{{{2, 2, 0.0065, 3.15}}, 10.0, 12.0};
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::STO3G;
+rhf.predictor(3);
+qmmm.set_engine(std::move(rhf));
+// Optional MC posture: qmmm.reset_history_each_launch() = true;
+
+sim.set_evaluator(cpu::PairLJCut{...}); // MM–MM
+sim.set_evaluator(std::move(qmmm));
+```
+
+See `reg_qmmm_es_h2o_pyscf` and `reg_qmmm_md_conservation`.

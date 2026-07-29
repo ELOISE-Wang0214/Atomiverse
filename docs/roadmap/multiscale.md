@@ -15,12 +15,13 @@ that, several *environment* hooks now exist on the SCF mean-field methods:
 - **ECP** (semi-numerical nuclear forces) and **x2c-1e** (energy only; forces
   throw).
 
-**Textbook QM/MM** ships as `QmmmMechanical` (DFTB2 QM + LJ),
-`QmmmElectrostatic` (RHF + MM point charges + LJ, optional **H link atoms**),
-and `QmmmPolarizable` (RHF + induced MM dipoles, SCC). Still no ONIOM /
+**Textbook QM/MM** is a connection layer over any embedding-capable `QmEngine`
+(RHF/RKS/… for electrostatic/polarizable; any `QmEngine` for mechanical). The
+QM region is the per-atom **`kAtomQmZ` mask column** (0 = MM, >0 = QM with Z).
+MM–MM LJ/Coulomb belong to ordinary pair styles; couplings own only QM–MM cross
+terms and (electrostatic) third-law site forces. Optional **H link atoms** and
+NVE MD conservation (`reg_qmmm_md_conservation`) ship on CPU. Still no ONIOM /
 subtractive product path, no SMD/GB, and no picture-change / DKH / SOC stack.
-Plane-wave UPF and GPW GTH remain frozen-core pseudopotentials, separate from
-Gaussian ECPs.
 
 ## 1. Atomic-Charge Methods
 
@@ -97,19 +98,22 @@ bury-delete cavity).
 | Adaptive QM/MM                   |  ○  |   ○  |   ○  |
 | Multi-region QM/MM               |  ○  |   ○  |   ○  |
 | QM/MM geometry optimization      |  ○  |   ○  |   ○  |
-| QM/MM molecular dynamics         |  ○  |   ○  |   ○  |
+| QM/MM molecular dynamics         |  ✓  |   ○  |   ○  |
 | Excited-state QM/MM              |  ○  |   ○  |   ○  |
 
 Fixed point-charge embedding on the SCF method (external MM charges in the
 one-electron Hamiltonian, with analytic forces) remains a lower-level hook.
 The product QM/MM components are:
 
-- `QmmmMechanical` — DFTB2 on QM tags + LJ environment (`reg_qmmm_h2_ar`)
-- `QmmmElectrostatic` — RHF QM + MM charges + LJ, with optional H link atoms
-  (`reg_qmmm_es_h2`, `reg_qmmm_link_ch3oh`)
-- `QmmmPolarizable` — RHF + isotropic induced MM dipoles (`reg_qmmm_pol_h2o`)
+- `QmmmMechanical` — any `QmEngine` + classical QM–MM LJ/Coulomb (`reg_qmmm_h2_ar`)
+- `QmmmElectrostatic` — embedding engine + mask region + QM–MM LJ + third-law
+  site forces (`reg_qmmm_es_h2o_pyscf`, `reg_qmmm_link_ch3oh`,
+  `reg_qmmm_md_conservation`)
+- `QmmmPolarizable` — embedding engine + density-derived permanent field +
+  isotropic induced MM dipoles (`reg_qmmm_pol_h2o`)
 
 No automatic region partitioner, no ONIOM, no PME long-range QM/MM.
+MC posture: `reset_history_each_launch` cold-starts the engine each trial.
 
 ## 4. Quantum Embedding Methods
 
