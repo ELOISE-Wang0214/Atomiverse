@@ -762,13 +762,13 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
   (runs, unphysical). A real Si UPF for PW unit tests ships at
   `tests/data/pw/Si_lda_nc.upf`.
 - **Categorical setters** (LAMMPS-shaped, on `cpu::md::MD` /
-  `cpu::minimizer::Minimize` / `cpu::mc::MC`): `add_potential, set_bond, set_angle,
+  `cpu::minimizer::Minimize` / `cpu::mc::MC`): `set_evaluator, set_bond, set_angle,
   set_dihedral, set_neighbor, set_observer, set_record, set_thermo` (shared);
   `set_integrator, set_thermostat, set_barostat` (MD); `set_optimizer`
   (Minimize); `set_mover` (MC). NeighborList is user-set; halo exchange auto-injects under
-  `ATV_BUILD_MPI` when `add_potential` is called; `VirialStress` auto-injects when an
-  NPT/Berendsen barostat requires_system_stress(). `add()` /
-  `on(phase).add()` remain public for hooks the categorical API lacks.
+  `ATV_BUILD_MPI` when `set_evaluator` is called; `VirialStress` auto-injects when an
+  NPT/Berendsen barostat requires_system_stress(). Public Plan registration is only
+  `on(phase).add` / `on(phase).add_ref` (no public `Driver::add` / `add_potential`).
 
 ```cpp
 // Single-point RHF (CPU) — target shape: concrete method, Frame only
@@ -780,16 +780,16 @@ rhf.run(frame);                                       // energy on frame.meta
 
 // Classical MD (Dynamics) — categorical setters
 cpu::md::MD sim;
-sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});
+sim.set_evaluator(cpu::PairLJCut{0.0104, 3.4, 6.8});
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{0.01});
 sim.set_thermo(100);
 sim.build();  sim.run(frame, 1000);
 
-// AIMD — outer MD Driver; force slot binds a concrete method, not SCFSolver
+// AIMD — outer MD Driver; BOMD = bare method; CPMD = electronic::CarParrinello{…}
 cpu::md::MD aimd;
 aimd.set_integrator(cpu::md::VelocityVerlet{0.5});
-aimd.on(md::Phase::force).add(cpu::scf::RHF{/* members */});
+aimd.set_evaluator(cpu::scf::RHF{/* members */});  // or CarParrinello{gpw, mu}
 aimd.build();  aimd.run(frame, 100);
 
 // Geometry optimization
@@ -801,7 +801,7 @@ opt.build();  opt.run(frame, 100);
 
 // Monte Carlo sampling (NVT Metropolis)
 cpu::mc::MC mc{/*T [K]=*/300.0, /*seed=*/12345u};
-mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+mc.set_evaluator(cpu::PairLJCut{eps, sigma, cutoff});
 mc.set_neighbor(cpu::md::NeighborList<>{cutoff, skin, 1, 0, true});
 mc.set_mover(cpu::mc::TranslateMove{/*delta [Å]=*/0.2});
 mc.set_thermo(100);
@@ -891,7 +891,7 @@ original rows + box + pre-trial `nlocal`; rows travel via
 records before mutating, the policy decides, `Transaction::rollback` splices
 the patch back bitwise (topology included). Per-verb attempt/accept tallies on
 `McBase::attempts/accepts(verb)`. Reuses the MD force pipeline for trial
-energies (`add_potential`/`set_neighbor`); `NeighborList` runs in always-rebuild
+energies (`set_evaluator`/`set_neighbor`); `NeighborList` runs in always-rebuild
 mode; trial energy is a deliberate O(N) full recompute. Single-rank v1.
 
 ### Path components (CPU)
