@@ -3,12 +3,14 @@
 /// Closed-shell analytic nuclear forces on BOTH SK sets; MioSketch adds the
 /// collinear open-shell gradient and the closed-form pair-virial cell stress.
 /// Γ-point PBC (MioSketch): lattice-summed H0/S, screened γ, and repulsive.
+/// Multi-k (MioSketch restricted): Bloch-phased complex H0(k)/S(k), MP mesh.
 /// Optional additive Grimme D3(BJ) dispersion (molecular sum, analytic forces).
 #include "atomiverse/cpu/semiempirical/dftb2.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <complex>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
@@ -207,6 +209,7 @@ void fill_sk_block_directed(const DftbElementRow& ea, const DftbElementRow& eb,
 
 struct LatVec {
     double tx, ty, tz;
+    int n0 = 0, n1 = 0, n2 = 0; ///< integer lattice indices (for Bloch phase)
 };
 
 /// @brief Enumerate lattice translations with |T| ≲ max_cut + cell edge.
@@ -241,7 +244,7 @@ std::vector<LatVec> enumerate_lattice(const Mat3& cell, double max_cut) {
                 const double tz = n0 * static_cast<double>(cell(2, 0))
                                   + n1 * static_cast<double>(cell(2, 1))
                                   + n2 * static_cast<double>(cell(2, 2));
-                out.push_back({tx, ty, tz});
+                out.push_back({tx, ty, tz, n0, n1, n2});
             }
         }
     }
@@ -625,6 +628,431 @@ SccResult scc_energy_restricted(
     out.C = std::move(C);
     out.eps = std::move(eps);
     out.n_occ = n_occ;
+    return out;
+}
+
+// ── Multi-k (Bloch) restricted SCC ──────────────────────────────────────
+
+using Cplx = std::complex<double>;
+using CplxMatrix = linalg::CplxMatrix;
+
+struct KPoint {
+    double frac[3] = {0, 0, 0};
+    double weight = 1.0;
+};
+
+/// CP2K / DFTB+ Monkhorst–Pack: κ_d = (2r − N − 1)/(2N), r = 1..N.
+std::vector<KPoint> monkhorst_pack_mesh(const int mesh[3], bool time_reversal) {
+    for (int d = 0; d < 3; ++d)
+        if (mesh[d] < 1)
+            throw std::invalid_argument(
+                "DFTB2: k_mesh subdivision must be >= 1 (axis "
+                + std::to_string(d) + " got " + std::to_string(mesh[d]) + ")");
+
+    std::vector<KPoint> full;
+    const double w0 =
+        1.0 / (static_cast<double>(mesh[0]) * mesh[1] * mesh[2]);
+    for (int r0 = 1; r0 <= mesh[0]; ++r0)
+        for (int r1 = 1; r1 <= mesh[1]; ++r1)
+            for (int r2 = 1; r2 <= mesh[2]; ++r2) {
+                KPoint kp;
+                const int r[3] = {r0, r1, r2};
+                for (int d = 0; d < 3; ++d) {
+                    double f = (2.0 * r[d] - mesh[d] - 1.0)
+                               / (2.0 * static_cast<double>(mesh[d]));
+                    f -= std::floor(f + 0.5);
+                    if (f <= -0.5)
+                        f += 1.0;
+                    kp.frac[d] = f;
+                }
+                kp.weight = w0;
+                full.push_back(kp);
+            }
+
+    if (!time_reversal)
+        return full;
+
+    std::vector<KPoint> folded;
+    std::vector<bool> used(full.size(), false);
+    constexpr double tol = 1e-12;
+    auto same = [&](const double a[3], const double b[3]) {
+        for (int d = 0; d < 3; ++d) {
+            double diff = a[d] - b[d];
+            diff -= std::nearbyint(diff);
+            if (std::abs(diff) > tol)
+                return false;
+        }
+        return true;
+    };
+    for (std::size_t i = 0; i < full.size(); ++i) {
+        if (used[i])
+            continue;
+        used[i] = true;
+        KPoint kp = full[i];
+        const double neg[3] = {-kp.frac[0], -kp.frac[1], -kp.frac[2]};
+        for (std::size_t j = i + 1; j < full.size(); ++j) {
+            if (used[j])
+                continue;
+            if (same(full[j].frac, neg)) {
+                used[j] = true;
+                kp.weight += full[j].weight;
+                break;
+            }
+        }
+        folded.push_back(kp);
+    }
+    return folded;
+}
+
+Cplx bloch_phase(const double kappa[3], int n0, int n1, int n2) {
+    constexpr double kTwoPi = 6.28318530717958647692;
+    const double ang =
+        kTwoPi * (kappa[0] * n0 + kappa[1] * n1 + kappa[2] * n2);
+    return Cplx(std::cos(ang), std::sin(ang));
+}
+
+/// Row-major complex product C = A B.
+CplxMatrix cplx_mul(const CplxMatrix& A, const CplxMatrix& B) {
+    const int n = static_cast<int>(A.shape(0));
+    const int m = static_cast<int>(A.shape(1));
+    const int p = static_cast<int>(B.shape(1));
+    CplxMatrix C = xt::zeros<Cplx>({n, p});
+    for (int i = 0; i < n; ++i)
+        for (int k = 0; k < m; ++k) {
+            const Cplx a = A(i, k);
+            if (a == Cplx(0, 0))
+                continue;
+            for (int j = 0; j < p; ++j)
+                C(i, j) += a * B(k, j);
+        }
+    return C;
+}
+
+/// Write directed real SK block scaled by complex phase into H0/S.
+void fill_sk_block_phased(const DftbElementRow& ea, const DftbElementRow& eb,
+                          const DftbPairSkRow& sk, double dx, double dy,
+                          double dz, double r, const Cplx& phase,
+                          CplxMatrix& H0, CplxMatrix& S, int ia0, int ib0) {
+    // Stage into a tiny real scratch via the directed filler, then phase.
+    // n_ao ≤ 4 per center; use full matrices only for the block region.
+    if (r < 1e-12)
+        return;
+
+    auto add = [&](int i, int j, double hv, double sv) {
+        H0(ia0 + i, ib0 + j) += phase * hv;
+        S(ia0 + i, ib0 + j) += phase * sv;
+    };
+
+    if (ea.z == 1 && eb.z == 1) {
+        const internal::MioHHTable mio;
+        add(0, 0, mio.hopping_ss(r), mio.overlap_ss(r));
+        (void)sk;
+        return;
+    }
+
+    const double inv_r = 1.0 / r;
+    const double l = dx * inv_r;
+    const double m = dy * inv_r;
+    const double n = dz * inv_r;
+
+    const double Hss = h_radial(sk.h_ss0, r, sk.h_r0, sk.h_d);
+    const double Hsp = h_radial(sk.h_sp0, r, sk.h_r0, sk.h_d);
+    const double Hpps = h_radial(sk.h_pps0, r, sk.h_r0, sk.h_d);
+    const double Hppp = h_radial(sk.h_ppp0, r, sk.h_r0, sk.h_d);
+    const double Sss = s_radial(sk.s_ss0, r, sk.s_r0, sk.s_w);
+    const double Ssp = s_radial(sk.s_sp0, r, sk.s_r0, sk.s_w);
+    const double Spps = s_radial(sk.s_pps0, r, sk.s_r0, sk.s_w);
+    const double Sppp = s_radial(sk.s_ppp0, r, sk.s_r0, sk.s_w);
+
+    add(0, 0, Hss, Sss);
+    if (ea.n_ao >= 1 && eb.n_ao == 4) {
+        add(0, 1, l * Hsp, l * Ssp);
+        add(0, 2, m * Hsp, m * Ssp);
+        add(0, 3, n * Hsp, n * Ssp);
+    }
+    if (ea.n_ao == 4 && eb.n_ao >= 1) {
+        add(1, 0, -l * Hsp, -l * Ssp);
+        add(2, 0, -m * Hsp, -m * Ssp);
+        add(3, 0, -n * Hsp, -n * Ssp);
+    }
+    if (ea.n_ao == 4 && eb.n_ao == 4) {
+        const double dir[3] = {l, m, n};
+        for (int a = 0; a < 3; ++a)
+            for (int b = 0; b < 3; ++b) {
+                const double d_ab = (a == b) ? 1.0 : 0.0;
+                const double hv = dir[a] * dir[b] * (Hpps - Hppp) + d_ab * Hppp;
+                const double sv = dir[a] * dir[b] * (Spps - Sppp) + d_ab * Sppp;
+                add(1 + a, 1 + b, hv, sv);
+            }
+    }
+}
+
+void hermitize_in_place(CplxMatrix& M) {
+    const int n = static_cast<int>(M.shape(0));
+    for (int i = 0; i < n; ++i) {
+        M(i, i) = Cplx(M(i, i).real(), 0.0);
+        for (int j = i + 1; j < n; ++j) {
+            const Cplx avg = 0.5 * (M(i, j) + std::conj(M(j, i)));
+            M(i, j) = avg;
+            M(j, i) = std::conj(avg);
+        }
+    }
+}
+
+/// Build lattice-summed complex H0(k)/S(k) for one fractional k-point.
+void build_h0_s_k(int n_at, int n_ao,
+                  const std::vector<const DftbElementRow*>& el,
+                  const std::vector<int>& ao0, const int* type,
+                  const StorageReal* x, const StorageReal* y,
+                  const StorageReal* z, const cpu::Box& box,
+                  const double kappa[3], CplxMatrix& H0, CplxMatrix& S) {
+    H0 = xt::zeros<Cplx>({n_ao, n_ao});
+    S = xt::zeros<Cplx>({n_ao, n_ao});
+    const auto images = lattice_images_for(box, el);
+
+    for (int a = 0; a < n_at; ++a) {
+        const auto& ea = *el[static_cast<std::size_t>(a)];
+        const int ia = ao0[static_cast<std::size_t>(a)];
+        H0(ia, ia) = Cplx(ea.e_s, 0.0);
+        S(ia, ia) = Cplx(1.0, 0.0);
+        if (ea.n_ao == 4) {
+            for (int p = 1; p < 4; ++p) {
+                H0(ia + p, ia + p) = Cplx(ea.e_p, 0.0);
+                S(ia + p, ia + p) = Cplx(1.0, 0.0);
+            }
+        }
+    }
+
+    for (int a = 0; a < n_at; ++a) {
+        const auto& ea = *el[static_cast<std::size_t>(a)];
+        const int ia = ao0[static_cast<std::size_t>(a)];
+        const double xa = static_cast<double>(x[a]);
+        const double ya = static_cast<double>(y[a]);
+        const double za = static_cast<double>(z[a]);
+        for (int b = 0; b < n_at; ++b) {
+            const auto& eb = *el[static_cast<std::size_t>(b)];
+            const int ib = ao0[static_cast<std::size_t>(b)];
+            const double xb = static_cast<double>(x[b]);
+            const double yb = static_cast<double>(y[b]);
+            const double zb = static_cast<double>(z[b]);
+            const double rcut = pair_rcut_A(ea, eb, type[a], type[b]);
+            const auto& sk = pair_sk(type[a], type[b]);
+            for (const auto& T : images) {
+                const double dx = xb + T.tx - xa;
+                const double dy = yb + T.ty - ya;
+                const double dz = zb + T.tz - za;
+                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (r < 1e-12 || r > rcut)
+                    continue;
+                const Cplx phase = bloch_phase(kappa, T.n0, T.n1, T.n2);
+                fill_sk_block_phased(ea, eb, sk, dx, dy, dz, r, phase, H0, S,
+                                     ia, ib);
+            }
+        }
+    }
+    hermitize_in_place(H0);
+    hermitize_in_place(S);
+}
+
+void apply_shift_k(int n_at, const std::vector<const DftbElementRow*>& el,
+                   const std::vector<int>& ao0, const CplxMatrix& H0,
+                   const CplxMatrix& S, const std::vector<double>& eps_at,
+                   CplxMatrix& H) {
+    H = H0;
+    for (int a = 0; a < n_at; ++a) {
+        const int ia = ao0[static_cast<std::size_t>(a)];
+        const int na = el[static_cast<std::size_t>(a)]->n_ao;
+        for (int b = 0; b < n_at; ++b) {
+            const int ib = ao0[static_cast<std::size_t>(b)];
+            const int nb = el[static_cast<std::size_t>(b)]->n_ao;
+            const double half = 0.5
+                                * (eps_at[static_cast<std::size_t>(a)]
+                                   + eps_at[static_cast<std::size_t>(b)]);
+            for (int i = 0; i < na; ++i)
+                for (int j = 0; j < nb; ++j)
+                    H(ia + i, ib + j) += half * S(ia + i, ib + j);
+        }
+    }
+}
+
+/// Generalized Hermitian eigen: H C = S C ε via Löwdin S^{-1/2} + zheevd.
+std::pair<std::vector<double>, CplxMatrix>
+diagonalize_fock_generalized_k(const CplxMatrix& H, const CplxMatrix& S) {
+    const int n = static_cast<int>(H.shape(0));
+    std::vector<double> s_eig;
+    CplxMatrix Us;
+    linalg::eigh_hermitian(S, s_eig, Us);
+    // X = U s^{-1/2}
+    CplxMatrix X = xt::zeros<Cplx>({n, n});
+    for (int j = 0; j < n; ++j) {
+        if (s_eig[static_cast<std::size_t>(j)] <= 1e-12)
+            throw std::runtime_error(
+                "DFTB2 multi-k: non-positive overlap eigenvalue at k");
+        const double inv_sqrt = 1.0 / std::sqrt(s_eig[static_cast<std::size_t>(j)]);
+        for (int i = 0; i < n; ++i)
+            X(i, j) = Us(i, j) * inv_sqrt;
+    }
+    // H' = X† H X
+    CplxMatrix HX = cplx_mul(H, X);
+    CplxMatrix Hp = xt::zeros<Cplx>({n, n});
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) {
+            Cplx s(0, 0);
+            for (int k = 0; k < n; ++k)
+                s += std::conj(X(k, i)) * HX(k, j);
+            Hp(i, j) = s;
+        }
+    hermitize_in_place(Hp);
+    std::vector<double> eps;
+    CplxMatrix Cp;
+    linalg::eigh_hermitian(Hp, eps, Cp);
+    return {std::move(eps), cplx_mul(X, Cp)};
+}
+
+double re_trace_product_k(const CplxMatrix& P, const CplxMatrix& H0) {
+    const int n = static_cast<int>(P.shape(0));
+    double t = 0;
+    for (int mu = 0; mu < n; ++mu)
+        for (int nu = 0; nu < n; ++nu)
+            t += (P(mu, nu) * H0(nu, mu)).real();
+    return t;
+}
+
+SccResult scc_energy_restricted_kmesh(
+    int n_at, int n_ao, int n_occ, const std::vector<const DftbElementRow*>& el,
+    const std::vector<int>& ao0, const int* type, const StorageReal* x,
+    const StorageReal* y, const StorageReal* z, const cpu::Box& box,
+    double scc_tol, int max_scc, double mix_beta, const int mesh[3],
+    bool time_reversal) {
+    if (n_occ > n_ao)
+        throw std::runtime_error(
+            "DFTB2 multi-k: n_occ exceeds basis size (no fractional fill)");
+
+    const std::vector<KPoint> kpts = monkhorst_pack_mesh(mesh, time_reversal);
+    const std::size_t nk = kpts.size();
+    std::vector<CplxMatrix> H0k(nk), Sk(nk);
+    for (std::size_t ik = 0; ik < nk; ++ik)
+        build_h0_s_k(n_at, n_ao, el, ao0, type, x, y, z, box, kpts[ik].frac,
+                     H0k[ik], Sk[ik]);
+
+    const std::size_t n = static_cast<std::size_t>(n_at);
+    std::vector<double> dq(n, 0.0);
+    std::vector<double> dq_out(n, 0.0);
+    double residual = 0;
+    int iterations = 0;
+    bool converged = false;
+    internal::ChargeMixer mixer(mix_beta, kSccMixDepth);
+
+    // Last-iterate densities for the energy assembly after SCC.
+    std::vector<CplxMatrix> Pk(nk);
+
+    for (int it = 0; it < max_scc; ++it) {
+        iterations = it + 1;
+        std::vector<double> dV(n, 0.0);
+        for (int a = 0; a < n_at; ++a) {
+            double shift = 0;
+            for (int b = 0; b < n_at; ++b)
+                shift += gamma_pair(a, b, el, x, y, z, box)
+                         * dq[static_cast<std::size_t>(b)];
+            dV[static_cast<std::size_t>(a)] = shift;
+        }
+
+        // Weighted Mulliken populations across the mesh.
+        std::vector<double> q_ao(static_cast<std::size_t>(n_ao), 0.0);
+        for (std::size_t ik = 0; ik < nk; ++ik) {
+            CplxMatrix Hk;
+            apply_shift_k(n_at, el, ao0, H0k[ik], Sk[ik], dV, Hk);
+            auto sol = diagonalize_fock_generalized_k(Hk, Sk[ik]);
+            const auto& eps = sol.first;
+            const CplxMatrix& C = sol.second;
+            (void)eps;
+
+            CplxMatrix P = xt::zeros<Cplx>({n_ao, n_ao});
+            for (int o = 0; o < n_occ; ++o)
+                for (int mu = 0; mu < n_ao; ++mu)
+                    for (int nu = 0; nu < n_ao; ++nu)
+                        P(mu, nu) +=
+                            2.0 * C(mu, o) * std::conj(C(nu, o));
+            Pk[ik] = P;
+
+            // PS = P S; Mulliken AO pop = Re((PS)_μμ)
+            const CplxMatrix PS = cplx_mul(P, Sk[ik]);
+            const double w = kpts[ik].weight;
+            for (int mu = 0; mu < n_ao; ++mu)
+                q_ao[static_cast<std::size_t>(mu)] += w * PS(mu, mu).real();
+        }
+
+        residual = 0;
+        for (int a = 0; a < n_at; ++a) {
+            double qa = 0;
+            const int ia = ao0[static_cast<std::size_t>(a)];
+            const int na = el[static_cast<std::size_t>(a)]->n_ao;
+            for (int i = 0; i < na; ++i)
+                qa += q_ao[static_cast<std::size_t>(ia + i)];
+            dq_out[static_cast<std::size_t>(a)] =
+                qa - el[static_cast<std::size_t>(a)]->n_val;
+            residual = std::max(residual,
+                                std::abs(dq_out[static_cast<std::size_t>(a)]
+                                         - dq[static_cast<std::size_t>(a)]));
+        }
+
+        if (residual < scc_tol) {
+            dq = dq_out;
+            converged = true;
+            break;
+        }
+        dq = mixer.next(dq, dq_out);
+    }
+
+    require_scc_converged(converged, residual, scc_tol, max_scc);
+
+    // Rebuild final densities from the converged dq (last Pk is from the
+    // residual check with dq_out; re-evaluate once for energy consistency).
+    {
+        std::vector<double> dV(n, 0.0);
+        for (int a = 0; a < n_at; ++a) {
+            double shift = 0;
+            for (int b = 0; b < n_at; ++b)
+                shift += gamma_pair(a, b, el, x, y, z, box)
+                         * dq[static_cast<std::size_t>(b)];
+            dV[static_cast<std::size_t>(a)] = shift;
+        }
+        for (std::size_t ik = 0; ik < nk; ++ik) {
+            CplxMatrix Hk;
+            apply_shift_k(n_at, el, ao0, H0k[ik], Sk[ik], dV, Hk);
+            auto sol = diagonalize_fock_generalized_k(Hk, Sk[ik]);
+            const CplxMatrix& C = sol.second;
+            CplxMatrix P = xt::zeros<Cplx>({n_ao, n_ao});
+            for (int o = 0; o < n_occ; ++o)
+                for (int mu = 0; mu < n_ao; ++mu)
+                    for (int nu = 0; nu < n_ao; ++nu)
+                        P(mu, nu) +=
+                            2.0 * C(mu, o) * std::conj(C(nu, o));
+            Pk[ik] = std::move(P);
+        }
+    }
+
+    double e_band = 0;
+    for (std::size_t ik = 0; ik < nk; ++ik)
+        e_band +=
+            kpts[ik].weight * re_trace_product_k(Pk[ik], H0k[ik]);
+
+    double e_scc = 0;
+    for (int a = 0; a < n_at; ++a)
+        for (int b = 0; b < n_at; ++b)
+            e_scc += 0.5 * gamma_pair(a, b, el, x, y, z, box)
+                     * dq[static_cast<std::size_t>(a)]
+                     * dq[static_cast<std::size_t>(b)];
+
+    SccResult out;
+    out.energy = e_band + e_scc
+                 + repulsive_energy(n_at, type, x, y, z, box, el);
+    out.residual = residual;
+    out.iterations = iterations;
+    out.dq = std::move(dq);
+    out.spin.assign(static_cast<std::size_t>(n_at), 0.0);
+    out.n_occ = n_occ;
+    // No real Γ orbitals for multi-k analytic forces (forces unsupported).
     return out;
 }
 
@@ -1048,12 +1476,25 @@ void analytic_forces_restricted(
 }
 
 
+/// @param mesh  Monkhorst–Pack subdivisions; {1,1,1} uses the real Γ path.
+/// @param time_reversal Fold ±k when multi-k.
 SccResult scc_total(int n_at, int n_ao, const Occupancy& occ,
                     const std::vector<const DftbElementRow*>& el,
                     const std::vector<int>& ao0, const int* type,
                     const StorageReal* x, const StorageReal* y,
                     const StorageReal* z, const cpu::Box& box, double scc_tol,
-                    int max_scc, double mix_beta) {
+                    int max_scc, double mix_beta, const int mesh[3],
+                    bool time_reversal) {
+    const bool multi_k =
+        mesh[0] > 1 || mesh[1] > 1 || mesh[2] > 1;
+    if (multi_k) {
+        if (occ.unrestricted)
+            throw std::runtime_error(
+                "DFTB2 multi-k: open shell not supported (restricted only)");
+        return scc_energy_restricted_kmesh(
+            n_at, n_ao, occ.n_alpha, el, ao0, type, x, y, z, box, scc_tol,
+            max_scc, mix_beta, mesh, time_reversal);
+    }
     if (!occ.unrestricted)
         return scc_energy_restricted(n_at, n_ao, occ.n_alpha, el, ao0, type, x,
                                      y, z, box, scc_tol, max_scc, mix_beta);
@@ -1117,7 +1558,7 @@ void apply_affine_strain(cpu::Frame& frame, int voigt, double h) {
 
 double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, double mix_beta,
                   bool with_forces, bool with_stress, int charge,
-                  int multiplicity,
+                  int multiplicity, const int k_mesh[3], bool k_time_reversal,
                   std::vector<double>& out_dq, std::vector<double>& out_spin,
                   std::array<double, 6>& out_stress, double& out_residual,
                   int& out_iterations) {
@@ -1131,6 +1572,13 @@ double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, double mix_beta,
     AccReal* fz = f.span(kAtom_fz);
     double& energy_meta = f.meta.get(kEnergy);
     out_stress.fill(0.0);
+
+    const bool multi_k =
+        k_mesh[0] > 1 || k_mesh[1] > 1 || k_mesh[2] > 1;
+    if (multi_k && (with_forces || with_stress))
+        throw std::runtime_error(
+            "DFTB2 multi-k: forces/stress not supported (energy-only path; "
+            "set with_forces=false, with_stress=false)");
 
     std::vector<const DftbElementRow*> el(static_cast<std::size_t>(n_at));
     std::vector<int> ao0(static_cast<std::size_t>(n_at) + 1, 0);
@@ -1148,7 +1596,7 @@ double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, double mix_beta,
 
     const Occupancy occ = resolve_occupancy(n_elec, multiplicity);
     auto res = scc_total(n_at, n_ao, occ, el, ao0, type, x, y, z, f.box,
-                         scc_tol, max_scc, mix_beta);
+                         scc_tol, max_scc, mix_beta, k_mesh, k_time_reversal);
     out_dq = res.dq;
     out_spin = res.spin;
     out_residual = res.residual;
@@ -1158,6 +1606,10 @@ double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, double mix_beta,
     // The electronic per-term share of the total, same operator, same value
     // (esmm-contract-05): DFTB2 already accumulated into kEnergy.
     f.meta.get(kEnergyElectronic) += energy;
+
+    // Multi-k is energy-only (no real Γ orbitals for analytic forces).
+    if (multi_k)
+        return energy;
 
     // Restricted closed shell has a closed-form gradient AND a closed-form pair
     // virial; collinear open shell has the closed-form gradient only, so its
@@ -1217,15 +1669,19 @@ double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, double mix_beta,
                 };
                 restore();
                 apply_affine_strain(f, v, h_s);
+                // Stress FD is Γ-only (multi-k returns earlier).
+                const int gamma_mesh[3] = {1, 1, 1};
                 const double ep =
                     scc_total(n_at, n_ao, occ, el, ao0, type, x, y, z, f.box,
-                              scc_tol, max_scc, mix_beta)
+                              scc_tol, max_scc, mix_beta, gamma_mesh,
+                              /*time_reversal=*/true)
                         .energy;
                 restore();
                 apply_affine_strain(f, v, -h_s);
                 const double em =
                     scc_total(n_at, n_ao, occ, el, ao0, type, x, y, z, f.box,
-                              scc_tol, max_scc, mix_beta)
+                              scc_tol, max_scc, mix_beta, gamma_mesh,
+                              /*time_reversal=*/true)
                         .energy;
                 restore();
                 const double dE_de = (ep - em) / (2.0 * h_s);
@@ -1969,7 +2425,18 @@ void DFTB2::launch(const LaunchContext& ctx) {
         throw std::invalid_argument("DFTB2: mix_beta must be in (0, 1]");
 
     last_stress_.fill(0.0);
+    for (int d = 0; d < 3; ++d)
+        if (k_mesh[static_cast<std::size_t>(d)] < 1)
+            throw std::invalid_argument(
+                "DFTB2: k_mesh subdivision must be >= 1 (axis "
+                + std::to_string(d) + " got "
+                + std::to_string(k_mesh[static_cast<std::size_t>(d)]) + ")");
+    const bool multi_k =
+        k_mesh[0] > 1 || k_mesh[1] > 1 || k_mesh[2] > 1;
     if (sk_set == DftbSkSet::ThreeOb) {
+        if (multi_k)
+            throw std::runtime_error(
+                "DFTB2(ThreeOb): multi-k not supported (MioSketch only)");
         if (multiplicity != 1 || charge != 0)
             throw std::runtime_error(
                 "DFTB2(ThreeOb): open-shell/charge not supported on this path");
@@ -1978,10 +2445,11 @@ void DFTB2::launch(const LaunchContext& ctx) {
                              scc_residual_, scc_iterations_);
         last_spin_.assign(static_cast<std::size_t>(f.nlocal()), 0.0);
     } else {
+        const int mesh[3] = {k_mesh[0], k_mesh[1], k_mesh[2]};
         energy_ = launch_mio(f, scc_tol, max_scc, mix_beta, with_forces,
-                             with_stress, charge, multiplicity, last_dq_,
-                             last_spin_, last_stress_, scc_residual_,
-                             scc_iterations_);
+                             with_stress, charge, multiplicity, mesh,
+                             k_time_reversal, last_dq_, last_spin_,
+                             last_stress_, scc_residual_, scc_iterations_);
     }
 
     // Optional Grimme D3(BJ): a purely geometric additive correction, so it

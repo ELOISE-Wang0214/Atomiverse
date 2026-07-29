@@ -471,3 +471,60 @@ TEST(DFTB2, AnalyticStressMatchesStrainFdH2) {
     const auto& st = f.meta.get(kStress);
     EXPECT_NEAR(st[0], san[0], 1e-14);
 }
+
+namespace {
+
+double energy_kmesh(cpu::Frame g, std::array<int, 3> mesh,
+                    bool time_reversal = true) {
+    g.meta.get(kEnergy) = 0;
+    for (int i = 0; i < g.nlocal(); ++i)
+        g.span(kAtom_fx)[i] = g.span(kAtom_fy)[i] = g.span(kAtom_fz)[i] = 0;
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 d;
+    d.with_forces = false;
+    d.scc_tol = 1e-12;
+    d.max_scc = 80;
+    d.k_mesh = mesh;
+    d.k_time_reversal = time_reversal;
+    d.build({ctx, g});
+    d.launch({ctx, g, 0, 0});
+    return d.last_energy();
+}
+
+} // namespace
+
+TEST(DFTB2, KMesh111MatchesGamma) {
+    // Default multi-k entry with {1,1,1} must stay on the real Γ path.
+    auto f = make_c_chain_cell();
+    const double e_gamma = energy_only(make_c_chain_cell());
+    const double e_mesh = energy_kmesh(std::move(f), {{1, 1, 1}});
+    EXPECT_TRUE(std::isfinite(e_mesh));
+    EXPECT_NEAR(e_mesh, e_gamma, 1e-8);
+}
+
+TEST(DFTB2, KMesh41x1DiffersFromGamma) {
+    const double e_gamma = energy_only(make_c_chain_cell());
+    const double e_k = energy_kmesh(make_c_chain_cell(), {{4, 1, 1}});
+    EXPECT_TRUE(std::isfinite(e_k));
+    EXPECT_GT(std::fabs(e_k - e_gamma), 0.01);
+}
+
+TEST(DFTB2, KMeshRejectsForces) {
+    auto f = make_c_chain_cell();
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 d;
+    d.k_mesh = {{4, 1, 1}};
+    d.with_forces = true;
+    d.build({ctx, f});
+    EXPECT_THROW(d.launch({ctx, f, 0, 0}), std::runtime_error);
+}
+
+TEST(DFTB2, KMeshRejectsBadMesh) {
+    auto f = make_c_chain_cell();
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 d;
+    d.k_mesh = {{0, 1, 1}};
+    d.with_forces = false;
+    d.build({ctx, f});
+    EXPECT_THROW(d.launch({ctx, f, 0, 0}), std::invalid_argument);
+}
