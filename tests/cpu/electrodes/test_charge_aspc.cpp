@@ -83,14 +83,38 @@ void run_once(cpu::md::ConstPotBO& conp, cpu::Frame& f) {
 } // namespace
 
 TEST(ChargeASPC, Order2CoefficientsKolafa) {
+    // Kolafa ASPC K=2: B = {5/2, -2, 1/2} newest → oldest.
     cpu::electrodes::ChargeASPC aspc(2);
     EXPECT_EQ(aspc.order(), 2);
-    EXPECT_DOUBLE_EQ(aspc.coefficient(0), 1.0);
-    EXPECT_DOUBLE_EQ(aspc.coefficient(1), -3.0);
-    EXPECT_DOUBLE_EQ(aspc.coefficient(2), 3.0);
+    EXPECT_DOUBLE_EQ(aspc.coefficient(0), 0.5);
+    EXPECT_DOUBLE_EQ(aspc.coefficient(1), -2.0);
+    EXPECT_DOUBLE_EQ(aspc.coefficient(2), 2.5);
+}
+
+TEST(ChargeASPC, Order5CoefficientsMatchMetalWalls) {
+    // MetalWalls c8ad175d src/electrode_charge.F90:572-577 hard-codes exactly
+    // these six constants as the electrode-charge CG warm start.
+    cpu::electrodes::ChargeASPC aspc(5);
+    EXPECT_DOUBLE_EQ(aspc.coefficient(5), 22.0 / 7.0);   // B1
+    EXPECT_DOUBLE_EQ(aspc.coefficient(4), -55.0 / 14.0); // B2
+    EXPECT_DOUBLE_EQ(aspc.coefficient(3), 55.0 / 21.0);  // B3
+    EXPECT_DOUBLE_EQ(aspc.coefficient(2), -22.0 / 21.0); // B4
+    EXPECT_DOUBLE_EQ(aspc.coefficient(1), 5.0 / 21.0);   // B5
+    EXPECT_DOUBLE_EQ(aspc.coefficient(0), -1.0 / 42.0);  // B6
+}
+
+TEST(ChargeASPC, CoefficientsSumToOne) {
+    for (int K = 0; K <= 6; ++K) {
+        cpu::electrodes::ChargeASPC aspc(K);
+        double s = 0.0;
+        for (int k = 0; k <= K; ++k)
+            s += aspc.coefficient(k);
+        EXPECT_NEAR(s, 1.0, 1e-14) << "K=" << K;
+    }
 }
 
 TEST(ChargeASPC, LinearHistoryPredictsNext) {
+    // ASPC is exact through degree 1 (sum B_j = 1, sum j B_j = 0).
     cpu::electrodes::ChargeASPC aspc(2);
     for (int n = 0; n <= 2; ++n)
         aspc.record(std::vector<double>{static_cast<double>(n)});
@@ -98,6 +122,18 @@ TEST(ChargeASPC, LinearHistoryPredictsNext) {
     ASSERT_TRUE(aspc.predict(pred));
     ASSERT_EQ(pred.size(), 1u);
     EXPECT_NEAR(pred[0], 3.0, 1e-12);
+}
+
+TEST(ChargeASPC, QuadraticHistoryIsDampedNotExact) {
+    // Kolafa's damping: on Q_k = k^2 the ASPC K=2 predictor returns 8, not the
+    // Lagrange value 9. This is the discriminator between ASPC and plain
+    // polynomial extrapolation — the scheme Kolafa 2004 shows to be unstable.
+    cpu::electrodes::ChargeASPC aspc(2);
+    for (int n = 0; n <= 2; ++n)
+        aspc.record(std::vector<double>{static_cast<double>(n * n)});
+    std::vector<double> pred;
+    ASSERT_TRUE(aspc.predict(pred));
+    EXPECT_NEAR(pred[0], 8.0, 1e-12);
 }
 
 TEST(ChargeASPC, InsufficientHistoryReturnsFalse) {

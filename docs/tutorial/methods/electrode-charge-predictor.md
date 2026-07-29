@@ -23,12 +23,14 @@ history, and `cpu::md::ConstPotBO` with `use_cg = true` and
 `predictor_order = K` warm-starts CG from that guess, then records the
 converged unconstrained solution. This is a **Component** feature on
 `cpu::md::MD` (`pre_force`), not a Driver category and not inside `KSpace*`.
-The product gate `reg_electrode-charge-predictor` pins \(K=2\) Lagrange
-coefficients \(\{1,-3,3\}\), CG vs dense charge agreement on the madelung twin,
-and a **strict** reduction of mean CG iterations with ASPC vs cold start on an
-18-site plate. Offline oracle is **metalwalls** (algorithm literature + MW
-const-pot documentation); fair wall is **`perf_exempt`** (no MW twin binary on
-PATH).
+The product gate `reg_electrode-charge-predictor` pins the \(K=5\)
+coefficients that MetalWalls c8ad175d hard-codes
+(`src/electrode_charge.F90:572-577`), the \(K=2\) row of the same family, CG vs
+dense charge agreement on the madelung twin, and a **strict** reduction of mean
+CG iterations with ASPC vs cold start on an 18-site plate. Offline oracle is the
+**real MetalWalls binary** (release 20.05, git c8ad175d); fair wall is
+**`perf_exempt`** — see REFERENCE for why the two codes' charge solves are not
+comparable work.
 
 ## Method
 
@@ -60,16 +62,30 @@ so
 Q^{\mathrm{pred}}_{n+1} = \sum_{k=0}^{K} \omega_k\, Q_{n-K+k}.
 \]
 
-For the product default \(K=2\):
+with Kolafa's coefficients (J. Comput. Chem. **25**, 335 (2004), Eq. 10)
 
 \[
-\omega = \{1,\ -3,\ 3\}
-\qquad\Rightarrow\qquad
-Q^{\mathrm{pred}}_{n+1} = Q_{n-2} - 3 Q_{n-1} + 3 Q_n.
+B_j = (-1)^{j+1}\, j\, \frac{\binom{2K+2}{K+1-j}}{\binom{2K}{K}},
+\qquad \omega_{K+1-j} = B_j .
 \]
 
-This is exact for polynomials of degree \(\le 2\); a linear history
-\(Q_m = m\) therefore predicts \(Q_{n+1} = n+1\) exactly.
+For \(K=2\):
+
+\[
+\omega = \{1/2,\ -2,\ 5/2\}
+\qquad\Rightarrow\qquad
+Q^{\mathrm{pred}}_{n+1} = \tfrac12 Q_{n-2} - 2 Q_{n-1} + \tfrac52 Q_n,
+\]
+
+and for MetalWalls' \(K=5\),
+\(B = \{22/7,\,-55/14,\,55/21,\,-22/21,\,5/21,\,-1/42\}\) newest → oldest.
+
+These are **not** Lagrange (polynomial) extrapolation coefficients. ASPC is
+exact only through degree 1 — \(\sum_j B_j = 1\) and \(\sum_j j B_j = 0\), so a
+linear history \(Q_m = m\) predicts \(Q_{n+1} = n+1\) exactly, while a quadratic
+history \(Q_m = m^2\) is deliberately damped (\(K=2\) gives 8, not the Lagrange
+9). That damping is what makes the predictor-corrector pair unconditionally
+stable; plain polynomial extrapolation is the scheme Kolafa 2004 replaces.
 
 **Corrector blend (API surface).** `ChargeASPC::correct` implements Kolafa’s
 time-reversibility blend
@@ -89,7 +105,7 @@ reduction**, not the corrector blend.
 
 | Item | Setting |
 | ---- | ------- |
-| ASPC order | \(K=2\) coeffs \(\{1,-3,3\}\) (exact) |
+| ASPC order | \(K=5\) coeffs == MetalWalls `B1..B6` (rel ≤ 1e-15); \(K=2\) coeffs \(\{1/2,-2,5/2\}\) (exact) |
 | CG vs dense | 4-atom madelung family, \(xy\_image\_range=0\), \(\eta=2\) Å⁻¹, \(\Psi=(0,1)\) V |
 | CG iter comparison | 3×3 atoms/wall (**18** electrode sites) + 4 ions, \(L_{xy}=6\) Å, \(L_z=20\) Å |
 | Drift protocol | electrolyte \(z\) shifts each launch so \(b\) changes; primary cell only |
@@ -121,10 +137,13 @@ members. No Config bag.
 using namespace ATV;
 
 cpu::electrodes::ChargeASPC aspc(/*order K=*/2);
-// coefficient(k): k=0 oldest in the K+1 window → {1, -3, 3}
-assert(aspc.coefficient(0) == 1.0);
-assert(aspc.coefficient(1) == -3.0);
-assert(aspc.coefficient(2) == 3.0);
+// coefficient(k): k=0 oldest in the K+1 window → {1/2, -2, 5/2}
+assert(aspc.coefficient(0) == 0.5);
+assert(aspc.coefficient(1) == -2.0);
+assert(aspc.coefficient(2) == 2.5);
+// K=5 reproduces MetalWalls' hard-coded B1..B6 exactly:
+cpu::electrodes::ChargeASPC mw(/*order K=*/5);
+assert(mw.coefficient(5) == 22.0 / 7.0);   // B1
 
 for (int n = 0; n <= 2; ++n)
     aspc.record(std::vector<double>{static_cast<double>(n)});
@@ -237,17 +256,19 @@ Marin-Laflèche et al., JOSS MetalWalls.
 **Why MetalWalls (not LAMMPS):** LAMMPS ELECTRODE implements const-pot BO but
 has **no** ASPC charge-history warm-start. Binding oracle priority for this
 loop is LAMMPS when the feature overlaps; here the feature is **MW-only**
-(ASPC predictor) → MetalWalls / literature algorithm pin.
+(ASPC predictor) → MetalWalls binary c8ad175d (source-constant pin).
 
 ### Accuracy
 
 | Quantity | Atomiverse gate / pin | Oracle / theory | Tol | Notes |
 | -------- | --------------------: | --------------: | --- | ----- |
-| ASPC \(K=2\) coeffs \(\omega\) | \(\{1,-3,3\}\) | Kolafa Lagrange | **exact** | `ChargeASPC::coefficient` |
-| Linear history predict | \(Q_k=k\) → \(Q^{\mathrm{pred}}=3\) after \(\{0,1,2\}\) | order-2 exact | abs ≤ **1e-12** | regression ac-003 |
+| ASPC \(K=5\) coeffs | \(\{22/7,-55/14,55/21,-22/21,5/21,-1/42\}\) | MetalWalls c8ad175d `electrode_charge.F90:572-577` | rel ≤ **1e-15** | `ChargeASPC::coefficient` |
+| ASPC \(K=2\) coeffs \(\omega\) | \(\{1/2,-2,5/2\}\) | Kolafa 2004 Eq. 10 | **exact** | `ChargeASPC::coefficient` |
+| Linear history predict | \(Q_k=k\) → \(Q^{\mathrm{pred}}=3\) after \(\{0,1,2\}\) | degree-1 exact | abs ≤ **1e-12** | regression ac-003 |
+| Quadratic history damped | \(Q_k=k^2\) → 8 (Lagrange would give 9) | ASPC-vs-Lagrange discriminator | abs ≤ **1e-12** | regression ac-003 |
 | CG \(Q_{\mathrm{top}}\) vs dense Cholesky | same madelung RHS | dense BO twin | abs ≤ **1e-8** e | `use_cg` on/off |
 | Mean CG iters, post history fill | warm **&lt;** cold | MW ASPC intent | **strict inequality** | observed cold≈6, warm≈5 on 18-site plate (REFERENCE) |
-| ASPC engaged after fill | `last_used_predictor() == true` for \(s\ge 3\) at \(K=2\) | needs \(K+1\) records | exact | 16-step drift protocol |
+| ASPC engaged after fill | `last_used_predictor() == true` for \(s\ge 6\) at \(K=2\) and \(K=5\) | needs \(K+1\) records | exact | 16-step drift protocol |
 | \(\lvert\sum_i Q_i\rvert\) [e] | \(\le 10^{-8}\) | neutrality on | **1e-8** | every warm launch |
 | Polarity at \(\Delta\Psi=+1\) V | \(Q_{\mathrm{top}}>0\), \(Q_{\mathrm{bot}}<0\) | capacitive | sign only | multi-site end state |
 
@@ -260,11 +281,15 @@ Related unit / sibling surfaces (not this e2e pin):
 
 ### Offline pin repro (never ctest)
 
-Kolafa coefficients are analytic (Eqs. 7–11 of Kolafa 2004). MetalWalls
-documents charge extrapolation for CG/BO electrode solves. If a MW binary is
-available offline, re-run a const-pot demo with/without predictor and update
-iteration-count notes in REFERENCE — **not** required for this foothold and
-never invoked from ctest.
+Read the constants straight out of the MetalWalls tree the pinned binary was
+built from (`sed -n '556,596p' src/electrode_charge.F90` at c8ad175d), or
+evaluate Kolafa's closed form at \(K=5\). A twin MetalWalls run of this
+regression's 18-site geometry lives at
+`tools/metalwalls_oracle/inputs/metalwalls/electrode-charge-predictor/`.
+MetalWalls has **no switch to disable its predictor** (it turns on at step 7,
+`src/system.F90:1430`) and its non-predictor branch initialises from the
+previous step rather than from zero, so the "warm &lt; cold" iteration claim is
+not A/B-testable there — see REFERENCE. Never invoked from ctest.
 
 ## Performance
 
@@ -294,9 +319,11 @@ T_{\mathrm{oracle}}\).
 
 ## Limitations
 
-- **Algorithm pin, not binary twin.** Validation is Kolafa coefficients +
-  internal CG vs dense + strict iter reduction — not bit-parity with a
-  MetalWalls log file.
+- **Coefficient pin is a source-level oracle read.** The \(K=5\) row is
+  bit-compared against MetalWalls' hard-coded constants; the binary exposes no
+  diagnostic that prints its predictor output, so there is no black-box
+  charge-by-charge parity against a MetalWalls log. CG vs dense and the strict
+  iteration reduction remain internal-consistency gates.
 - **ASPC gain requires `use_cg = true`.** Dense Cholesky ignores
   `predictor_order` for iteration counts (`last_iters()` is 0 on dense).
 - **History fill latency.** Prediction needs \(K+1\) successful `record`

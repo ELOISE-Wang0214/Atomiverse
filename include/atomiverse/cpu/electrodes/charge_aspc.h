@@ -1,10 +1,16 @@
 /// @file cpu/electrodes/charge_aspc.h
 /// @brief Kolafa ASPC predictor-corrector for electrode charge vectors.
 ///
-/// MetalWalls-class constant-potential MD warm-starts the electrode charge
-/// solve from a short history of prior \(Q\) vectors. Same Lagrange
-/// coefficients as SCF density ASPC (Kolafa, J. Comput. Chem. 25, 335 (2004)),
-/// applied to flat charge vectors rather than density matrices.
+/// MetalWalls warm-starts the iterative (CG) electrode charge solve from a
+/// short history of prior \(Q\) vectors, using Kolafa's ASPC predictor
+/// (J. Comput. Chem. 25, 335 (2004), Eq. 10) applied to flat charge vectors
+/// rather than density matrices. MetalWalls c8ad175d hard-codes the \(K=5\)
+/// row (six history vectors, `src/electrode_charge.F90:572-577`); here the
+/// order is a constructor argument and \(K=5\) reproduces it exactly.
+///
+/// The predictor is **not** Lagrange polynomial extrapolation: ASPC is exact
+/// only through degree 1, trading higher-order accuracy for the unconditional
+/// stability and time-reversibility that the corrector blend relies on.
 ///
 /// No public `*Config` bag; order is a constructor argument.
 #pragma once
@@ -32,8 +38,9 @@ namespace electrodes {
 /// @endcode
 class ChargeASPC {
   public:
-    /// @brief Construct with Lagrange extrapolation order \(K\).
-    /// @param order Order \(K \ge 0\). Needs \(K+1\) history points to predict.
+    /// @brief Construct with Kolafa ASPC order \(K\).
+    /// @param order Order \(K \ge 0\). Needs \(K+1\) history points to predict;
+    ///              \(K=5\) is MetalWalls' production choice.
     explicit ChargeASPC(int order = 2);
 
     /// @brief Record a converged electrode charge vector into history.
@@ -41,7 +48,7 @@ class ChargeASPC {
     /// @throws std::invalid_argument if length mismatches an established history.
     void record(const std::vector<double>& Q_scf);
 
-    /// @brief Predict the next-step charge vector via Lagrange extrapolation.
+    /// @brief Predict the next-step charge vector with the ASPC coefficients.
     /// @param[out] Q_predicted Extrapolated charges [e] (resized).
     /// @return True if \(K+1\) history points were available; false otherwise.
     bool predict(std::vector<double>& Q_predicted) const;
@@ -65,12 +72,13 @@ class ChargeASPC {
     /// @return History length.
     int history_size() const { return static_cast<int>(history_.size()); }
 
-    /// @brief Extrapolation order \(K\).
+    /// @brief ASPC order \(K\).
     /// @return Order passed to the constructor.
     int order() const { return K_; }
 
-    /// @brief Lagrange coefficient \(\omega_k\) for history index \(k\)
-    ///        (0 = oldest of the \(K+1\) window used for prediction).
+    /// @brief ASPC coefficient \(\omega_k\) for history index \(k\)
+    ///        (0 = oldest of the \(K+1\) window used for prediction), i.e.
+    ///        Kolafa's \(B_{K+1-k}\).
     /// @param k Index in \([0, K]\).
     /// @return Coefficient \(\omega_k\).
     double coefficient(int k) const;
@@ -78,7 +86,7 @@ class ChargeASPC {
   private:
     int K_;
     std::deque<std::vector<double>> history_; ///< Newest last.
-    std::vector<double> omega_;               ///< Lagrange coeffs length K+1.
+    std::vector<double> omega_;               ///< ASPC coeffs, length K+1.
     int dim_ = -1; ///< Established charge-vector length; -1 until first record.
 
     void compute_coefficients_();
