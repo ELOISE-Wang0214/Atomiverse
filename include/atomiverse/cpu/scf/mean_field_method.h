@@ -117,7 +117,9 @@ struct MeanFieldOutputs {
 template <typename Derived>
 class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
                         public HF,
-                        public cpu::TimestepConsumer {
+                        public cpu::TimestepConsumer,
+                        public cpu::QmEngine,
+                        public cpu::EmbeddingEngine {
   public:
     // ── Geometry / basis (inputs from Frame + these members) ──────────
     BasisSet basis = BasisSet::STO3G;
@@ -334,8 +336,22 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
     /// @brief Forces on embedding sites from the last `forces()` / nested force
     ///        evaluation [eV/Å]. Empty when `point_charges` was empty.
     /// @return Const reference to the republished site forces.
-    const std::vector<cpu::EmbeddingForce>& embedding_site_forces() const {
+    const std::vector<cpu::EmbeddingForce>&
+    embedding_site_forces() const override {
         return embed_site_forces_;
+    }
+
+    // ── QmEngine / EmbeddingEngine (esmm-qmmm-02) ─────────────────────
+    std::string qm_engine_name() const override;
+    void prepare(const cpu::BuildContext& qm_ctx) override;
+    void evaluate(const cpu::LaunchContext& qm_ctx) override;
+    cpu::EmbeddingEngine* as_embedding() override { return this; }
+    void reset_history() override;
+    void set_embedding_sites(std::vector<cpu::EmbeddingSite> sites) override {
+        point_charges = std::move(sites);
+    }
+    void set_site_self_energy(bool enabled) override {
+        embed_self_energy = enabled;
     }
 
     /// @brief Uniform external electric field (Ex, Ey, Ez) [a.u.].

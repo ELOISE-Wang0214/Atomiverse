@@ -3,6 +3,9 @@
 
 #include <stdexcept>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+
 namespace ATV {
 namespace cpu {
 namespace semiempirical {
@@ -75,6 +78,57 @@ bool AM1::built() const noexcept { return engine_ && engine_->built(); }
 
 bool AM1::has_density() const noexcept {
     return engine_ && engine_->has_density();
+}
+
+void AM1::prepare(const cpu::BuildContext& qm_ctx) { build(qm_ctx.frame); }
+
+void AM1::publish(cpu::Frame& frame, bool forces_requested, bool accumulate) {
+    auto& result = run(frame);
+    if (accumulate) {
+        frame.meta.get(kEnergy) += result.total_energy_ev;
+        frame.meta.get(kEnergyElectronic) += result.total_energy_ev;
+    } else {
+        frame.meta.get(kEnergy) = result.total_energy_ev;
+        frame.meta.get(kEnergyElectronic) = result.total_energy_ev;
+    }
+    const int n = static_cast<int>(frame.nlocal());
+    // Charges are last-writer-wins (state channel), never accumulated.
+    StorageReal* __restrict sp_charge = frame.span(kAtom_charge);
+    for (int i = 0; i < n; ++i) {
+        sp_charge[i] = static_cast<StorageReal>(
+            result.mulliken_charges[static_cast<std::size_t>(i)]);
+    }
+    if (forces_requested) {
+        auto& fr = compute_forces(frame);
+        AccReal* __restrict fx = frame.span(kAtom_fx);
+        AccReal* __restrict fy = frame.span(kAtom_fy);
+        AccReal* __restrict fz = frame.span(kAtom_fz);
+        for (int i = 0; i < n; ++i) {
+            const std::size_t base = static_cast<std::size_t>(3 * i);
+            const AccReal fxi = static_cast<AccReal>(fr.forces_ev_a[base + 0]);
+            const AccReal fyi = static_cast<AccReal>(fr.forces_ev_a[base + 1]);
+            const AccReal fzi = static_cast<AccReal>(fr.forces_ev_a[base + 2]);
+            if (accumulate) {
+                fx[i] += fxi;
+                fy[i] += fyi;
+                fz[i] += fzi;
+            } else {
+                fx[i] = fxi;
+                fy[i] = fyi;
+                fz[i] = fzi;
+            }
+        }
+    }
+}
+
+void AM1::evaluate(const cpu::LaunchContext& qm_ctx) {
+    // Private QM frame: overwrite energy/forces.
+    publish(qm_ctx.frame, qm_ctx.forces_requested, /*accumulate=*/false);
+}
+
+void AM1::reset_history() {
+    // Drop persisted density by rebuilding the engine on the next run.
+    engine_.reset();
 }
 
 const NDDOSystem& AM1::system() const {

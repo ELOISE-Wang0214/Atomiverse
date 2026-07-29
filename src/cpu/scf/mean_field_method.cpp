@@ -24,6 +24,7 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/electronic/aspc_predictor.h"
+#include "atomiverse/cpu/observe/mulliken.h"
 #include "atomiverse/cpu/linalg/density.h" // build_density_matrix (CPMD fixed-density step)
 #include "atomiverse/cpu/linalg/eigensolve.h" // CanonicalOrth, build_orthogonalization_matrix
 #include "atomiverse/cpu/scf/ecp_potential.h"
@@ -2178,6 +2179,55 @@ void MeanFieldMethod<D>::check_hessian_preconditions(
               "for ECP packs — d²U/dR² of the semi-local potential is a "
               "follow-up chain link. Use the finite-difference vib::Hessian "
               "driver.");
+}
+
+// ── QmEngine / EmbeddingEngine (esmm-qmmm-02) ─────────────────────────
+
+template <typename D>
+std::string MeanFieldMethod<D>::qm_engine_name() const {
+    return static_cast<const D*>(this)->name();
+}
+
+template <typename D>
+void MeanFieldMethod<D>::prepare(const cpu::BuildContext&) {
+    // Integrals need geometry at evaluate time; nothing to allocate cold.
+}
+
+template <typename D>
+void MeanFieldMethod<D>::evaluate(const cpu::LaunchContext& qm_ctx) {
+    DriveOpts opts;
+    opts.write_energy = true;
+    opts.forces = qm_ctx.forces_requested;
+    opts.unwrap = true;
+    // Standalone-style overwrite of energy/forces on the private QM frame
+    // (couplings pre-zero the channels).
+    opts.accumulate = false;
+    drive_scf_(qm_ctx.frame, /*guess=*/nullptr, opts);
+
+    // Mulliken charges [e] onto the private QM frame when a density exists.
+    if (det_sp_ && integrals_sp_) {
+        const auto charges =
+            cpu::mulliken_charge(*integrals_sp_, det_sp_->density_total());
+        StorageReal* __restrict q = qm_ctx.frame.span(kAtom_charge);
+        const int n = static_cast<int>(qm_ctx.frame.nlocal());
+        const int nc = static_cast<int>(charges.size());
+        for (int i = 0; i < n && i < nc; ++i)
+            q[i] = static_cast<StorageReal>(charges[static_cast<std::size_t>(i)]);
+    }
+}
+
+template <typename D>
+void MeanFieldMethod<D>::reset_history() {
+    aspc_alpha_.reset();
+    aspc_beta_.reset();
+    has_last_density_ = false;
+    use_predictor_ = false;
+    // XL / CPMD state is owned by AIMD wrappers; clear any residual seed flags
+    // that would warm-start a second evaluate after reset.
+    xl_alpha_.reset();
+    xl_beta_.reset();
+    cpmd_alpha_.reset();
+    cpmd_beta_.reset();
 }
 
 // explicit instantiations

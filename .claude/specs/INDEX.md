@@ -32,7 +32,7 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
 | W1-4 | esmm-contract-04-forces-requested | W1-2 | DONE 2026-07-27 (closed; see git fc204c63 + R3 commit) — energy-only phases in the Plan + ASPC-under-MC guard + first QM-in-MC regression |
 | W1-5 | esmm-contract-05-accumulate-switch | W1-1 | DONE 2026-07-27 (closed) — one accumulation contract: 5 ES evaluators `+=`, kEnergyElectronic, ASPC-fallback 2x guard, first ES+MM co-bound regression |
 | W2-1 | esmm-qmmm-01-embed-forces | — | DONE 2026-07-29 — analytic embed F + MM sites + EmbeddingSite |
-| W2-2 | esmm-qmmm-02-qm-engine-protocol | W2-1 | QmEngine/EmbeddingEngine protocols; MFM×7 + AM1 + DFTB2 |
+| W2-2 | esmm-qmmm-02-qm-engine-protocol | W2-1 | DONE 2026-07-29 — QmEngine/EmbeddingEngine; MFM×7 + AM1 + DFTB2 |
 | W2-3 | esmm-qmmm-03-electrostatic-rewrite | W2-2, W1-4, W1-5 | qm_z mask column + engine slot + real MM coupling |
 | W2-4 | esmm-qmmm-04-mech-pol-port | W2-3 | Mechanical/Polarizable onto QmSubsystem; quantitative re-pins |
 | W2-5 | esmm-qmmm-05-md-closure | W2-4 | QM/MM-MD conservation regression; roadmap ○→✓; tutorials |

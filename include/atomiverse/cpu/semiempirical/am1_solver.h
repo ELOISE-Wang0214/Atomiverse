@@ -5,6 +5,7 @@
 #include <memory>
 #include <utility>
 
+#include "atomiverse/cpu/component/qm_engine.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/semiempirical/internal/nddo_solver.h"
 
@@ -18,7 +19,8 @@ using AM1Result = NDDOResult;
 ///
 /// Owns an internal NDDO engine. Parameters are public members — there is no
 /// public `NDDOConfig` / `NDDOSolver` bag. `AM1Evaluator` wraps this type.
-class AM1 {
+/// Implements `cpu::QmEngine` for multiscale couplings (no embedding path).
+class AM1 : public cpu::QmEngine {
   public:
     /// @brief Total molecular charge [e].
     int charge = 0;
@@ -57,6 +59,19 @@ class AM1 {
     bool has_density() const noexcept;
     const NDDOSystem& system() const;
     const NDDOScfState& state() const;
+
+    // ── QmEngine (esmm-qmmm-02) ───────────────────────────────────────
+    std::string qm_engine_name() const override { return "am1"; }
+    void prepare(const cpu::BuildContext& qm_ctx) override;
+    void evaluate(const cpu::LaunchContext& qm_ctx) override;
+    // as_embedding() default nullptr — NDDO has no external-charge path yet.
+    void reset_history() override;
+
+    /// @brief Shared energy/forces/charges writeback (QmEngine + evaluator).
+    /// @param frame Target frame.
+    /// @param forces_requested Compute and write nuclear forces.
+    /// @param accumulate true → += energy/forces (MD component); false → =.
+    void publish(cpu::Frame& frame, bool forces_requested, bool accumulate);
 
   private:
     void sync_engine_();

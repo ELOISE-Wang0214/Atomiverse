@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/cpu/component/qm_engine.h"
 #include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/semiempirical/td_dftb2.h"
@@ -106,7 +107,7 @@ enum class DftbSkSet {
 ///   dftb.with_stress = true;
 ///   eval.on(evaluate::Phase::evaluate).add(std::move(dftb));
 /// @endcode
-class DFTB2 : public cpu::Semiempirical {
+class DFTB2 : public cpu::Semiempirical, public cpu::QmEngine {
   public:
     /// @brief SCC residual tolerance on max |Δq| (and |Δm| when open shell).
     double scc_tol = 1e-8;
@@ -210,6 +211,12 @@ class DFTB2 : public cpu::Semiempirical {
 
     void build(const BuildContext& ctx) override;
     void launch(const LaunchContext& ctx) override;
+
+    // ── QmEngine (esmm-qmmm-02) — one-line Component forwards ─────────
+    std::string qm_engine_name() const override { return name(); }
+    void prepare(const BuildContext& qm_ctx) override { build(qm_ctx); }
+    void evaluate(const LaunchContext& qm_ctx) override { launch(qm_ctx); }
+    // as_embedding() default nullptr
 
     /// @brief Last total energy E_elec+rep+disp [eV].
     double last_energy() const { return energy_; }

@@ -149,6 +149,9 @@ atv_add_cpp_test(test_cpu_chunked_range cpu/device/test_chunked_range.cpp)
 # defaults, trivially-copyable / non-polymorphic guards. Layout-only, no
 # physics.
 atv_add_cpp_test(test_cpu_component_context_slices cpu/component/test_context_slices.cpp)
+if(ATV_BUILD_HF)
+    atv_add_cpp_test(test_cpu_qm_engine cpu/component/test_qm_engine.cpp)
+endif()
 # esmm-contract-05-accumulate-switch (U8 + U7b): the kEnergyElectronic per-term
 # key — ZeroEnergy must clear it in lockstep with kEnergy, and a co-bound
 # Evaluate pass must leave the QM share alone in it. Registered UNCONDITIONALLY
