@@ -14,23 +14,33 @@ FetchContent_MakeAvailable(googletest)
 # — 20-atom 5000-step runs took minutes, and `ctest -j` multiplied the
 # oversubscription. Cap every test's default; a test that genuinely needs a
 # specific thread count can still call omp_set_num_threads itself.
-set(ATV_TEST_OMP_THREADS 8 CACHE STRING
+# Tiny systems: few threads beat oversubscription. 8 threads on 20-atom
+# tests was wall-dominated by OpenMP fork/join.
+set(ATV_TEST_OMP_THREADS 2 CACHE STRING
     "OMP_NUM_THREADS for single-process unit tests")
-# MPI unit tests exercise multi-RANK behaviour (domain decomposition / halo)
-# of a single component, not OpenMP — 1 thread/rank is sufficient and avoids
-# oversubscription on shared login nodes. Production-style multi-rank MD
-# campaigns do NOT belong here (see Fast-gate discipline below).
+# MPI unit tests: 1 thread/rank — multi-rank campaigns are not unit tests.
 set(ATV_TEST_MPI_OMP_THREADS 1 CACHE STRING
     "OMP_NUM_THREADS per rank for MPI unit tests")
+# HARD CAP: every ctest registration dies at this wall time. If a "unit"
+# needs longer, it is not a unit — move to regressions/ or delete.
+set(ATV_TEST_TIMEOUT_SECONDS 10 CACHE STRING
+    "Maximum wall seconds for any unit test under ctest (hard kill)")
+
+# Pre-push builds only non-heavy targets so the gate stays minutes, not hours.
+# Full method campaigns (CCSD/FCI/MP2/BOMD/CPMD/full GPW/PW solves, …) match
+# this regex and are skipped unless ATV_TEST_HEAVY=ON.
+option(ATV_TEST_HEAVY
+    "Build/register multi-second method tests (default OFF — pre-push gate)"
+    OFF)
+set(ATV_TEST_HEAVY_REGEX
+    "ccsd|fci|mp2|rpa|g0w0|casscf|nevpt|eom_|tdhf|ri_mp2|bomd|cpmd|xl_bomd|second_gen_cpmd|gpw_solver|gpw_method|gpw_ot|gpw_forces|gpw_stress|gpw_uks|gpw_mbd|gpw_dftd|gpw_ts|gpw_xdm|gpw_vdw|gpw_rvv10|gpw_hirshfeld|gpw_dftu|gpw_kpoints|gpw_thread|gpw_periodic_wannier|gpw_smearing|gpw_poisson|gpw_hartree|gpw_grid_fft|gpw_xc_grid_gga|gpw_mt_poisson|pw_si|pw_bomd|pw_forces|pw_method|pw_evaluator|pw_spin|pw_stress|pw_dfpt|pw_bands|pw_berry|pw_periodic_wannier|pw_smearing|pw_components|scf_solver|rohf_solver|uks_solver|uhf_solver|x2c|pcm|embedding|counterpoise|cphf|dispersion|rks_tda|ghf|scf_cpmd|scf_xl|scf_aspc|scf_mc_predictor|method_driver|dftb2$|dftb3$|dftb2_3ob|dftb2_dispersion|dftb3_scc|dftb0$|am1_scaffold|am1_thermochemistry|scf_wannier|scf_ecp$|electronic_cpmd|electronic_xl|scrub$|module_dag|module_off|compatibility_surface|molrs_source_contract"
+    CACHE STRING "Test name regex treated as heavy (skipped when ATV_TEST_HEAVY=OFF)")
 
 # Fast-gate discipline (HARD RULE):
-#   • tests/ = one component / one method / millisecond scale only.
-#   • FORBIDDEN under ctest: multi-step Driver loops (MD/Minimize/Path
-#     run(N) with N≫1), full-pipeline assembly that runs start→finish,
-#     equilibration, multi-rank production-style MD, or external oracles.
-#   • Those live in regressions/ (ATV_BUILD_REGRESSIONS, NOT ctest) or
-#     benchmarks/**/validation (acceptance time). No opt-in switch to
-#     smuggle e2e into ctest.
+#   • tests/ = one component / one method / ≤ ATV_TEST_TIMEOUT_SECONDS.
+#   • FORBIDDEN under ctest: multi-step Driver loops, equilibration,
+#     multi-rank production MD, full post-HF/CPMD/BOMD campaigns, oracles.
+#   • Those live in regressions/ (NOT ctest) or benchmarks/**.
 
 # CUDA test: compiled as .cu with separable compilation.
 # A .cu source registered while the CUDA language is disabled is silently
@@ -49,6 +59,10 @@ function(atv_guard_cuda_sources name)
 endfunction()
 
 function(atv_add_test name)
+    if(NOT ATV_TEST_HEAVY AND name MATCHES "${ATV_TEST_HEAVY_REGEX}")
+        message(STATUS "unit: skip heavy ${name} (ATV_TEST_HEAVY=OFF)")
+        return()
+    endif()
     atv_guard_cuda_sources(${name} ${ARGN})
     add_executable(${name} ${ARGN})
     target_link_libraries(${name} PRIVATE atomiverse GTest::gtest_main)
@@ -56,11 +70,16 @@ function(atv_add_test name)
     target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME ${name} COMMAND ${name})
     set_tests_properties(${name} PROPERTIES
+        TIMEOUT ${ATV_TEST_TIMEOUT_SECONDS}
         ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_OMP_THREADS}")
 endfunction()
 
 # C++ test: compiled as .cpp, no CUDA required.
 function(atv_add_cpp_test name)
+    if(NOT ATV_TEST_HEAVY AND name MATCHES "${ATV_TEST_HEAVY_REGEX}")
+        message(STATUS "unit: skip heavy ${name} (ATV_TEST_HEAVY=OFF)")
+        return()
+    endif()
     atv_guard_cuda_sources(${name} ${ARGN})
     add_executable(${name} ${ARGN})
     target_link_libraries(${name} PRIVATE atomiverse GTest::gtest_main)
@@ -68,6 +87,7 @@ function(atv_add_cpp_test name)
     target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME ${name} COMMAND ${name})
     set_tests_properties(${name} PROPERTIES
+        TIMEOUT ${ATV_TEST_TIMEOUT_SECONDS}
         ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_OMP_THREADS}")
 endfunction()
 
@@ -93,6 +113,7 @@ function(atv_add_mpi_run test_name target_name n)
         LABELS "mpi"
         RUN_SERIAL TRUE
         RESOURCE_LOCK "mpi_singleton"
+        TIMEOUT ${ATV_TEST_TIMEOUT_SECONDS}
         ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_MPI_OMP_THREADS}"
         PASS_REGULAR_EXPRESSION "PASSED[^a-zA-Z]"
         FAIL_REGULAR_EXPRESSION "FAILED[^a-zA-Z]")
@@ -111,8 +132,10 @@ add_test(
             -DATV_SOURCE_DIR=${CMAKE_SOURCE_DIR}
             -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/molrs-contract-mismatch
             -P ${CMAKE_CURRENT_SOURCE_DIR}/architecture/molrs_contract_mismatch.cmake)
+if(TARGET test_molrs_source_contract_mismatch)
 set_tests_properties(test_molrs_source_contract_mismatch PROPERTIES
     WILL_FAIL TRUE)
+endif()
 
 # ── CPU backend tests (always available, no CUDA required) ──────────
 
@@ -132,8 +155,10 @@ atv_add_cpp_test(test_cpu_component_context_slices cpu/component/test_context_sl
 # (ZeroEnergy is always-on infrastructure); the two co-binding cases inside are
 # #ifdef ATV_HAS_HF. Serial: the RHF pin must not drift with reduction order.
 atv_add_cpp_test(test_cpu_zero_energy_electronic cpu/component/test_zero_energy_electronic.cpp)
+if(TARGET test_cpu_zero_energy_electronic)
 set_tests_properties(test_cpu_zero_energy_electronic PROPERTIES
     ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
+endif()
 atv_add_cpp_test(test_cpu_mc_scaffold cpu/test_mc_scaffold.cpp)
 atv_add_cpp_test(test_cpu_mc_move cpu/montecarlo/test_mc_move.cpp)
 atv_add_cpp_test(test_cpu_mc_transaction_rollback cpu/montecarlo/test_transaction_rollback.cpp)
@@ -625,8 +650,10 @@ if(ATV_BUILD_PW)
     set_target_properties(test_cpu_pw_fft PROPERTIES CXX_STANDARD 20)
     target_include_directories(test_cpu_pw_fft PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME test_cpu_pw_fft COMMAND test_cpu_pw_fft)
+    if(TARGET test_cpu_pw_fft)
     set_tests_properties(test_cpu_pw_fft PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_OMP_THREADS}")
+    endif()
 
     # MPI k-point parallel parity (launched under mpirun)
     if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
@@ -754,8 +781,10 @@ if(ATV_BUILD_HF)
     # bit-identity against the method's own energy() readback.
     atv_add_cpp_test(test_cpu_scf_aspc_fallback_accumulate
                      cpu/scf/test_scf_aspc_fallback_accumulate.cpp)
+    if(TARGET test_cpu_scf_aspc_fallback_accumulate)
     set_tests_properties(test_cpu_scf_aspc_fallback_accumulate PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
+    endif()
     # hf-capability-gaps-08-stability: MO orbital-Hessian A/B kernel +
     # Seeger-Pople stability analysis. NO SCF loop: the converged H2/STO-3G
     # determinant is symmetry-exact in closed form (one Fock build, no
@@ -886,15 +915,19 @@ if(ATV_BUILD_HF)
     # parallel reduction order (OpenMP / BLAS) is ULP-non-deterministic, so this
     # test pins serial execution. Do NOT loosen the assertions to tolerances —
     # the spec mandates bit-identity.
+    if(TARGET test_cpu_scf_stages)
     set_tests_properties(test_cpu_scf_stages PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
+    endif()
     # scf-driver-refactor-03a-convert: RHF/UHF/RKS/UKS as Driver<scf::Phase>,
     # regression-pinned against the 03a-parity energies/eigenvalues. Pins serial
     # execution for the same ULP-determinism reason as test_cpu_scf_stages.
     atv_add_cpp_test(test_cpu_scf_method_driver_parity
                      cpu/scf/test_method_driver_parity.cpp)
+    if(TARGET test_cpu_scf_method_driver_parity)
     set_tests_properties(test_cpu_scf_method_driver_parity PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
+    endif()
     atv_add_cpp_test(test_cpu_scf_method_driver_no_alloc
                      cpu/scf/test_method_driver_no_alloc.cpp)
     atv_add_cpp_test(test_cpu_evaluate_driver        cpu/test_evaluate_driver.cpp)
@@ -905,8 +938,10 @@ if(ATV_BUILD_HF)
     # ULP-determinism reason as test_cpu_scf_method_driver_parity.
     atv_add_cpp_test(test_cpu_evaluate_source_cobinding
                      cpu/evaluate/test_source_cobinding.cpp)
+    if(TARGET test_cpu_evaluate_source_cobinding)
     set_tests_properties(test_cpu_evaluate_source_cobinding PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
+    endif()
     atv_add_cpp_test(test_cpu_scf_minao         cpu/scf/test_minao.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_eri_deriv cpu/scf/test_rys_eri_deriv.cpp)
     # test_cpu_minimizer_lbfgs relocated to benchmarks/qc/rhf/validation/
@@ -1130,18 +1165,22 @@ add_test(
     COMMAND ${CMAKE_COMMAND}
             -DATV_SOURCE_DIR=${CMAKE_SOURCE_DIR}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/architecture/module_dag_auto_enable.cmake)
+if(TARGET test_module_dag_auto_enable)
 set_tests_properties(test_module_dag_auto_enable PROPERTIES
     LABELS "architecture;cmake"
     TIMEOUT 300)
+endif()
 
 add_test(
     NAME test_module_off_excludes_sources
     COMMAND ${CMAKE_COMMAND}
             -DATV_SOURCE_DIR=${CMAKE_SOURCE_DIR}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/architecture/module_off_excludes_sources.cmake)
+if(TARGET test_module_off_excludes_sources)
 set_tests_properties(test_module_off_excludes_sources PROPERTIES
     LABELS "architecture;cmake"
     TIMEOUT 300)
+endif()
 
 add_test(
     NAME test_no_factory_scrub
