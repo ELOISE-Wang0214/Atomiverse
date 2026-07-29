@@ -33,6 +33,7 @@ tools/tb_oracle/
       …                     # more twins land with worker tips / merges
     mopac/                  # NDDO OpenMOPAC pins
       am1-water/            # AM1 H2O absolute E / ΔHf / charge pin (wave-4)
+      rm1-water/            # RM1 H2O ΔHf pin (wave-4)
     xtb/                    # (grow with GFN-xTB pins)
 ```
 
@@ -54,6 +55,7 @@ tools/tb_oracle/
 | `inputs/dftbplus/dftb2-dispersion-d3/` | s-dftd3 | Water-dimer **molecular** D3(BJ) geometry twin (`reg_dftb2-dispersion-d3`) |
 | `inputs/mopac/am1-water/` | OpenMOPAC | AM1 H₂O deck + archived MOPAC 7.00 transcript (`reg_am1-water-mopac-energy`); **first mopac twin** |
 | `inputs/xtb/` | xtb | **absent on `dev`** — seed with GFN pins (Phase C, late) |
+| `inputs/mopac/rm1-water/` | OpenMOPAC | RM1 H₂O ΔHf decks (`reg_rm1-water-mopac-energy`); the ΔHf path is calibrated against MOPAC2016 21.298M `tests/keywords/RM1.out` (CO₂) to 3.1e-4 kcal/mol |
 
 Every twin above is on `dev` as of harness wave 3 (2026-07-29; includes
 DFTB3 note + kpoints/periodic-forces twins), plus the wave-4 mopac seed.
