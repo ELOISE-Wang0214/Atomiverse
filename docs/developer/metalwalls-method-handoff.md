@@ -40,24 +40,21 @@ measurement. "No binary" is no longer a valid reason for `literature` or
 `perf_exempt (no MW binary)`): TF electrode **4.4**, PIM bulk **0.77**,
 const-pot CG **0.026**, per-electrode-η **0.09**, PIM-NPT **0.072**.
 
-**Batch-2 re-pin progress (resumed 2026-07-29 after Claude rate-limit):**
+**Batch-2 re-pin CLOSED (2026-07-29)** — commit `d59e4350` + prior
+`global-electroneutrality-bo` / `voronoi-volume-tf`.
 
-| Slug | Status |
-| ---- | ------ |
-| `global-electroneutrality-bo` | **done** (`a423ed1b` + `961403b1`) — sum \(Q=-1\) exact; per-electrode within 2e-5 at image_range=1280 |
-| `voronoi-volume-tf` | **done** (`da688dac`) — same 6.13 % self-golden as pre-repin TF; real MW pins landed |
-| `const-pot-md-nvt-short` | **WIP** worktree `/tmp/atv-wt-repin2-cpnvt` — MW twin runs (pbc=2/3); twin inputs uncommitted |
-| `maze-charge-dynamics` | **WIP** `/tmp/wt-maze-charge-dynamics` — MW twin runs; inputs uncommitted |
-| `extended-lagrangian-dipoles` | **WIP** gen scripts only |
-| `const-pot-il-edl-box` | worktree empty of new work |
-| `const-pot-tip4p-edl` | worktree empty of new work |
-| `constant-d-polarization-feedback` | not started |
-| `electrode-atom-forces` | not started (wave-4 literature) |
+| Slug | Verdict |
+| ---- | ------- |
+| `global-electroneutrality-bo` | **done** — MW sum \(Q=-1\); per-electrode 2e-5 |
+| `voronoi-volume-tf` | **done** — real MW TF+Voronoi pins (retired 6.13% self-golden) |
+| `const-pot-md-nvt-short` | **done** — soft \|Q\| vs MW pbc=3 (~3%) |
+| `const-pot-il-edl-box` | **done** — empty MW pin; IL absolute not_expressible (image-sum vs Ewald) |
+| `extended-lagrangian-dipoles` | **done** — stationary thole_a=0 MW pins; XL dynamics self-check |
+| `const-pot-tip4p-edl` / `maze-charge-dynamics` / `electrode-atom-forces` | **provenance** — MW twins archived; foothold gates; \|Q\| model gap documented |
+| `constant-d-polarization-feedback` / `displacement-dfield-md` | **literature intentional** (Zhang–Sprik / vacuum D) |
 
-**Still owed (batch 2):** `const-pot-md-nvt-short`, `const-pot-il-edl-box`,
-`constant-d-polarization-feedback`, `extended-lagrangian-dipoles`,
-`maze-charge-dynamics`, `const-pot-tip4p-edl`, `electrode-atom-forces`,
-plus remaining wave-4 `oracle: metalwalls` / literature footholds.
+**incomplete_remaining=0** for real-oracle re-pin debt listed after wave-5.
+Next loop wave: GapCensus → assign residual pending (3) + blocked (4).
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →

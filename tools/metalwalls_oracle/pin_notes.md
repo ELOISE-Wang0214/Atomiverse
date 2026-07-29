@@ -77,3 +77,11 @@
 - **Pin:** Q_top(l_tf=0)=4.354124119406114e-3; (l_tf=2,v=bulk)=3.707555065364343e-3; (l_tf=2,v=half)=3.321360199637453e-3
 - **Superseded:** pin_voronoi_tf.py self-golden (~6.13% high at image_range=40)
 - **Commit:** da688dac
+
+## batch-2 remainder (2026-07-29) — d59e4350
+
+- **const-pot-md-nvt-short:** MW pbc=3 |Q|=9.711e-2 e; ATV PME soft 5% pin
+- **const-pot-il-edl-box empty:** MW |Q|=0.2076 e at im=80 (~0.5%); IL Ewald |Q|=4.82 e not matched by image-sum
+- **extended-lagrangian-dipoles:** stationary thole_a=0 E_pol=-0.2440 eV / F=0.3493 eV/Å (same as pim bulk)
+- **tip4p / maze / electrode-forces:** twins archived; absolute |Q| model gap documented
+- **constant-d / displacement-dfield:** literature intentional
