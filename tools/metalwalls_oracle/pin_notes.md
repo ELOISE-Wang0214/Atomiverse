@@ -61,3 +61,19 @@
 - **Pin (joint α>0):** Q_top = +7.3285008958883610e-02 e; μ_cat,z = 5.8951916148990660e-02 e·Å; μ_an,z = 8.7432701391015569e-02 e·Å
 - **Pin (α=0):** Q_top = +7.5339627935767609e-02 e (matches ConstPotBO)
 - **perf_exempt:** no MetalWalls twin binary
+
+## global-electroneutrality-bo (re-pinned 2026-07-29 against the real binary)
+
+- **Oracle:** MetalWalls git `c8ad175d`, `mpirun -n 1 mw`
+- **Inputs:** `inputs/metalwalls/global-electroneutrality-bo/`
+- **Pin:** Q_E1 = -0.5189485789245821 e, Q_E2 = -0.4810514210754179 e, sum = -1.0 e
+- **Primary:** global electroneutrality constraint; secondary per-electrode within 2e-5 at xy_image_range=1280
+- **Commits:** a423ed1b, 961403b1
+
+## voronoi-volume-tf (re-pinned 2026-07-29 against the real binary)
+
+- **Oracle:** MetalWalls git `c8ad175d`, `mpirun -n 1 mw`
+- **Inputs:** `inputs/metalwalls/voronoi-volume-tf/mw_twin/` (`@LTF@`/`@VORONOI@`)
+- **Pin:** Q_top(l_tf=0)=4.354124119406114e-3; (l_tf=2,v=bulk)=3.707555065364343e-3; (l_tf=2,v=half)=3.321360199637453e-3
+- **Superseded:** pin_voronoi_tf.py self-golden (~6.13% high at image_range=40)
+- **Commit:** da688dac
