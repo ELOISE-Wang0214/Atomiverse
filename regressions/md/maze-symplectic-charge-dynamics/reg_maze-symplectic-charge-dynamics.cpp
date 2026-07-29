@@ -8,8 +8,10 @@
 /// min-image pair — a driver NeighborList cannot cover that; the explicit
 /// loop also makes the velocity-flip palindrome exact).
 ///
-/// Literature pin (no MetalWalls binary): Coretti et al., J. Chem. Phys.
-/// 152, 194701 (2020) — see REFERENCE.md. Exits non-zero on failure.
+/// Oracles: MetalWalls c8ad175d (the real binary — MaZe invariants on this
+/// geometry and the dilute-limit electrode charge) over Coretti et al.,
+/// J. Chem. Phys. 152, 194701 (2020) — see REFERENCE.md. Exits non-zero on
+/// failure.
 
 #include <cmath>
 #include <cstdio>
@@ -37,8 +39,19 @@ constexpr double kMion = 40.0;  // [amu]
 constexpr int kSteps = 400;     // forward steps (then 400 back)
 constexpr int kIon0 = 8;        // first ion row (walls are rows 0–7)
 
+/// MetalWalls c8ad175d, identical 10-atom cluster in a dilute cell, its
+/// Ewald extrapolated to the isolated limit: total charge on the +1 V plate.
+/// MW L = 40/60/100/200 Å gives +0.1267873920/+0.1267203096/+0.1267091472/
+/// +0.1267076937 e — monotone in 1/L³ toward this value (residual +1.1e-6
+/// relative at L = 200 Å). Case: `tools/metalwalls_oracle/inputs/metalwalls/
+/// maze-symplectic-charge-dynamics/twinB_dilute_200`.
+constexpr double kMwQTopDilute = 0.1267076937357; // [e]
+constexpr double kMwQTopRelTol = 1e-4;            // MW's own image residual
+constexpr double kLDilute = 200.0;                // [Å] > 2 × cluster extent
+constexpr double kCutDilute = 60.0;               // [Å] > cluster diameter
+
 /// 2×2 wall sites per plate (types 1/2, static) + two point ions (type 3).
-cpu::Frame make_capacitor() {
+cpu::Frame make_capacitor(double lxy = kLxy, double lz = kLz) {
     const int N = 10;
     cpu::Frame f(N);
     int a = 0;
@@ -73,7 +86,7 @@ cpu::Frame make_capacitor() {
         f.span(kAtom_tag)[a] = a + 1;
         ++a;
     }
-    f.box = cpu::Box::orthorhombic(kLxy, kLxy, kLz);
+    f.box = cpu::Box::orthorhombic(lxy, lxy, lz);
     return f;
 }
 
@@ -233,6 +246,42 @@ int main() {
                 "  neut=%.3e e  min_sep=%.3f Å  Qtop=%.6f\n",
                 aspc.drift, aspc.ret_pos, aspc.ret_q, aspc.max_neut,
                 aspc.min_sep, aspc.q_top_first);
+
+    // ── External oracle: MetalWalls c8ad175d ────────────────────────────
+    // The 6×6×20 Å cell above is evaluated in **minimum image** (hard-cutoff
+    // `PairGaussianCoul` + `ConstPotBO::xy_image_range = 0`), which
+    // MetalWalls cannot express — its Coulomb is always Ewald-summed
+    // (`num_pbc` 2 or 3), and on this cell MW answers Q_top = +0.152960 e,
+    // 11.2% above the truncated model. The identical cluster in a dilute
+    // cell **is** expressible: MW's Ewald converges to the isolated pairwise
+    // Gaussian-Coulomb sum, which is exactly what the minimum-image path
+    // computes once the cell exceeds twice the cluster extent.
+    cpu::Frame dil = make_capacitor(kLDilute, kLDilute);
+    cpu::md::ConstPotMaZe dil_maze(kEta);
+    dil_maze.add_electrode(1, kPsiBot);
+    dil_maze.add_electrode(2, kPsiTop);
+    cpu::PairGaussianCoul dil_pg(kCutDilute, {0.0, kEta, kEta, 0.0}, true);
+    cpu::Context dil_ctx;
+    dil_maze.build({dil_ctx, dil});
+    dil_pg.build({dil_ctx, dil});
+    dil.meta.get(kEnergy) = 0.0;
+    dil_maze.launch({dil_ctx, dil, 0, 0});
+    dil_pg.launch({dil_ctx, dil, 0, 0});
+    double q_top_dilute = 0.0;
+    for (int i = 0; i < dil.nlocal(); ++i)
+        if (dil.span(kAtom_type)[i] == 2)
+            q_top_dilute += dil.span(kAtom_charge)[i];
+    const double q_rel =
+        std::abs(q_top_dilute - kMwQTopDilute) / kMwQTopDilute;
+    std::printf("dilute-limit Q_top = %.13f e  (MetalWalls c8ad175d "
+                "%.13f e, rel %.3e)\n",
+                q_top_dilute, kMwQTopDilute, q_rel);
+    if (!(q_rel <= kMwQTopRelTol)) {
+        std::printf("FAIL: dilute Q_top %.13f e off MetalWalls %.13f e by "
+                    "%.3e > %.1e\n",
+                    q_top_dilute, kMwQTopDilute, q_rel, kMwQTopRelTol);
+        ++fail;
+    }
 
     // ── Validity of the scenario itself ─────────────────────────────────
     // Ions must stay well separated (bound smooth motion, no collapse).
