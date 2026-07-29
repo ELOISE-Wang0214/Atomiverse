@@ -39,12 +39,12 @@ enum class DftbSkSet {
 ///   lattice-summed H⁰/S, screened γ, and repulsive within static SK cutoffs
 ///   (molecular limit when L ≫ r_cut). **Analytic** nuclear forces for closed
 ///   shell **and** collinear open shell (HF + Pulay + SCC γ + repulsive; spin
-///   shifts on ∂S) under the min-image molecular limit — fixed-Δq/m
-///   Hellmann–Feynman (see `reg_dftb2-analytic-forces`,
-///   `reg_dftb2-spin-analytic-forces`). Closed shell also offers an analytic
-///   intensive cell stress on `kStress` [eV/Å³] — the pair virial of those same
-///   bond terms (`reg_dftb2-analytic-stress`); open shell falls back to
-///   multi-SCC affine strain-FD.
+///   shifts on ∂S) use the **same lattice-image walk** as the energy — not
+///   min-image only — so \(F=-\nabla E\) under Γ-PBC (`reg_dftb2-periodic-forces`,
+///   `reg_dftb2-analytic-forces`, `reg_dftb2-spin-analytic-forces`). Closed shell
+///   also offers an analytic intensive cell stress on `kStress` [eV/Å³] — the
+///   pair virial of those same image bond terms (`reg_dftb2-analytic-stress`);
+///   open shell falls back to multi-SCC affine strain-FD.
 /// - `sk_set = ThreeOb`: `basis_data/dftb_3ob_tables.h` 3ob-3-1 radial H/S +
 ///   repulsive (Gaus et al., JCTC 2013; organic CHNO). Closed shell: **analytic**
 ///   nuclear forces (same HF + Pulay + γ + repulsive assembly as MioSketch, on

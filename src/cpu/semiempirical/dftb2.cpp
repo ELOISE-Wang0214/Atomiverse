@@ -791,6 +791,8 @@ SccResult scc_energy_unrestricted(
 
 /// Closed-form nuclear gradient for **collinear unrestricted** SCC-DFTB2
 /// (fixed Δq, m; dual α/β densities). Spin W is geometry-independent.
+/// Lattice-image walk matches Γ-point energy (H⁰/S/γ/rep); self-images (a=a,
+/// T≠0) have r = |T| only and contribute zero nuclear force.
 void analytic_forces_unrestricted(
     int n_at, int n_ao, int n_alpha, int n_beta,
     const std::vector<const DftbElementRow*>& el, const std::vector<int>& ao0,
@@ -800,15 +802,7 @@ void analytic_forces_unrestricted(
     const linalg::RealMatrix& Cb, const linalg::RealVector& eps_a_orb,
     const linalg::RealVector& eps_b_orb, AccReal* fx, AccReal* fy,
     AccReal* fz) {
-    auto dist_vec = [&](int i, int j, double& dx, double& dy, double& dz) {
-        dx = static_cast<double>(x[j] - x[i]);
-        dy = static_cast<double>(y[j] - y[i]);
-        dz = static_cast<double>(z[j] - z[i]);
-        box.min_image(dx, dy, dz);
-        return std::sqrt(dx * dx + dy * dy + dz * dz);
-    };
-
-    // Atom shifts ε^σ_A = Σ_B γ_AB Δq_B ± W_A m_A
+    // Atom shifts ε^σ_A = Σ_B γ_AB Δq_B ± W_A m_A (γ_AB already lattice-summed).
     std::vector<double> eps_at_a(static_cast<std::size_t>(n_at), 0.0);
     std::vector<double> eps_at_b(static_cast<std::size_t>(n_at), 0.0);
     for (int a = 0; a < n_at; ++a) {
@@ -846,71 +840,89 @@ void analytic_forces_unrestricted(
                                 xt::zeros<double>({n_ao, n_ao}),
                                 xt::zeros<double>({n_ao, n_ao})};
 
+    const auto images = lattice_images_for(box, el);
+
     for (int a = 0; a < n_at; ++a) {
         const auto& ea = *el[static_cast<std::size_t>(a)];
         const int ia = ao0[static_cast<std::size_t>(a)];
+        const double xa = static_cast<double>(x[a]);
+        const double ya = static_cast<double>(y[a]);
+        const double za = static_cast<double>(z[a]);
         for (int b = a + 1; b < n_at; ++b) {
             const auto& eb = *el[static_cast<std::size_t>(b)];
-            double dx, dy, dz;
-            const double r = dist_vec(a, b, dx, dy, dz);
-            if (r < 1e-12)
-                continue;
             const int ib = ao0[static_cast<std::size_t>(b)];
-            const double dir[3] = {dx / r, dy / r, dz / r};
-            double dE_dbond[3] = {0, 0, 0};
-
-            if (r <= pair_rcut_A(ea, eb, type[a], type[b])) {
-                const auto& sk = pair_sk(type[a], type[b]);
-                for (int k = 0; k < 3; ++k) {
-                    dH0[k] = xt::zeros<double>({n_ao, n_ao});
-                    dS[k] = xt::zeros<double>({n_ao, n_ao});
-                }
-                fill_sk_block_deriv(ea, eb, sk, dx, dy, dz, r, dH0, dS, ia, ib);
-                const double shift_a =
-                    0.5 * (eps_at_a[static_cast<std::size_t>(a)]
-                           + eps_at_a[static_cast<std::size_t>(b)]);
-                const double shift_b =
-                    0.5 * (eps_at_b[static_cast<std::size_t>(a)]
-                           + eps_at_b[static_cast<std::size_t>(b)]);
-                const int na = ea.n_ao;
-                const int nb = eb.n_ao;
-                for (int k = 0; k < 3; ++k) {
-                    double acc = 0;
-                    for (int i = 0; i < na; ++i)
-                        for (int j = 0; j < nb; ++j) {
-                            const double dh = dH0[k](ia + i, ib + j);
-                            const double ds = dS[k](ia + i, ib + j);
-                            acc += Pa(ia + i, ib + j) * (dh + shift_a * ds)
-                                   - Wa(ia + i, ib + j) * ds;
-                            acc += Pb(ia + i, ib + j) * (dh + shift_b * ds)
-                                   - Wb(ia + i, ib + j) * ds;
-                        }
-                    // Factor 2: only the A–B upper block is contracted (Hermitian).
-                    dE_dbond[k] += 2.0 * acc;
-                }
-            }
-
-            // E² = ½Σ_AB γ_AB Δq_A Δq_B: the ordered double sum gives the
-            // A–B pair γ_AB Δq_A Δq_B, and with bond = R_B − R_A the chain
-            // rule is ∂r/∂bond = +dir, so ∂E²/∂bond = +Δq_A Δq_B dγ/dr.
-            const double dgdR = dgamma_dr(r, ea.hubbard_u, eb.hubbard_u);
+            const double xb = static_cast<double>(x[b]);
+            const double yb = static_cast<double>(y[b]);
+            const double zb = static_cast<double>(z[b]);
+            const double rcut = pair_rcut_A(ea, eb, type[a], type[b]);
+            const auto& sk = pair_sk(type[a], type[b]);
             const double dqa = dq[static_cast<std::size_t>(a)];
             const double dqb = dq[static_cast<std::size_t>(b)];
-            for (int k = 0; k < 3; ++k)
-                dE_dbond[k] += dqa * dqb * dgdR * dir[k];
+            const double shift_a =
+                0.5 * (eps_at_a[static_cast<std::size_t>(a)]
+                       + eps_at_a[static_cast<std::size_t>(b)]);
+            const double shift_b =
+                0.5 * (eps_at_b[static_cast<std::size_t>(a)]
+                       + eps_at_b[static_cast<std::size_t>(b)]);
+            const int na = ea.n_ao;
+            const int nb = eb.n_ao;
 
-            // Spin energy −½ Σ W m²: W constant, m fixed ⇒ no geometry term.
+            for (const auto& T : images) {
+                const double dx = xb + T.tx - xa;
+                const double dy = yb + T.ty - ya;
+                const double dz = zb + T.tz - za;
+                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (r < 1e-12)
+                    continue;
+                const double dir[3] = {dx / r, dy / r, dz / r};
+                double dE_dbond[3] = {0, 0, 0};
 
-            const double dErep_dr = pair_repulsive_dE_dr(type[a], type[b], r);
-            for (int k = 0; k < 3; ++k)
-                dE_dbond[k] += dErep_dr * dir[k];
+                if (r <= rcut) {
+                    for (int k = 0; k < 3; ++k) {
+                        dH0[k] = xt::zeros<double>({n_ao, n_ao});
+                        dS[k] = xt::zeros<double>({n_ao, n_ao});
+                    }
+                    fill_sk_block_deriv(ea, eb, sk, dx, dy, dz, r, dH0, dS, ia,
+                                        ib);
+                    for (int k = 0; k < 3; ++k) {
+                        double acc = 0;
+                        for (int i = 0; i < na; ++i)
+                            for (int j = 0; j < nb; ++j) {
+                                const double dh = dH0[k](ia + i, ib + j);
+                                const double ds = dS[k](ia + i, ib + j);
+                                acc += Pa(ia + i, ib + j) * (dh + shift_a * ds)
+                                       - Wa(ia + i, ib + j) * ds;
+                                acc += Pb(ia + i, ib + j) * (dh + shift_b * ds)
+                                       - Wb(ia + i, ib + j) * ds;
+                            }
+                        // Factor 2: only the A–B upper block is contracted.
+                        dE_dbond[k] += 2.0 * acc;
+                    }
+                    const double dErep_dr =
+                        pair_repulsive_dE_dr(type[a], type[b], r);
+                    for (int k = 0; k < 3; ++k)
+                        dE_dbond[k] += dErep_dr * dir[k];
+                }
 
-            fx[a] += static_cast<AccReal>(dE_dbond[0]);
-            fy[a] += static_cast<AccReal>(dE_dbond[1]);
-            fz[a] += static_cast<AccReal>(dE_dbond[2]);
-            fx[b] -= static_cast<AccReal>(dE_dbond[0]);
-            fy[b] -= static_cast<AccReal>(dE_dbond[1]);
-            fz[b] -= static_cast<AccReal>(dE_dbond[2]);
+                // Lattice γ: each image of γ(|R+T|) contributes independently.
+                // E² = ½Σ_AB γ_AB Δq_A Δq_B with γ_AB = Σ_T γ(|R+T|); a<b
+                // pair term is γ_AB Δq_A Δq_B so ∂E²/∂bond_T = Δq_A Δq_B dγ/dr.
+                if (r <= rcut) {
+                    const double dgdR =
+                        dgamma_dr(r, ea.hubbard_u, eb.hubbard_u);
+                    for (int k = 0; k < 3; ++k)
+                        dE_dbond[k] += dqa * dqb * dgdR * dir[k];
+                }
+
+                // Spin energy −½ Σ W m²: W constant, m fixed ⇒ no geometry term.
+
+                fx[a] += static_cast<AccReal>(dE_dbond[0]);
+                fy[a] += static_cast<AccReal>(dE_dbond[1]);
+                fz[a] += static_cast<AccReal>(dE_dbond[2]);
+                fx[b] -= static_cast<AccReal>(dE_dbond[0]);
+                fy[b] -= static_cast<AccReal>(dE_dbond[1]);
+                fz[b] -= static_cast<AccReal>(dE_dbond[2]);
+            }
         }
     }
 }
@@ -918,6 +930,9 @@ void analytic_forces_unrestricted(
 /// Closed-form nuclear gradient (+ optional intensive stress) for **restricted**
 /// SCC-DFTB2 (fixed Δq). Forces: F=−∇E [eV/Å]. Stress: σ=−(1/Ω)∂E/∂ε [eV/Å³]
 /// Voigt (xx,yy,zz,xy,xz,yz) via pair virial of the same bond terms.
+///
+/// **Γ-PBC:** walks the same lattice images as `build_h0_s` / `gamma_pair` /
+/// `repulsive_energy` (not min-image only). Self-images contribute zero F.
 void analytic_forces_restricted(
     int n_at, int n_ao, int n_occ, const std::vector<const DftbElementRow*>& el,
     const std::vector<int>& ao0, const int* type, const StorageReal* x,
@@ -925,14 +940,6 @@ void analytic_forces_restricted(
     const std::vector<double>& dq, const linalg::RealMatrix& C,
     const linalg::RealVector& eps, AccReal* fx, AccReal* fy, AccReal* fz,
     bool want_forces, double* stress_voigt /* nullable, length 6 */) {
-    auto dist_vec = [&](int i, int j, double& dx, double& dy, double& dz) {
-        dx = static_cast<double>(x[j] - x[i]);
-        dy = static_cast<double>(y[j] - y[i]);
-        dz = static_cast<double>(z[j] - z[i]);
-        box.min_image(dx, dy, dz);
-        return std::sqrt(dx * dx + dy * dy + dz * dz);
-    };
-
     std::vector<double> dV(static_cast<std::size_t>(n_at), 0.0);
     for (int a = 0; a < n_at; ++a) {
         double shift = 0;
@@ -961,79 +968,89 @@ void analytic_forces_restricted(
     // Accumulate ∂E/∂ε (before −1/Ω) in Voigt order.
     double dE_de[6] = {0, 0, 0, 0, 0, 0};
 
+    const auto images = lattice_images_for(box, el);
+
     for (int a = 0; a < n_at; ++a) {
         const auto& ea = *el[static_cast<std::size_t>(a)];
         const int ia = ao0[static_cast<std::size_t>(a)];
+        const double xa = static_cast<double>(x[a]);
+        const double ya = static_cast<double>(y[a]);
+        const double za = static_cast<double>(z[a]);
         for (int b = a + 1; b < n_at; ++b) {
             const auto& eb = *el[static_cast<std::size_t>(b)];
-            double dx, dy, dz;
-            const double r = dist_vec(a, b, dx, dy, dz);
-            if (r < 1e-12)
-                continue;
             const int ib = ao0[static_cast<std::size_t>(b)];
-            const double dir[3] = {dx / r, dy / r, dz / r};
-            // Pair force contribution on atom a (F_b = −F_a); same as nuclear F.
-            double F_a[3] = {0, 0, 0};
-
-            if (r <= pair_rcut_A(ea, eb, type[a], type[b])) {
-                const auto& sk = pair_sk(type[a], type[b]);
-                for (int k = 0; k < 3; ++k) {
-                    dH0[k] = xt::zeros<double>({n_ao, n_ao});
-                    dS[k] = xt::zeros<double>({n_ao, n_ao});
-                }
-                fill_sk_block_deriv(ea, eb, sk, dx, dy, dz, r, dH0, dS, ia, ib);
-                const double shift = 0.5
-                                     * (dV[static_cast<std::size_t>(a)]
-                                        + dV[static_cast<std::size_t>(b)]);
-                const int na = ea.n_ao;
-                const int nb = eb.n_ao;
-                for (int k = 0; k < 3; ++k) {
-                    double acc = 0;
-                    for (int i = 0; i < na; ++i)
-                        for (int j = 0; j < nb; ++j) {
-                            const double p = P(ia + i, ib + j);
-                            const double w = W(ia + i, ib + j);
-                            const double dh = dH0[k](ia + i, ib + j);
-                            const double ds = dS[k](ia + i, ib + j);
-                            acc += p * (dh + shift * ds) - w * ds;
-                        }
-                    F_a[k] += 2.0 * acc;
-                }
-            }
-
-            // E² = ½Σ_AB γ_AB Δq_A Δq_B: the ordered double sum gives the
-            // A–B pair γ_AB Δq_A Δq_B, and with bond = R_B − R_A the chain
-            // rule is ∂r/∂bond = +dir, so ∂E²/∂bond = +Δq_A Δq_B dγ/dr.
-            const double dgdR = dgamma_dr(r, ea.hubbard_u, eb.hubbard_u);
+            const double xb = static_cast<double>(x[b]);
+            const double yb = static_cast<double>(y[b]);
+            const double zb = static_cast<double>(z[b]);
+            const double rcut = pair_rcut_A(ea, eb, type[a], type[b]);
+            const auto& sk = pair_sk(type[a], type[b]);
             const double dqa = dq[static_cast<std::size_t>(a)];
             const double dqb = dq[static_cast<std::size_t>(b)];
-            for (int k = 0; k < 3; ++k)
-                F_a[k] += dqa * dqb * dgdR * dir[k];
+            const double shift = 0.5 * (dV[static_cast<std::size_t>(a)]
+                                        + dV[static_cast<std::size_t>(b)]);
+            const int na = ea.n_ao;
+            const int nb = eb.n_ao;
 
-            const double dErep_dr = pair_repulsive_dE_dr(type[a], type[b], r);
-            for (int k = 0; k < 3; ++k)
-                F_a[k] += dErep_dr * dir[k];
+            for (const auto& T : images) {
+                const double dx = xb + T.tx - xa;
+                const double dy = yb + T.ty - ya;
+                const double dz = zb + T.tz - za;
+                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (r < 1e-12)
+                    continue;
+                const double dir[3] = {dx / r, dy / r, dz / r};
+                // Pair force contribution on atom a (F_b = −F_a).
+                double F_a[3] = {0, 0, 0};
 
-            if (want_forces && fx && fy && fz) {
-                fx[a] += static_cast<AccReal>(F_a[0]);
-                fy[a] += static_cast<AccReal>(F_a[1]);
-                fz[a] += static_cast<AccReal>(F_a[2]);
-                fx[b] -= static_cast<AccReal>(F_a[0]);
-                fy[b] -= static_cast<AccReal>(F_a[1]);
-                fz[b] -= static_cast<AccReal>(F_a[2]);
-            }
+                if (r <= rcut) {
+                    for (int k = 0; k < 3; ++k) {
+                        dH0[k] = xt::zeros<double>({n_ao, n_ao});
+                        dS[k] = xt::zeros<double>({n_ao, n_ao});
+                    }
+                    fill_sk_block_deriv(ea, eb, sk, dx, dy, dz, r, dH0, dS, ia,
+                                        ib);
+                    for (int k = 0; k < 3; ++k) {
+                        double acc = 0;
+                        for (int i = 0; i < na; ++i)
+                            for (int j = 0; j < nb; ++j) {
+                                const double p = P(ia + i, ib + j);
+                                const double w = W(ia + i, ib + j);
+                                const double dh = dH0[k](ia + i, ib + j);
+                                const double ds = dS[k](ia + i, ib + j);
+                                acc += p * (dh + shift * ds) - w * ds;
+                            }
+                        F_a[k] += 2.0 * acc;
+                    }
 
-            if (stress_voigt) {
-                const double R[3] = {dx, dy, dz};
-                // Diagonal: ∂E/∂ε_αα = F_α R_α
-                dE_de[0] += F_a[0] * R[0];
-                dE_de[1] += F_a[1] * R[1];
-                dE_de[2] += F_a[2] * R[2];
-                // Off-diag (symmetric strain ε_αβ=ε_βα=h):
-                // ∂E/∂h = F_α R_β + F_β R_α
-                dE_de[3] += F_a[0] * R[1] + F_a[1] * R[0]; // xy
-                dE_de[4] += F_a[0] * R[2] + F_a[2] * R[0]; // xz
-                dE_de[5] += F_a[1] * R[2] + F_a[2] * R[1]; // yz
+                    const double dgdR =
+                        dgamma_dr(r, ea.hubbard_u, eb.hubbard_u);
+                    for (int k = 0; k < 3; ++k)
+                        F_a[k] += dqa * dqb * dgdR * dir[k];
+
+                    const double dErep_dr =
+                        pair_repulsive_dE_dr(type[a], type[b], r);
+                    for (int k = 0; k < 3; ++k)
+                        F_a[k] += dErep_dr * dir[k];
+                }
+
+                if (want_forces && fx && fy && fz) {
+                    fx[a] += static_cast<AccReal>(F_a[0]);
+                    fy[a] += static_cast<AccReal>(F_a[1]);
+                    fz[a] += static_cast<AccReal>(F_a[2]);
+                    fx[b] -= static_cast<AccReal>(F_a[0]);
+                    fy[b] -= static_cast<AccReal>(F_a[1]);
+                    fz[b] -= static_cast<AccReal>(F_a[2]);
+                }
+
+                if (stress_voigt) {
+                    const double R[3] = {dx, dy, dz};
+                    dE_de[0] += F_a[0] * R[0];
+                    dE_de[1] += F_a[1] * R[1];
+                    dE_de[2] += F_a[2] * R[2];
+                    dE_de[3] += F_a[0] * R[1] + F_a[1] * R[0]; // xy
+                    dE_de[4] += F_a[0] * R[2] + F_a[2] * R[0]; // xz
+                    dE_de[5] += F_a[1] * R[2] + F_a[2] * R[1]; // yz
+                }
             }
         }
     }

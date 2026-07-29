@@ -42,6 +42,7 @@ tools/tb_oracle/
 | `inputs/dftbplus/ch4_3ob_dftb2/` | DFTB+ | CH4 3ob-3-1 under pure DFTB2 (`SCC=Yes`, no `ThirdOrder`) |
 | `inputs/dftbplus/h2_mio_scc/` | DFTB+ | H₂ mio-1-1 absolute E pin twin (`reg_dftb2-dftbplus-energy-pin`) |
 | `inputs/dftbplus/dftb2-periodic-gamma/` | DFTB+ | Γ-PBC C-chain geometry twin (ATV Hamiltonian pin) |
+| `inputs/dftbplus/dftb2-periodic-forces/` | DFTB+ | Off-eq Γ-PBC C-chain force twin (analytic vs re-SCC FD) |
 | `inputs/dftbplus/dftb0_h2.note` | DFTB+ | H₂ non-SCC DFTB0 pin twin (`reg_dftb0-h2`; shares the mio-1-1 H₂ transcript) |
 | `inputs/dftbplus/dftb2_analytic_forces_note.md` | DFTB+ | Formula-level force module boundary (MioSketch) |
 | `inputs/dftbplus/dftb2_spin_analytic_forces_note.md` | DFTB+ | Collinear open-shell force module boundary (O₂) |
