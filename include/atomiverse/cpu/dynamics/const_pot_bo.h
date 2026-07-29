@@ -194,8 +194,13 @@ class ConstPotBO : public cpu::Component {
     /// slice of \(-\nabla U\)). Required for movable walls / piston coupling.
     bool write_electrode_forces = false;
     /// Half-range of 2D \(xy\) lattice images for planar PBC (0 = primary
-    /// cell only). Matches LAMMPS ELECTRODE madelung / plate_cap sum when
-    /// large (e.g. 200+). Cost \(\propto N_{\mathrm{elec}}^2 \times R^2\).
+    /// cell only), i.e. the LAMMPS ELECTRODE madelung / plate_cap real-space
+    /// image sum. It approaches the 2D-Ewald limit only as \(O(1/R)\): for
+    /// two 2×2 walls in a 4 Å cell at a 5 Å gap the residual charge error is
+    /// 1.5 % at \(R=100\), 1.2 % at 200, 0.09 % at 1600 (measured against
+    /// MetalWalls c8ad175d, see `regressions/md/per-electrode-eta`). Choose
+    /// \(R\) from the accuracy you need — there is no "large enough" value.
+    /// Cost \(\propto N_{\mathrm{elec}}^2 \times R^2\).
     int xy_image_range = 0;
     /// Rebuild \(A\) every launch (movable electrodes). v1 walls are frozen;
     /// leave false for geometry-static electrodes.
