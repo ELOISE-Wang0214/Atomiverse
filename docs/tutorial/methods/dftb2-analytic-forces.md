@@ -95,9 +95,9 @@ mio sketch plus directional factors for \(s\)/\(p\) blocks
 
 - Absolute \(E\)/\(F\) vs DFTB+ + DFTB.org **mio-1-1** — different slug
   (`dftb2-dftbplus-energy-pin`); sketch SK is not interchangeable for pin identity.
-- Production **3ob-3-1** SK forces — `DftbSkSet::ThreeOb` energy is closed-shell
-  product; forces on that path remain re-SCC FD until closed-form is extended
-  (`dftb2-3ob-organic` is energy / SK fidelity).
+- Production **3ob-3-1** SK forces — out of scope for *this* page, and since
+  **shipped**: closed-form ThreeOb F (`dftb2-analytic-forces-threeob`,
+  2026-07-28) and cell stress (`dftb2-analytic-stress-threeob`, 2026-07-29).
 - Open-shell / collinear spin forces — re-SCC central FD
   (`spin-dftb2-o2` is energy + Mulliken \(m\); analytic open-shell F open).
 - Cell **stress**, PBC/k-DFTB, DFTB0/DFTB3, D3, TD-DFTB — other queue rows
@@ -253,9 +253,10 @@ exists. Handoff records wave-1 TB greens as `perf_exempt`.
 
 ## Limitations
 
-- **MioSketch SK only for analytic F** — ThreeOb closed-shell energy is
-  product; forces on ThreeOb remain re-SCC FD until the analytic path is
-  generalized to radial table derivatives.
+- **MioSketch SK is what *this page* gates.** The analytic path has since been
+  generalized to the 3ob radial-table derivatives: ThreeOb closed shell now has
+  closed-form F **and** a closed-form pair-virial cell stress
+  (`reg_dftb2-analytic-forces-threeob`, `reg_dftb2-analytic-stress-threeob`).
 - **Restricted closed shell only** — open-shell collinear path still uses
   re-SCC central FD of \(E\) when `with_forces` is set.
 - **Fixed-\(\Delta q\) force identity** — full re-SCC FD residual on multi-

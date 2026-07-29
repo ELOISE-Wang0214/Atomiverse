@@ -644,3 +644,27 @@ TEST(DFTB2, KMeshRejectsBadMesh) {
     d.build({ctx, f});
     EXPECT_THROW(d.launch({ctx, f, 0, 0}), std::invalid_argument);
 }
+
+TEST(DFTB2, MioAnalyticStressFossilGuard) {
+    // The restricted-MioSketch closed-form pair virial must not drift when the
+    // ThreeOb virial is added beside it (`dftb2-analytic-stress-threeob`).
+    // Pinned from this branch's parent (dev @ 448dca40); the leading digits
+    // agree with regressions/semiempirical/dftb2-analytic-stress/REFERENCE.md.
+    auto f = make_water_offeq();
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 dftb;
+    dftb.with_forces = false;
+    dftb.with_stress = true;
+    dftb.scc_tol = 1e-10;
+    dftb.build({ctx, f});
+    dftb.launch({ctx, f, 0, 0});
+    const auto& s = dftb.last_stress();
+    const double pin[6] = {
+        -0.0019398657058172413, -0.0017191565078469207, 0.0,
+        0.0010290033299685953,  -7.8311184090756106e-20, 3.6241185943177176e-20,
+    };
+    for (int v = 0; v < 6; ++v)
+        EXPECT_NEAR(s[static_cast<std::size_t>(v)],
+                    pin[static_cast<std::size_t>(v)], 1e-12)
+            << "voigt " << v;
+}

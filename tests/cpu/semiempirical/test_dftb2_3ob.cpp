@@ -1,9 +1,11 @@
 /// @file tests/cpu/semiempirical/test_dftb2_3ob.cpp
 /// Unit tests for DFTB2 ThreeOb static SK tables (H/C/N/O).
+#include <array>
 #include <cmath>
 #include <gtest/gtest.h>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_3ob_tables.h"
@@ -198,4 +200,200 @@ TEST(DFTB23ob, AnalyticForcesMatchFdWater) {
         const double fy1 = static_cast<double>(f.span(kAtom_fy)[1]);
         EXPECT_NEAR(fy1, fd, tol) << "F_H1_y analytic=" << fy1 << " fd=" << fd;
     }
+}
+
+namespace {
+
+/// Affine strain of cell + nuclei, Voigt 0..5 (off-diagonals symmetric:
+/// ε_αβ = ε_βα = h) — the deformation the mechanical stress differentiates.
+void apply_strain_voigt(cpu::Frame& frame, int voigt, double h) {
+    Mat3 F = Mat3::identity();
+    if (voigt == 0)
+        F(0, 0) += static_cast<AccReal>(h);
+    else if (voigt == 1)
+        F(1, 1) += static_cast<AccReal>(h);
+    else if (voigt == 2)
+        F(2, 2) += static_cast<AccReal>(h);
+    else if (voigt == 3) {
+        F(0, 1) += static_cast<AccReal>(h);
+        F(1, 0) += static_cast<AccReal>(h);
+    } else if (voigt == 4) {
+        F(0, 2) += static_cast<AccReal>(h);
+        F(2, 0) += static_cast<AccReal>(h);
+    } else if (voigt == 5) {
+        F(1, 2) += static_cast<AccReal>(h);
+        F(2, 1) += static_cast<AccReal>(h);
+    }
+    Mat3 cell = frame.box.cell();
+    Mat3 cell_new;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) {
+            AccReal s = 0;
+            for (int k = 0; k < 3; ++k)
+                s += F(i, k) * cell(k, j);
+            cell_new(i, j) = s;
+        }
+    frame.box.set_cell(cell_new);
+    auto x = frame.span(kAtom_x);
+    auto y = frame.span(kAtom_y);
+    auto z = frame.span(kAtom_z);
+    for (int a = 0; a < frame.nlocal(); ++a) {
+        const AccReal rx = static_cast<AccReal>(x[a]);
+        const AccReal ry = static_cast<AccReal>(y[a]);
+        const AccReal rz = static_cast<AccReal>(z[a]);
+        x[a] = static_cast<StorageReal>(F(0, 0) * rx + F(0, 1) * ry
+                                        + F(0, 2) * rz);
+        y[a] = static_cast<StorageReal>(F(1, 0) * rx + F(1, 1) * ry
+                                        + F(1, 2) * rz);
+        z[a] = static_cast<StorageReal>(F(2, 0) * rx + F(2, 1) * ry
+                                        + F(2, 2) * rz);
+    }
+}
+
+/// Asymmetric CH4: four distinct C–H bond lengths break the tetrahedral
+/// cancellation that makes every shear component of symmetric CH4 identically
+/// zero, so all six Voigt components are exercised. Radii are placed mid-way
+/// between 3ob radial-grid knots (grid 0.02 Bohr) — the SK tables are linearly
+/// interpolated, so a finite-difference interval that straddles a knot compares
+/// two different interpolant slopes and is not a valid oracle.
+cpu::Frame make_ch4_asymmetric() {
+    cpu::Frame f(5);
+    const double inv_sqrt3 = 1.0 / std::sqrt(3.0);
+    const double dir[4][3] = {
+        {inv_sqrt3, inv_sqrt3, inv_sqrt3},
+        {inv_sqrt3, -inv_sqrt3, -inv_sqrt3},
+        {-inv_sqrt3, inv_sqrt3, -inv_sqrt3},
+        {-inv_sqrt3, -inv_sqrt3, inv_sqrt3},
+    };
+    const double r_ch[4] = {1.09540, 1.12714, 1.06364, 1.10598}; // Å
+    f.span(kAtom_type)[0] = 6;
+    f.span(kAtom_x)[0] = 0;
+    f.span(kAtom_y)[0] = 0;
+    f.span(kAtom_z)[0] = 0;
+    for (int i = 0; i < 4; ++i) {
+        f.span(kAtom_type)[i + 1] = 1;
+        f.span(kAtom_x)[i + 1] = static_cast<StorageReal>(r_ch[i] * dir[i][0]);
+        f.span(kAtom_y)[i + 1] = static_cast<StorageReal>(r_ch[i] * dir[i][1]);
+        f.span(kAtom_z)[i + 1] = static_cast<StorageReal>(r_ch[i] * dir[i][2]);
+    }
+    for (int i = 0; i < 5; ++i) {
+        f.span(kAtom_mass)[i] = (i == 0) ? 12.0 : 1.008;
+        f.span(kAtom_tag)[i] = i + 1;
+        f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
+    }
+    f.box = cpu::Box::cubic(20.0);
+    f.meta.get(kEnergy) = 0;
+    for (int v = 0; v < 6; ++v)
+        f.meta.get(kStress)[static_cast<std::size_t>(v)] = 0;
+    return f;
+}
+
+/// Converged ThreeOb stress of `f` (Voigt eV/Å³), forces off.
+std::array<double, 6> stress_3ob(cpu::Frame& f) {
+    cpu::Context ctx;
+    DFTB2 d;
+    d.sk_set = DftbSkSet::ThreeOb;
+    d.with_forces = false;
+    d.with_stress = true;
+    d.scc_tol = 1e-10;
+    d.max_scc = 80;
+    d.build({ctx, f});
+    d.launch({ctx, f, 0, 0});
+    return d.last_stress();
+}
+
+/// σ_v from a central affine-strain difference of the converged 3ob energy.
+/// h = 1e-5 keeps the strained C–H / H–H distances inside one SK grid interval.
+double strain_fd_stress(const cpu::Frame& ref, int voigt, double vol) {
+    constexpr double h = 1e-5;
+    cpu::Frame fp = ref;
+    cpu::Frame fm = ref;
+    apply_strain_voigt(fp, voigt, h);
+    apply_strain_voigt(fm, voigt, -h);
+    const double dE = (energy_3ob_only(fp) - energy_3ob_only(fm)) / (2.0 * h);
+    return -dE / vol;
+}
+
+} // namespace
+
+TEST(DFTB23ob, AnalyticStressMatchesStrainFdCh4) {
+    auto ref = make_ch4_asymmetric();
+    auto f = make_ch4_asymmetric();
+    const double vol = f.box.volume();
+    ASSERT_GT(vol, 0.0);
+    const std::array<double, 6> san = stress_3ob(f);
+
+    // Frame meta carries the same intensive tensor the method reports.
+    for (int v = 0; v < 6; ++v)
+        EXPECT_NEAR(f.meta.get(kStress)[static_cast<std::size_t>(v)],
+                    san[static_cast<std::size_t>(v)], 1e-15)
+            << "voigt " << v;
+
+    double norm2 = 0;
+    for (int v = 0; v < 6; ++v) {
+        ASSERT_TRUE(std::isfinite(san[static_cast<std::size_t>(v)])) << v;
+        norm2 += san[static_cast<std::size_t>(v)]
+                 * san[static_cast<std::size_t>(v)];
+    }
+    // Asymmetric CH4: no component (shears included) is trivially zero.
+    EXPECT_GT(norm2, 1e-14);
+
+    for (int v = 0; v < 6; ++v) {
+        const double fd = strain_fd_stress(ref, v, vol);
+        EXPECT_NEAR(san[static_cast<std::size_t>(v)], fd, 1e-8)
+            << "voigt " << v << " analytic=" << san[static_cast<std::size_t>(v)]
+            << " fd=" << fd;
+    }
+}
+
+TEST(DFTB23ob, AnalyticStressMatchesStrainFdWater) {
+    // Polar Δq ≠ 0 case — the class of geometry that exposed the γ-gradient
+    // sign defect the ThreeOb force gate now pins.
+    auto ref = make_water_offeq();
+    auto f = make_water_offeq();
+    const double vol = f.box.volume();
+    const std::array<double, 6> san = stress_3ob(f);
+
+    for (int v = 0; v < 6; ++v) {
+        const double fd = strain_fd_stress(ref, v, vol);
+        EXPECT_NEAR(san[static_cast<std::size_t>(v)], fd, 1e-8)
+            << "voigt " << v << " analytic=" << san[static_cast<std::size_t>(v)]
+            << " fd=" << fd;
+    }
+}
+
+TEST(DFTB23ob, AnalyticStressIsotropicScalingIdentity) {
+    // Isotropic scaling r → (1+ε)r gives Ω(ε) = (1+ε)³Ω₀, so dΩ/dε|₀ = 3Ω₀ and
+    // dE/dε = Σ_α ∂E/∂ε_αα = −Ω₀ tr(σ). Hence the pressure identity
+    //     tr(σ)/3 = −dE/dΩ = −(1/3Ω₀) dE/dε|₀ .
+    auto f = make_ch4_asymmetric();
+    const double vol = f.box.volume();
+    const std::array<double, 6> san = stress_3ob(f);
+    const double trace_third = (san[0] + san[1] + san[2]) / 3.0;
+
+    constexpr double h = 1e-5;
+    auto scaled = [&](double eps) {
+        cpu::Frame g = make_ch4_asymmetric();
+        // Isotropic: all three diagonal Voigt strains at once.
+        Mat3 cell = g.box.cell();
+        Mat3 cell_new;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                cell_new(i, j) = cell(i, j) * static_cast<AccReal>(1.0 + eps);
+        g.box.set_cell(cell_new);
+        for (int a = 0; a < g.nlocal(); ++a) {
+            g.span(kAtom_x)[a] = static_cast<StorageReal>(
+                static_cast<double>(g.span(kAtom_x)[a]) * (1.0 + eps));
+            g.span(kAtom_y)[a] = static_cast<StorageReal>(
+                static_cast<double>(g.span(kAtom_y)[a]) * (1.0 + eps));
+            g.span(kAtom_z)[a] = static_cast<StorageReal>(
+                static_cast<double>(g.span(kAtom_z)[a]) * (1.0 + eps));
+        }
+        return energy_3ob_only(g);
+    };
+    const double dE_deps = (scaled(h) - scaled(-h)) / (2.0 * h);
+    const double minus_dE_dvol = -dE_deps / (3.0 * vol);
+
+    EXPECT_NEAR(trace_third, minus_dE_dvol, 1e-8)
+        << "tr(σ)/3=" << trace_third << " −dE/dΩ=" << minus_dE_dvol;
 }

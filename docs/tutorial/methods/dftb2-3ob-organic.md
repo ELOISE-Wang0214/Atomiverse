@@ -82,8 +82,10 @@ runtime SKF I/O.
 **Key exclusions (non-goals of this slug)**
 
 - **DFTB3** third-order / \(\Gamma\) damping (queue: `dftb3-water-mio`, …).
-- Analytic nuclear forces on ThreeOb (re-SCC FD path; closed-form analytic F
-  ships on **MioSketch** restricted: `dftb2-analytic-forces`).
+- Analytic nuclear forces on ThreeOb — **superseded**: closed-form F landed
+  2026-07-28 (`dftb2-analytic-forces-threeob`) and the closed-form cell stress
+  landed 2026-07-29 (`dftb2-analytic-stress-threeob`). This slug remains an
+  energy / SK-fidelity gate.
 - Spin-polarized / open-shell (collinear foothold: `spin-dftb2-o2`, MioSketch).
 - Dispersion (D3/D4), periodic Γ / k-points, stress, TD-DFTB.
 - Full mio-1-1 SK dump fidelity (separate sketch + `dftb2-dftbplus-energy-pin`).
@@ -241,8 +243,10 @@ Source: [`REFERENCE.md`](../../../regressions/semiempirical/dftb2-3ob-organic/RE
 ## Limitations
 
 - **DFTB2 + 3ob SK**, not DFTB3 product accuracy for 3ob training set.
-- Energy-only gate on this slug; ThreeOb forces remain re-SCC FD until a
-  dedicated force pin lands on that SK set.
+- Energy-only gate on **this** slug. ThreeOb forces and cell stress are now
+  closed-form on the product path (`reg_dftb2-analytic-forces-threeob`,
+  `reg_dftb2-analytic-stress-threeob`) — there is no finite-difference ThreeOb
+  path left in `DFTB2`.
 - Organic CHNO only; other 3ob extensions (S, P, …) not in-tree.
 - Cross-oracle misuse forbidden: do not re-pin this energy with OpenMOPAC or
   xtb.
