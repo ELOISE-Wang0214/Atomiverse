@@ -5,14 +5,16 @@
 Collinear spin-polarized plane-wave KS (`cpu::pw::PW` with
 `spin_polarized = true`, `multiplicity = 3`) on a **Monkhorst–Pack
 `k_mesh = 2`** mesh (not Γ-only). Fixed occupations N↑ = 7, N↓ = 5 for 12
-valence electrons (oxygen NC-PP Z_val = 6 × 2). Closes the wave-2 ladder
-step after Γ UKS (`pw-spin-polarized-o2`) and restricted metallic smearing
-(`pw-smearing-al`).
+valence electrons (oxygen NC-PP Z_val = 6 × 2). XC is `XCType::PBE`, which
+since 2026-07-26 means **true collinear spin-GGA** (spectral ∇ρ_σ in
+`XCBuilder::step_spin`).
 
-**Geometry choice:** Queue allows Fe or O₂ cell. Bulk Fe metal needs
-spin **+** metallic smearing (not co-supported yet on `PW::run`). This pin
-uses the O₂ cubic cell so multi-k collinear UKS is gated offline without a
-new public API.
+**Geometry choice (historical):** the slug says `fe` because the queue item
+allowed Fe *or* an O₂ cell, and at the time bulk Fe needed spin **and**
+metallic smearing, which `PW::run` did not yet co-support. It does now —
+that product is `pw-uks-fe-smearing`. This case therefore gates **multi-k
+collinear UKS on O₂**; the `fe` in the directory name is a fossil. (Renaming
+the directory is a separate change; it touches `regressions/CMakeLists.txt`.)
 
 ## System
 
@@ -23,15 +25,15 @@ new public API.
 | Cell | cubic L = 5.5 Å |
 | PP | SG15 ONCV PBE oxygen `tests/data/pw/O_ONCV_PBE-1.2.upf` |
 | E_cut | 5 Ry |
-| k-mesh | Monkhorst–Pack 2×2×2 |
+| k-mesh | Monkhorst–Pack 2×2×2 (8 points, weights 1/8) |
 | Multiplicity | 3 (triplet ³Σg⁻) |
 | SCF tol (density L2) | 2×10⁻³ |
 | max_iter | 20 |
 | mix_beta | 0.5 |
 
-## Pins
+## Gates
 
-### Magnetization (literature + fixed occupations)
+### 1. Magnetization (literature + fixed occupations)
 
 O₂ ground state is the triplet ³Σg⁻ (Herzberg, *Molecular Spectra and
 Molecular Structure* I). With fixed integer occupations and multiplicity 3:
@@ -40,47 +42,75 @@ Molecular Structure* I). With fixed integer occupations and multiplicity 3:
 M = N_\uparrow - N_\downarrow = 2.
 \]
 
-**Gate:** `|M − 2| ≤ 1×10⁻⁹` on `PWResult::magnetization`.
+**Gate:** `|M − 2| ≤ 1×10⁻⁹` on `PWResult::magnetization`, for **both**
+functionals below (the identity is XC-independent).
 
-### Total energy (offline method pin)
+### 2. The run is genuinely multi-k
 
-\[
-E_{\mathrm{tot}} = -25.1087178036~\mathrm{Ha}
-\quad (| \Delta E | \le 5\times 10^{-3}~\mathrm{Ha}).
-\]
+**Gate:** `PWResult::n_kpts == k_mesh³ == 8`. A k-point case that silently
+degrades to Γ would otherwise be indistinguishable from `pw-spin-polarized-o2`.
 
-Recorded 2026-07-25 on Arrhenius (x86_64) with the settings above
-(converged in 5 SCF iters).
+### 3. Spin-GGA activation floor
 
-**Re-pin 2026-07-25:** previous frozen value −24.2395602747 Ha (recorded
-2026-07-24) was produced by a Davidson subspace step that truncated the
-(complex Hermitian) subspace Hamiltonian to its real part — first-order
-wrong Ritz vectors at every non-TRIM k — and by G-sphere enumeration
-bounds that clipped sphere-edge plane waves. Both fixed with the
-`berry-polarization` case (see its REFERENCE.md, "Root-cause fixes"); the
-corrected solver lowers this fixed-settings pin. Magnetization (the
-literature hard gate) is unchanged.
+**Gate:** `|E(xc = PBE) − E(xc = LSDA)| > 1×10⁻³ Ha` at identical settings.
 
-**Oracle note:** Host CP2K module not used as an absolute-energy twin
-(GTH-GPW ≠ NC-UPF PW; same class of limitation as `pw-spin-polarized-o2`).
-Absolute e_tot is a **fixed-settings offline method pin** for regression
-stability. Magnetization remains the literature hard gate. Units: public
-energy on `PWResult` is also reported in Ry (`energy = 2 × energy_ha`).
+This is an **activation threshold, not a frozen value**: it asserts only that
+the gradient terms of the requested functional actually reach the collinear
+solver. Measured on this host: `8.15×10⁻² Ha`.
 
-Optional CP2K documentation twin (algorithm only, not energy-compared):
-Quickstep UKS + `KPOINTS` Monkhorst–Pack 2×2×2 on the same O₂ cell — not
-required at ctest.
+Its reason for existing is the defect described below.
+
+## Void pin — what the old number actually was
+
+This case previously gated an absolute total energy
+`E_tot = −25.1087178036 Ha ± 5×10⁻³` described as an "offline method pin"
+(ATV's own output frozen on 2026-07-25). **That number is void, and it was
+never an external reference.**
+
+Before commit `c6a6273c` (2026-07-26, `pw-spin-gga`),
+`XCBuilder::step_spin` evaluated *every* functional at σ = 0 — so a request
+for `xc = PBE` on the collinear path silently ran the **LDA limit**. The
+fossil pin is a snapshot of that degraded Hamiltonian. Measured at these
+exact settings on Arrhenius (x86_64, OMP=1):
+
+| Quantity | Value [Ha] |
+| -------- | ---------- |
+| Fossil pin (recorded 2026-07-25) | −25.1087178036 |
+| `xc = LSDA` (local spin XC, σ = 0) | −25.1108284698 |
+| `xc = PBE` (true collinear spin-GGA) | −25.1923610263 |
+| pin − LSDA | **+0.0021** |
+| pin − spin-GGA | **+0.0836** (17 × the old tolerance) |
+
+The pin sits 0.0021 Ha from the *local* answer and 0.0836 Ha from the answer
+for the functional the case asks for. The 0.0021 Ha residue is the
+"PBE-evaluated-at-σ=0 vs the LSDA parameterisation" difference; the Γ-only
+sibling shows the same fossil independently (its own old σ=0 pin
+−28.6267426458 Ha vs measured LSDA −28.6294634700 Ha, i.e. 0.0027 Ha).
+`c6a6273c` re-pinned that Γ sibling and missed this one.
+
+**Why the pin was deleted rather than moved.** O₂ at E_cut = 5 Ry in a 5.5 Å
+box has no citable external value — no literature number, no analytic result,
+and the host has no `pw.x`/CP2K twin for NC-UPF plane waves. Re-freezing ATV's
+current output would validate nothing; it is what produced two stale pins in
+five days. The gates above are exact statements (a literature occupation
+identity, a mesh-size identity, and an activation floor) instead.
+
+**Oracle note:** host CP2K is not an absolute-energy twin here (GTH-GPW ≠
+NC-UPF PW); same limitation as `pw-spin-polarized-o2`. Optional documentation
+twin (algorithm only, never energy-compared): Quickstep UKS + `KPOINTS`
+Monkhorst–Pack 2×2×2 on the same O₂ cell.
 
 ## Perf
 
 | Field | Value |
 | ----- | ----- |
 | perf_exempt | true |
-| reason | CP2K binary not used as fair single-rank PW/NC-UPF twin wall; no loadable comparable twin on pin host |
-| T_atv (this host, OMP=8, single rank) | **~31 s** |
+| reason | CP2K binary not usable as a fair single-rank PW/NC-UPF twin; no loadable comparable twin on this host |
+| T_atv (this host, OMP=1, single rank) | **~26 s** (two solves) |
 | ratio T_atv/T_cp2k | n/a |
 
 ## Dual gate
 
-1. Correctness: mag + e_tot gates above; SCF must converge with `k_mesh = 2`.
+1. Correctness: `converged` + M = 2 + `n_kpts = 8` + spin-GGA activation, for
+   both functionals.
 2. Perf: exempt (no CP2K twin wall).

@@ -1,5 +1,5 @@
 /// @file regressions/pw/pw-uks-kmesh-fe/reg_pw-uks-kmesh-fe.cpp
-/// @brief END-TO-END: k-point collinear UKS plane-wave (O2 multi-k e_tot, mag).
+/// @brief END-TO-END: k-point collinear UKS plane-wave (O2 multi-k).
 ///
 /// See REFERENCE.md. Public API only. Requires ATV_BUILD_PW.
 
@@ -11,29 +11,67 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/planewave/pw_solver.h"
+#include "atomiverse/cpu/scf/xc_functional.h"
 
 using namespace ATV;
 using namespace ATV::cpu::pw;
 
 namespace {
 
+cpu::Frame o2_frame() {
+    cpu::Frame f(2);
+    for (int i = 0; i < 2; ++i) {
+        f.span(kAtom_type)[i] = 8;
+        f.span(kAtom_mass)[i] = 15.999;
+        f.span(kAtom_x)[i] = 0.0;
+        f.span(kAtom_y)[i] = 0.0;
+    }
+    f.span(kAtom_z)[0] = 0.0;
+    f.span(kAtom_z)[1] = 1.2075; // Å
+    f.box = cpu::Box::cubic(5.5);
+    return f;
+}
+
+/// @brief One multi-k collinear UKS solve at the fixed case settings.
+PWResult solve(const char* upf, cpu::scf::XCType xc) {
+    auto frame = o2_frame();
+    PW pw;
+    pw.upf_path = upf;
+    pw.ecut_ry = 5.0;
+    pw.k_mesh = 2; // multi-k collinear UKS (this slug)
+    pw.tol = 2e-3;
+    pw.max_iter = 20;
+    pw.mix_beta = 0.5;
+    pw.pulay_depth = 3;
+    pw.xc = xc;
+    pw.spin_polarized = true;
+    pw.multiplicity = 3;
+    pw.build(frame);
+    return pw.run(frame);
+}
+
 } // namespace
 
 int main() {
-    // ── Offline pins (REFERENCE.md) ────────────────────────────────────
-    // Magnetization: O2 ³Σg⁻, multiplicity 3 → fixed occupations M = 2
-    // (same identity as Γ UKS; multi-k does not change fixed fillings).
+    // ── Gates (REFERENCE.md) ───────────────────────────────────────────
+    // 1. Magnetization: O2 ³Σg⁻, multiplicity 3 → fixed occupations M = 2.
+    //    Literature identity (Herzberg); exact, XC-independent.
     constexpr double want_mag = 2.0;
     constexpr double tol_mag = 1e-9;
-    // Total energy [Ha] at the exact settings below (SG15 ONCV O, ecut=5 Ry,
-    // k_mesh=2, L=5.5 Å, R=1.2075 Å, multiplicity 3). Frozen offline method pin.
-    // Budget: multi-k × dual-spin Davidson; keep wall ≤ 60 s.
-    // Re-pinned 2026-07-25: the Davidson subspace-Hermiticity +
-    // G-sphere-bounds fixes (see regressions/pw/berry-polarization/
-    // REFERENCE.md) legitimately lower this frozen method pin from
-    // -24.2395602747 (magnetization literature gate unchanged).
-    constexpr double want_e_ha = -25.1087178036;
-    constexpr double tol_e_ha = 5.0e-3; // Ha — modest ecut / multi-k
+    // 2. The run must genuinely be multi-k: |{k}| = k_mesh³.
+    constexpr int want_nk = 8;
+    // 3. XC activation floor: `xc = PBE` must reach the collinear solver as a
+    //    true spin-GGA, i.e. differ from the local (LSDA) answer by more than
+    //    a solver wobble. Before 2026-07-26 `XCBuilder::step_spin` evaluated
+    //    every functional at σ = 0, so a PBE request silently ran the LDA
+    //    limit — with NO gate that could see it. This floor is that gate.
+    //    It is an activation threshold, not a frozen value.
+    constexpr double xc_gap_floor_ha = 1.0e-3;
+    //
+    // There is deliberately NO absolute total-energy pin: O2 at E_cut = 5 Ry
+    // in a 5.5 Å box has no citable external value, and the number this case
+    // used to carry was an ATV self-freeze recorded on the σ = 0 path (see
+    // REFERENCE.md, "Void pin").
 
     // Compiled-in absolute path (ATV_REG_DATA_DIR): resolves identically from
     // the build tree, the source tree, or a bare ./reg_<case>.
@@ -45,57 +83,50 @@ int main() {
         return 1;
     }
 
-    cpu::Frame frame(2);
-    for (int i = 0; i < 2; ++i) {
-        frame.span(kAtom_type)[i] = 8;
-        frame.span(kAtom_mass)[i] = 15.999;
-        frame.span(kAtom_x)[i] = 0.0;
-        frame.span(kAtom_y)[i] = 0.0;
-    }
-    frame.span(kAtom_z)[0] = 0.0;
-    frame.span(kAtom_z)[1] = 1.2075;
-    frame.box = cpu::Box::cubic(5.5);
+    const PWResult gga = solve(upf, cpu::scf::XCType::PBE);
+    const PWResult lda = solve(upf, cpu::scf::XCType::LSDA);
 
-    PW pw;
-    pw.upf_path = upf;
-    pw.ecut_ry = 5.0;
-    pw.k_mesh = 2; // multi-k collinear UKS (this slug)
-    pw.tol = 2e-3;
-    pw.max_iter = 20;
-    pw.mix_beta = 0.5;
-    pw.pulay_depth = 3;
-    pw.spin_polarized = true;
-    pw.multiplicity = 3;
-
-    pw.build(frame);
-    const auto& r = pw.run(frame);
-
-    std::printf("E=%.10f Ha (%.10f Ry)  mag=%.6f  conv=%d iters=%d\n",
-                r.energy_ha, r.energy, r.magnetization, (int)r.converged,
-                r.iterations);
+    std::printf("PBE spin-GGA: E=%.10f Ha  mag=%.6f nk=%d conv=%d it=%d\n",
+                gga.energy_ha, gga.magnetization, gga.n_kpts,
+                (int)gga.converged, gga.iterations);
+    std::printf("LSDA        : E=%.10f Ha  mag=%.6f nk=%d conv=%d it=%d\n",
+                lda.energy_ha, lda.magnetization, lda.n_kpts,
+                (int)lda.converged, lda.iterations);
 
     bool ok = true;
-    if (!std::isfinite(r.energy_ha) || !std::isfinite(r.energy)) {
-        std::printf("FAIL: non-finite energy\n");
-        ok = false;
+    for (const auto* r : {&gga, &lda}) {
+        if (!std::isfinite(r->energy_ha) || !std::isfinite(r->energy)) {
+            std::printf("FAIL: non-finite energy\n");
+            ok = false;
+        }
+        if (!r->converged) {
+            std::printf("FAIL: SCF not converged\n");
+            ok = false;
+        }
+        if (r->n_kpts != want_nk) {
+            std::printf("FAIL: n_kpts=%d want=%d (case must be multi-k)\n",
+                        r->n_kpts, want_nk);
+            ok = false;
+        }
+        if (std::fabs(r->magnetization - want_mag) > tol_mag) {
+            std::printf("FAIL: mag got=%.12f want=%.12f tol=%g\n",
+                        r->magnetization, want_mag, tol_mag);
+            ok = false;
+        }
     }
-    if (!r.converged) {
-        std::printf("FAIL: SCF not converged\n");
-        ok = false;
-    }
-    if (std::fabs(r.magnetization - want_mag) > tol_mag) {
-        std::printf("FAIL: mag got=%.12f want=%.12f tol=%g\n", r.magnetization,
-                    want_mag, tol_mag);
-        ok = false;
-    }
-    if (std::fabs(r.energy_ha - want_e_ha) > tol_e_ha) {
-        std::printf("FAIL: E_ha got=%.12f want=%.12f tol=%g\n", r.energy_ha,
-                    want_e_ha, tol_e_ha);
+
+    const double xc_gap = std::fabs(gga.energy_ha - lda.energy_ha);
+    std::printf("|E_PBE - E_LSDA| = %.6e Ha (floor %.1e)\n", xc_gap,
+                xc_gap_floor_ha);
+    if (!(xc_gap > xc_gap_floor_ha)) {
+        std::printf("FAIL: spin-GGA inactive — PBE collapsed onto the local "
+                    "(σ=0) answer\n");
         ok = false;
     }
 
     if (!ok)
         return 1;
-    std::printf("PASS: pw-uks-kmesh-fe (multi-k UKS mag + energy)\n");
+    std::printf("PASS: pw-uks-kmesh-fe (multi-k UKS: mag identity, k-mesh, "
+                "spin-GGA activation)\n");
     return 0;
 }

@@ -290,6 +290,13 @@ PWResult& PW::run(const cpu::Frame& frame) {
             auto* saved_gvec = ws.gvec;
             // Pass 1: diagonalize every (spin, owned-k); stash evals + wfc.
             for (int s = 0; s < 2; ++s) {
+                // V_xc_σ and V_eff_σ live on the DENSITY G-sphere. The k-loop
+                // below rebinds ws.gvec/ws.n_g to a wavefunction sphere, so
+                // restore them before every spin's potential assembly —
+                // otherwise spin ↓ copies only the first n_g(k_last) V_xc
+                // coefficients and FFTs V_eff on the wrong G-set.
+                ws.gvec = saved_gvec;
+                ws.n_g = gv0.count();
                 for (int ig = 0; ig < ws.n_g; ++ig)
                     ws.V_xc_G[ig] = ws.V_xc_spin_G[s][ig];
                 veff_->step(ws);
