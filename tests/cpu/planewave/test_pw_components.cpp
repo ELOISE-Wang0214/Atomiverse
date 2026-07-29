@@ -1,4 +1,5 @@
 /// @file test_pw_components.cpp
+#include <algorithm>
 /// @brief Unit tests for the plane-wave internal step helpers.
 ///
 /// The helpers live in `cpu::pw::internal::` and are owned by
@@ -233,10 +234,10 @@ TEST(PWInternal, XcGgaNonuniformDiffersFromSigmaZero) {
     const int nx = f.ws.fft_nx, ny = f.ws.fft_ny, nz = f.ws.fft_nz;
     const int nxc = nx / 2 + 1;
     const int nc = f.ws.nc;
-    std::vector<fftw_complex> half(static_cast<std::size_t>(nc));
+    // fftw_complex is double[2] — not a valid std::vector element on libc++.
+    std::vector<double> half_reim(static_cast<std::size_t>(2 * nc), 0.0);
+    auto* half = reinterpret_cast<fftw_complex*>(half_reim.data());
     std::vector<AccReal> rho_r(static_cast<std::size_t>(nr));
-    for (int i = 0; i < nc; ++i)
-        half[i][0] = half[i][1] = 0;
     auto& gv = *f.ws.gvec;
     for (int ig = 0; ig < ng; ++ig) {
         int h = gv.h[ig], k = gv.k[ig], l = gv.l[ig];
@@ -257,7 +258,7 @@ TEST(PWInternal, XcGgaNonuniformDiffersFromSigmaZero) {
                                                     : f.ws.rho_G[ig].imag());
         }
     }
-    f.ws.fft->c2r(half.data(), rho_r.data());
+    f.ws.fft->c2r(half, rho_r.data());
     AccReal e_sigma0 = 0;
     const AccReal dV = f.ws.omega / static_cast<AccReal>(nr);
     for (int i = 0; i < nr; ++i) {
@@ -291,7 +292,8 @@ TEST(PWInternal, XcSpinGgaClosedShellCollapse) {
     xc.prepare(f.ws);
     xc.step(f.ws, cpu::scf::XCType::PBE);
     const AccReal e_rks = f.ws.E_xc;
-    std::vector<std::complex<AccReal>> v_rks(static_cast<std::size_t>(f.ws.n_g));
+    std::vector<std::complex<AccReal>> v_rks(
+        static_cast<std::size_t>(f.ws.n_g));
     for (int ig = 0; ig < f.ws.n_g; ++ig)
         v_rks[static_cast<std::size_t>(ig)] = f.ws.V_xc_G[ig];
 
@@ -314,11 +316,11 @@ TEST(PWInternal, XcSpinGgaClosedShellCollapse) {
                 1e-9 * std::max(1.0, std::abs(static_cast<double>(e_rks))))
         << "spin-GGA closed shell E_xc must match restricted GGA";
     for (int ig = 0; ig < f.ws.n_g; ++ig) {
-        EXPECT_NEAR(f.ws.V_xc_spin_G[0][ig].real(), v_rks[static_cast<std::size_t>(ig)].real(),
-                    1e-8)
+        EXPECT_NEAR(f.ws.V_xc_spin_G[0][ig].real(),
+                    v_rks[static_cast<std::size_t>(ig)].real(), 1e-8)
             << "ig=" << ig << " V↑ vs V_rks";
-        EXPECT_NEAR(f.ws.V_xc_spin_G[0][ig].real(), f.ws.V_xc_spin_G[1][ig].real(),
-                    1e-12)
+        EXPECT_NEAR(f.ws.V_xc_spin_G[0][ig].real(),
+                    f.ws.V_xc_spin_G[1][ig].real(), 1e-12)
             << "ig=" << ig << " V↑ vs V↓";
     }
 }
@@ -342,8 +344,7 @@ TEST(PWInternal, XcSpinGgaPolarizedDiffersFromSigmaZero) {
     f.ws.rho_spin_G[0][0] = std::complex<AccReal>(rho0 * AccReal(0.7), 0);
     f.ws.rho_spin_G[1][0] = std::complex<AccReal>(rho0 * AccReal(0.3), 0);
     if (f.ws.n_g > 1)
-        f.ws.rho_spin_G[0][1] =
-            std::complex<AccReal>(rho0 * AccReal(0.10), 0);
+        f.ws.rho_spin_G[0][1] = std::complex<AccReal>(rho0 * AccReal(0.10), 0);
 
     XCBuilder xc;
     xc.prepare(f.ws);
@@ -356,15 +357,14 @@ TEST(PWInternal, XcSpinGgaPolarizedDiffersFromSigmaZero) {
     const int nx = f.ws.fft_nx, ny = f.ws.fft_ny, nz = f.ws.fft_nz;
     const int nxc = nx / 2 + 1;
     const int nc = f.ws.nc;
-    std::vector<fftw_complex> half(static_cast<std::size_t>(nc));
+    std::vector<double> half_reim(static_cast<std::size_t>(2 * nc), 0.0);
+    auto* half = reinterpret_cast<fftw_complex*>(half_reim.data());
     std::vector<AccReal> ra(static_cast<std::size_t>(nr));
     std::vector<AccReal> rb(static_cast<std::size_t>(nr));
     auto& gv = *f.ws.gvec;
     auto fft_spin = [&](const xt::xarray<std::complex<AccReal>>& rhoG,
                         std::vector<AccReal>& out) {
-        for (int i = 0; i < nc; ++i)
-            half[static_cast<std::size_t>(i)][0] =
-                half[static_cast<std::size_t>(i)][1] = 0;
+        std::fill(half_reim.begin(), half_reim.end(), 0.0);
         for (int ig = 0; ig < ng; ++ig) {
             int h = gv.h[ig], k = gv.k[ig], l = gv.l[ig];
             int kx = ((h % nx) + nx) % nx;
@@ -385,7 +385,7 @@ TEST(PWInternal, XcSpinGgaPolarizedDiffersFromSigmaZero) {
                     conj ? -rhoG[ig].imag() : rhoG[ig].imag());
             }
         }
-        f.ws.fft->c2r(half.data(), out.data());
+        f.ws.fft->c2r(half, out.data());
     };
     fft_spin(f.ws.rho_spin_G[0], ra);
     fft_spin(f.ws.rho_spin_G[1], rb);
@@ -402,9 +402,9 @@ TEST(PWInternal, XcSpinGgaPolarizedDiffersFromSigmaZero) {
         const AccReal rtot = a + b;
         if (rtot < AccReal(1e-12))
             continue;
-        const auto out = cpu::scf::evaluate_xc(cpu::scf::XCType::PBE,
-                                               static_cast<double>(a),
-                                               static_cast<double>(b));
+        const auto out =
+            cpu::scf::evaluate_xc(cpu::scf::XCType::PBE, static_cast<double>(a),
+                                  static_cast<double>(b));
         e_sigma0 += rtot * static_cast<AccReal>(out.exc) * dV;
     }
 
