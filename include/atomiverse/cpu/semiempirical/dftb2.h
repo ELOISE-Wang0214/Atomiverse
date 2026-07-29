@@ -121,6 +121,16 @@ class DFTB2 : public cpu::Semiempirical {
     /// @brief When true with `d3`, lattice-sum D3 over the orthorhombic box.
     ///        Default false preserves the molecular water-dimer pin.
     bool d3_periodic = false;
+    /// @brief D3 real-space pair cutoff [Å]. Default 49.8485 Å = 94.2 Bohr,
+    ///        the legacy `dftd3` `rthr` convention.
+    ///
+    /// Irrelevant for an isolated cluster (every pair is inside it), but it
+    /// **defines** the value of a `d3_periodic` lattice sum: the tail beyond
+    /// the cutoff is discarded, and different D3 engines truncate differently
+    /// (simple-dftd3 defaults to 60 Bohr = 31.75 Å for the two-body term).
+    /// Set it to the oracle's cutoff when pinning a periodic dispersion
+    /// energy — see `regressions/semiempirical/dftb2-dispersion-d3-periodic/`.
+    double d3_cutoff = 49.84849326866401;
     /// @brief D3 C6 scale (dimensionless). DFTB3-D3(BJ) default = 1.
     double d3_s6 = 1.0;
     /// @brief D3 C8 scale (dimensionless). DFTB3-D3(BJ) default = 0.5883.

@@ -57,12 +57,19 @@ mixing (it now converges in 14 at `mix_beta = 0.3`).
 
 ## Gaps
 
-- **D3 forces are ungated.** Both gates run with `with_forces = false`; the
-  analytic dispersion gradient is exercised only by the out-of-tree check quoted
-  above. A force gate (FD of the total with `d3 = true`) is owed.
-- **No periodic D3.** The dispersion sum is an isolated cluster even when the
-  electronic Γ-point path is lattice-summed; `DFTB2::d3` is only physical for
-  molecules / large boxes.
+- ~~**D3 forces are ungated.**~~ **Closed 2026-07-29:**
+  `tests/cpu/semiempirical/test_dftb2_dispersion_d3.cpp`
+  `ForcesMatchCentralFDOfEDisp` now gates \(F_{D3}\) against a central FD of
+  \(E_{\mathrm{disp}}\) in-tree (< 1e-6 eV/Å), molecular and periodic. D3 stress
+  is gated too (`StressIncludesD3`, `StressTraceMatchesVolumeDerivative`).
+- ~~**No periodic D3.**~~ **Closed 2026-07-29:** `DFTB2::d3_periodic` sums
+  lattice images over an orthorhombic cell, pinned against offline s-dftd3 1.2.1
+  in `regressions/semiempirical/dftb2-dispersion-d3-periodic/`. This case stays
+  the **cluster** pin; the periodic one owns the image term. Note that the
+  periodic value depends on `DFTB2::d3_cutoff` (new member, default unchanged at
+  94.2 Bohr) — the molecular pin here does not.
+- **Triclinic cells still unsupported** — `d3_periodic` throws on a
+  non-orthorhombic box.
 
 ## Oracle
 

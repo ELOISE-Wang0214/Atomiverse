@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/semiempirical/dftb2.h"
@@ -435,6 +436,51 @@ TEST(DFTB2DispersionD3Periodic, NonOrthorhombicBoxThrows) {
     cpu::semiempirical::DFTB2 m;
     m.d3 = true;
     m.d3_periodic = true;
+    m.build({ctx, f});
+    EXPECT_THROW(m.launch({ctx, f, 0, 0}), std::runtime_error);
+}
+
+TEST(DFTB2DispersionD3Periodic, CutoffTruncatesTheLatticeTail) {
+    // d3_cutoff defines what a lattice sum *is*: the tail past it is dropped.
+    // A shorter cutoff must therefore keep strictly less attraction, and the
+    // sum must approach a limit as the cutoff grows. The isolated-cluster
+    // energy, by contrast, cannot depend on it at all for a 6-atom molecule.
+    auto pbc_at_cutoff = [](double cut_ang) {
+        auto f = water_dimer_in_box(12.0);
+        cpu::Context ctx;
+        cpu::semiempirical::DFTB2 m;
+        m.d3 = true;
+        m.d3_periodic = true;
+        m.d3_cutoff = cut_ang;
+        m.build({ctx, f});
+        m.launch({ctx, f, 0, 0});
+        return m.last_e_disp();
+    };
+    const double e40 = pbc_at_cutoff(40.0 * units::kBohrInAngstrom);
+    const double e60 = pbc_at_cutoff(60.0 * units::kBohrInAngstrom);
+    const double e94 = pbc_at_cutoff(94.2 * units::kBohrInAngstrom);
+    EXPECT_GT(e40, e60) << "a shorter cutoff must drop attractive tail";
+    EXPECT_GT(e60, e94);
+    // Converging, not diverging: each extension adds less than the last.
+    EXPECT_LT(std::abs(e94 - e60), std::abs(e60 - e40));
+
+    // The default member value is exactly the historical 94.2 Bohr cutoff.
+    auto f = water_dimer_in_box(12.0);
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 m;
+    m.d3 = true;
+    m.d3_periodic = true;
+    m.build({ctx, f});
+    m.launch({ctx, f, 0, 0});
+    EXPECT_NEAR(m.last_e_disp(), e94, 1e-15);
+}
+
+TEST(DFTB2DispersionD3Periodic, NonPositiveCutoffThrows) {
+    auto f = water_dimer_in_box(12.0);
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 m;
+    m.d3 = true;
+    m.d3_cutoff = 0.0;
     m.build({ctx, f});
     EXPECT_THROW(m.launch({ctx, f, 0, 0}), std::runtime_error);
 }

@@ -2505,9 +2505,12 @@ void DFTB2::launch(const LaunchContext& ctx) {
             cell[2] = f.box.length(2) * units::kAngstromInBohr;
             periodic = true;
         }
+        if (!(d3_cutoff > 0.0))
+            throw std::runtime_error("DFTB2 D3: d3_cutoff must be positive");
         const gpw::D3Result res =
             gpw::dftd3_pbe_bj(Z, pos, cell, periodic, gpw::D3Params{},
-                              /*rcut_bohr=*/94.2, d3_s6, d3_s8, d3_a1, d3_a2,
+                              d3_cutoff * units::kAngstromInBohr, d3_s6, d3_s8,
+                              d3_a1, d3_a2,
                               /*cp2k_cn=*/false, /*calculate_c9=*/false);
 
         e_disp_ = res.energy * units::kHartreeInEv;
