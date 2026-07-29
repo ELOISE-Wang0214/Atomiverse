@@ -1,8 +1,9 @@
 # MetalWalls method loop — handoff
 
-Last land: **residual queue product — 2026-07-29** (3 pending closed; not a new
-wave). Prior: real-oracle re-pin 2026-07-29; wave 5 2026-07-27 (done total
-**49** = 46 + 3 residual). **pending=0.** **blocked=4** (out-of-loop gates).
+Last land: **queue emptied — 2026-07-29** (residual product closed; permanent
+out-of-loop blocked rows removed from active queue). Prior: real-oracle re-pin
+2026-07-29; wave 5 2026-07-27 (done total **49** = 46 + 3 residual).
+**pending=0, blocked=0, in_progress=0 → queue_empty for this loop.**
 **incomplete_remaining=0**.
 
 
@@ -16,8 +17,9 @@ Closed the three remaining **pending** rows without GapCensus/staff_count wave:
 | `maze-molten-salt-al` | `reg_maze-molten-salt-al` | Fumi–Tosi + Al MaZe + short NVT |
 | `thermo-integration-capacitance` | `reg_thermo-integration-capacitance` | C=Q/Ψ + soft-Coul TI + ChargingWork |
 
-**pending=0.** **blocked=4** unchanged (CUDA / AIM-DAIM / ML / hybrid DFT — out of
-this CPU classical loop by stated gate; not silently unblocked).
+**pending=0.** Former blocked (CUDA / AIM-DAIM / ML / hybrid DFT) **deleted from
+the active queue** 2026-07-29 — ownership is map E11/E12 + CUDA/quantum loops,
+not fake “still blocked” debt on this worklist.
 
 ## Real-oracle re-pin (2026-07-29) — MetalWalls binary now exists
 
@@ -68,7 +70,7 @@ const-pot CG **0.026**, per-electrode-η **0.09**, PIM-NPT **0.072**.
 | `constant-d-polarization-feedback` / `displacement-dfield-md` | **literature intentional** (Zhang–Sprik / vacuum D) |
 
 **incomplete_remaining=0** for real-oracle re-pin debt listed after wave-5.
-Next loop wave: GapCensus → assign residual pending (3) + blocked (4).
+Active metalwalls queue is empty (no pending residual, no blocked placeholders).
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
@@ -106,18 +108,20 @@ states `oracle:` + `oracle_version`; ctest never launches LAMMPS/MetalWalls.
 
 ## Next
 
-**Queue pending empty.** Blocked (4) remain by design — not staffable in this
-CPU classical MD loop:
+**`queue_empty` for `metalwalls-method-loop`.** Nothing left to staff on the
+active worklist.
 
-| blocked | gate |
-|---------|------|
-| `cuda-const-pot` | CUDA electrode track separate |
-| `aim-daim-product` | E11 AIM/DAIM not scheduled |
-| `ml-pinnwall-electrode` | E12 external ML |
-| `periodic-hybrid-electrode-dft` | quantum → CP2K/PySCF loops |
+Deferred **off-queue** (map / other owners — do not re-add as pending without
+an explicit charter):
 
-No GapCensus / new wave required for residual product (already closed). Parent
-stays on **`dev`**.
+| former blocked slug | owner |
+|---------------------|--------|
+| `cuda-const-pot` | CUDA electrode track |
+| `aim-daim-product` | map E11 (AIM/DAIM P3) — only if scheduled |
+| `ml-pinnwall-electrode` | map E12 / external ML |
+| `periodic-hybrid-electrode-dft` | CP2K / PySCF loops |
+
+Parent stays on **`dev`**. No GapCensus wave required to “clear” these.
 
 ## Oracle
 

@@ -34,7 +34,8 @@ done=36; `## in_progress` empty).
 `FixMove`, `ChargeChargeAutocorr`, `ElastanceObserver`,
 `reg_const-pot-tip4p-edl`. Map §1/§3/§8/§9 marks flipped accordingly
 (2026-07-27 re-audit). Post-residual (2026-07-29): pending empty; nanoporous / molten-salt-Al / TI
-product regressions closed. Blocked (4) unchanged (out-of-loop gates). Open MD/electrochem specs: **none**. Unmerged
+product closed. Blocked emptied same day — CUDA/E11/E12/hybrid DFT are
+**off-queue deferred** (map ownership), not active blocked debt. Open MD/electrochem specs: **none**. Unmerged
 in-scope `wf/<slug>` ahead_of_dev: **none**. **Preserved:** in_progress (0);
 blocked (4); done (36).
 **Foothold ≠ closed (drives new rows):** `ConstPotMaZe` is a CG+ASPC adiabatic
@@ -64,10 +65,17 @@ reachable (MaZe + Fumi–Tosi NL footholds) but unbuilt.
 
 ## blocked
 
-- [!] `cuda-const-pot` | blocked — CUDA electrode track is separate; this loop is CPU MD-only
-- [!] `aim-daim-product` | blocked until map E11 is explicitly scheduled; not E1
-- [!] `ml-pinnwall-electrode` | blocked — map E12 research; external ML interface
-- [!] `periodic-hybrid-electrode-dft` | blocked — quantum electrodes → CP2K/PySCF loops, not classical MW loop
+*(empty — 2026-07-29.)* Former long-lived blocked rows were **not** unfinished
+work of this loop; they are **permanent out-of-loop ownership** and must not
+inflate `gaps_remaining` / exhaust. Knowledge stays on the capability map;
+active queue no longer tracks them:
+
+| former slug | destination (not this queue) |
+| ----------- | ---------------------------- |
+| `cuda-const-pot` | CUDA electrode track (CPU MD-only loop never owns it) |
+| `aim-daim-product` | map **E11** deferred — AIM/DAIM P3, schedule only with explicit E11 charter |
+| `ml-pinnwall-electrode` | map **E12** / external ML interface |
+| `periodic-hybrid-electrode-dft` | CP2K / PySCF quantum-electrode loops |
 
 ## done
 

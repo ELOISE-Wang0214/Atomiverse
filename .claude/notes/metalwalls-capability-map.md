@@ -275,8 +275,8 @@ that post-solve refresh.
 | **E8 salt / walls** | Fumi–Tosi, Steele, Born | LiCl–Al, graphite wall |
 | **E9 molecular water** | Four-site / virtual sites | TIP4P at electrodes |
 | **E10 ecosystem** | Capacitance tools, TI workflow, optional PLUMED bridge | Paper workflows |
-| **E11 AIM/DAIM** | §2 AIM | Deep molten-salt users only |
-| **E12 ML electrodes** | PiNNwall-class | Research frontier |
+| **E11 AIM/DAIM** | §2 AIM | Deep molten-salt users only — **deferred off** `metalwalls-method-loop` active queue (2026-07-29); schedule only with explicit E11 charter |
+| **E12 ML electrodes** | PiNNwall-class | Research frontier — **deferred off** active queue (2026-07-29); external ML interface, not this loop |
 
 **E1 only** is the “simple” kernel discussed in chat — roughly the P0 rows of
 §1, **not** the full map.
