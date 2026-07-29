@@ -233,10 +233,20 @@ build here (`tools/metalwalls_oracle/build_metalwalls.sh`). Four wave-1..3
 "oracle: metalwalls" pins were self-golden and one was 6.13% wrong; see
 `.claude/notes/oracle-pin-provenance.md`.
 
+**Blocked ≠ pending (binding, 2026-07-29):** a queue row is `blocked` because a
+**stated gate** holds — a missing predecessor, a build option the loop keeps
+OFF, a family-locked oracle that cannot produce the number, or an explicit
+scope-out. A wave that is short of work does **not** license promoting one.
+Never "unblock" by switching oracle families (OpenMOPAC for a DFTB row, DFTB+
+for a PM6 row) or by downgrading to `oracle: literature`. Reasons live in the
+harness, not only in the queue: `.claude/notes/tb-blocked-capabilities.md` is
+the pattern (per-loop sibling notes as other loops accumulate blocked rows).
+
 - Design: `docs/developer/oracle-capability-loop.md`
 - Template: `.grok/workflows/_templates/oracle-capability-loop-template.rhai`
 - Skill: `.agents/skills/create-oracle-loop/` (`/create-oracle-loop`)
 - Instances: `pyscf-method-loop`, `cp2k-method-loop`, `metalwalls-method-loop`, `tb-method-loop`
+- Blocked-row reasons: `.claude/notes/tb-blocked-capabilities.md`
 
 
 # AGENTS.md

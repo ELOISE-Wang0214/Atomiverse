@@ -502,6 +502,12 @@ _(empty — all 8 assign-wave-4 slugs merged to `dev`; see `## done`)_
 
 ## blocked
 
+Reasons are harness knowledge, not queue prose:
+**`.claude/notes/tb-blocked-capabilities.md`**. A row leaves this list only when
+its stated gate is actually removed — never because a wave was short of work,
+and never by switching oracle families.
+
+
 - [!] `noncollinear-spin-dftb` | blocked — needs collinear spin-DFTB first (**collinear product foothold exists; noncollinear still blocked**)
 - [!] `dftb-plus-u` | blocked — needs SCC base + Hubbard-U design note
 - [!] `spin-orbit-dftb` | blocked — needs specialized SOC / SK design; not ladder-head
