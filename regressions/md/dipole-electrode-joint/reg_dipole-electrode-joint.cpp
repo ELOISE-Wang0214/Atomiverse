@@ -1,5 +1,15 @@
 /// @file regressions/md/dipole-electrode-joint/reg_dipole-electrode-joint.cpp
-/// @brief E2E: joint PIM dipoles ⊕ electrode Q vs offline MetalWalls-form pin.
+/// @brief E2E: joint PIM dipoles ⊕ electrode Q vs the min-image algebra pin.
+///
+/// The pinned numbers are Atomiverse's own MINIMUM-IMAGE algebra, not
+/// MetalWalls output. MetalWalls c8ad175d was run on the exact same 4-site
+/// twin (tools/metalwalls_oracle/inputs/metalwalls/dipole-electrode-joint/)
+/// and lands 9 % away on Q and 16 % away on μ, because MW only implements
+/// Ewald electrostatics (num_PBC ∈ {2,3}) while this component truncates at
+/// minimum image (xy_image_range = 0). Under a matched 3D lattice sum these
+/// same kernels reproduce MetalWalls to 1.2e-8 — i.e. the formulas agree
+/// exactly and only the boundary condition differs. Full decomposition,
+/// raw MW output and unit conversions: REFERENCE.md.
 ///
 /// See REFERENCE.md. Public headers + link atomiverse only. Exits non-zero on fail.
 
@@ -44,7 +54,8 @@ cpu::Frame make_frame() {
 } // namespace
 
 int main() {
-    // Offline MetalWalls-form pin (pin_joint.py; K = units::coulomb = 14.399645).
+    // Min-image algebra pin (pin_joint.py; K = units::coulomb = 14.399645).
+    // NOT a MetalWalls number — see the file header and REFERENCE.md.
     constexpr double kQBotPin = -7.3285008958883610e-02;
     constexpr double kQTopPin = 7.3285008958883610e-02;
     constexpr double kMuCatZPin = 5.8951916148990660e-02;
@@ -212,6 +223,7 @@ int main() {
         return 1;
     }
     std::printf(
-        "PASS: dipole-electrode-joint vs offline MetalWalls-form pin\n");
+        "PASS: dipole-electrode-joint vs min-image algebra pin "
+        "(MetalWalls c8ad175d twin: not_expressible, see REFERENCE.md)\n");
     return 0;
 }
