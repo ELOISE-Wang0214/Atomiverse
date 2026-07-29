@@ -51,8 +51,9 @@ tools/tb_oracle/
 | `inputs/dftbplus/dftb2_analytic_forces_threeob_note.md` | DFTB+ | ThreeOb closed-form F vs re-SCC FD (formula) |
 | `inputs/dftbplus/dftb2_analytic_stress_note.md` | DFTB+ | Cell-stress module boundary (pair virial; formula) |
 | `inputs/dftbplus/dftb2-dispersion-d3/` | s-dftd3 | Water-dimer **molecular** D3(BJ) geometry twin (`reg_dftb2-dispersion-d3`) |
-| `inputs/mopac/` | OpenMOPAC | **absent on `dev`** — seed with AM1/RM1/PM* pins (Phase B) |
+| `inputs/mopac/` | OpenMOPAC | seeded from wave 4 — AM1 / PM* pins still pending |
 | `inputs/xtb/` | xtb | **absent on `dev`** — seed with GFN pins (Phase C, late) |
+| `inputs/mopac/rm1-water/` | OpenMOPAC | RM1 H₂O ΔHf decks (`reg_rm1-water-mopac-energy`); the ΔHf path is calibrated against MOPAC2016 21.298M `tests/keywords/RM1.out` (CO₂) to 3.1e-4 kcal/mol |
 
 Every twin above is on `dev` as of harness wave 3 (2026-07-29; includes
 DFTB3 note + kpoints/periodic-forces twins). GapCensus wave-4: still need
