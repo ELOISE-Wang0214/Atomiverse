@@ -1,8 +1,10 @@
 /// @file regressions/md/piston-electrode-pz/reg_piston-electrode-pz.cpp
 /// @brief E2E: rigid upper-wall piston holds mean \(P_z\) at target (E6).
 ///
-/// Public API only. Offline MetalWalls-algorithm pin (no live MW binary).
-/// See REFERENCE.md. Exits non-zero on failure.
+/// Public API only. Pinned against the **real MetalWalls binary** (git
+/// c8ad175d) run on the identical 24-atom twin: MW's own
+/// `electrode_forces.out` LJ column gives \(F_z\) on the rigid piston, hence
+/// \(P_z = F_z/A\). See REFERENCE.md. Exits non-zero on failure.
 
 #include <chrono>
 #include <cmath>
@@ -31,8 +33,16 @@ int main() {
     constexpr double z_hi = 8.0;  // upper piston (tight gap → repulsive LJ)
     constexpr double eps = 0.10;  // [eV]
     constexpr double sigma = 3.0; // [Å]
-    constexpr double cutoff = 6.0;
-    constexpr double skin = 0.5;
+    // r_c + skin MUST stay below L_xy/2 = 5 Å: the single-rank CellList folds
+    // every separation through minimum image (cell_list.h
+    // `min_image_unextended_`), so a cutoff above half the shortest box edge
+    // silently drops the second image of every pair with |d| = L/2. The
+    // original fixture used r_c = 6 Å in this 10 Å box and was therefore
+    // computing a min-image-truncated LJ, not "LJ with r_c = 6 Å" (0.037 %
+    // error vs the true lattice sum; MetalWalls rejects such an input
+    // outright — src/system.F90 "Invalid value for lj rcut > min(a,b,c)/2").
+    constexpr double cutoff = 4.5;
+    constexpr double skin = 0.3;
     constexpr double dt = 0.5; // [fs]
     constexpr double T = 300.0;
     constexpr double tau_T = 50.0;
@@ -127,6 +137,30 @@ int main() {
         std::printf("FAIL: expected compressive probe P_z>0 on upper wall "
                     "(got %.3e); geometry not repulsive enough\n",
                     P_pin);
+        return 1;
+    }
+
+    // ── MetalWalls oracle pin (REFERENCE.md) ──────────────────────────
+    // MetalWalls c8ad175d, mpirun -n 1, twin input under
+    // tools/metalwalls_oracle/inputs/metalwalls/piston-electrode-pz/.
+    // electrode_forces.out, step 0, electrode 2 (Wup = this piston),
+    // fz_lennard_jones = +1.609547904622151 Ha/Bohr.
+    //   F_z = 1.609547904622151 Ha/Bohr × 27.211386245988 eV/Ha
+    //                                   / 0.52917721067 Å/Bohr
+    //       = 82.7662809943017 eV/Å
+    //   P_z = F_z / A,  A = L_x L_y = 100 Å²
+    // MW's `pressure` column is literally force_ions(3,1)/area
+    // (src/output.F90:1376) — the same identity PistonElectrode reports.
+    constexpr double P_z_metalwalls = 8.27662809943017e-01; // [eV/Å³]
+    constexpr double P_z_tol = 1e-6;                        // relative
+    const double pin_rel =
+        std::fabs(P_pin - P_z_metalwalls) / P_z_metalwalls;
+    std::printf("MW pin: P_z(ATV)=%.15e  P_z(MW)=%.15e  rel=%.3e\n", P_pin,
+                P_z_metalwalls, pin_rel);
+    if (!(pin_rel <= P_z_tol)) {
+        std::printf("FAIL: probe P_z disagrees with MetalWalls c8ad175d: "
+                    "rel=%.3e > %.1e\n",
+                    pin_rel, P_z_tol);
         return 1;
     }
 
