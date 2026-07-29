@@ -238,17 +238,43 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
   moves several other pins. Also: the collinear branches use plain linear
   mixing while only the restricted path uses Pulay — for Fe that costs ~5× the
   iterations (12 → 60).
-- **Four GPW unit tests are registered inside the PW guard, not the GPW
-  guard** (named 2026-07-29, pre-existing — verified identical at the session's
+- ~~**Four GPW unit tests are registered inside the PW guard**~~ **FIXED
+  2026-07-29** — verified by running the documented command itself: exit 0,
+  370/370. Original text: (named 2026-07-29, pre-existing — verified identical at the session's
   start commit): `test_cpu_gpw_forces`, `_stress`, `_uks`, `_dftu`. A build
   with `ATV_BUILD_PW=ON` and `ATV_BUILD_GPW=OFF` therefore fails to link with
   4 undefined-reference errors — and that combination is **exactly the
   copy-pasteable CPU build command in AGENTS.md and CLAUDE.md**. Fix: move the
   four registrations inside `if(ATV_BUILD_GPW)`.
-- **`gpw-fd-phonon-si` is non-reproducible**: |Δω| 50.5 / 66.4 / 76.0 cm⁻¹
-  against a 50 cm⁻¹ tolerance, at 1 thread too.
-- **The OT and GW iterative solvers are not thread-deterministic**
-  (named 2026-07-29): `ot-minimizer-water` converges in **31 or 56 iterations
+- **`gpw-fd-phonon-si` fails for real** (updated 2026-07-29): now bitwise
+  reproducible at every thread width after `0f78ff6d`, and still |Δω| 71.5 cm⁻¹
+  against a 50 cm⁻¹ tolerance (78.5 before the determinism fix) — so it is a
+  genuine physics or tolerance failure, not the nondeterminism. Separately, its
+  1-D fit is **badly conditioned**: `1d_E` moved 484.2 → 491.3 cm⁻¹ from a
+  ~1e-13 Ha change in the underlying energies. Both worth a /mol:fix.
+- ~~**The OT and GW iterative solvers are not thread-deterministic**~~
+  **FIXED 2026-07-29** (`0f78ff6d`): NINE reductions in the GPW grid kernels
+  handed their summation order to the OpenMP runtime, and two of them
+  (`build_compact_basis_grid`, `build_products`) were STRUCTURAL — the CSR
+  layout and the product list order themselves differed run to run, which then
+  fixed the summation order of everything downstream. Replaced with
+  `ChunkedRange` (`cpu/device/chunked_range.h`): chunk boundaries depend on `n`
+  alone, each chunk owns an accumulator, the caller folds in ascending chunk
+  order; `schedule(dynamic)` stays because which thread runs a chunk no longer
+  touches the arithmetic. Bitwise identical at 1/2/4/8/16 threads, gated by
+  `tests/cpu/gpw/test_cpu_gpw_thread_reproducibility.cpp` (5 of 6 cases RED
+  against the parent). Cost: none — 8 threads 1.40 s vs 1.47-1.70 s before.
+  The three `THREADS 1` stopgaps are lifted; 6/6 consecutive passes each.
+  **The sensitivity remains, only the randomness is gone**: `ot-minimizer-water`
+  now deterministically takes 36 iterations with ~180 line-search rebuilds
+  because `kOtGradTol = 1e-6` is chased against a gradient that plateaus at
+  2.7e-6 while |ΔE| has been ~1e-14 for ten iterations — so each Armijo
+  backtrack was being decided by reduction order, not physics. Two principled
+  repairs were tried and BOTH made it worse (relaxing Armijo to the resolution
+  of E: 49 iters/268 s; Löwdin-cleaning the trial point to match what the
+  multi-k paths already do: no convergence in 200 iters). **The Γ vs multi-k
+  Löwdin inconsistency is real and unresolved** (`gpw_solver.cpp:1848`, `:3140`
+  clean the trial point; the Γ paths do not). Original text: `ot-minimizer-water` converges in **31 or 56 iterations
   run-to-run at 8 threads** (11 s vs 110 s, same binary, no RNG);
   `second-gen-cpmd-ot` scored 3 PASS / 1 FAIL in 4 identical runs (drift 0.245
   and 0.360 vs tol 0.10) and is bitwise reproducible at 1 thread;
