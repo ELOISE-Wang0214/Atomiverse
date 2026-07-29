@@ -11,7 +11,7 @@ namespace ATV {
 namespace cpu {
 namespace semiempirical {
 
-/// @brief SCC-DFTB3 energy (+ optional FD forces) for H/C/N/O.
+/// @brief SCC-DFTB3 energy (+ optional analytic nuclear forces) for H/C/N/O.
 ///
 /// Third-order self-consistent-charge DFTB (Gaus et al., J. Chem. Theory
 /// Comput. **7**, 931 (2011), DOI 10.1021/ct100684s) on top of the
@@ -28,11 +28,28 @@ namespace semiempirical {
 /// \f$\sum_A\Delta q_A V_A = 2E^{(2)}+3E^{(3)}\f$). Both live in
 /// `internal/dftb3_scc.h`.
 ///
+/// Nuclear forces are the **closed-form** gradient at the converged SCC
+/// density — Hellmann–Feynman \f$\partial H^0/\partial R\f$, Pulay
+/// \f$-W\,\partial S/\partial R\f$ with the energy-weighted density
+/// \f$W_{\mu\nu}=\sum_o n_o\varepsilon_o C_{\mu o}C_{\nu o}\f$, the SCC shift
+/// on \f$\partial S/\partial R\f$, the fixed-Δq
+/// \f$\partial(E^{(2)}+E^{(3)})/\partial R\f$ (both the \f$\gamma\f$ and the
+/// non-symmetric \f$\Gamma\f$ radial derivatives), and the pair repulsive
+/// gradient. Because \f$H=\partial E/\partial P\f$ exactly, the density is
+/// stationary and no coupled-perturbed charge response is needed; gated
+/// against re-SCC finite differences by
+/// `regressions/semiempirical/dftb3-analytic-forces/`. This is **not** a
+/// finite-difference path: one SCC solve per force evaluation, not \f$6N+1\f$.
+///
+/// **Limitations:** minimum-image molecular pairs only (no lattice-image
+/// Γ-PBC / k-mesh walk — that is DFTB2's), closed shell only, no cell stress,
+/// no dispersion.
+///
 /// Units on the public surface: energy [eV], positions [Å], forces [eV/Å].
 ///
 /// @code
 ///   cpu::semiempirical::DFTB3 dftb3;
-///   dftb3.with_forces = false;
+///   dftb3.with_forces = true;
 ///   eval.on(evaluate::Phase::evaluate).add(std::move(dftb3));
 /// @endcode
 class DFTB3 : public cpu::Semiempirical {
@@ -49,7 +66,7 @@ class DFTB3 : public cpu::Semiempirical {
     /// The default converges every in-tree case in ≤ 14 iterations; β ≳ 0.7
     /// stops converging for hydrogen-bonded systems.
     double mix_beta = 0.3;
-    /// @brief When true, write forces F=−∇E [eV/Å] on launch (central FD of E).
+    /// @brief When true, write forces F=−∇E [eV/Å] on launch (closed form).
     bool with_forces = true;
 
     DFTB3() = default;

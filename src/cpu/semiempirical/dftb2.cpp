@@ -26,6 +26,7 @@
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_3ob_tables.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h"
 #include "atomiverse/cpu/semiempirical/internal/mio_hh_table.h"
+#include "atomiverse/cpu/semiempirical/internal/mio_sk_block.h"
 #include "atomiverse/cpu/semiempirical/internal/scc_mixer.h"
 
 namespace ATV {
@@ -142,71 +143,6 @@ double pair_repulsive_dE_dr(int za, int zb, double r_A) {
     return -rep.a * rep.b * std::exp(-rep.b * r_A);
 }
 
-/// @brief Write directed A→B block of H0/S for bond vector R = R_B − R_A (accumulate).
-///
-/// Does **not** write the transpose — lattice-sum callers walk all ordered pairs (a,b,T).
-/// Min-image molecular forces keep a separate assign-both-triangles helper below.
-void fill_sk_block_directed(const DftbElementRow& ea, const DftbElementRow& eb,
-                            const DftbPairSkRow& sk, double dx, double dy,
-                            double dz, double r, linalg::RealMatrix& H0,
-                            linalg::RealMatrix& S, int ia0, int ib0) {
-    if (r < 1e-12)
-        return;
-
-    // mio-1-1 H–H (s only): shared transcribed table, not the sketch radial.
-    if (ea.z == 1 && eb.z == 1) {
-        const internal::MioHHTable mio;
-        H0(ia0, ib0) += mio.hopping_ss(r);
-        S(ia0, ib0) += mio.overlap_ss(r);
-        (void)sk;
-        return;
-    }
-
-    const double inv_r = 1.0 / r;
-    const double l = dx * inv_r;
-    const double m = dy * inv_r;
-    const double n = dz * inv_r;
-
-    const double Hss = h_radial(sk.h_ss0, r, sk.h_r0, sk.h_d);
-    const double Hsp = h_radial(sk.h_sp0, r, sk.h_r0, sk.h_d);
-    const double Hpps = h_radial(sk.h_pps0, r, sk.h_r0, sk.h_d);
-    const double Hppp = h_radial(sk.h_ppp0, r, sk.h_r0, sk.h_d);
-    const double Sss = s_radial(sk.s_ss0, r, sk.s_r0, sk.s_w);
-    const double Ssp = s_radial(sk.s_sp0, r, sk.s_r0, sk.s_w);
-    const double Spps = s_radial(sk.s_pps0, r, sk.s_r0, sk.s_w);
-    const double Sppp = s_radial(sk.s_ppp0, r, sk.s_r0, sk.s_w);
-
-    auto add_hs = [&](int i, int j, double hv, double sv) {
-        H0(ia0 + i, ib0 + j) += hv;
-        S(ia0 + i, ib0 + j) += sv;
-    };
-
-    add_hs(0, 0, Hss, Sss);
-
-    if (ea.n_ao >= 1 && eb.n_ao == 4) {
-        add_hs(0, 1, l * Hsp, l * Ssp);
-        add_hs(0, 2, m * Hsp, m * Ssp);
-        add_hs(0, 3, n * Hsp, n * Ssp);
-    }
-    if (ea.n_ao == 4 && eb.n_ao >= 1) {
-        add_hs(1, 0, -l * Hsp, -l * Ssp);
-        add_hs(2, 0, -m * Hsp, -m * Ssp);
-        add_hs(3, 0, -n * Hsp, -n * Ssp);
-    }
-    if (ea.n_ao == 4 && eb.n_ao == 4) {
-        const double dir[3] = {l, m, n};
-        for (int a = 0; a < 3; ++a) {
-            for (int b = 0; b < 3; ++b) {
-                const double d_ab = (a == b) ? 1.0 : 0.0;
-                const double hv = dir[a] * dir[b] * (Hpps - Hppp) + d_ab * Hppp;
-                const double sv = dir[a] * dir[b] * (Spps - Sppp) + d_ab * Sppp;
-                add_hs(1 + a, 1 + b, hv, sv);
-            }
-        }
-    }
-}
-
-
 struct LatVec {
     double tx, ty, tz;
     int n0 = 0, n1 = 0, n2 = 0; ///< integer lattice indices (for Bloch phase)
@@ -268,93 +204,6 @@ lattice_images_for(const cpu::Box& box,
 double dgamma_dr(double r, double ua, double ub) {
     const double g = gamma_ab(r, ua, ub);
     return -r * g * g * g;
-}
-
-/// SK block derivatives w.r.t. bond vector components (R_B − R_A).
-void fill_sk_block_deriv(const DftbElementRow& ea, const DftbElementRow& eb,
-                         const DftbPairSkRow& sk, double dx, double dy,
-                         double dz, double r, linalg::RealMatrix dH0[3],
-                         linalg::RealMatrix dS[3], int ia0, int ib0) {
-    if (r < 1e-12)
-        return;
-    const double inv_r = 1.0 / r;
-    const double dir[3] = {dx * inv_r, dy * inv_r, dz * inv_r};
-
-    // mio-1-1 H–H: radial derivative of the shared table, chained to bond vec.
-    if (ea.z == 1 && eb.z == 1) {
-        const internal::MioHHTable mio;
-        const double dHss = mio.d_hopping_ss_dr(r);
-        const double dSss = mio.d_overlap_ss_dr(r);
-        for (int k = 0; k < 3; ++k) {
-            dH0[k](ia0, ib0) = dHss * dir[k];
-            dS[k](ia0, ib0) = dSss * dir[k];
-        }
-        (void)sk;
-        return;
-    }
-
-    const double Hss = h_radial(sk.h_ss0, r, sk.h_r0, sk.h_d);
-    const double Hsp = h_radial(sk.h_sp0, r, sk.h_r0, sk.h_d);
-    const double Hpps = h_radial(sk.h_pps0, r, sk.h_r0, sk.h_d);
-    const double Hppp = h_radial(sk.h_ppp0, r, sk.h_r0, sk.h_d);
-    const double Sss = s_radial(sk.s_ss0, r, sk.s_r0, sk.s_w);
-    const double Ssp = s_radial(sk.s_sp0, r, sk.s_r0, sk.s_w);
-    const double Spps = s_radial(sk.s_pps0, r, sk.s_r0, sk.s_w);
-    const double Sppp = s_radial(sk.s_ppp0, r, sk.s_r0, sk.s_w);
-
-    const double dHss = -Hss / sk.h_d;
-    const double dHsp = -Hsp / sk.h_d;
-    const double dHpps = -Hpps / sk.h_d;
-    const double dHppp = -Hppp / sk.h_d;
-    const double dSss = Sss * (-(r - sk.s_r0) / (sk.s_w * sk.s_w));
-    const double dSsp = Ssp * (-(r - sk.s_r0) / (sk.s_w * sk.s_w));
-    const double dSpps = Spps * (-(r - sk.s_r0) / (sk.s_w * sk.s_w));
-    const double dSppp = Sppp * (-(r - sk.s_r0) / (sk.s_w * sk.s_w));
-
-    auto ddir = [&](int alpha, int k) {
-        const double dab = (alpha == k) ? 1.0 : 0.0;
-        return (dab - dir[alpha] * dir[k]) * inv_r;
-    };
-
-    for (int k = 0; k < 3; ++k) {
-        const double dr_dk = dir[k];
-        dH0[k](ia0, ib0) = dHss * dr_dk;
-        dS[k](ia0, ib0) = dSss * dr_dk;
-
-        if (ea.n_ao >= 1 && eb.n_ao == 4) {
-            for (int a = 0; a < 3; ++a) {
-                dH0[k](ia0, ib0 + 1 + a) =
-                    ddir(a, k) * Hsp + dir[a] * dHsp * dr_dk;
-                dS[k](ia0, ib0 + 1 + a) =
-                    ddir(a, k) * Ssp + dir[a] * dSsp * dr_dk;
-            }
-        }
-        if (ea.n_ao == 4 && eb.n_ao >= 1) {
-            for (int a = 0; a < 3; ++a) {
-                dH0[k](ia0 + 1 + a, ib0) =
-                    -(ddir(a, k) * Hsp + dir[a] * dHsp * dr_dk);
-                dS[k](ia0 + 1 + a, ib0) =
-                    -(ddir(a, k) * Ssp + dir[a] * dSsp * dr_dk);
-            }
-        }
-        if (ea.n_ao == 4 && eb.n_ao == 4) {
-            const double dHsig = dHpps - dHppp;
-            const double dSsig = dSpps - dSppp;
-            const double Hsig = Hpps - Hppp;
-            const double Ssig = Spps - Sppp;
-            for (int a = 0; a < 3; ++a) {
-                for (int b = 0; b < 3; ++b) {
-                    const double dab = (a == b) ? 1.0 : 0.0;
-                    dH0[k](ia0 + 1 + a, ib0 + 1 + b) =
-                        (ddir(a, k) * dir[b] + dir[a] * ddir(b, k)) * Hsig
-                        + dir[a] * dir[b] * dHsig * dr_dk + dab * dHppp * dr_dk;
-                    dS[k](ia0 + 1 + a, ib0 + 1 + b) =
-                        (ddir(a, k) * dir[b] + dir[a] * ddir(b, k)) * Ssig
-                        + dir[a] * dir[b] * dSsig * dr_dk + dab * dSppp * dr_dk;
-                }
-            }
-        }
-    }
 }
 
 struct Occupancy {
@@ -448,8 +297,8 @@ void build_h0_s(int n_at, int n_ao, const std::vector<const DftbElementRow*>& el
                 const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
                 if (r < 1e-12 || r > rcut)
                     continue;
-                fill_sk_block_directed(ea, eb, sk, dx, dy, dz, r, H0, S, ia,
-                                       ib);
+                internal::MioSketchPair{ea, eb, sk}.add_block(dx, dy, dz, r, H0,
+                                                              S, ia, ib);
             }
         }
     }
@@ -1310,8 +1159,8 @@ void analytic_forces_unrestricted(
                         dH0[k] = xt::zeros<double>({n_ao, n_ao});
                         dS[k] = xt::zeros<double>({n_ao, n_ao});
                     }
-                    fill_sk_block_deriv(ea, eb, sk, dx, dy, dz, r, dH0, dS, ia,
-                                        ib);
+                    internal::MioSketchPair{ea, eb, sk}.set_block_derivative(
+                        dx, dy, dz, r, dH0, dS, ia, ib);
                     for (int k = 0; k < 3; ++k) {
                         double acc = 0;
                         for (int i = 0; i < na; ++i)
@@ -1435,8 +1284,8 @@ void analytic_forces_restricted(
                         dH0[k] = xt::zeros<double>({n_ao, n_ao});
                         dS[k] = xt::zeros<double>({n_ao, n_ao});
                     }
-                    fill_sk_block_deriv(ea, eb, sk, dx, dy, dz, r, dH0, dS, ia,
-                                        ib);
+                    internal::MioSketchPair{ea, eb, sk}.set_block_derivative(
+                        dx, dy, dz, r, dH0, dS, ia, ib);
                     for (int k = 0; k < 3; ++k) {
                         double acc = 0;
                         for (int i = 0; i < na; ++i)
