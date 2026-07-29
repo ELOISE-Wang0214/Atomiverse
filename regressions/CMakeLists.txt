@@ -40,16 +40,17 @@ add_custom_target(regressions
 #         they stay at 1: extra width there is footprint with no wall benefit.
 #   Do not raise a case on a hunch — measure both widths first.
 #
-#   Some cases are pinned to 1 for CORRECTNESS, not speed. The iterative OT and
-#   GW solvers are not thread-deterministic: at 8 threads the OT iteration count
-#   varies run-to-run (31 vs 56 on ot-minimizer-water, i.e. an 11 s / 110 s
-#   wall), and where a case gates on a chaotic NVE drift that amplifies into a
-#   real FAIL — second-gen-cpmd-ot scored 3 PASS / 1 FAIL in 4 runs at 8
-#   threads and is bitwise reproducible at 1. Cases pinned for this reason:
-#   second-gen-cpmd-ot, second-gen-cpmd-uks-ot, periodic-ugw-kpoints. Their
-#   siblings that cannot afford the pin (periodic-gw-si 51 s -> 8 s,
-#   periodic-ugw-si 93 s -> 14 s, ugw-uks-rpbe 146 s -> 22 s) stay at 8 and
-#   remain exposed; fixing the solvers is the real repair.
+#   No case is pinned to 1 for CORRECTNESS any more. second-gen-cpmd-ot,
+#   second-gen-cpmd-uks-ot and periodic-ugw-kpoints were, because the GPW grid
+#   kernels reduced in whatever order OpenMP handed them: the KS matrix differed
+#   run to run at a fixed thread count, and the OT line search amplified that
+#   into a 30-200 iteration spread (1 run in 8 of ot-minimizer-water exhausted
+#   its SCF budget outright). Those reductions now use a fixed partition folded
+#   in a fixed order, so every one of them is bitwise identical at 1/2/4/8/16
+#   threads — pinned by tests/cpu/gpw/test_cpu_gpw_thread_reproducibility.cpp.
+#   Measured 2026-07-29, 1-thread -> 8-thread: second-gen-cpmd-ot 107 s -> 30 s,
+#   second-gen-cpmd-uks-ot 277 s -> 75 s, periodic-ugw-kpoints 24 s -> 16 s.
+#   A thread count is once again a pure cost choice.
 function(atv_add_regression domain case)
     cmake_parse_arguments(REG "" "THREADS" "" ${ARGN})
     if(NOT DEFINED REG_THREADS)
@@ -358,9 +359,9 @@ if(ATV_BUILD_GPW)
         # Second-generation CP on Γ-UKS (dual ASPC α/β + partial SCF).
         atv_add_regression(dynamics second-gen-cpmd-uks THREADS 8)
         # Second-generation CP with OT partial-SCF corrector (RKS Γ).
-        atv_add_regression(dynamics second-gen-cpmd-ot)
+        atv_add_regression(dynamics second-gen-cpmd-ot THREADS 8)
         # Second-generation CP with OT partial-SCF corrector on Γ-UKS.
-        atv_add_regression(dynamics second-gen-cpmd-uks-ot)
+        atv_add_regression(dynamics second-gen-cpmd-uks-ot THREADS 8)
         # Multi-k second-generation CP (ASPC on complex P_k + partial SCF).
         atv_add_regression(dynamics second-gen-cpmd-kpoints THREADS 8)
     endif()
@@ -406,13 +407,11 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw periodic-urpa-kpoints THREADS 8)
     atv_add_regression(gpw periodic-gw-si THREADS 8)
     atv_add_regression(gpw periodic-ugw-si THREADS 8)
-    # Pinned to 1 for CORRECTNESS: the UGW Newton QP solve failed to converge
-    # once in ~7 runs at 8 threads (thread-dependent FP reduction order), and
-    # 1 thread costs only 23 s vs 15 s. The sibling GW cases (periodic-gw-si
-    # 51 s -> 8 s, periodic-ugw-si 93 s -> 14 s, ugw-uks-rpbe 146 s -> 22 s)
-    # cannot afford the same pin and stay at 8 — see the report's finding on
-    # thread non-determinism in the iterative QP / OT solvers.
-    atv_add_regression(gpw periodic-ugw-kpoints)
+    # Was pinned to 1 for CORRECTNESS (the UGW Newton QP solve missed its root
+    # once in ~7 runs at 8 threads). The cause was the thread-dependent
+    # reduction order in integrate_potential_k, now a fixed partition folded in
+    # a fixed order; 24 s -> 16 s wide.
+    atv_add_regression(gpw periodic-ugw-kpoints THREADS 8)
     # UGW@UKS RPBE spin XC residual (spectral G0W0; xc_grid_rpbe_spin).
     atv_add_regression(gpw ugw-uks-rpbe THREADS 8)
     atv_add_regression(gpw periodic-gw-kpoints THREADS 8)

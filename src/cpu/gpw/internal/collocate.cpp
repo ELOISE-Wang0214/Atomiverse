@@ -3,6 +3,8 @@
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 
+#include "atomiverse/cpu/device/chunked_range.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -126,83 +128,79 @@ build_compact_basis_grid(const UniformGrid& grid,
         int u;
         double v;
     };
-    std::vector<std::vector<Triple>> per_thread;
-#ifdef _OPENMP
-    per_thread.resize(static_cast<std::size_t>(omp_get_max_threads()));
-#else
-    per_thread.resize(1);
-#endif
+    // One bucket PER BASIS FUNCTION, not per thread. A per-thread bucket makes
+    // the concatenated triple order — and therefore the summation order of every
+    // downstream density/KS contraction over this CSR — a function of which
+    // thread happened to take which `u` chunk, which a dynamic schedule varies
+    // between two runs of the same binary. Bucketing by the loop index and
+    // concatenating in ascending `u` gives one canonical layout at any thread
+    // count. (Each iteration owns its bucket, so there is still no sharing.)
+    std::vector<std::vector<Triple>> per_u(static_cast<std::size_t>(nb));
 
-#pragma omp parallel
-    {
-#ifdef _OPENMP
-        std::vector<Triple>& out =
-            per_thread[static_cast<std::size_t>(omp_get_thread_num())];
-#else
-        std::vector<Triple>& out = per_thread[0];
-#endif
-#pragma omp for schedule(dynamic, 8)
-        for (int u = 0; u < nb; ++u) {
-            const double rc = basis_function_radius(basis[u], eps);
-            const double c[3] = {basis[u][0].center[0], basis[u][0].center[1],
-                                 basis[u][0].center[2]};
-            // Γ-point periodic image sum χ_u(r) = Σ_T φ_u(r − T): enumerate the
-            // UNWRAPPED window [ic−ih, ic+ih] of grid cells within rc of the
-            // center, evaluate each at its true (unwrapped) coordinate — so the
-            // image offset is carried by the raw displacement — then wrap the
-            // storage index into [0,n). When the window is wider than the box
-            // (2·rc ≥ L, e.g. a thin cell) multiple unwrapped cells map to the
-            // same grid point; the duplicate (g,u) triples sum correctly in the
-            // density/integration double loop, giving the multi-image χ_u.
-            const long n[3] = {n0, n1, n2};
-            const double dx[3] = {dx0, dx1, dx2};
-            long lo[3], hi[3];
-            for (int d = 0; d < 3; ++d) {
-                const long ih = static_cast<long>(std::ceil(rc / dx[d]));
-                const long ic = static_cast<long>(std::floor(c[d] / dx[d]));
-                lo[d] = ic - ih;
-                hi[d] = ic + ih;
-                if (!periodic) { // isolated: clamp to the box, no wrap
-                    lo[d] = std::max(0L, lo[d]);
-                    hi[d] = std::min(n[d] - 1, hi[d]);
-                }
+#pragma omp parallel for schedule(dynamic, 8)
+    for (int u = 0; u < nb; ++u) {
+        std::vector<Triple>& out = per_u[static_cast<std::size_t>(u)];
+        const double rc = basis_function_radius(basis[u], eps);
+        const double c[3] = {basis[u][0].center[0], basis[u][0].center[1],
+                             basis[u][0].center[2]};
+        // Γ-point periodic image sum χ_u(r) = Σ_T φ_u(r − T): enumerate the
+        // UNWRAPPED window [ic−ih, ic+ih] of grid cells within rc of the
+        // center, evaluate each at its true (unwrapped) coordinate — so the
+        // image offset is carried by the raw displacement — then wrap the
+        // storage index into [0,n). When the window is wider than the box
+        // (2·rc ≥ L, e.g. a thin cell) multiple unwrapped cells map to the
+        // same grid point; the duplicate (g,u) triples sum correctly in the
+        // density/integration double loop, giving the multi-image χ_u.
+        const long n[3] = {n0, n1, n2};
+        const double dx[3] = {dx0, dx1, dx2};
+        long lo[3], hi[3];
+        for (int d = 0; d < 3; ++d) {
+            const long ih = static_cast<long>(std::ceil(rc / dx[d]));
+            const long ic = static_cast<long>(std::floor(c[d] / dx[d]));
+            lo[d] = ic - ih;
+            hi[d] = ic + ih;
+            if (!periodic) { // isolated: clamp to the box, no wrap
+                lo[d] = std::max(0L, lo[d]);
+                hi[d] = std::min(n[d] - 1, hi[d]);
             }
-            for (long i = lo[0]; i <= hi[0]; ++i) {
-                const long ii = ((i % n0) + n0) % n0;
-                const double r0 =
-                    grid.origin[0] + grid.L[0] * static_cast<double>(i) / n0;
-                for (long j = lo[1]; j <= hi[1]; ++j) {
-                    const long jj = ((j % n1) + n1) % n1;
-                    const double r1 = grid.origin[1]
-                                      + grid.L[1] * static_cast<double>(j) / n1;
-                    const long base = (ii * n1 + jj) * n2;
-                    for (long k = lo[2]; k <= hi[2]; ++k) {
-                        const long kk = ((k % n2) + n2) % n2;
-                        const double r2 =
-                            grid.origin[2]
-                            + grid.L[2] * static_cast<double>(k) / n2;
-                        const long g = base + kk;
-                        // Raw displacement to the UNWRAPPED window position (the
-                        // image offset is in r, so no min-image here).
-                        const double r[3] = {r0, r1, r2};
-                        const double val =
-                            eval_basis_function(basis[u], r, grid.L, false);
-                        if (std::fabs(val) > eps)
-                            out.push_back({g, u, val});
-                    }
+        }
+        for (long i = lo[0]; i <= hi[0]; ++i) {
+            const long ii = ((i % n0) + n0) % n0;
+            const double r0 =
+                grid.origin[0] + grid.L[0] * static_cast<double>(i) / n0;
+            for (long j = lo[1]; j <= hi[1]; ++j) {
+                const long jj = ((j % n1) + n1) % n1;
+                const double r1 = grid.origin[1]
+                                  + grid.L[1] * static_cast<double>(j) / n1;
+                const long base = (ii * n1 + jj) * n2;
+                for (long k = lo[2]; k <= hi[2]; ++k) {
+                    const long kk = ((k % n2) + n2) % n2;
+                    const double r2 =
+                        grid.origin[2]
+                        + grid.L[2] * static_cast<double>(k) / n2;
+                    const long g = base + kk;
+                    // Raw displacement to the UNWRAPPED window position (the
+                    // image offset is in r, so no min-image here).
+                    const double r[3] = {r0, r1, r2};
+                    const double val =
+                        eval_basis_function(basis[u], r, grid.L, false);
+                    if (std::fabs(val) > eps)
+                        out.push_back({g, u, val});
                 }
             }
         }
     }
 
-    // Concatenate, then bucket by grid point via counting sort (O(nnz+ngrid),
-    // no comparison sort) into the CSR-by-point layout.
+    // Concatenate in ascending `u`, then bucket by grid point via counting sort
+    // (O(nnz+ngrid), no comparison sort) into the CSR-by-point layout. The
+    // counting sort is stable, so each point's entry list comes out ordered by
+    // `u` — the canonical order, identical at every thread count.
     std::size_t total = 0;
-    for (const auto& v : per_thread)
+    for (const auto& v : per_u)
         total += v.size();
     std::vector<Triple> all;
     all.reserve(total);
-    for (auto& v : per_thread) {
+    for (auto& v : per_u) {
         all.insert(all.end(), v.begin(), v.end());
         std::vector<Triple>().swap(v);
     }
@@ -273,11 +271,21 @@ std::vector<double> integrate_potential(const CompactBasisGrid& cbg, int nbasis,
     std::vector<double> V(nn, 0.0);
     const long na = static_cast<long>(cbg.gidx.size());
     const double w = cbg.weight;
-#pragma omp parallel
-    {
-        std::vector<double> Vloc(nn, 0.0);
-#pragma omp for schedule(dynamic, 64) nowait
-        for (long a = 0; a < na; ++a) {
+    // Reproducible reduction: a FIXED partition of the active points into
+    // chunks, one nb² accumulator each, folded in ascending chunk order. The
+    // per-thread accumulator this replaces was mixed by `#pragma omp critical`
+    // in thread-completion order over a dynamically assigned point set, so the
+    // KS matrix differed run to run at one thread count and again between
+    // counts — noise the SCF then amplified through its line search.
+    const device::ChunkedRange range(
+        na, device::block_reduce_chunks(nn * sizeof(double)));
+    const long nc = range.chunks();
+    std::vector<double> part(static_cast<std::size_t>(nc) * nn, 0.0);
+#pragma omp parallel for schedule(dynamic, 1)
+    for (long c = 0; c < nc; ++c) {
+        double* Vloc = &part[static_cast<std::size_t>(c) * nn];
+        const long alo = range.begin(c), ahi = range.end(c);
+        for (long a = alo; a < ahi; ++a) {
             const std::size_t s = cbg.off[static_cast<std::size_t>(a)];
             const std::size_t e = cbg.off[static_cast<std::size_t>(a) + 1];
             const double vw = V_r[cbg.gidx[static_cast<std::size_t>(a)]] * w;
@@ -289,7 +297,9 @@ std::vector<double> integrate_potential(const CompactBasisGrid& cbg, int nbasis,
                     Vu[cbg.fu[ib]] += fu * cbg.fv[ib];
             }
         }
-#pragma omp critical
+    }
+    for (long c = 0; c < nc; ++c) {
+        const double* Vloc = &part[static_cast<std::size_t>(c) * nn];
         for (std::size_t kk = 0; kk < nn; ++kk)
             V[kk] += Vloc[kk];
     }
@@ -374,12 +384,17 @@ std::vector<double> integrate_potential(const UniformGrid& grid,
     const long na = static_cast<long>(active.size());
     const std::size_t nn = static_cast<std::size_t>(nb) * nb;
     std::vector<double> V(nn, 0.0);
-    // Per-thread partial KS blocks, merged at the end (V is a shared reduction).
-#pragma omp parallel
-    {
-        std::vector<double> Vloc(nn, 0.0);
-#pragma omp for schedule(static) nowait
-        for (long i = 0; i < na; ++i) {
+    // Fixed-partition partial KS blocks, folded in ascending chunk order — the
+    // reproducible form of the shared reduction (see cpu/device/chunked_range.h).
+    const device::ChunkedRange range(
+        na, device::block_reduce_chunks(nn * sizeof(double)));
+    const long nc = range.chunks();
+    std::vector<double> part(static_cast<std::size_t>(nc) * nn, 0.0);
+#pragma omp parallel for schedule(dynamic, 1)
+    for (long c = 0; c < nc; ++c) {
+        double* Vloc = &part[static_cast<std::size_t>(c) * nn];
+        const long ilo = range.begin(c), ihi = range.end(c);
+        for (long i = ilo; i < ihi; ++i) {
             const long g = active[static_cast<std::size_t>(i)];
             const double* row = &phi[static_cast<std::size_t>(g) * nb];
             const double vw = V_r[g] * w;
@@ -390,7 +405,9 @@ std::vector<double> integrate_potential(const UniformGrid& grid,
                     Vu[v] += fu * row[v];
             }
         }
-#pragma omp critical
+    }
+    for (long c = 0; c < nc; ++c) {
+        const double* Vloc = &part[static_cast<std::size_t>(c) * nn];
         for (std::size_t k = 0; k < nn; ++k)
             V[k] += Vloc[k];
     }

@@ -5,6 +5,8 @@
 
 #include "atomiverse/cpu/gpw/internal/multigrid.h"
 
+#include "atomiverse/cpu/device/chunked_range.h"
+
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -492,81 +494,75 @@ ProductSet build_products(const MultiGrid& mg,
     }
 
     // ---- 2. Generate UNIQUE-shape products over cartesian-primitive pairs ----
-    std::vector<std::vector<std::vector<GridProduct>>>
-        per_thread; // [thread][level]
-#ifdef _OPENMP
-    per_thread.resize(static_cast<std::size_t>(omp_get_max_threads()));
-#else
-    per_thread.resize(1);
-#endif
-    for (auto& t : per_thread)
+    // One bucket PER BRA PRIMITIVE, not per thread: the product list order is
+    // the summation order of every downstream density/KS contraction, and a
+    // per-thread bucket makes it a function of which thread took which `ua`
+    // chunk — which a dynamic schedule varies between two runs of the same
+    // binary. Bucketing by the loop index and concatenating in ascending `ua`
+    // gives one canonical list at any thread count.
+    std::vector<std::vector<std::vector<GridProduct>>> per_bra(
+        static_cast<std::size_t>(nprim)); // [ua][level]
+    for (auto& t : per_bra)
         t.resize(static_cast<std::size_t>(nlev));
 
-#pragma omp parallel
-    {
-#ifdef _OPENMP
-        auto& out = per_thread[static_cast<std::size_t>(omp_get_thread_num())];
-#else
-        auto& out = per_thread[0];
-#endif
-#pragma omp for schedule(dynamic, 4)
-        for (int ua = 0; ua < nprim; ++ua) {
-            const PrimRef& A = ps.prims[static_cast<std::size_t>(ua)];
-            for (int ub = 0; ub < nprim; ++ub) {
-                const PrimRef& B = ps.prims[static_cast<std::size_t>(ub)];
-                const double reach = prad[static_cast<std::size_t>(ua)]
-                                     + prad[static_cast<std::size_t>(ub)];
-                const double pa = A.alpha, pb = B.alpha, p = pa + pb;
-                const double mc = A.maxc * B.maxc;
-                // Image shifts of the KET prim (B); the bra A stays home (mirrors
-                // the Γ-point cross-image product Σ_T φ_A φ_B(·−T)).
-                int m[3] = {0, 0, 0};
-                if (periodic)
-                    for (int d = 0; d < 3; ++d)
-                        m[d] = (L[d] > 0.0) ? static_cast<int>(std::ceil(
-                                                  reach / L[d] - 1e-12))
-                                            : 0;
-                for (int tx = -m[0]; tx <= m[0]; ++tx)
-                    for (int ty = -m[1]; ty <= m[1]; ++ty)
-                        for (int tz = -m[2]; tz <= m[2]; ++tz) {
-                            const double tL[3] = {tx * L[0], ty * L[1],
-                                                  tz * L[2]};
-                            const double sx = A.center[0] - B.center[0] - tL[0];
-                            const double sy = A.center[1] - B.center[1] - tL[1];
-                            const double sz = A.center[2] - B.center[2] - tL[2];
-                            if (sx * sx + sy * sy + sz * sz > reach * reach)
-                                continue;
-                            double rb[3], dpq2 = 0.0, P[3];
-                            for (int d = 0; d < 3; ++d) {
-                                rb[d] = B.center[d] + tL[d];
-                                const double diff = A.center[d] - rb[d];
-                                dpq2 += diff * diff;
-                                P[d] = (pa * A.center[d] + pb * rb[d]) / p;
-                            }
-                            const double K = std::exp(-pa * pb / p * dpq2);
-                            if (mc * K < eps)
-                                continue; // no contributor pair survives
-                            GridProduct prod;
-                            prod.p = p;
-                            prod.k = K;
-                            prod.ua = ua;
-                            prod.ub = ub;
-                            for (int d = 0; d < 3; ++d) {
-                                prod.pc[d] = P[d];
-                                prod.ra[d] = A.center[d];
-                                prod.rb[d] = rb[d];
-                                prod.la[d] = A.l[d];
-                                prod.lb[d] = B.l[d];
-                            }
-                            prod.level = level_for_exponent(mg, rel_cutoff, p);
-                            out[static_cast<std::size_t>(prod.level)].push_back(
-                                prod);
+#pragma omp parallel for schedule(dynamic, 4)
+    for (int ua = 0; ua < nprim; ++ua) {
+        auto& out = per_bra[static_cast<std::size_t>(ua)];
+        const PrimRef& A = ps.prims[static_cast<std::size_t>(ua)];
+        for (int ub = 0; ub < nprim; ++ub) {
+            const PrimRef& B = ps.prims[static_cast<std::size_t>(ub)];
+            const double reach = prad[static_cast<std::size_t>(ua)]
+                                 + prad[static_cast<std::size_t>(ub)];
+            const double pa = A.alpha, pb = B.alpha, p = pa + pb;
+            const double mc = A.maxc * B.maxc;
+            // Image shifts of the KET prim (B); the bra A stays home (mirrors
+            // the Γ-point cross-image product Σ_T φ_A φ_B(·−T)).
+            int m[3] = {0, 0, 0};
+            if (periodic)
+                for (int d = 0; d < 3; ++d)
+                    m[d] = (L[d] > 0.0) ? static_cast<int>(std::ceil(
+                                              reach / L[d] - 1e-12))
+                                        : 0;
+            for (int tx = -m[0]; tx <= m[0]; ++tx)
+                for (int ty = -m[1]; ty <= m[1]; ++ty)
+                    for (int tz = -m[2]; tz <= m[2]; ++tz) {
+                        const double tL[3] = {tx * L[0], ty * L[1],
+                                              tz * L[2]};
+                        const double sx = A.center[0] - B.center[0] - tL[0];
+                        const double sy = A.center[1] - B.center[1] - tL[1];
+                        const double sz = A.center[2] - B.center[2] - tL[2];
+                        if (sx * sx + sy * sy + sz * sz > reach * reach)
+                            continue;
+                        double rb[3], dpq2 = 0.0, P[3];
+                        for (int d = 0; d < 3; ++d) {
+                            rb[d] = B.center[d] + tL[d];
+                            const double diff = A.center[d] - rb[d];
+                            dpq2 += diff * diff;
+                            P[d] = (pa * A.center[d] + pb * rb[d]) / p;
                         }
-            }
+                        const double K = std::exp(-pa * pb / p * dpq2);
+                        if (mc * K < eps)
+                            continue; // no contributor pair survives
+                        GridProduct prod;
+                        prod.p = p;
+                        prod.k = K;
+                        prod.ua = ua;
+                        prod.ub = ub;
+                        for (int d = 0; d < 3; ++d) {
+                            prod.pc[d] = P[d];
+                            prod.ra[d] = A.center[d];
+                            prod.rb[d] = rb[d];
+                            prod.la[d] = A.l[d];
+                            prod.lb[d] = B.l[d];
+                        }
+                        prod.level = level_for_exponent(mg, rel_cutoff, p);
+                        out[static_cast<std::size_t>(prod.level)].push_back(
+                            prod);
+                    }
         }
     }
 
-    for (auto& t : per_thread)
+    for (auto& t : per_bra)
         for (int l = 0; l < nlev; ++l) {
             auto& dst = ps.by_level[static_cast<std::size_t>(l)];
             auto& src = t[static_cast<std::size_t>(l)];
@@ -718,6 +714,12 @@ inline void collocate_one(const UniformGrid& grid, const GridProduct& prod,
         }
     }
 }
+
+/// Floor on the chunk count of the grid-sized density scatter. Below this the
+/// kernel loses its parallelism on large grids; at this value the accumulator
+/// footprint matches what an 8-thread run already paid for per-thread buffers.
+constexpr long kMinScatterChunks = 8;
+
 } // namespace
 
 std::vector<double> collocate_products(const UniformGrid& grid,
@@ -737,19 +739,25 @@ std::vector<double> collocate_products(const UniformGrid& grid,
             ++printed;
         }
     }
-    // Per-thread scatter buffers, then a PARALLEL reduction over grid points
-    // (the old #pragma omp critical merged all buffers single-threaded — that
-    // serial pass became the bottleneck once exp-recurrence cut the compute).
-    const int nt = omp_get_max_threads();
-    std::vector<std::vector<double>> tl(static_cast<std::size_t>(nt));
-#pragma omp parallel
-    {
-        const int tid = omp_get_thread_num();
-        tl[static_cast<std::size_t>(tid)].assign(npts,
-                                                 0.0); // first-touch on owner
-        std::vector<double>& loc = tl[static_cast<std::size_t>(tid)];
-#pragma omp for schedule(dynamic, 64)
-        for (long ip = 0; ip < np; ++ip) {
+    // Scatter buffers indexed by a FIXED product partition, then a parallel
+    // reduction over grid points in ascending buffer order. Indexing the buffers
+    // by thread (as this did) made the split of the product list — and so each
+    // buffer's partial sum — a property of the dynamic schedule, i.e. different
+    // between two runs of the same binary and again between thread counts.
+    // Chunk count is a function of the grid size alone; the floor keeps the
+    // kernel parallel on grids too large for the accumulator budget, at the
+    // memory a run of that width already paid for per-thread buffers.
+    const device::ChunkedRange range(
+        np, std::max<long>(kMinScatterChunks,
+                           device::block_reduce_chunks(npts * sizeof(double))));
+    const long nc = range.chunks();
+    std::vector<std::vector<double>> tl(static_cast<std::size_t>(nc));
+#pragma omp parallel for schedule(dynamic, 1)
+    for (long c = 0; c < nc; ++c) {
+        std::vector<double>& loc = tl[static_cast<std::size_t>(c)];
+        loc.assign(npts, 0.0); // first-touch on whichever thread runs the chunk
+        const long iplo = range.begin(c), iphi = range.end(c);
+        for (long ip = iplo; ip < iphi; ++ip) {
             const GridProduct& prod = prods[static_cast<std::size_t>(ip)];
             // Net density weight over all (μ,ν) spherical pairs sharing this shape:
             // w = K · Σ_{μ∈A} Σ_{ν∈B} P[μ,ν]·coeff_μ·coeff_ν.
@@ -780,12 +788,8 @@ std::vector<double> collocate_products(const UniformGrid& grid,
 #pragma omp parallel for schedule(static)
     for (long g = 0; g < static_cast<long>(npts); ++g) {
         double s = 0.0;
-        for (int t = 0; t < nt;
-             ++t) { // skip slots whose thread never ran (dynamic team)
-            const std::vector<double>& b = tl[static_cast<std::size_t>(t)];
-            if (!b.empty())
-                s += b[static_cast<std::size_t>(g)];
-        }
+        for (long c = 0; c < nc; ++c)
+            s += tl[static_cast<std::size_t>(c)][static_cast<std::size_t>(g)];
         rho[static_cast<std::size_t>(g)] = s;
     }
     return rho;
@@ -799,15 +803,19 @@ std::vector<double> integrate_products(
     std::vector<double> V(nn, 0.0);
     const double w = grid.weight();
     const long np = static_cast<long>(prods.size());
-    const int nt = omp_get_max_threads();
-    std::vector<std::vector<double>> tl(static_cast<std::size_t>(nt));
-#pragma omp parallel
-    {
-        const int tid = omp_get_thread_num();
-        tl[static_cast<std::size_t>(tid)].assign(nn, 0.0);
-        std::vector<double>& Vloc = tl[static_cast<std::size_t>(tid)];
-#pragma omp for schedule(dynamic, 64)
-        for (long ip = 0; ip < np; ++ip) {
+    // Fixed product partition, one nb² accumulator per chunk, folded in
+    // ascending chunk order — the reproducible form of the per-thread buffer
+    // this replaces (see cpu/device/chunked_range.h).
+    const device::ChunkedRange range(
+        np, device::block_reduce_chunks(nn * sizeof(double)));
+    const long nc = range.chunks();
+    std::vector<std::vector<double>> tl(static_cast<std::size_t>(nc));
+#pragma omp parallel for schedule(dynamic, 1)
+    for (long c = 0; c < nc; ++c) {
+        std::vector<double>& Vloc = tl[static_cast<std::size_t>(c)];
+        Vloc.assign(nn, 0.0);
+        const long iplo = range.begin(c), iphi = range.end(c);
+        for (long ip = iplo; ip < iphi; ++ip) {
             const GridProduct& prod = prods[static_cast<std::size_t>(ip)];
             const PrimRef& A = prims[static_cast<std::size_t>(prod.ua)];
             const PrimRef& B = prims[static_cast<std::size_t>(prod.ub)];
@@ -837,11 +845,8 @@ std::vector<double> integrate_products(
 #pragma omp parallel for schedule(static)
     for (long kk = 0; kk < static_cast<long>(nn); ++kk) {
         double s = 0.0;
-        for (int t = 0; t < nt; ++t) {
-            const std::vector<double>& b = tl[static_cast<std::size_t>(t)];
-            if (!b.empty())
-                s += b[static_cast<std::size_t>(kk)];
-        }
+        for (long c = 0; c < nc; ++c)
+            s += tl[static_cast<std::size_t>(c)][static_cast<std::size_t>(kk)];
         V[static_cast<std::size_t>(kk)] = s;
     }
     return V;

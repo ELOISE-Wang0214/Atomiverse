@@ -12,6 +12,7 @@
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/generators/xbuilder.hpp>
 
+#include "atomiverse/cpu/device/chunked_range.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h" // Prim, gth_projector_overlap
 #include "atomiverse/cpu/gpw/internal/one_electron.h" // prim_overlap, prim_kinetic
 
@@ -560,26 +561,39 @@ CplxMatrix integrate_potential_k(const KpointBasisGrid& kbg, int ik,
     const double w = kbg.weight;
     const std::vector<Cplx>& chi = kbg.chi[static_cast<std::size_t>(ik)];
     CplxMatrix V = xt::zeros<Cplx>({nb, nb});
-#pragma omp parallel
-    {
-        CplxMatrix Vloc = xt::zeros<Cplx>({nb, nb});
-#pragma omp for schedule(static) nowait
-        for (long g = 0; g < npts; ++g) {
+    // Reproducible reduction: a FIXED partition of the grid into chunks, one
+    // nb² accumulator each, folded in ascending chunk order. The per-thread
+    // block merged under `#pragma omp critical` this replaces mixed partials in
+    // thread-completion order, so S_k-metric quantities built from V_k differed
+    // run to run — which is what made the multi-k GW Newton QP solve
+    // intermittently miss its root. See cpu/device/chunked_range.h.
+    const std::size_t nn = static_cast<std::size_t>(nb) * nb;
+    const device::ChunkedRange range(
+        npts, device::block_reduce_chunks(nn * sizeof(Cplx)));
+    const long nc = range.chunks();
+    std::vector<Cplx> part(static_cast<std::size_t>(nc) * nn, Cplx(0, 0));
+#pragma omp parallel for schedule(dynamic, 1)
+    for (long c = 0; c < nc; ++c) {
+        Cplx* Vloc = &part[static_cast<std::size_t>(c) * nn];
+        const long glo = range.begin(c), ghi = range.end(c);
+        for (long g = glo; g < ghi; ++g) {
             const double vg = w * V_r[static_cast<std::size_t>(g)];
             if (vg == 0.0)
                 continue;
             const Cplx* v = chi.data() + static_cast<std::size_t>(g) * nb;
             for (int u = 0; u < nb; ++u) {
                 const Cplx cu = vg * std::conj(v[u]);
-                Cplx* row = &Vloc(u, 0);
+                Cplx* row = Vloc + static_cast<std::size_t>(u) * nb;
                 for (int t = 0; t < nb; ++t)
                     row[t] += cu * v[t];
             }
         }
-#pragma omp critical
-        {
-            V += Vloc;
-        }
+    }
+    for (long c = 0; c < nc; ++c) {
+        const Cplx* Vloc = &part[static_cast<std::size_t>(c) * nn];
+        for (int u = 0; u < nb; ++u)
+            for (int t = 0; t < nb; ++t)
+                V(u, t) += Vloc[static_cast<std::size_t>(u) * nb + t];
     }
     return V;
 }

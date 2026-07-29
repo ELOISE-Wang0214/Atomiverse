@@ -118,6 +118,9 @@ set_tests_properties(test_molrs_source_contract_mismatch PROPERTIES
 
 # Mirrors include/atomiverse/cpu/frame/box.h (+ box_simd.h).
 atv_add_cpp_test(test_cpu_box cpu/frame/test_box.cpp)
+# Mirrors include/atomiverse/cpu/device/chunked_range.h — the fixed, thread-count
+# independent partition every reproducible OpenMP reduction is built on.
+atv_add_cpp_test(test_cpu_chunked_range cpu/device/test_chunked_range.cpp)
 # Context service slices (arch-refactor-05-context): flat core fields + nested
 # md/mc/opt/analysis pure-aggregate slices, exact field mapping, all-null
 # defaults, trivially-copyable / non-polymorphic guards. Layout-only, no
@@ -283,6 +286,11 @@ if(ATV_BUILD_GPW)
         atv_add_cpp_test(test_cpu_gpw_method       cpu/gpw/test_gpw_method.cpp)
         atv_add_cpp_test(test_cpu_gpw_solver       cpu/gpw/test_cpu_gpw_solver.cpp)
         atv_add_cpp_test(test_cpu_gpw_kpoints      cpu/gpw/test_cpu_gpw_kpoints.cpp)
+        # Bitwise-identical grid kernels at 1/2/4/8/16 OpenMP threads. Guards the
+        # reduction-order defect that made the OT minimizer take 30-200 SCF
+        # iterations for the same input on the same binary.
+        atv_add_cpp_test(test_cpu_gpw_thread_reproducibility
+                                                   cpu/gpw/test_cpu_gpw_thread_reproducibility.cpp)
         atv_add_cpp_test(test_cpu_gpw_periodic_wannier
                                                    cpu/gpw/test_cpu_gpw_periodic_wannier.cpp)
         atv_add_cpp_test(test_cpu_gpw_smearing     cpu/gpw/test_cpu_gpw_smearing.cpp)

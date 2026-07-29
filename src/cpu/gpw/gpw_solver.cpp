@@ -431,8 +431,11 @@ double gth_matrix_element(const GridBasisFunction& mu,
 // the projector overlaps for every basis PAIR. That per-pair recomputation was
 // O(nb²·prim²·proj·moment3d); this is O(nb·prim·proj·moment3d) projector
 // precompute + cheap O(pairs·proj²) scalar assembly. This is CP2K's GPW form and
-// the fix for the hundreds-× setup gap. The atom loop is parallel; pair writes go
-// through omp atomic (two atoms can both contribute to one (μ,ν)).
+// the fix for the hundreds-× setup gap. The atom loop is parallel; each atom
+// builds its own dense (μ,ν) block and the blocks are ADDED IN ASCENDING ATOM
+// ORDER afterwards. The `#pragma omp atomic` this replaces let two atoms hitting
+// one (μ,ν) land in thread-completion order, so V_nl — and every SCF that reads
+// it — differed run to run at a fixed thread count.
 void add_nonlocal_kb(RealMatrix& Vpp,
                      const std::vector<GridBasisFunction>& basis,
                      const std::vector<GpwAtom>& atoms,
@@ -443,6 +446,9 @@ void add_nonlocal_kb(RealMatrix& Vpp,
     for (double r : radii)
         rad_max = std::max(rad_max, r);
     const double proj_eps = std::sqrt(2.0 * std::log(1.0 / kBuildScreen));
+    std::vector<std::vector<int>> atom_mus(static_cast<std::size_t>(natoms));
+    std::vector<std::vector<double>> atom_block(
+        static_cast<std::size_t>(natoms));
 #pragma omp parallel for schedule(dynamic, 1)
     for (int ai = 0; ai < natoms; ++ai) {
         const GpwAtom& at = atoms[static_cast<std::size_t>(ai)];
@@ -528,6 +534,7 @@ void add_nonlocal_kb(RealMatrix& Vpp,
         });
         // V_nl(μ,ν) += Oμ · (h Oν), full double loop fills both off-diagonals.
         const int ng = static_cast<int>(mus.size());
+        std::vector<double> blk(static_cast<std::size_t>(ng) * ng, 0.0);
         for (int k1 = 0; k1 < ng; ++k1)
             for (int k2 = 0; k2 < ng; ++k2) {
                 double s = 0.0;
@@ -538,12 +545,26 @@ void add_nonlocal_kb(RealMatrix& Vpp,
                 for (int t = 0; t < nslot; ++t)
                     s += o1[static_cast<std::size_t>(t)]
                          * h2[static_cast<std::size_t>(t)];
+                blk[static_cast<std::size_t>(k1) * ng
+                    + static_cast<std::size_t>(k2)] = s;
+            }
+        atom_mus[static_cast<std::size_t>(ai)] = std::move(mus);
+        atom_block[static_cast<std::size_t>(ai)] = std::move(blk);
+    }
+    // Fixed accumulation order: ascending atom, then (k1, k2) within the atom.
+    for (int ai = 0; ai < natoms; ++ai) {
+        const std::vector<int>& mus = atom_mus[static_cast<std::size_t>(ai)];
+        const std::vector<double>& blk =
+            atom_block[static_cast<std::size_t>(ai)];
+        const int ng = static_cast<int>(mus.size());
+        for (int k1 = 0; k1 < ng; ++k1)
+            for (int k2 = 0; k2 < ng; ++k2) {
+                const double s = blk[static_cast<std::size_t>(k1) * ng
+                                     + static_cast<std::size_t>(k2)];
                 if (s == 0.0)
                     continue;
-                double& dst = Vpp(mus[static_cast<std::size_t>(k1)],
-                                  mus[static_cast<std::size_t>(k2)]);
-#pragma omp atomic
-                dst += s;
+                Vpp(mus[static_cast<std::size_t>(k1)],
+                    mus[static_cast<std::size_t>(k2)]) += s;
             }
     }
 }
