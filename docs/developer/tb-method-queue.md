@@ -437,7 +437,7 @@ _(assign wave 4 — all **new**; no resume tips)_
 - [~] `dftb2-spin-analytic-stress` | Collinear open-shell analytic cell stress (MioSketch) | dftb2 | O2 / open shell | stress | **oracle=dftb+** (formula); open-shell F already lands
 - [~] `td-dftb-h2` | Linear-response TD-DFTB foothold | td-dftb | H2/H2O | excitation [eV] | **oracle=dftb+|literature**; ground-state SCC-DFTB2 solid on `dev`
 - [~] `am1-water-mopac-energy` | Hard OpenMOPAC total energy / ΔHf pin for H2O AM1 | nddo/am1 | H2O | E [eV] or ΔHf | **oracle=mopac**; existing reg is finite/self-FD only
-- [~] `rm1-water-mopac-energy` | Hard OpenMOPAC total energy / ΔHf pin for H2O RM1 | nddo/rm1 | H2O | E [eV] or ΔHf | **oracle=mopac**; current reg is method-discriminating only
+- [~] `rm1-water-mopac-energy` | Hard OpenMOPAC total energy / ΔHf pin for H2O RM1 | nddo/rm1 | H2O | E [eV] or ΔHf | **oracle=mopac**; current reg is method-discriminating only. Follow `am1-water-mopac-energy`: pin at the RM1-**optimized** structure from the same transcript, and expect the same ~1e-3 eV constant-convention floor (ATV uses CODATA-2018, MOPAC froze a0=0.529167 Å / 1 Ha=27.21 eV)
 
 ## blocked
 
@@ -455,6 +455,7 @@ _(assign wave 4 — all **new**; no resume tips)_
 
 _(footholds + wave-1/2/3 product depth on `dev`)_
 
+- [x] `am1-water-mopac-energy` | First **absolute OpenMOPAC pin** on the NDDO surface: AM1 H₂O total energy / ΔHf / Mulliken charges + optimum-stationarity, at the AM1-optimized geometry from the same transcript | `reg_am1-water-mopac-energy` | **oracle=mopac** (MOPAC 7.00 archived transcript; `tools/tb_oracle/inputs/mopac/am1-water/` — first mopac twin)
 - [x] `dftb2-kpoints` | Monkhorst–Pack multi-k SCC-DFTB2 beyond Γ (MioSketch energy; multi-k F/stress throw) | `reg_dftb2-kpoints` | **oracle=dftb+**
 - [x] `dftb2-periodic-forces` | Lattice-image-consistent Γ-PBC nuclear F (match H⁰/S/γ/rep energy lattice sums) | `reg_dftb2-periodic-forces` | **oracle=literature** (+ family dftb+)
 - [x] `dftb3-water-mio` | SCC-DFTB3 energy (third-order; \(E^{(3)}\) + exact \(\partial E^{(3)}/\partial\Delta q\); Anderson mix) | `reg_dftb3-water-mio` | **oracle=dftb+**

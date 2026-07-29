@@ -31,7 +31,8 @@ tools/tb_oracle/
     dftbplus/               # DFTB+ HSD / geo.gen twins + notes
       ch4_3ob_dftb2/        # 3ob CH4 pure SCC-DFTB2 pin (wave-1)
       …                     # more twins land with worker tips / merges
-    mopac/                  # (grow with NDDO OpenMOPAC pins)
+    mopac/                  # NDDO OpenMOPAC pins
+      am1-water/            # AM1 H2O absolute E / ΔHf / charge pin (wave-4)
     xtb/                    # (grow with GFN-xTB pins)
 ```
 
@@ -51,13 +52,40 @@ tools/tb_oracle/
 | `inputs/dftbplus/dftb2_analytic_forces_threeob_note.md` | DFTB+ | ThreeOb closed-form F vs re-SCC FD (formula) |
 | `inputs/dftbplus/dftb2_analytic_stress_note.md` | DFTB+ | Cell-stress module boundary (pair virial; formula) |
 | `inputs/dftbplus/dftb2-dispersion-d3/` | s-dftd3 | Water-dimer **molecular** D3(BJ) geometry twin (`reg_dftb2-dispersion-d3`) |
-| `inputs/mopac/` | OpenMOPAC | **absent on `dev`** — seed with AM1/RM1/PM* pins (Phase B) |
+| `inputs/mopac/am1-water/` | OpenMOPAC | AM1 H₂O deck + archived MOPAC 7.00 transcript (`reg_am1-water-mopac-energy`); **first mopac twin** |
 | `inputs/xtb/` | xtb | **absent on `dev`** — seed with GFN pins (Phase C, late) |
 
 Every twin above is on `dev` as of harness wave 3 (2026-07-29; includes
-DFTB3 note + kpoints/periodic-forces twins). GapCensus wave-4: still need
-periodic-D3 / multi-k-force twins when those pending slugs staff; mopac/xtb
-trees still empty.
+DFTB3 note + kpoints/periodic-forces twins), plus the wave-4 mopac seed.
+Still needed: periodic-D3 / multi-k-force twins when those pending slugs
+staff; RM1 / PM* mopac twins; the whole `inputs/xtb/` tree.
+
+## Pinning when the oracle binary is unavailable
+
+`mopac` is not installed on the Atomiverse build hosts. A **published
+transcript** of the oracle is then a valid pin source provided it is treated
+like any other offline run:
+
+1. Transcribe the transcript **verbatim** under `inputs/<family>/<slug>/`,
+   with the reconstructed input deck beside it and a README that says which
+   parts are verbatim and which are reconstructed.
+2. Take geometry **and** energy from the *same* transcript. Splicing a
+   published energy onto a geometry from elsewhere is not a pin.
+3. State the package version in `REFERENCE.md` (`oracle_version:`) — an
+   archived MOPAC 7.00 run is not a current OpenMOPAC run, and the difference
+   belongs in the tolerance rationale, not in the pin.
+4. Size the tolerance from the *transcript's* precision and any known
+   convention offset (see the constant note below), never from the observed
+   residual alone.
+
+**Constant-convention floor (NDDO pins).** Atomiverse's NDDO integrals use
+CODATA-2018 (`a₀ = 0.529177210903` Å, 1 Ha = `27.211386245988` eV);
+MOPAC froze `a₀ = 0.529167` Å, 1 Ha = `27.21` eV, `e²·k = 14.399` eV·Å. That is
+a 4.5×10⁻⁵ relative difference and it puts a ~10⁻³ eV floor under **every**
+AM1/RM1/PM* pin against a MOPAC transcript. Measured for AM1 water: 6.2×10⁻⁴ eV
+of a 6.2×10⁻⁴ eV residual, i.e. 82 % of the gap, disappears when ATV is rebuilt
+with MOPAC's constants. Do not chase it per row, and do not tighten an NDDO
+mopac tolerance below it.
 
 ## How to pin (operator / worker)
 
