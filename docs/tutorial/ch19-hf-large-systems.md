@@ -184,16 +184,20 @@ numerically); timing gains appear only for larger systems
 
 ## QM/MM electrostatic coupling (esmm Wave 2)
 
-Declare the QM region with the `kAtomQmZ` mask column (0 = MM, >0 = QM with
-atomic number Z). Hand any embedding-capable engine to `QmmmElectrostatic`
-via `set_engine`. MM–MM interactions use ordinary pair styles; the coupling
-owns QM–MM cross terms and third-law site forces.
+Same shape as AIMD: one outer `MD` (or `Evaluate` / `Minimize`) and plural
+`set_evaluator`. Declare the QM region with **`kAtomQmZ`** (0 = MM, >0 = QM
+with atomic number Z). Hand any embedding-capable engine to
+`QmmmElectrostatic` via **`set_engine`**. Covalent **link cuts** come from
+mask × Frame bond topology (no `set_links`; no bonds ⇒ zero links). MM–MM
+uses ordinary pair styles; the coupling owns QM–MM cross terms and third-law
+site forces.
 
 ```cpp
 frame.blocks.at("atoms").insert("qm_z",
     cpu::ColumnSpec{ColDType::Int, 1, ColGroup::Core, 0, kColNone, kDynamicFieldId});
 auto qm = frame.span(cpu::kAtomQmZ);
 qm[0] = 8; qm[1] = 1; qm[2] = 1; // water QM
+// optional: frame.add_bond(...) across QM–MM for link H
 
 cpu::QmmmElectrostatic qmmm{{{2, 2, 0.0065, 3.15}}, 10.0, 12.0};
 cpu::scf::RHF rhf;
@@ -203,7 +207,7 @@ qmmm.set_engine(std::move(rhf));
 // Optional MC posture: qmmm.reset_history_each_launch() = true;
 
 sim.set_evaluator(cpu::PairLJCut{...}); // MM–MM
-sim.set_evaluator(std::move(qmmm));
+sim.set_evaluator(std::move(qmmm));     // QM + cross (+ auto links)
 ```
 
-See `reg_qmmm_es_h2o_pyscf` and `reg_qmmm_md_conservation`.
+See `reg_qmmm_es_h2o_pyscf`, `reg_qmmm_link_ch3oh`, `reg_qmmm_md_conservation`.

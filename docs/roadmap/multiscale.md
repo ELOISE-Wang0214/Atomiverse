@@ -16,12 +16,15 @@ that, several *environment* hooks now exist on the SCF mean-field methods:
   throw).
 
 **Textbook QM/MM** is a connection layer over any embedding-capable `QmEngine`
-(RHF/RKS/… for electrostatic/polarizable; any `QmEngine` for mechanical). The
-QM region is the per-atom **`kAtomQmZ` mask column** (0 = MM, >0 = QM with Z).
-MM–MM LJ/Coulomb belong to ordinary pair styles; couplings own only QM–MM cross
-terms and (electrostatic) third-law site forces. Optional **H link atoms** and
-NVE MD conservation (`reg_qmmm_md_conservation`) ship on CPU. Still no ONIOM /
-subtractive product path, no SMD/GB, and no picture-change / DKH / SOC stack.
+(RHF/RKS/… for electrostatic/polarizable; any `QmEngine` for mechanical).
+Compose under one outer Driver like AIMD: `md.set_evaluator(MM…)` +
+`md.set_evaluator(Qmmm*.set_engine(QM…))`. The QM region is the per-atom
+**`kAtomQmZ` mask** (0 = MM, >0 = QM with Z). **Link cuts** are derived from
+mask × existing bond topology (no bonds ⇒ zero links; no `set_links`). MM–MM
+LJ/Coulomb belong to ordinary pair styles; couplings own QM–MM cross terms and
+(electrostatic) third-law site forces. NVE MD conservation
+(`reg_qmmm_md_conservation`) ships on CPU. Still no ONIOM / subtractive product
+path, no SMD/GB, and no picture-change / DKH / SOC stack.
 
 ## 1. Atomic-Charge Methods
 
@@ -86,7 +89,7 @@ bury-delete cavity).
 | Mechanical embedding QM/MM       |  ✓  |   ○  |   ○  |
 | Electrostatic embedding QM/MM    |  ✓  |   ○  |   ○  |
 | Polarizable embedding QM/MM      |  ✓  |   ○  |   ○  |
-| Additive QM/MM                   |  ○  |   ○  |   ○  |
+| Additive QM/MM                   |  ✓  |   ○  |   ○  |
 | Subtractive QM/MM                |  ○  |   ○  |   ○  |
 | ONIOM two-layer method           |  ○  |   ○  |   ○  |
 | ONIOM multilayer method          |  ○  |   ○  |   ○  |
@@ -97,7 +100,7 @@ bury-delete cavity).
 | Long-range PME QM/MM             |  ○  |   ○  |   ○  |
 | Adaptive QM/MM                   |  ○  |   ○  |   ○  |
 | Multi-region QM/MM               |  ○  |   ○  |   ○  |
-| QM/MM geometry optimization      |  ○  |   ○  |   ○  |
+| QM/MM geometry optimization      |  ✓  |   ○  |   ○  |
 | QM/MM molecular dynamics         |  ✓  |   ○  |   ○  |
 | Excited-state QM/MM              |  ○  |   ○  |   ○  |
 
@@ -105,7 +108,8 @@ Fixed point-charge embedding on the SCF method (external MM charges in the
 one-electron Hamiltonian, with analytic forces) remains a lower-level hook.
 The product QM/MM components are:
 
-- `QmmmMechanical` — any `QmEngine` + classical QM–MM LJ/Coulomb (`reg_qmmm_h2_ar`)
+- `QmmmMechanical` — any `QmEngine` + classical QM–MM LJ/Coulomb (`reg_qmmm_h2_ar`,
+  `reg_qmmm_opt_h2_ar` Minimize composition)
 - `QmmmElectrostatic` — embedding engine + mask region + QM–MM LJ + third-law
   site forces (`reg_qmmm_es_h2o_pyscf`, `reg_qmmm_link_ch3oh`,
   `reg_qmmm_md_conservation`)
@@ -114,6 +118,8 @@ The product QM/MM components are:
 
 No automatic region partitioner, no ONIOM, no PME long-range QM/MM.
 MC posture: `reset_history_each_launch` cold-starts the engine each trial.
+Geometry optimization is the same composition as MD: `Minimize` +
+`set_evaluator(Qmmm*)` (not a `QmmmOpt` driver).
 
 ## 4. Quantum Embedding Methods
 
@@ -197,4 +203,7 @@ pseudopotentials, separate from the Gaussian ECP tables.
 
 Blocked upstream where product ML potentials are still ○ (see
 [Force Fields](force-fields.md#6-machine-learning-potentials)). Textbook
-mechanical and electrostatic QM/MM skeletons ship; full product QM/MM does not.
+**additive** mechanical / electrostatic / polarizable QM/MM + link atoms + MD
++ geometry optimization ship on CPU (esmm-qmmm-01…06 + `reg_qmmm_opt_h2_ar`).
+Open product gaps: ONIOM/subtractive, periodic / PME QM/MM, adaptive
+multi-region, excited-state.
