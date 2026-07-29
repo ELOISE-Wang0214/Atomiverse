@@ -68,7 +68,7 @@ void QmSubsystem::allocate_private_frame_() {
     qm_frame_ = std::make_unique<Frame>(n_fqm_);
 }
 
-void QmSubsystem::build(Frame& frame, int mpi_size) {
+void QmSubsystem::build(Frame& frame, int mpi_size, bool require_embedding) {
     if (mpi_size > 1)
         throw std::runtime_error(
             "QmSubsystem: MPI (mpi_size > 1) is not supported in v1 "
@@ -77,40 +77,46 @@ void QmSubsystem::build(Frame& frame, int mpi_size) {
         throw std::runtime_error(
             "QmSubsystem: no engine — call set_engine(...) before build()");
     embedding_ = engine_->as_embedding();
-    if (!embedding_) {
-        throw std::runtime_error(
-            "QmSubsystem: engine '" + engine_->qm_engine_name()
-            + "' is not embedding-capable (as_embedding() is null). "
-              "Use a mean-field method (RHF/RKS/…) or another "
-              "EmbeddingEngine.");
+    if (require_embedding) {
+        if (!embedding_) {
+            throw std::runtime_error(
+                "QmSubsystem: engine '" + engine_->qm_engine_name()
+                + "' is not embedding-capable (as_embedding() is null). "
+                  "Use a mean-field method (RHF/RKS/…) or another "
+                  "EmbeddingEngine.");
+        }
+        if (!(embed_cutoff_ > 0.0))
+            throw std::invalid_argument(
+                "QmSubsystem: embed_cutoff must be > 0");
     }
     if (!(link_scale_ > 0.0) || !(link_scale_ < 1.0))
         throw std::invalid_argument(
             "QmSubsystem: link_scale must be in (0,1)");
-    if (!(embed_cutoff_ > 0.0))
-        throw std::invalid_argument("QmSubsystem: embed_cutoff must be > 0");
 
     resolve_mask_(frame);
 
-    // Validate QM charges are zero (exclusion invariant).
     const auto charge = frame.span(kAtom_charge);
     const auto tags = frame.span(kAtom_tag);
-    std::ostringstream bad;
-    bool any_bad = false;
-    for (std::size_t k = 0; k < qm_rows_.size(); ++k) {
-        const int i = qm_rows_[k];
-        if (std::abs(static_cast<double>(charge[i])) > 1e-14) {
-            if (any_bad)
-                bad << ", ";
-            bad << tags[i];
-            any_bad = true;
+    if (require_embedding) {
+        // Exclusion invariant: QM charges must be 0 for electrostatic paths.
+        std::ostringstream bad;
+        bool any_bad = false;
+        for (std::size_t k = 0; k < qm_rows_.size(); ++k) {
+            const int i = qm_rows_[k];
+            if (std::abs(static_cast<double>(charge[i])) > 1e-14) {
+                if (any_bad)
+                    bad << ", ";
+                bad << tags[i];
+                any_bad = true;
+            }
         }
+        if (any_bad)
+            throw std::runtime_error(
+                "QmSubsystem: QM atoms must have kAtom_charge == 0 "
+                "(Coulomb styles exclude them by construction). Offending "
+                "tags: "
+                + bad.str());
     }
-    if (any_bad)
-        throw std::runtime_error(
-            "QmSubsystem: QM atoms must have kAtom_charge == 0 "
-            "(Coulomb styles exclude them by construction). Offending tags: "
-            + bad.str());
 
     // Resolve links against tags.
     std::unordered_map<TagInt, int> tag_to_row;
@@ -205,6 +211,8 @@ void QmSubsystem::refresh_(Frame& frame) {
 void QmSubsystem::collect_sites_(const Frame& frame) {
     sites_.clear();
     site_user_rows_.clear();
+    if (!embedding_)
+        return; // mechanical path — no embedding sites
     const int n = static_cast<int>(frame.nlocal());
     const auto tags = frame.span(kAtom_tag);
     const auto charge = frame.span(kAtom_charge);
@@ -275,16 +283,18 @@ void QmSubsystem::scatter_(Frame& frame, bool forces_requested, double e_qm) {
                            fy[rl.mm_row], fz[rl.mm_row]);
     }
 
-    // Site forces from embedding engine.
-    const auto& sf = embedding_->embedding_site_forces();
-    if (sf.size() != sites_.size())
-        throw std::runtime_error(
-            "QmSubsystem: embedding_site_forces size mismatch");
-    for (std::size_t s = 0; s < sf.size(); ++s) {
-        const int i = site_user_rows_[s];
-        fx[i] += sf[s].fx;
-        fy[i] += sf[s].fy;
-        fz[i] += sf[s].fz;
+    // Site forces from embedding engine (electrostatic/polarizable only).
+    if (embedding_) {
+        const auto& sf = embedding_->embedding_site_forces();
+        if (sf.size() != sites_.size())
+            throw std::runtime_error(
+                "QmSubsystem: embedding_site_forces size mismatch");
+        for (std::size_t s = 0; s < sf.size(); ++s) {
+            const int i = site_user_rows_[s];
+            fx[i] += sf[s].fx;
+            fy[i] += sf[s].fy;
+            fz[i] += sf[s].fz;
+        }
     }
 
     // Residual over whole frame (third-law witness for self-energy off).

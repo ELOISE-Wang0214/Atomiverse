@@ -69,8 +69,12 @@ class QmSubsystem {
     /// @brief Resolve mask, allocate private frame, prepare engine.
     /// @param frame User frame with `kAtomQmZ` column filled.
     /// @param mpi_size Communicator size (v1 requires 1).
+    /// @param require_embedding When true (electrostatic/polarizable), the
+    ///        engine must implement `as_embedding()` and QM charges must be 0.
+    ///        When false (mechanical), any `QmEngine` is accepted and QM
+    ///        charges may be nonzero.
     /// @throws std::runtime_error / invalid_argument on validation failure.
-    void build(Frame& frame, int mpi_size);
+    void build(Frame& frame, int mpi_size, bool require_embedding = true);
 
     /// @brief Per-launch: refresh geometry, collect sites, evaluate, scatter.
     /// @param frame User frame.

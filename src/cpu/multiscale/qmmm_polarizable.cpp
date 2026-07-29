@@ -4,17 +4,16 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <unordered_set>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/scf/methods.h"
 
 namespace ATV {
 namespace cpu {
 namespace {
 
-/// Thole exponential scale u = a * r / (α_i α_j)^{1/6}.
 inline double thole_u(double r, double ai, double aj, double a) {
     if (!(a > 0.0) || !(ai > 0.0) || !(aj > 0.0))
         return 0.0;
@@ -22,7 +21,6 @@ inline double thole_u(double r, double ai, double aj, double a) {
     return a * r / aij;
 }
 
-/// Damped dipole–dipole interaction: apply T·μ into E_out (Gaussian units).
 void accumulate_T_mu(int n, const double* pos, const double* alpha,
                      const double* mu, double thole_a, double* e_out) {
     for (int i = 0; i < n; ++i) {
@@ -39,12 +37,10 @@ void accumulate_T_mu(int n, const double* pos, const double* alpha,
             const double r = std::sqrt(r2);
             const double r3 = r2 * r;
             const double r5 = r3 * r2;
-            // Undamped T_ab = (3 n_a n_b − δ_ab)/r³
             double f3 = 1.0 / r3;
             double f5 = 1.0 / r5;
             if (thole_a > 0.0) {
                 const double u = thole_u(r, alpha[i], alpha[j], thole_a);
-                // Exponential Thole: λ3 = 1 − exp(−u³), λ5 = 1 − (1+u³)exp(−u³)
                 const double u3 = u * u * u;
                 const double expu = std::exp(-u3);
                 f3 *= (1.0 - expu);
@@ -86,21 +82,25 @@ double solve_induced_dipoles(int n, const double* pos, const double* alpha,
     for (; it < max_iter; ++it) {
         std::fill(e_tot.begin(), e_tot.end(), 0.0);
         for (int k = 0; k < 3 * n; ++k)
-            e_tot[k] = e_perm[k];
+            e_tot[static_cast<std::size_t>(k)] =
+                e_perm[static_cast<std::size_t>(k)];
         accumulate_T_mu(n, pos, alpha, mu.data(), thole_a, e_tot.data());
 
         double dmax = 0.0;
         for (int i = 0; i < n; ++i) {
             for (int c = 0; c < 3; ++c) {
-                const double m = alpha[i] * e_tot[3 * i + c];
-                mu_new[3 * i + c] = m;
-                dmax = std::max(dmax, std::fabs(m - mu[3 * i + c]));
+                const double m =
+                    alpha[i] * e_tot[static_cast<std::size_t>(3 * i + c)];
+                mu_new[static_cast<std::size_t>(3 * i + c)] = m;
+                dmax = std::max(
+                    dmax,
+                    std::fabs(m - mu[static_cast<std::size_t>(3 * i + c)]));
             }
         }
         mu.swap(mu_new);
         if (dmax < tol) {
             ok = true;
-            ++it; // report 1-based count of iterations performed
+            ++it;
             break;
         }
     }
@@ -110,110 +110,90 @@ double solve_induced_dipoles(int n, const double* pos, const double* alpha,
         throw std::runtime_error(
             "solve_induced_dipoles: SCC did not converge within max_iter");
 
-    // E_pol = −½ Σ μ · E_perm  (convert Gaussian → eV via coulomb)
     double e = 0.0;
     for (int i = 0; i < n; ++i) {
         e -= 0.5
-             * (mu[3 * i + 0] * e_perm[3 * i + 0]
-                + mu[3 * i + 1] * e_perm[3 * i + 1]
-                + mu[3 * i + 2] * e_perm[3 * i + 2]);
+             * (mu[static_cast<std::size_t>(3 * i + 0)]
+                    * e_perm[static_cast<std::size_t>(3 * i + 0)]
+                + mu[static_cast<std::size_t>(3 * i + 1)]
+                      * e_perm[static_cast<std::size_t>(3 * i + 1)]
+                + mu[static_cast<std::size_t>(3 * i + 2)]
+                      * e_perm[static_cast<std::size_t>(3 * i + 2)]);
     }
     return units::coulomb * e;
 }
 
-QmmmPolarizable::QmmmPolarizable(std::vector<TagInt> qm_tags, double mm_charge,
-                                 double alpha, double thole_a, double epsilon,
-                                 double sigma, double cutoff, double pol_tol,
-                                 int pol_max_iter)
-    : mm_q_(mm_charge), alpha_(alpha), thole_a_(thole_a), eps_(epsilon),
-      sig_(sigma), rcut_(cutoff), pol_tol_(pol_tol),
-      pol_max_iter_(pol_max_iter) {
-    if (qm_tags.empty())
-        throw std::invalid_argument("QmmmPolarizable: empty QM tags");
-    if (!(alpha_ >= 0.0))
-        throw std::invalid_argument("QmmmPolarizable: alpha must be >= 0");
-    if (!(thole_a_ >= 0.0))
-        throw std::invalid_argument("QmmmPolarizable: thole_a must be >= 0");
-    if (!(eps_ > 0.0) || !(sig_ > 0.0) || !(cutoff > 0.0))
-        throw std::invalid_argument("QmmmPolarizable: invalid LJ");
-    if (!(pol_tol_ > 0.0) || pol_max_iter_ < 1)
-        throw std::invalid_argument("QmmmPolarizable: invalid pol SCC params");
-    for (TagInt t : qm_tags)
-        qm_.insert(t);
+QmmmPolarizable::QmmmPolarizable(std::vector<LJTypeCoeff> cross_lj,
+                                 double lj_cutoff, double embed_cutoff)
+    : vdw_(std::move(cross_lj), lj_cutoff) {
+    sub_.embed_cutoff() = embed_cutoff;
 }
 
-void QmmmPolarizable::build(const BuildContext&) {}
+void QmmmPolarizable::build(const BuildContext& ctx) {
+    if (!(alpha >= 0.0))
+        throw std::invalid_argument("QmmmPolarizable: alpha must be >= 0");
+    if (!(thole_a >= 0.0))
+        throw std::invalid_argument("QmmmPolarizable: thole_a must be >= 0");
+    if (!(pol_tol > 0.0) || pol_max_iter < 1)
+        throw std::invalid_argument("QmmmPolarizable: invalid pol SCC params");
+    sub_.build(ctx.frame, ctx.runtime.mpi_size, /*require_embedding=*/true);
+}
 
 void QmmmPolarizable::launch(const LaunchContext& ctx) {
     auto& f = ctx.frame;
-    const int n = f.nlocal();
-    const auto tags = f.span(kAtom_tag);
-    const auto type = f.span(kAtom_type);
+    // Embedding QM evaluate (writes Mulliken charges onto private frame).
+    sub_.launch(f, ctx.forces_requested, e_qm_);
+
+    const auto& qm_rows = sub_.qm_rows();
+    const Frame* fqm = sub_.private_frame();
+    if (!fqm)
+        throw std::runtime_error("QmmmPolarizable: missing private QM frame");
+
+    // Density-derived permanent field: engine-written kAtom_charge on private
+    // QM frame.
+    const auto q_qm = fqm->span(kAtom_charge);
+    double qmax = 0.0;
+    for (std::size_t k = 0; k < qm_rows.size(); ++k)
+        qmax = std::max(qmax, std::abs(static_cast<double>(q_qm[k])));
+    if (qmax < 1e-14)
+        throw std::runtime_error(
+            "QmmmPolarizable: engine left private kAtom_charge all-zero — "
+            "permanent field requires density-derived charges");
+
+    const int n = static_cast<int>(f.nlocal());
+    std::unordered_set<int> qm_set(qm_rows.begin(), qm_rows.end());
+    std::vector<int> mm_rows;
+    for (int i = 0; i < n; ++i)
+        if (!qm_set.count(i))
+            mm_rows.push_back(i);
+
     const StorageReal* x = f.span(kAtom_x);
     const StorageReal* y = f.span(kAtom_y);
     const StorageReal* z = f.span(kAtom_z);
-    double& E = f.meta.get(kEnergy);
+    const auto q_user = f.span(kAtom_charge);
+    const StorageReal* qx = fqm->span(kAtom_x);
+    const StorageReal* qy = fqm->span(kAtom_y);
+    const StorageReal* qz = fqm->span(kAtom_z);
 
-    std::vector<int> qm_rows, mm_rows;
-    for (int i = 0; i < n; ++i)
-        (qm_.count(tags[i]) ? qm_rows : mm_rows).push_back(i);
-    if (qm_rows.empty())
-        throw std::runtime_error("QmmmPolarizable: no QM atoms");
-
-    // QM sub-frame + permanent MM point-charge embedding
-    cpu::Frame fqm(static_cast<int>(qm_rows.size()));
-    for (std::size_t k = 0; k < qm_rows.size(); ++k) {
-        const int i = qm_rows[k];
-        fqm.span(kAtom_x)[k] = x[i];
-        fqm.span(kAtom_y)[k] = y[i];
-        fqm.span(kAtom_z)[k] = z[i];
-        fqm.span(kAtom_type)[k] = type[i];
-        fqm.span(kAtom_tag)[k] = static_cast<TagInt>(k + 1);
-        fqm.span(kAtom_mass)[k] = 1.0;
-        fqm.span(kAtom_fx)[k] = fqm.span(kAtom_fy)[k] = fqm.span(kAtom_fz)[k] =
-            0;
-    }
-    fqm.box = f.box;
-
-    cpu::scf::RHF rhf;
-    rhf.basis = cpu::scf::BasisSet::STO3G;
-    rhf.tol = 1e-8;
-    rhf.max_iter = 80;
-    rhf.compute_force = false;
-    rhf.point_charges.clear();
-    for (int i : mm_rows) {
-        cpu::EmbeddingSite pc;
-        pc.x = x[i];
-        pc.y = y[i];
-        pc.z = z[i];
-        pc.q = mm_q_;
-        rhf.point_charges.push_back(pc);
-    }
-    rhf.run(fqm);
-    e_qm_ = fqm.meta.get(kEnergy);
-    E += e_qm_;
-
-    // Permanent field at MM sites [e/Å², Gaussian]: QM nuclei (Z) + other MM q.
     const int n_mm = static_cast<int>(mm_rows.size());
     std::vector<double> pos(static_cast<std::size_t>(3 * n_mm), 0.0);
-    std::vector<double> alpha(static_cast<std::size_t>(n_mm), alpha_);
+    std::vector<double> alpha_v(static_cast<std::size_t>(n_mm), alpha);
     std::vector<double> e_perm(static_cast<std::size_t>(3 * n_mm), 0.0);
     for (int a = 0; a < n_mm; ++a) {
-        const int i = mm_rows[a];
-        pos[3 * a + 0] = x[i];
-        pos[3 * a + 1] = y[i];
-        pos[3 * a + 2] = z[i];
+        const int i = mm_rows[static_cast<std::size_t>(a)];
+        pos[static_cast<std::size_t>(3 * a + 0)] = x[i];
+        pos[static_cast<std::size_t>(3 * a + 1)] = y[i];
+        pos[static_cast<std::size_t>(3 * a + 2)] = z[i];
     }
     for (int a = 0; a < n_mm; ++a) {
         double ex = 0, ey = 0, ez = 0;
-        const double xi = pos[3 * a + 0], yi = pos[3 * a + 1],
-                     zi = pos[3 * a + 2];
-        // Field from QM nuclei treated as point charges Z (Gaussian units).
-        // This is a textbook classical embedding approximation for E_perm;
-        // electrons are not re-expanded here (v1).
-        for (int iq : qm_rows) {
-            const double q = static_cast<double>(type[iq]);
-            double dx = xi - x[iq], dy = yi - y[iq], dz = zi - z[iq];
+        const double xi = pos[static_cast<std::size_t>(3 * a + 0)];
+        const double yi = pos[static_cast<std::size_t>(3 * a + 1)];
+        const double zi = pos[static_cast<std::size_t>(3 * a + 2)];
+        // Field from QM density charges (private frame).
+        for (std::size_t k = 0; k < qm_rows.size(); ++k) {
+            const double q = static_cast<double>(q_qm[k]);
+            double dx = xi - qx[k], dy = yi - qy[k], dz = zi - qz[k];
             f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (!(r2 > 0.0))
@@ -228,61 +208,37 @@ void QmmmPolarizable::launch(const LaunchContext& ctx) {
         for (int b = 0; b < n_mm; ++b) {
             if (a == b)
                 continue;
-            double dx = xi - pos[3 * b + 0], dy = yi - pos[3 * b + 1],
-                   dz = zi - pos[3 * b + 2];
+            const int jb = mm_rows[static_cast<std::size_t>(b)];
+            double dx = xi - pos[static_cast<std::size_t>(3 * b + 0)];
+            double dy = yi - pos[static_cast<std::size_t>(3 * b + 1)];
+            double dz = zi - pos[static_cast<std::size_t>(3 * b + 2)];
             f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (!(r2 > 0.0))
                 continue;
             const double r3 = r2 * std::sqrt(r2);
-            const double fac = mm_q_ / r3;
+            const double fac = static_cast<double>(q_user[jb]) / r3;
             ex += fac * dx;
             ey += fac * dy;
             ez += fac * dz;
         }
-        e_perm[3 * a + 0] = ex;
-        e_perm[3 * a + 1] = ey;
-        e_perm[3 * a + 2] = ez;
+        e_perm[static_cast<std::size_t>(3 * a + 0)] = ex;
+        e_perm[static_cast<std::size_t>(3 * a + 1)] = ey;
+        e_perm[static_cast<std::size_t>(3 * a + 2)] = ez;
     }
 
-    if (alpha_ > 0.0 && n_mm > 0) {
-        e_pol_ = solve_induced_dipoles(
-            n_mm, pos.data(), alpha.data(), e_perm.data(), thole_a_, pol_tol_,
-            pol_max_iter_, last_mu_, &last_pol_iters_);
-        last_pol_converged_ = true;
-        E += e_pol_;
-    } else {
-        e_pol_ = 0;
-        last_mu_.assign(static_cast<std::size_t>(3 * n_mm), 0.0);
-        last_pol_iters_ = 0;
-        last_pol_converged_ = true; // trivially (no SCC)
+    e_pol_ = 0.0;
+    last_pol_iters_ = 0;
+    if (alpha > 0.0 && n_mm > 0) {
+        std::vector<double> mu;
+        e_pol_ = solve_induced_dipoles(n_mm, pos.data(), alpha_v.data(),
+                                       e_perm.data(), thole_a, pol_tol,
+                                       pol_max_iter, mu, &last_pol_iters_);
+        f.meta.get(kEnergy) += e_pol_;
     }
 
-    // LJ MM + cross
-    e_mm_ = 0;
-    const double rc2 = rcut_ * rcut_;
-    const double sig2 = sig_ * sig_;
-    const double s2c = sig2 / rc2;
-    const double s6c = s2c * s2c * s2c;
-    const double vshift = 4.0 * eps_ * (s6c * s6c - s6c);
-    for (int i = 0; i < n; ++i) {
-        const bool iqm = qm_.count(tags[i]) > 0;
-        for (int j = i + 1; j < n; ++j) {
-            const bool jqm = qm_.count(tags[j]) > 0;
-            if (iqm && jqm)
-                continue;
-            double dx = x[j] - x[i], dy = y[j] - y[i], dz = z[j] - z[i];
-            f.box.min_image(dx, dy, dz);
-            const double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 >= rc2 || r2 == 0.0)
-                continue;
-            const double r2inv = 1.0 / r2;
-            const double s2 = sig2 * r2inv;
-            const double s6 = s2 * s2 * s2;
-            e_mm_ += 4.0 * eps_ * (s6 * s6 - s6) - vshift;
-        }
-    }
-    E += e_mm_;
+    e_vdw_ = vdw_.launch(f, qm_rows, ctx.forces_requested);
+    f.meta.get(kEnergy) += e_vdw_;
 }
 
 } // namespace cpu

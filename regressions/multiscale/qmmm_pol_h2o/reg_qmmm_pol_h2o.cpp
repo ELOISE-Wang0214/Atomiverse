@@ -1,9 +1,5 @@
 /// @file regressions/multiscale/qmmm_pol_h2o/reg_qmmm_pol_h2o.cpp
-/// @brief Polarizable QM/MM: H2O (RHF/STO-3G) + polarizable MM site.
-///
-/// Gate: polarization energy is negative and total energy is finite and
-/// lower than the fixed-charge (α→0 limit via QmmmElectrostatic) path by a
-/// hard-coded minimum shift. See REFERENCE.md.
+/// @brief Polarizable QM/MM: H2O (RHF) + polarizable MM site.
 #include <cmath>
 #include <cstdio>
 
@@ -11,8 +7,8 @@
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/frame/column.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/multiscale/qm_mask.h"
 #include "atomiverse/cpu/multiscale/qmmm_electrostatic.h"
 #include "atomiverse/cpu/multiscale/qmmm_polarizable.h"
@@ -39,7 +35,7 @@ cpu::Frame water_plus_site() {
     f.span(kAtom_type)[0] = 8;
     f.span(kAtom_type)[1] = 1;
     f.span(kAtom_type)[2] = 1;
-    f.span(kAtom_type)[3] = 18; // Ar-like MM site
+    f.span(kAtom_type)[3] = 18;
     for (int i = 0; i < 4; ++i) {
         f.span(kAtom_tag)[i] = i + 1;
         f.span(kAtom_mass)[i] = 1;
@@ -47,14 +43,23 @@ cpu::Frame water_plus_site() {
     }
     f.box = cpu::Box::cubic(25);
     f.blocks.at("atoms").insert(
-        "qm_z", cpu::ColumnSpec{ColDType::Int, 1, ColGroup::Core, 0, kColNone,
-                           kDynamicFieldId});
+        "qm_z",
+        cpu::ColumnSpec{ColDType::Int, 1, ColGroup::Core, 0, kColNone,
+                        kDynamicFieldId});
     auto qm = f.span(cpu::kAtomQmZ);
     qm[0] = 8;
     qm[1] = 1;
     qm[2] = 1;
     qm[3] = 0;
     return f;
+}
+
+cpu::scf::RHF make_rhf() {
+    cpu::scf::RHF rhf;
+    rhf.basis = cpu::scf::BasisSet::STO3G;
+    rhf.tol = 1e-8;
+    rhf.max_iter = 60;
+    return rhf;
 }
 
 } // namespace
@@ -66,11 +71,7 @@ int main() {
         cpu::Evaluate eval;
         cpu::QmmmElectrostatic qmmm{{{8, 8, 0.01, 3.4}, {1, 1, 0.01, 3.4}}, 10.0,
                                     12.0};
-        cpu::scf::RHF rhf;
-        rhf.basis = cpu::scf::BasisSet::STO3G;
-        rhf.tol = 1e-8;
-        rhf.max_iter = 60;
-        qmmm.set_engine(std::move(rhf));
+        qmmm.set_engine(make_rhf());
         eval.on(evaluate::Phase::evaluate).add(std::move(qmmm));
         eval.build();
         eval.run(f);
@@ -79,46 +80,43 @@ int main() {
     {
         auto f = water_plus_site();
         cpu::Evaluate eval;
-        cpu::QmmmPolarizable* p = nullptr;
-        // hold via owned add
-        eval.on(evaluate::Phase::evaluate)
-            .add(cpu::QmmmPolarizable{{1, 2, 3},
-                                      0.0,
-                                      /*alpha=*/2.0,
-                                      /*thole=*/2.6,
-                                      0.01,
-                                      3.4,
-                                      10.0});
+        cpu::QmmmPolarizable pol{{{8, 8, 0.01, 3.4}, {1, 1, 0.01, 3.4}}, 10.0,
+                                12.0};
+        pol.alpha = 2.0;
+        pol.thole_a = 2.6;
+        pol.set_engine(make_rhf());
+        // Keep a handle for pol energy after move:
+        cpu::QmmmPolarizable pol2{{{8, 8, 0.01, 3.4}, {1, 1, 0.01, 3.4}}, 10.0,
+                                  12.0};
+        pol2.alpha = 2.0;
+        pol2.thole_a = 2.6;
+        pol2.set_engine(make_rhf());
+        eval.on(evaluate::Phase::evaluate).add(std::move(pol));
         eval.build();
         eval.run(f);
         e_pol = f.meta.get(kEnergy);
-        (void)p;
-        // Re-run via direct component to read pol term
-        cpu::QmmmPolarizable pol{{1, 2, 3}, 0.0, 2.0, 2.6, 0.01, 3.4, 10.0};
-        f.meta.get(kEnergy) = 0;
+
         cpu::Context ctx;
-        pol.build({ctx, f});
-        pol.launch({ctx, f, 0, 0});
-        e_pol_term = pol.last_pol_energy();
-        e_pol = f.meta.get(kEnergy);
-        if (!pol.last_pol_converged()) {
-            std::printf("FAIL: pol SCC not converged\n");
-            return 1;
-        }
+        f.meta.get(kEnergy) = 0;
+        pol2.build({ctx, f});
+        cpu::LaunchContext lc{ctx, f, 0, 0};
+        lc.forces_requested = false;
+        pol2.launch(lc);
+        e_pol_term = pol2.last_pol_energy();
     }
-    std::printf("qmmm_pol_h2o E_fix=%.6f E_pol=%.6f E_pol_term=%.6f eV\n",
-                e_fix, e_pol, e_pol_term);
+    std::printf("e_fix=%.6e e_pol=%.6e e_pol_term=%.6e\n", e_fix, e_pol,
+                e_pol_term);
     if (!std::isfinite(e_fix) || !std::isfinite(e_pol)
         || !std::isfinite(e_pol_term)) {
         std::printf("FAIL: non-finite\n");
         return 1;
     }
     if (!(e_pol_term < -1e-4)) {
-        std::printf("FAIL: polarization energy not negative enough\n");
+        std::printf("FAIL: E_pol=%.6e not sufficiently negative\n", e_pol_term);
         return 1;
     }
     if (!(e_pol < e_fix - 1e-4)) {
-        std::printf("FAIL: polarizable total not below fixed-charge\n");
+        std::printf("FAIL: polarizable energy not below fixed-charge\n");
         return 1;
     }
     std::printf("PASS\n");

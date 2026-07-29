@@ -269,6 +269,9 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/component/zero.cpp
         src/cpu/frame/materialize.cpp
         src/cpu/driver/driver.cpp
+        # Multiscale shared machinery (QmEngine slot; used by SE and HF couplings)
+        src/cpu/multiscale/internal/qm_subsystem.cpp
+        src/cpu/multiscale/internal/qm_mm_vdw.cpp
         # CPU task infrastructure (TaskSpec + codec + materializer + protocol)
         src/cpu/task/task_spec.cpp
         src/cpu/task/task_codec.cpp
@@ -328,9 +331,12 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/semiempirical/scc_mixer.cpp
             src/cpu/semiempirical/xtb_gfn0.cpp
             src/cpu/multiscale/qmmm_mechanical.cpp
-            # qmmm_electrostatic + internals need HF (engine slot); see ATV_BUILD_HF.
-            src/cpu/multiscale/qmmm_polarizable.cpp
         )
+        if(ATV_BUILD_HF)
+            list(APPEND ATOMIVERSE_SRCS
+                src/cpu/multiscale/qmmm_polarizable.cpp
+            )
+        endif()
         # Grimme D3 engine for DFTB2::d3 (and peers) under SE-only cmake.
         # When HF is on, the same sources are listed under ATV_BUILD_HF — do
         # not double-compile.
@@ -582,8 +588,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/internal/soscf.cpp
             src/cpu/scf/internal/x2c.cpp
             # Multiscale electrostatic QM/MM (esmm-qmmm-03) — HF engine required.
-            src/cpu/multiscale/internal/qm_subsystem.cpp
-            src/cpu/multiscale/internal/qm_mm_vdw.cpp
             src/cpu/multiscale/qmmm_electrostatic.cpp
             src/cpu/scf/stages/fock_stage.cpp
             src/cpu/scf/stages/mix_stage.cpp
