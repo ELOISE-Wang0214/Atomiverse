@@ -656,6 +656,7 @@ if(ATV_BUILD_SEMIEMPIRICAL)
     endif()
     atv_add_regression(multiscale qmmm_h2_ar)
     atv_add_regression(multiscale qmmm_opt_h2_ar)
+    atv_add_regression(multiscale qmmm_oniom_h2_ar)
     if(ATV_BUILD_HF)
         # ES/link/polarizable embedding instantiate cpu::scf::RHF through the
         # QMMM library sources; without ATV_BUILD_HF the RHF vtable is not

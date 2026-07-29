@@ -147,8 +147,9 @@ Also: `cpu::SubDriver` nesting on shared `Runtime`; criteria `ForceConverged`, `
 **QMMM (`cpu/multiscale/`) — compose under one MD (AIMD-shaped), not a QmmmDriver**
 - Region: Frame `kAtomQmZ`; link cuts **derived** from mask × bond topology (0 bonds ⇒ 0 links)
 - `LinkBond` / `place_link_hydrogen` / `project_link_force` — geometry helpers (not user `set_links`)
-- Connection evaluators (`Potential`): `QmmmMechanical`, `QmmmElectrostatic`, `QmmmPolarizable` — each `set_engine` / `set_engine_ref`; no god embedding enum
+- Connection evaluators (`Potential`): `QmmmMechanical`, `QmmmElectrostatic`, `QmmmPolarizable`, **`QmmmOniom`** (2-layer subtractive) — each `set_engine` / `set_engine_ref`; no god embedding enum
 - Public path: `md.set_evaluator(mm…); md.set_evaluator(qmmm.set_engine(qm…));` — see harness `frame-region-fields` + `prefer-composition`
+- ONIOM: do not also bind the same classical low table (double-counts \(E_{\mathrm{low}}(\mathrm{real})\))
 
 **Classical MD / FF (sample)**
 - Integrators: `VelocityVerlet`, `NoseHooverNPT`, `NphIntegrator`, Brownian, …

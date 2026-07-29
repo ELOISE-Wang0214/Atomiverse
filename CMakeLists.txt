@@ -331,6 +331,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/semiempirical/scc_mixer.cpp
             src/cpu/semiempirical/xtb_gfn0.cpp
             src/cpu/multiscale/qmmm_mechanical.cpp
+            src/cpu/multiscale/qmmm_oniom.cpp
+            src/cpu/multiscale/internal/classical_nonbonded.cpp
         )
         if(ATV_BUILD_HF)
             list(APPEND ATOMIVERSE_SRCS

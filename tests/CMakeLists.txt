@@ -239,6 +239,8 @@ atv_add_cpp_test(test_cpu_xtb_gfn0                cpu/semiempirical/test_xtb_gfn
 # QM/MM units. Mechanical stays under SE; electrostatic engine-slot path needs HF.
 if(ATV_BUILD_SEMIEMPIRICAL)
     atv_add_cpp_test(test_cpu_qmmm_mechanical     cpu/multiscale/test_qmmm_mechanical.cpp)
+    atv_add_cpp_test(test_cpu_qmmm_oniom          cpu/multiscale/test_qmmm_oniom.cpp)
+    atv_add_cpp_test(test_cpu_classical_nonbonded cpu/multiscale/test_classical_nonbonded.cpp)
     if(ATV_BUILD_HF)
         atv_add_cpp_test(test_cpu_qmmm_polarizable    cpu/multiscale/test_qmmm_polarizable.cpp)
     endif()

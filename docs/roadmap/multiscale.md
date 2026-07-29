@@ -90,8 +90,8 @@ bury-delete cavity).
 | Electrostatic embedding QM/MM    |  ✓  |   ○  |   ○  |
 | Polarizable embedding QM/MM      |  ✓  |   ○  |   ○  |
 | Additive QM/MM                   |  ✓  |   ○  |   ○  |
-| Subtractive QM/MM                |  ○  |   ○  |   ○  |
-| ONIOM two-layer method           |  ○  |   ○  |   ○  |
+| Subtractive QM/MM                |  ✓  |   ○  |   ○  |
+| ONIOM two-layer method           |  ✓  |   ○  |   ○  |
 | ONIOM multilayer method          |  ○  |   ○  |   ○  |
 | Link-atom QM/MM                  |  ✓  |   ○  |   ○  |
 | Localized-orbital boundary QM/MM |  ○  |   ○  |   ○  |
@@ -115,8 +115,12 @@ The product QM/MM components are:
   `reg_qmmm_md_conservation`)
 - `QmmmPolarizable` — embedding engine + density-derived permanent field +
   isotropic induced MM dipoles (`reg_qmmm_pol_h2o`)
+- `QmmmOniom` — two-layer subtractive ONIOM
+  \(E_{\mathrm{high}}(\mathrm{model})+E_{\mathrm{low}}(\mathrm{real})
+  -E_{\mathrm{low}}(\mathrm{model})\) (`reg_qmmm_oniom_h2_ar`); low = classical
+  nonbonded; high = vacuum `QmEngine`
 
-No automatic region partitioner, no ONIOM, no PME long-range QM/MM.
+No automatic region partitioner, no 3-layer ONIOM, no PME long-range QM/MM.
 MC posture: `reset_history_each_launch` cold-starts the engine each trial.
 Geometry optimization is the same composition as MD: `Minimize` +
 `set_evaluator(Qmmm*)` (not a `QmmmOpt` driver).
@@ -203,7 +207,7 @@ pseudopotentials, separate from the Gaussian ECP tables.
 
 Blocked upstream where product ML potentials are still ○ (see
 [Force Fields](force-fields.md#6-machine-learning-potentials)). Textbook
-**additive** mechanical / electrostatic / polarizable QM/MM + link atoms + MD
-+ geometry optimization ship on CPU (esmm-qmmm-01…06 + `reg_qmmm_opt_h2_ar`).
-Open product gaps: ONIOM/subtractive, periodic / PME QM/MM, adaptive
-multi-region, excited-state.
+**additive** mechanical / electrostatic / polarizable QM/MM + **two-layer
+ONIOM/subtractive** + link atoms + MD + geometry optimization ship on CPU
+(esmm-qmmm-01…07). Open product gaps: 3-layer ONIOM, periodic / PME QM/MM,
+adaptive multi-region, excited-state, electronic-embedding ONIOM.
