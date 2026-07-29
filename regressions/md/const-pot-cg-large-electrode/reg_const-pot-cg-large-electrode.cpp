@@ -1,8 +1,17 @@
 /// @file regressions/md/const-pot-cg-large-electrode/reg_const-pot-cg-large-electrode.cpp
 /// @brief E2E: ConstPotCG matches dense ConstPotBO on a multi-site plate.
 ///
-/// Offline dual twin: in-tree BO dense inverse (same A). Oracle tag metalwalls
-/// (MW-style CG electrode path). See REFERENCE.md. Public API only.
+/// Oracle: MetalWalls `c8ad175d`, run offline. The pinned primary-cell
+/// \(Q_{\mathrm{top}}\) below reproduces MetalWalls to 3.1e-9 relative — the
+/// primary system is 4 particles on one \((x,y)\) line, so ATV's
+/// `xy_image_range = 0` min-image matrix is *exactly* the isolated cluster
+/// MetalWalls converges to as \(L_{xy},L_z\to\infty\).
+///
+/// The large-plate numbers printed below are a CG-vs-dense-BO equivalence
+/// check on a **shared** truncated \(A\); they are NOT MetalWalls-validated.
+/// With `xy_image_range = 0` the 4x4 plate sits 20.9% above MetalWalls' full
+/// 2D-Ewald answer (0.365146 vs 0.301964 e) — see REFERENCE.md "Known gap".
+/// Public API only.
 
 #include <chrono>
 #include <cmath>
@@ -100,8 +109,9 @@ int main() {
     constexpr double kEta = 2.0;
     constexpr double kPsiBot = 0.0;
     constexpr double kPsiTop = 1.0;
-    constexpr double kSiteTol = 1e-8;           // [e]
-    constexpr double kQTopPrimary = 0.27175356; // dense BO primary-cell pin
+    constexpr double kSiteTol = 1e-8; // [e]
+    // MetalWalls c8ad175d, isolated limit: 0.2717535549687 e (REFERENCE.md).
+    constexpr double kQTopPrimary = 0.27175356;
     constexpr int nx = 4, ny = 4;               // 32 electrode sites
     int nfail = 0;
 
