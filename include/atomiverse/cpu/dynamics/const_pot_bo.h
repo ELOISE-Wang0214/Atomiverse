@@ -194,15 +194,22 @@ class ConstPotBO : public cpu::Component {
     /// slice of \(-\nabla U\)). Required for movable walls / piston coupling.
     bool write_electrode_forces = false;
     /// Half-range \(R\) of the 2D \(xy\) image block summed directly into the
-    /// elastance for planar PBC (0 = primary cell only, min-image). This is a
+    /// elastance for planar PBC (0 = primary cell only, min-image), i.e. the
+    /// LAMMPS ELECTRODE madelung / plate_cap real-space image sum. This is a
     /// **convergence knob**: the truncated square-image sum approaches the
     /// exact 2D-periodic (Ewald / MetalWalls `num_pbc 2`) elastance only as
     /// \(O(1/R)\), because each pair misses a lattice tail
     /// \(\simeq \pi z_{ij}^{2}/(R\,L\,A_{\mathrm{cell}})\). Required \(R\)
-    /// therefore grows with \((z/L)^2\): for a 20 Å electrode gap over a 4.07 Å
-    /// lateral cell, \(R=200\) is still ~1.2% off and \(R=1280\) is 0.18% off
-    /// (`regressions/md/thomas-fermi-electrode/REFERENCE.md`, pinned against
-    /// MetalWalls c8ad175d). Cost \(\propto N_{\mathrm{elec}}^2 \times R^2\).
+    /// therefore grows with \((z/L)^2\). Measured against MetalWalls c8ad175d:
+    /// - 20 Å electrode gap over a 4.07 Å lateral cell — \(R=200\) is still
+    ///   ~1.2 % off, \(R=1280\) is 0.18 % off
+    ///   (`regressions/md/thomas-fermi-electrode/REFERENCE.md`);
+    /// - two 2×2 walls in a 4 Å cell at a 5 Å gap — residual charge error
+    ///   1.5 % at \(R=100\), 1.2 % at 200, 0.09 % at 1600
+    ///   (`regressions/md/per-electrode-eta`).
+    ///
+    /// Choose \(R\) from the accuracy you need — there is no "large enough"
+    /// value. Cost \(\propto N_{\mathrm{elec}}^2 \times R^2\).
     int xy_image_range = 0;
     /// Rebuild \(A\) every launch (movable electrodes). v1 walls are frozen;
     /// leave false for geometry-static electrodes.
