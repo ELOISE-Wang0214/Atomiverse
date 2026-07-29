@@ -79,9 +79,19 @@ disagree with FD:
 
 A correct SCC-DFTB2 gradient is FD-exact at self-consistency, so the H₂O
 residual is a **defect, not a "charge-response residual"** — see the Gaps
-section of `regressions/semiempirical/dftb2-analytic-forces/REFERENCE.md`.
-An open-shell case with \(\Delta q \neq 0\) (e.g. NO, or charged O₂⁻) is owed
-before this path can be trusted for polar open-shell systems.
+section of `regressions/semiempirical/dftb2-analytic-forces/REFERENCE.md`
+(both were repaired 2026-07-28).
+
+**Closed 2026-07-29 — the owed \(\Delta q\neq0\) open-shell case.**
+`regressions/semiempirical/dftb2-spin-analytic-stress` runs an **NO doublet**
+(Z = 8/7, `multiplicity = 2`) alongside the O₂ triplet through the same
+spin-resolved assembly, so the open-shell \(\gamma\) term now has a gate.
+That case also records a second O₂ degeneracy this REFERENCE did not name: the
+spin shift \(\pm W_A m_A\) is **uniform over atoms** for homonuclear O₂, and a
+uniform \(cS\) leaves the generalized eigenvectors invariant, so the O₂ triplet
+density / forces / virial are numerically identical to the restricted ones
+(\(E_{\text{triplet}}-E_{\text{singlet}} = -1.000000000000\) eV exactly, i.e.
+\(\tfrac12\sum_A W_A m_A^2\), geometry-independent).
 
 ## Unmoved by the 2026-07-28 SCC repair
 

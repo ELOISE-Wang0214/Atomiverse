@@ -1,7 +1,9 @@
 /// @file tests/cpu/semiempirical/test_dftb2.cpp
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
@@ -586,6 +588,145 @@ TEST(DFTB2, AnalyticStressMatchesStrainFdH2) {
     // Frame meta accumulation
     const auto& st = f.meta.get(kStress);
     EXPECT_NEAR(st[0], san[0], 1e-14);
+}
+
+namespace {
+
+/// Tilted diatomic O–X so all six Voigt components are non-trivial.
+/// Bond direction (0.6, 0.7, √0.15) is a unit vector, so |R| = `r`.
+cpu::Frame make_tilted_diatomic(int z1, double r, double box_l = 20.0) {
+    cpu::Frame f(2);
+    f.span(kAtom_type)[0] = 8;
+    f.span(kAtom_type)[1] = z1;
+    f.span(kAtom_x)[0] = f.span(kAtom_y)[0] = f.span(kAtom_z)[0] = 0;
+    f.span(kAtom_x)[1] = static_cast<StorageReal>(r * 0.6);
+    f.span(kAtom_y)[1] = static_cast<StorageReal>(r * 0.7);
+    f.span(kAtom_z)[1] = static_cast<StorageReal>(r * 0.3872983346207417);
+    for (int i = 0; i < 2; ++i) {
+        f.span(kAtom_mass)[i] = 15.999;
+        f.span(kAtom_tag)[i] = i + 1;
+        f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
+    }
+    f.box = cpu::Box::cubic(box_l);
+    f.meta.get(kEnergy) = 0;
+    for (int v = 0; v < 6; ++v)
+        f.meta.get(kStress)[static_cast<std::size_t>(v)] = 0;
+    return f;
+}
+
+double energy_only_mult(cpu::Frame g, int multiplicity) {
+    g.meta.get(kEnergy) = 0;
+    for (int i = 0; i < g.nlocal(); ++i)
+        g.span(kAtom_fx)[i] = g.span(kAtom_fy)[i] = g.span(kAtom_fz)[i] = 0;
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 d;
+    d.multiplicity = multiplicity;
+    d.with_forces = false;
+    d.with_stress = false;
+    d.scc_tol = 1e-12;
+    d.max_scc = 200;
+    d.build({ctx, g});
+    d.launch({ctx, g, 0, 0});
+    return d.last_energy();
+}
+
+/// Analytic σ (all six Voigt) for one tilted diatomic at one multiplicity.
+std::array<double, 6> analytic_stress(int z1, double r, int multiplicity,
+                                      cpu::Frame& out_frame) {
+    out_frame = make_tilted_diatomic(z1, r);
+    cpu::Context ctx;
+    cpu::semiempirical::DFTB2 d;
+    d.multiplicity = multiplicity;
+    d.with_forces = true;
+    d.with_stress = true;
+    d.scc_tol = 1e-12;
+    d.max_scc = 200;
+    d.build({ctx, out_frame});
+    d.launch({ctx, out_frame, 0, 0});
+    return d.last_stress();
+}
+
+/// Central affine-strain FD of the converged energy, σ = −(1/Ω)∂E/∂ε.
+double strain_fd_stress(int z1, double r, int multiplicity, int voigt,
+                        double h = 2.0e-4) {
+    auto fp = make_tilted_diatomic(z1, r);
+    auto fm = make_tilted_diatomic(z1, r);
+    const double vol = fp.box.volume();
+    apply_strain_voigt(fp, voigt, h);
+    apply_strain_voigt(fm, voigt, -h);
+    const double dE = (energy_only_mult(std::move(fp), multiplicity)
+                       - energy_only_mult(std::move(fm), multiplicity))
+                      / (2.0 * h);
+    return -dE / vol;
+}
+
+} // namespace
+
+TEST(DFTB2, SpinAnalyticStressMatchesStrainFdO2Triplet) {
+    // Collinear open shell: closed-form spin-resolved pair virial vs the
+    // multi-SCC affine strain-FD it replaced. Stationarity of the converged
+    // SCC functional makes this FD-exact to the truncation error.
+    cpu::Frame f;
+    const auto san = analytic_stress(/*z1=*/8, /*r=*/1.30, /*mult=*/3, f);
+
+    constexpr double kTol = 1e-8; // eV/Å³
+    for (int v = 0; v < 6; ++v) {
+        ASSERT_TRUE(std::isfinite(san[static_cast<std::size_t>(v)])) << v;
+        const double fd = strain_fd_stress(8, 1.30, 3, v);
+        EXPECT_NEAR(san[static_cast<std::size_t>(v)], fd, kTol)
+            << "voigt=" << v;
+    }
+
+    // Frame meta accumulation is the same buffer.
+    const auto& st = f.meta.get(kStress);
+    for (int v = 0; v < 6; ++v)
+        EXPECT_NEAR(st[static_cast<std::size_t>(v)],
+                    san[static_cast<std::size_t>(v)], 1e-14);
+
+    // Translational invariance of the open-shell gradient is unchanged.
+    double net[3] = {0, 0, 0};
+    for (int i = 0; i < 2; ++i) {
+        net[0] += static_cast<double>(f.span(kAtom_fx)[i]);
+        net[1] += static_cast<double>(f.span(kAtom_fy)[i]);
+        net[2] += static_cast<double>(f.span(kAtom_fz)[i]);
+    }
+    for (int d = 0; d < 3; ++d)
+        EXPECT_NEAR(net[d], 0.0, 1e-6) << "cartesian=" << d;
+}
+
+TEST(DFTB2, SpinAnalyticStressPolarOpenShellMatchesStrainFdNo) {
+    // NO doublet is the DISCRIMINATING open-shell case: homonuclear O₂ has
+    // Δq ≡ 0 (γ virial multiplied by zero) *and* a spin shift ±W_A m_A that is
+    // uniform over atoms. NO has Δq ≠ 0 and W_N m_N ≠ W_O m_O, so both the SCC
+    // γ virial and the spin half of the Pulay ∂S term are exercised.
+    cpu::Frame f;
+    const auto san = analytic_stress(/*z1=*/7, /*r=*/1.20, /*mult=*/2, f);
+
+    constexpr double kTol = 1e-8; // eV/Å³
+    for (int v = 0; v < 6; ++v) {
+        ASSERT_TRUE(std::isfinite(san[static_cast<std::size_t>(v)])) << v;
+        const double fd = strain_fd_stress(7, 1.20, 2, v);
+        EXPECT_NEAR(san[static_cast<std::size_t>(v)], fd, kTol)
+            << "voigt=" << v;
+    }
+}
+
+TEST(DFTB2, SpinAnalyticStressClosedShellLimitMatchesRestricted) {
+    // Equivalence guard for folding the restricted assembly into the
+    // spin-resolved one (C^α = C^β, ε^α = ε^β, m ≡ 0 ⇒ P^α = P^β = P/2).
+    // Baseline: the shipped restricted analytic σ for this exact geometry,
+    // measured on the parent commit 448dca40 before the unification.
+    constexpr double kRestrictedBaseline[6] = {
+        -3.8115701691668108e-04, -5.1879705080325894e-04,
+        -1.5881542371467555e-04, -8.8936637280558799e-04,
+        -4.9207159293519255e-04, -5.7408352509105720e-04};
+
+    cpu::Frame f;
+    const auto san = analytic_stress(/*z1=*/8, /*r=*/1.30, /*mult=*/1, f);
+    for (int v = 0; v < 6; ++v)
+        EXPECT_NEAR(san[static_cast<std::size_t>(v)],
+                    kRestrictedBaseline[v], 1e-10)
+            << "voigt=" << v;
 }
 
 namespace {

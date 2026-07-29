@@ -83,15 +83,28 @@ nor the new value is an oracle number — no DFTB+ binary exists on this host
 
 ## Gaps (still open)
 
-1. ~~**D3 dispersion is absent from the stress.**~~ **Closed:** with `d3=true`
-   and `with_stress=true`, D3 is folded into `last_stress_` / `kStress`
-   (molecular pair virial of D3 forces; periodic strain-FD of \(E_{\mathrm{disp}}\)
-   when `d3_periodic=true`). Unit gates in
-   `tests/cpu/semiempirical/test_dftb2_dispersion_d3.cpp`.
-2. **No periodic case.** Both this gate and the geometry are a molecule in a
-   20 Å box, so the stress is never checked against the Γ-point lattice-summed
-   energy path, where the min-image force/virial expression is not the gradient
-   of the lattice-summed energy (`dftb2-periodic-forces` remains ○).
+1. ~~**D3 dispersion is absent from the stress.**~~ **Closed 2026-07-29:** with
+   `d3=true` and `with_stress=true`, D3 is folded into `last_stress_` /
+   `kStress` from the analytic pair virial of `dftd3_pbe_bj`, image-aware when
+   `d3_periodic=true`. Unit gates in
+   `tests/cpu/semiempirical/test_dftb2_dispersion_d3.cpp`
+   (`StressIncludesD3`, `StressTraceMatchesVolumeDerivative`).
+2. ~~**Open shell falls back to strain-FD.**~~ **Closed 2026-07-29:**
+   `analytic_forces_restricted` / `analytic_forces_unrestricted` were folded
+   into one spin-resolved `analytic_forces_stress` that also emits the virial;
+   this case's numbers are unchanged
+   (`regressions/semiempirical/dftb2-spin-analytic-stress`).
+3. **No periodic case, and the self-image virial is missing.** This gate's
+   geometry is a molecule in a 20 Å box, so only the \(a<b\) pair virial is
+   exercised, and the stress is never checked against the Γ-point
+   lattice-summed energy path. The pair walk in
+   `src/cpu/semiempirical/dftb2.cpp` (`for (int b = a + 1; ...)`) skips
+   self-images (\(a=a\), \(T\neq0\)). Those exert zero nuclear force — so
+   forces are unaffected and `reg_dftb2-periodic-forces` is green — but they
+   **do** carry a virial once a lattice image falls inside the SK / γ /
+   repulsive cutoff, so under dense Γ-PBC (e.g. a 2.8 Å C-chain cell) the
+   analytic stress is incomplete. A periodic strain-FD gate plus the
+   self-image virial are owed together.
 
 ## Perf
 
