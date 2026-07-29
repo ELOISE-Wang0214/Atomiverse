@@ -13,6 +13,57 @@ pins** for regressions under `metalwalls-method-loop`.
 | Feature is **MetalWalls-only** (no LAMMPS twin) | **MetalWalls** |
 | Neither binary available for the agent | **Literature** value with full citation; `perf_exempt` for speed |
 
+## Both binaries are installed — literature fallback is no longer a default
+
+**Do not pin MW-only physics from literature formulas.** Both oracle binaries
+exist on this machine; the literature row above is now reachable only for
+quantities neither code computes.
+
+| Oracle | Binary | Version |
+| --- | --- | --- |
+| LAMMPS | `lmp` (on `PATH`) | see `lmp -h` |
+| MetalWalls | `/nobackup/proj/disk/teoroo/personal/jicli594/work/opt/metalwalls/mw` | git `c8ad175d` (release branch, 2026-06-18) |
+
+Rebuild MetalWalls with `bash -l tools/metalwalls_oracle/build_metalwalls.sh`
+(GNU + MPICH + OpenBLAS; the script ends with an upstream self-check that must
+print `PASS` before any pin is taken from that build). Run it as:
+
+```bash
+bash -lc '
+  module load buildenv-gcc/2026.03-mpich
+  export LD_LIBRARY_PATH="$LIBRARY_PATH:$LD_LIBRARY_PATH"
+  cd <case-dir> && mpirun -n 1 /nobackup/.../work/opt/metalwalls/mw
+'
+```
+
+MW writes `energies.out`, `forces.out`, `charges.out`, `energies_breakdown.out`
+in **atomic units** (Hartree, Bohr, \(e\)); ATV pins are eV / Å — convert
+explicitly in `REFERENCE.md` and show both.
+
+### Upstream reference cases → ATV slugs
+
+MetalWalls ships its own regression inputs with `*.ref` outputs. **Prefer
+adapting one of these over hand-writing an input**, and cite which one:
+
+| MW case | Covers ATV slug(s) |
+| --- | --- |
+| `tests/maze/electrodes/*`, `tests/maze/dipoles` | `maze-charge-dynamics`, `maze-symplectic-charge-dynamics`, `maze-molten-salt-al` |
+| `tests/thomas_fermi/`, `example/thomas-fermi-gold-capacitor` | `thomas-fermi-electrode`, `voronoi-volume-tf` |
+| `tests/pim/`, `example/EMIM_TFSI_bulk_polarizability` | `pim-induced-dipole-bulk`, `extended-lagrangian-dipoles` |
+| `example/NaCl_PIM_NPT` | `pim-npt-polarizable-il` |
+| `tests/dip_plus_elec/` | `dipole-electrode-joint` |
+| `tests/piston/`, `example/python-piston-mgo` | `piston-electrode-pz` |
+| `tests/external_field/`, `example/electric-field` | `finite-field-single-electrode`, `displacement-dfield-md`, `constant-d-polarization-feedback` |
+| `tests/supercap/` | `const-pot-cg-large-electrode`, `electrode-charge-predictor`, `per-electrode-eta` |
+| `tests/charge_neutrality/`, `tests/non_neutral/` | `global-electroneutrality-bo` |
+| `example/EMIM_BF4_graphene`, `example/EMIM_TFSI_graphene_polarizability` | `const-pot-il-edl-box` |
+| `example/nanoporous-graphene`, `example/blue-energy-cdc` | `nanoporous-carbon-const-pot` (pending) |
+| `example/python-thermo_integration_charge` | `thermo-integration-capacitance` (pending) |
+| `tests/four_site_model/`, `example/tip4p-water` | `four-site-tip4p-foothold`, `const-pot-tip4p-edl` |
+| `tests/steele/`, `example/steele-argon` | `steele-wall-argon` |
+| `tests/tosi_fumi/` | `fumi-tosi-nacl` |
+| `tests/nist/` | SPC/E Ewald cross-checks |
+
 Examples that **must** use LAMMPS when the binary is available offline:
 
 - `pair_style lj/cut`, `lj/cut/coul/long`, `coul/long`
