@@ -216,7 +216,9 @@ class ConstPotBO : public cpu::Component {
     /// @brief Hard cap on CG iterations; throws if exceeded.
     int max_cg_iters = 500;
     /// @brief Kolafa ASPC order \(K\) for charge warm-start. `0` disables
-    ///        prediction (cold start every step). Typical product value: 2.
+    ///        prediction (cold start every step). MetalWalls hard-codes
+    ///        \(K=5\) (six stored charge vectors); \(K=2\) is the cheapest
+    ///        useful setting.
     int predictor_order = 0;
     /// Thomas–Fermi screening length \(l_{\mathrm{TF}}\) [Å]. Zero recovers
     /// perfect-metal BO (MetalWalls / Scalfi). Requires `site_density` > 0

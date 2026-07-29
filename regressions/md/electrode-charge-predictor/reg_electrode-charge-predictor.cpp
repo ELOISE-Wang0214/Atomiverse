@@ -2,7 +2,8 @@
 /// @brief E2E: ASPC electrode charge predictor reduces CG iters vs cold start.
 ///
 /// Public API only. Offline pin: regressions/md/electrode-charge-predictor/REFERENCE.md
-/// (oracle=metalwalls, Kolafa ASPC + MetalWalls CG warm-start algorithm).
+/// (oracle = MetalWalls binary c8ad175d; the K=5 predictor coefficients are
+/// the constants MetalWalls hard-codes in src/electrode_charge.F90:572-577).
 /// Exits non-zero on failure.
 
 #include <cmath>
@@ -92,13 +93,45 @@ cpu::md::ConstPotBO make_solver(int pred_order) {
 } // namespace
 
 int main() {
-    // ── ac-002 / ac-003: ASPC K=2 coefficients + linear predict ──────
+    // ── ac-002: K=5 coefficients == MetalWalls' hard-coded constants ──
+    // MetalWalls c8ad175d, src/electrode_charge.F90:572-577:
+    //   B1=22/7  B2=-55/14  B3=55/21  B4=-22/21  B5=5/21  B6=-1/42
+    // applied to the six stored charge vectors (QATOMS_NUM_STEPS = 7,
+    // src/system.F90:107), newest first. ChargeASPC indexes oldest-first,
+    // so coefficient(5-j+1)… → coefficient(6-j) is B_j.
+    {
+        const double B[6] = {22.0 / 7.0,   -55.0 / 14.0, 55.0 / 21.0,
+                             -22.0 / 21.0, 5.0 / 21.0,   -1.0 / 42.0};
+        cpu::electrodes::ChargeASPC mw(5);
+        double sum = 0.0;
+        for (int j = 1; j <= 6; ++j) {
+            const double got = mw.coefficient(6 - j);
+            const double want = B[j - 1];
+            sum += got;
+            if (std::fabs(got - want) > 1e-15 * std::fabs(want)) {
+                std::printf("FAIL: ASPC K=5 B%d got %.17g expect %.17g\n", j,
+                            got, want);
+                return 1;
+            }
+        }
+        if (std::fabs(sum - 1.0) > 1e-14) {
+            std::printf("FAIL: ASPC K=5 coeffs sum to %.17g, expect 1\n", sum);
+            return 1;
+        }
+        std::printf("ASPC K=5 == MetalWalls B1..B6 "
+                    "{22/7,-55/14,55/21,-22/21,5/21,-1/42}, sum=%.17g\n",
+                    sum);
+    }
+
+    // ── ac-003: K=2 coefficients + degree-1 exactness, degree-2 damping ──
     {
         cpu::electrodes::ChargeASPC aspc(2);
-        if (!(aspc.coefficient(0) == 1.0 && aspc.coefficient(1) == -3.0
-              && aspc.coefficient(2) == 3.0)) {
+        // Kolafa ASPC K=2 is {5/2, -2, 1/2} newest → oldest — NOT the Lagrange
+        // extrapolation {3, -3, 1} that the paper shows to be unstable.
+        if (!(aspc.coefficient(0) == 0.5 && aspc.coefficient(1) == -2.0
+              && aspc.coefficient(2) == 2.5)) {
             std::printf(
-                "FAIL: ASPC K=2 coeffs got {%g,%g,%g} expect {1,-3,3}\n",
+                "FAIL: ASPC K=2 coeffs got {%g,%g,%g} expect {0.5,-2,2.5}\n",
                 aspc.coefficient(0), aspc.coefficient(1), aspc.coefficient(2));
             return 1;
         }
@@ -111,7 +144,18 @@ int main() {
                         pred.empty() ? -1.0 : pred[0]);
             return 1;
         }
-        std::printf("ASPC K=2: omega={1,-3,3}, linear predict OK\n");
+        // Degree-2 history is damped, not reproduced (8, not the Lagrange 9).
+        cpu::electrodes::ChargeASPC quad(2);
+        for (int n = 0; n <= 2; ++n)
+            quad.record(std::vector<double>{static_cast<double>(n * n)});
+        std::vector<double> pq;
+        if (!quad.predict(pq) || std::fabs(pq[0] - 8.0) > 1e-12) {
+            std::printf("FAIL: quadratic ASPC damping (got %g, expect 8)\n",
+                        pq.empty() ? -1.0 : pq[0]);
+            return 1;
+        }
+        std::printf("ASPC K=2: omega={0.5,-2,2.5}, linear exact, "
+                    "quadratic damped to 8\n");
     }
 
     // ── ac-004: CG matches dense on madelung ─────────────────────────
@@ -138,26 +182,32 @@ int main() {
     }
 
     // ── ac-005 / ac-006: predictor reduces mean CG iters ─────────────
+    // Two warm solvers: K=2 (cheapest useful) and K=5 (MetalWalls' order).
     {
         auto cold = make_solver(0);
-        auto warm = make_solver(2);
+        auto warm2 = make_solver(2);
+        auto warm5 = make_solver(5);
         auto f_cold = make_multi(3);
-        auto f_warm = make_multi(3);
+        auto f_warm2 = make_multi(3);
+        auto f_warm5 = make_multi(3);
         cpu::Context ctx;
         cold.build({ctx, f_cold});
-        warm.build({ctx, f_warm});
+        warm2.build({ctx, f_warm2});
+        warm5.build({ctx, f_warm5});
 
         const int n = f_cold.nlocal();
         const int ion0 = n - 4;
         std::printf("Multi-site: n_atoms=%d n_electrode=%d\n", n,
                     cold.n_electrode());
 
-        long sum_cold = 0, sum_warm = 0;
+        long sum_cold = 0, sum_w2 = 0, sum_w5 = 0;
         int n_post = 0;
         constexpr int n_steps = 16;
+        // K=5 needs 6 recorded vectors, i.e. it first predicts at step 5.
+        constexpr int first_scored = 6;
         for (int s = 0; s < n_steps; ++s) {
             const double dz = 0.03 * (s + 1);
-            for (auto* f : {&f_cold, &f_warm}) {
+            for (auto* f : {&f_cold, &f_warm2, &f_warm5}) {
                 for (int k = 0; k < 4; ++k) {
                     const double z0 = (k % 2 == 0) ? 8.0 : 12.0;
                     const double sign = (k % 2 == 0) ? 1.0 : -0.5;
@@ -165,20 +215,23 @@ int main() {
                 }
             }
             cold.launch({ctx, f_cold, 0, s});
-            warm.launch({ctx, f_warm, 0, s});
-            if (s >= 3) {
+            warm2.launch({ctx, f_warm2, 0, s});
+            warm5.launch({ctx, f_warm5, 0, s});
+            if (s >= first_scored) {
                 sum_cold += cold.last_iters();
-                sum_warm += warm.last_iters();
+                sum_w2 += warm2.last_iters();
+                sum_w5 += warm5.last_iters();
                 ++n_post;
-                if (!warm.last_used_predictor()) {
+                if (!warm2.last_used_predictor()
+                    || !warm5.last_used_predictor()) {
                     std::printf("FAIL: expected ASPC warm-start at step %d\n",
                                 s);
                     return 1;
                 }
             }
-            if (!(warm.neutrality_residual() <= 1e-8)) {
+            if (!(warm5.neutrality_residual() <= 1e-8)) {
                 std::printf("FAIL: neutrality %.3e at step %d\n",
-                            warm.neutrality_residual(), s);
+                            warm5.neutrality_residual(), s);
                 return 1;
             }
         }
@@ -187,18 +240,20 @@ int main() {
             return 1;
         }
         const double mean_cold = static_cast<double>(sum_cold) / n_post;
-        const double mean_warm = static_cast<double>(sum_warm) / n_post;
-        std::printf("Mean CG iters (post-fill n=%d): cold=%.3f warm=%.3f\n",
-                    n_post, mean_cold, mean_warm);
-        if (!(mean_warm < mean_cold)) {
+        const double mean_w2 = static_cast<double>(sum_w2) / n_post;
+        const double mean_w5 = static_cast<double>(sum_w5) / n_post;
+        std::printf("Mean CG iters (post-fill n=%d): cold=%.3f "
+                    "ASPC K=2 %.3f  ASPC K=5 (MetalWalls) %.3f\n",
+                    n_post, mean_cold, mean_w2, mean_w5);
+        if (!(mean_w2 < mean_cold) || !(mean_w5 < mean_cold)) {
             std::printf("FAIL: ASPC did not reduce mean CG iters "
-                        "(warm=%.3f cold=%.3f)\n",
-                        mean_warm, mean_cold);
+                        "(K2=%.3f K5=%.3f cold=%.3f)\n",
+                        mean_w2, mean_w5, mean_cold);
             return 1;
         }
-        if (!(warm.total_charge(1) > 0.0 && warm.total_charge(0) < 0.0)) {
+        if (!(warm5.total_charge(1) > 0.0 && warm5.total_charge(0) < 0.0)) {
             std::printf("FAIL: charge polarity lost Q_bot=%.6e Q_top=%.6e\n",
-                        warm.total_charge(0), warm.total_charge(1));
+                        warm5.total_charge(0), warm5.total_charge(1));
             return 1;
         }
     }
