@@ -67,6 +67,47 @@ class Dftb3Scc {
     /// @return \f$\Gamma_{AB}\f$ [eV/e].
     double gamma_charge_derivative(int a, int b) const;
 
+    /// @brief \f$\partial\gamma_{AB}/\partial R_{AB}\f$ [eV/Å].
+    ///
+    /// The on-site value \f$\gamma_{AA}=U_A\f$ is geometry-independent, so
+    /// A == B returns 0.
+    /// @param a Atom index A (0-based).
+    /// @param b Atom index B (0-based).
+    /// @return \f$\partial\gamma_{AB}/\partial R\f$ [eV/Å].
+    double gamma_distance_derivative(int a, int b) const;
+
+    /// @brief \f$\partial^2\gamma_{AB}/\partial q_A\,\partial R_{AB} =
+    ///        \partial\Gamma_{AB}/\partial R_{AB}\f$ [eV/(e·Å)].
+    ///
+    /// The on-site value \f$\Gamma_{AA}=U^{\mathrm{d}}_A\f$ is
+    /// geometry-independent, so A == B returns 0. Not symmetric in (A,B).
+    /// @param a Atom index A (0-based) — the differentiated charge.
+    /// @param b Atom index B (0-based).
+    /// @return \f$\partial\Gamma_{AB}/\partial R\f$ [eV/(e·Å)].
+    double gamma_charge_distance_derivative(int a, int b) const;
+
+    /// @brief Radial derivative of the A–B pair contribution to
+    ///        \f$E^{(2)}+E^{(3)}\f$ at **fixed** Δq [eV/Å].
+    ///
+    /// Both ordered terms of the symmetric double sums in
+    /// @ref second_order_energy / @ref third_order_energy collapse onto the
+    /// unordered pair (A,B), A ≠ B:
+    ///
+    /// \f[ \frac{\partial}{\partial R_{AB}}\Big[
+    ///        \gamma_{AB}\Delta q_A\Delta q_B
+    ///      + \tfrac13\big(\Delta q_A^2\Delta q_B\Gamma_{AB}
+    ///                   + \Delta q_B^2\Delta q_A\Gamma_{BA}\big)\Big] \f]
+    ///
+    /// Dropping either Γ ordering breaks \f$F=-\nabla E\f$ by exactly the same
+    /// asymmetry that makes \f$V^{(3)}\f$ need two contractions. A == B
+    /// returns 0 (on-site terms carry no geometry).
+    /// @param a Atom index A (0-based).
+    /// @param b Atom index B (0-based).
+    /// @param dq Mulliken charge fluctuations Δq [e], size n.
+    /// @return \f$\partial(E^{(2)}+E^{(3)})_{AB}/\partial R\f$ [eV/Å].
+    double pair_energy_distance_derivative(int a, int b,
+                                           const std::vector<double>& dq) const;
+
     /// @brief Second-order SCC energy \f$E^{(2)}\f$ [eV].
     /// @param dq Mulliken charge fluctuations Δq [e], size n.
     /// @return \f$E^{(2)}\f$ [eV].

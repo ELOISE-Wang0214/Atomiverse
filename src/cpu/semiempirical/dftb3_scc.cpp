@@ -61,6 +61,47 @@ double Dftb3Scc::gamma_charge_derivative(int a, int b) const {
     return (tau / std::pow(den, 1.5)) * (0.5 / (u_[ia] * u_[ia])) * ud_[ia];
 }
 
+double Dftb3Scc::gamma_distance_derivative(int a, int b) const {
+    if (a == b)
+        return 0.0; // γ_AA = U_A carries no geometry
+    // ∂/∂R (R² + τ²)^{-1/2} = −R γ³.
+    const double g = gamma(a, b);
+    const std::size_t ia = static_cast<std::size_t>(a);
+    const std::size_t ib = static_cast<std::size_t>(b);
+    const double r = r_[ia * u_.size() + ib];
+    return -r * g * g * g;
+}
+
+double Dftb3Scc::gamma_charge_distance_derivative(int a, int b) const {
+    if (a == b)
+        return 0.0; // Γ_AA = U^d_A carries no geometry
+    // Γ_AB = τ (R²+τ²)^{-3/2} · ½/U_A² · U^d_A
+    //   ⇒ ∂Γ_AB/∂R = −3 R τ (R²+τ²)^{-5/2} · ½/U_A² · U^d_A.
+    const std::size_t ia = static_cast<std::size_t>(a);
+    const std::size_t ib = static_cast<std::size_t>(b);
+    const double tau = 0.5 * (1.0 / u_[ia] + 1.0 / u_[ib]);
+    const double r = r_[ia * u_.size() + ib];
+    const double den = r * r + tau * tau;
+    return -3.0 * r * tau / std::pow(den, 2.5) * (0.5 / (u_[ia] * u_[ia]))
+           * ud_[ia];
+}
+
+double
+Dftb3Scc::pair_energy_distance_derivative(int a, int b,
+                                          const std::vector<double>& dq) const {
+    require_size(dq);
+    if (a == b)
+        return 0.0;
+    const double dqa = dq[static_cast<std::size_t>(a)];
+    const double dqb = dq[static_cast<std::size_t>(b)];
+    // E²: the ordered double sum contributes ½·2 = 1 × γ_AB Δq_A Δq_B.
+    // E³: the two orderings are NOT the same term — Γ_AB ≠ Γ_BA.
+    return dqa * dqb * gamma_distance_derivative(a, b)
+           + (1.0 / 3.0)
+                 * (dqa * dqa * dqb * gamma_charge_distance_derivative(a, b)
+                    + dqb * dqb * dqa * gamma_charge_distance_derivative(b, a));
+}
+
 double Dftb3Scc::second_order_energy(const std::vector<double>& dq) const {
     require_size(dq);
     double e2 = 0;

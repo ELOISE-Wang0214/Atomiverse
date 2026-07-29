@@ -2,11 +2,15 @@
 /// SCC-DFTB3 multi-element (H/C/N/O) with static mio-style SK tables.
 /// H–H reads the shared transcribed mio-1-1 grid (`internal/mio_hh_table.h`),
 /// the same one DFTB0/DFTB2 read, so DFTB3 reduces to DFTB2 exactly when the
-/// charge fluctuations vanish.
+/// charge fluctuations vanish. Nuclear forces are the CLOSED-FORM gradient at
+/// the converged SCC density — Hellmann–Feynman + Pulay + the second- AND
+/// third-order charge-kernel radial derivatives + repulsive — sharing the SK
+/// block/derivative kernel (`internal/mio_sk_block.h`) with DFTB2.
 #include "atomiverse/cpu/semiempirical/dftb3.h"
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -17,6 +21,7 @@
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h"
 #include "atomiverse/cpu/semiempirical/internal/dftb3_scc.h"
 #include "atomiverse/cpu/semiempirical/internal/mio_hh_table.h"
+#include "atomiverse/cpu/semiempirical/internal/mio_sk_block.h"
 #include "atomiverse/cpu/semiempirical/internal/scc_mixer.h"
 
 namespace ATV {
@@ -58,14 +63,6 @@ const DftbPairRepRow& pair_rep(int za, int zb) {
                              + std::to_string(za) + "-" + std::to_string(zb));
 }
 
-double h_radial(double v0, double r, double r0, double d) {
-    return v0 * std::exp(-(r - r0) / d);
-}
-double s_radial(double s0, double r, double r0, double w) {
-    const double t = (r - r0) / w;
-    return s0 * std::exp(-0.5 * t * t);
-}
-
 /// H–H reaches as far as the transcribed mio grid; sketch pairs use r_cut [Å].
 double pair_rcut_A(const DftbElementRow& ea, const DftbElementRow& eb) {
     if (ea.z == 1 && eb.z == 1)
@@ -81,65 +78,12 @@ double pair_repulsive_eV(int za, int zb, double r_A) {
     return rep.a * std::exp(-rep.b * r_A);
 }
 
-void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
-                   const DftbPairSkRow& sk, double dx, double dy, double dz,
-                   double r, linalg::RealMatrix& H0, linalg::RealMatrix& S,
-                   int ia0, int ib0) {
-    if (r < 1e-12)
-        return;
-
-    auto set_hs = [&](int i, int j, double hv, double sv) {
-        H0(ia0 + i, ib0 + j) = hv;
-        H0(ib0 + j, ia0 + i) = hv;
-        S(ia0 + i, ib0 + j) = sv;
-        S(ib0 + j, ia0 + i) = sv;
-    };
-
-    // mio-1-1 H–H (s only): shared transcribed table, not the sketch radial.
-    if (ea.z == 1 && eb.z == 1) {
-        const internal::MioHHTable mio;
-        set_hs(0, 0, mio.hopping_ss(r), mio.overlap_ss(r));
-        (void)sk;
-        return;
-    }
-
-    const double inv_r = 1.0 / r;
-    const double l = dx * inv_r;
-    const double m = dy * inv_r;
-    const double n = dz * inv_r;
-
-    const double Hss = h_radial(sk.h_ss0, r, sk.h_r0, sk.h_d);
-    const double Hsp = h_radial(sk.h_sp0, r, sk.h_r0, sk.h_d);
-    const double Hpps = h_radial(sk.h_pps0, r, sk.h_r0, sk.h_d);
-    const double Hppp = h_radial(sk.h_ppp0, r, sk.h_r0, sk.h_d);
-    const double Sss = s_radial(sk.s_ss0, r, sk.s_r0, sk.s_w);
-    const double Ssp = s_radial(sk.s_sp0, r, sk.s_r0, sk.s_w);
-    const double Spps = s_radial(sk.s_pps0, r, sk.s_r0, sk.s_w);
-    const double Sppp = s_radial(sk.s_ppp0, r, sk.s_r0, sk.s_w);
-
-    set_hs(0, 0, Hss, Sss);
-
-    if (ea.n_ao >= 1 && eb.n_ao == 4) {
-        set_hs(0, 1, l * Hsp, l * Ssp);
-        set_hs(0, 2, m * Hsp, m * Ssp);
-        set_hs(0, 3, n * Hsp, n * Ssp);
-    }
-    if (ea.n_ao == 4 && eb.n_ao >= 1) {
-        set_hs(1, 0, -l * Hsp, -l * Ssp);
-        set_hs(2, 0, -m * Hsp, -m * Ssp);
-        set_hs(3, 0, -n * Hsp, -n * Ssp);
-    }
-    if (ea.n_ao == 4 && eb.n_ao == 4) {
-        const double dir[3] = {l, m, n};
-        for (int a = 0; a < 3; ++a) {
-            for (int b = 0; b < 3; ++b) {
-                const double d_ab = (a == b) ? 1.0 : 0.0;
-                const double hv = dir[a] * dir[b] * (Hpps - Hppp) + d_ab * Hppp;
-                const double sv = dir[a] * dir[b] * (Spps - Sppp) + d_ab * Sppp;
-                set_hs(1 + a, 1 + b, hv, sv);
-            }
-        }
-    }
+/// Radial derivative of @ref pair_repulsive_eV [eV/Å].
+double pair_repulsive_dE_dr(int za, int zb, double r_A) {
+    if (za == 1 && zb == 1)
+        return internal::MioHHTable{}.d_repulsive_dr(r_A);
+    const auto& rep = pair_rep(za, zb);
+    return -rep.a * rep.b * std::exp(-rep.b * r_A);
 }
 
 /// One converged DFTB3 solve at a frozen geometry.
@@ -151,13 +95,19 @@ struct SccSolution {
     double residual = 0;
     int iterations = 0;
     std::vector<double> dq;
+    /// Converged MO coefficients and eigenvalues [eV] of the SCC Hamiltonian —
+    /// the analytic gradient contracts exactly the solve that converged.
+    linalg::RealMatrix C;
+    linalg::RealVector eps;
+    int n_occ = 0;
+    /// The charge kernel of this geometry: γ, Γ and their radial derivatives.
+    std::optional<internal::Dftb3Scc> scc;
 
     /// @brief Total electronic + repulsive energy [eV].
     double energy() const { return e_h0 + e2 + e3 + e_rep; }
 };
 
-/// The one DFTB3 self-consistency loop — energy and its finite-difference
-/// gradient both go through here, so they cannot disagree on the functional.
+/// The one DFTB3 self-consistency loop.
 ///
 /// Charges are Anderson-mixed (`internal::ChargeMixer`): undamped Picard is a
 /// period-2 limit cycle for polar systems and never meets `scc_tol`. Not
@@ -205,10 +155,19 @@ SccSolution solve_scc(const cpu::Frame& f, const int* type,
                 r;
             if (r > pair_rcut_A(ea, eb))
                 continue;
-            fill_sk_block(ea, eb, pair_sk(type[a], type[b]), dx, dy, dz, r, H0,
-                          S, ia, ao0[static_cast<std::size_t>(b)]);
+            internal::MioSketchPair{ea, eb, pair_sk(type[a], type[b])}.add_block(
+                dx, dy, dz, r, H0, S, ia, ao0[static_cast<std::size_t>(b)]);
         }
     }
+    // The a<b walk writes only strictly-upper entries (ao0 is cumulative, so
+    // every (a,b) block has row < col) and the onsite pass writes only the
+    // diagonal — mirroring the strict upper triangle completes the symmetric
+    // H⁰/S without a second directed pass.
+    for (int mu = 0; mu < n_ao; ++mu)
+        for (int nu = mu + 1; nu < n_ao; ++nu) {
+            H0(nu, mu) = H0(mu, nu);
+            S(nu, mu) = S(mu, nu);
+        }
 
     std::vector<double> hubbard_u(n);
     std::vector<double> hubbard_du(n);
@@ -223,6 +182,8 @@ SccSolution solve_scc(const cpu::Frame& f, const int* type,
     std::vector<double> dq(n, 0.0);
     std::vector<double> dq_out(n, 0.0);
     linalg::RealMatrix P = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealMatrix C = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealVector eps = xt::zeros<double>({n_ao});
     SccSolution out;
     bool converged = false;
     // Retained iterates in the Anderson charge mixer (dimensionless).
@@ -249,7 +210,8 @@ SccSolution solve_scc(const cpu::Frame& f, const int* type,
         }
 
         auto sol = linalg::diagonalize_fock_generalized(H, S);
-        const auto& C = sol.second;
+        eps = sol.first;
+        C = sol.second;
 
         P = xt::zeros<double>({n_ao, n_ao});
         for (int o = 0; o < n_occ; ++o)
@@ -301,7 +263,115 @@ SccSolution solve_scc(const cpu::Frame& f, const int* type,
                 dist[static_cast<std::size_t>(a) * n
                      + static_cast<std::size_t>(b)]);
     out.dq = std::move(dq);
+    out.C = std::move(C);
+    out.eps = std::move(eps);
+    out.n_occ = n_occ;
+    out.scc = scc;
     return out;
+}
+
+/// Closed-form nuclear gradient at the converged SCC-DFTB3 density (fixed Δq).
+///
+/// `H = H⁰ + ½S(V_A+V_B)` with `V = ∂(E⁽²⁾+E⁽³⁾)/∂Δq` is exactly `∂E/∂P`
+/// (Mulliken `∂Δq_A/∂P_μν = ½S_μν(δ_{μ∈A}+δ_{ν∈A})`), so the converged density
+/// is stationary and the gradient is Hellmann–Feynman + Pulay with **no**
+/// coupled-perturbed charge response (Gaus, Cui, Elstner, JCTC 7, 931 (2011)):
+///
+///   ∂E/∂R = Σ P ∂H⁰/∂R + Σ P ½(V_A+V_B) ∂S/∂R − Σ W ∂S/∂R
+///           + ∂(E⁽²⁾+E⁽³⁾)/∂R|_Δq + ∂E_rep/∂R,   W_μν = Σ_o n_o ε_o C_μo C_νo
+///
+/// The walk mirrors `solve_scc` term by term: SK derivatives only inside
+/// `pair_rcut_A`, γ/Γ and repulsive over every pair (the energy sums those
+/// uncut). Every contribution is a pair force with F_b = −F_a, so ΣF = 0 to
+/// round-off by construction.
+void analytic_forces(int n_at, int n_ao,
+                     const std::vector<const DftbElementRow*>& el,
+                     const std::vector<int>& ao0, const int* type,
+                     const StorageReal* x, const StorageReal* y,
+                     const StorageReal* z, const cpu::Box& box,
+                     const SccSolution& sol, AccReal* fx, AccReal* fy,
+                     AccReal* fz) {
+    const internal::Dftb3Scc& scc = *sol.scc;
+    const std::vector<double> dV = scc.potential(sol.dq);
+
+    linalg::RealMatrix P = xt::zeros<double>({n_ao, n_ao});
+    linalg::RealMatrix W = xt::zeros<double>({n_ao, n_ao});
+    for (int o = 0; o < sol.n_occ; ++o)
+        for (int mu = 0; mu < n_ao; ++mu)
+            for (int nu = 0; nu < n_ao; ++nu) {
+                P(mu, nu) += 2.0 * sol.C(mu, o) * sol.C(nu, o);
+                W(mu, nu) += 2.0 * sol.eps(o) * sol.C(mu, o) * sol.C(nu, o);
+            }
+
+    linalg::RealMatrix dH0[3] = {xt::zeros<double>({n_ao, n_ao}),
+                                 xt::zeros<double>({n_ao, n_ao}),
+                                 xt::zeros<double>({n_ao, n_ao})};
+    linalg::RealMatrix dS[3] = {xt::zeros<double>({n_ao, n_ao}),
+                                xt::zeros<double>({n_ao, n_ao}),
+                                xt::zeros<double>({n_ao, n_ao})};
+
+    for (int a = 0; a < n_at; ++a) {
+        const auto& ea = *el[static_cast<std::size_t>(a)];
+        const int ia = ao0[static_cast<std::size_t>(a)];
+        const int na = ea.n_ao;
+        for (int b = a + 1; b < n_at; ++b) {
+            const auto& eb = *el[static_cast<std::size_t>(b)];
+            const int ib = ao0[static_cast<std::size_t>(b)];
+            const int nb = eb.n_ao;
+
+            double dx = static_cast<double>(x[b] - x[a]);
+            double dy = static_cast<double>(y[b] - y[a]);
+            double dz = static_cast<double>(z[b] - z[a]);
+            box.min_image(dx, dy, dz);
+            const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+            if (r < 1e-12)
+                continue;
+            const double dir[3] = {dx / r, dy / r, dz / r};
+
+            // Force on atom a from this pair; F_b = −F_a.
+            double F_a[3] = {0, 0, 0};
+
+            if (r <= pair_rcut_A(ea, eb)) {
+                for (int k = 0; k < 3; ++k) {
+                    dH0[k] = xt::zeros<double>({n_ao, n_ao});
+                    dS[k] = xt::zeros<double>({n_ao, n_ao});
+                }
+                internal::MioSketchPair{ea, eb, pair_sk(type[a], type[b])}
+                    .set_block_derivative(dx, dy, dz, r, dH0, dS, ia, ib);
+                const double shift = 0.5
+                                     * (dV[static_cast<std::size_t>(a)]
+                                        + dV[static_cast<std::size_t>(b)]);
+                for (int k = 0; k < 3; ++k) {
+                    double acc = 0;
+                    for (int i = 0; i < na; ++i)
+                        for (int j = 0; j < nb; ++j) {
+                            const double p = P(ia + i, ib + j);
+                            const double w = W(ia + i, ib + j);
+                            const double dh = dH0[k](ia + i, ib + j);
+                            const double ds = dS[k](ia + i, ib + j);
+                            acc += p * (dh + shift * ds) - w * ds;
+                        }
+                    // ×2: the symmetric (b,a) block contributes the same.
+                    F_a[k] += 2.0 * acc;
+                }
+            }
+
+            // Fixed-Δq second- + third-order charge kernel, then repulsive.
+            // ∂r/∂R_a = −r̂ ⇒ F_a = −∂E/∂R_a = +(∂E/∂r) r̂.
+            const double dE_dr =
+                scc.pair_energy_distance_derivative(a, b, sol.dq)
+                + pair_repulsive_dE_dr(type[a], type[b], r);
+            for (int k = 0; k < 3; ++k)
+                F_a[k] += dE_dr * dir[k];
+
+            fx[a] += static_cast<AccReal>(F_a[0]);
+            fy[a] += static_cast<AccReal>(F_a[1]);
+            fz[a] += static_cast<AccReal>(F_a[2]);
+            fx[b] -= static_cast<AccReal>(F_a[0]);
+            fy[b] -= static_cast<AccReal>(F_a[1]);
+            fz[b] -= static_cast<AccReal>(F_a[2]);
+        }
+    }
 }
 
 } // namespace
@@ -317,9 +387,11 @@ void DFTB3::launch(const LaunchContext& ctx) {
         throw std::invalid_argument("DFTB3: mix_beta must be in (0, 1]");
 
     const auto type = f.span(kAtom_type);
-    StorageReal* x = f.span(kAtom_x);
-    StorageReal* y = f.span(kAtom_y);
-    StorageReal* z = f.span(kAtom_z);
+    // Read-only: the closed-form gradient never displaces the geometry (the
+    // deleted FD path did, 6N times per force evaluation).
+    const StorageReal* x = f.span(kAtom_x);
+    const StorageReal* y = f.span(kAtom_y);
+    const StorageReal* z = f.span(kAtom_z);
     AccReal* fx = f.span(kAtom_fx);
     AccReal* fy = f.span(kAtom_fy);
     AccReal* fz = f.span(kAtom_fz);
@@ -357,33 +429,9 @@ void DFTB3::launch(const LaunchContext& ctx) {
     energy_ = sol.energy();
     energy_meta += energy_;
 
-    if (with_forces) {
-        constexpr double h_fd = 1.0e-4; // Å
-        for (int a = 0; a < n_at; ++a) {
-            for (int k = 0; k < 3; ++k) {
-                StorageReal* col = (k == 0) ? x : (k == 1) ? y : z;
-                const StorageReal saved = col[a];
-                col[a] = saved + static_cast<StorageReal>(h_fd);
-                const double ep =
-                    solve_scc(f, type.data(), x, y, z, el, ao0, n_at, n_ao,
-                              n_occ, scc_tol, max_scc, mix_beta)
-                        .energy();
-                col[a] = saved - static_cast<StorageReal>(h_fd);
-                const double em =
-                    solve_scc(f, type.data(), x, y, z, el, ao0, n_at, n_ao,
-                              n_occ, scc_tol, max_scc, mix_beta)
-                        .energy();
-                col[a] = saved;
-                const double fi = -(ep - em) / (2.0 * h_fd);
-                if (k == 0)
-                    fx[a] += static_cast<AccReal>(fi);
-                else if (k == 1)
-                    fy[a] += static_cast<AccReal>(fi);
-                else
-                    fz[a] += static_cast<AccReal>(fi);
-            }
-        }
-    }
+    if (with_forces)
+        analytic_forces(n_at, n_ao, el, ao0, type.data(), x, y, z, f.box, sol,
+                        fx, fy, fz);
 }
 
 } // namespace semiempirical

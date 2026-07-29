@@ -113,6 +113,63 @@ TEST(Dftb3Scc, VanishingChargeFluctuationGivesZeroEnergyAndPotential) {
         EXPECT_DOUBLE_EQ(vi, 0.0);
 }
 
+TEST(Dftb3Scc, GammaDistanceDerivativeMatchesFiniteDifference) {
+    // ∂γ_AB/∂R feeds the second-order term of the analytic nuclear gradient.
+    constexpr double h = 1e-6; // Å
+    const double r0 = 1.3;
+    auto kernel_at = [](double r) {
+        return Dftb3Scc({13.4, 10.591}, {-3.81, -1.36}, {0.0, r, r, 0.0});
+    };
+    const double num =
+        (kernel_at(r0 + h).gamma(0, 1) - kernel_at(r0 - h).gamma(0, 1))
+        / (2.0 * h);
+    EXPECT_NEAR(kernel_at(r0).gamma_distance_derivative(0, 1), num, 1e-9);
+    // γ_AA = U_A is geometry-independent.
+    EXPECT_DOUBLE_EQ(kernel_at(r0).gamma_distance_derivative(0, 0), 0.0);
+}
+
+TEST(Dftb3Scc, GammaChargeDistanceDerivativeMatchesFiniteDifference) {
+    // ∂Γ_AB/∂R is the term the third-order gradient adds over DFTB2, and Γ is
+    // NOT symmetric — both orderings are checked.
+    constexpr double h = 1e-6; // Å
+    const double r0 = 1.3;
+    auto kernel_at = [](double r) {
+        return Dftb3Scc({13.4, 10.591}, {-3.81, -1.36}, {0.0, r, r, 0.0});
+    };
+    for (int a = 0; a < 2; ++a) {
+        const int b = 1 - a;
+        const double num = (kernel_at(r0 + h).gamma_charge_derivative(a, b)
+                            - kernel_at(r0 - h).gamma_charge_derivative(a, b))
+                           / (2.0 * h);
+        EXPECT_NEAR(kernel_at(r0).gamma_charge_distance_derivative(a, b), num,
+                    1e-9)
+            << "ordering " << a << b;
+    }
+    // Γ_AA = U^d_A is geometry-independent.
+    EXPECT_DOUBLE_EQ(kernel_at(r0).gamma_charge_distance_derivative(1, 1), 0.0);
+}
+
+TEST(Dftb3Scc, PairEnergyDistanceDerivativeMatchesFiniteDifference) {
+    // For a diatomic the ONLY geometry parameter is R_01, so d(E²+E³)/dR is
+    // exactly the pair term the nuclear gradient contracts. Dropping either Γ
+    // ordering (Γ_01 vs Γ_10) shows up here as a finite offset.
+    constexpr double h = 1e-6; // Å
+    const double r0 = 1.3;
+    const std::vector<double> dq = {-0.35, 0.35};
+    auto kernel_at = [](double r) {
+        return Dftb3Scc({13.4, 10.591}, {-3.81, -1.36}, {0.0, r, r, 0.0});
+    };
+    auto energy_at = [&](double r) {
+        const Dftb3Scc k = kernel_at(r);
+        return k.second_order_energy(dq) + k.third_order_energy(dq);
+    };
+    const double num = (energy_at(r0 + h) - energy_at(r0 - h)) / (2.0 * h);
+    EXPECT_NEAR(kernel_at(r0).pair_energy_distance_derivative(0, 1, dq), num,
+                1e-9);
+    EXPECT_DOUBLE_EQ(kernel_at(r0).pair_energy_distance_derivative(0, 0, dq),
+                     0.0);
+}
+
 TEST(Dftb3Scc, RejectsMismatchedInputSizes) {
     EXPECT_THROW(Dftb3Scc({10.0, 10.0}, {-1.0}, std::vector<double>(4, 0.0)),
                  std::invalid_argument);
