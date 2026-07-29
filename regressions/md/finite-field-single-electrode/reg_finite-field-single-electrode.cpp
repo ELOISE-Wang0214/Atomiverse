@@ -1,8 +1,19 @@
 /// @file regressions/md/finite-field-single-electrode/reg_finite-field-single-electrode.cpp
-/// @brief E2E: Dufils-style finite-field + single electrode (3D) foothold.
+/// @brief E2E: finite-field term on the constant-potential BO right-hand side,
+///        probed on ONE **isolated** Gaussian electrode site.
 ///
 /// Offline pin: analytic Reed Gaussian BO + external-field term
 /// (see REFERENCE.md). Public headers + link atomiverse only.
+///
+/// Scope, verified against MetalWalls c8ad175d (2026-07-29): the RHS
+/// convention (Φ_ext = −E·r), F = qE, and P = Σ q r / V are MetalWalls'
+/// own formulas. The *number* below is not a MetalWalls-reproducible
+/// observable — MW refuses `external_field` with `charge_neutrality false`
+/// (configuration.F90:624-630) because a free-Q single-site solve in 3D PBC
+/// depends on the Ewald split and on the choice of origin. `xy_image_range`
+/// is 0 here: this is the ISOLATED Gaussian self-capacitance, not a periodic
+/// elastance. See REFERENCE.md for the MW cross-check and the 2.5 % gap it
+/// exposes on the nearest MW-legal (neutral, two-site) system.
 
 #include <cmath>
 #include <cstdio>
