@@ -372,7 +372,7 @@ Staff these before NDDO product depth and before GFN-xTB.
 after harness wave 3 — staff Phase A deepens next.
 
 - [ ] `dftb3-analytic-forces` | Analytic DFTB3 nuclear forces (replace re-SCC central FD) | dftb3 | H2O off-eq | F | **oracle=dftb+**; energy foothold `dftb3-water-mio` **landed**
-- [ ] `dftb2-multi-k-forces` | Analytic multi-k nuclear forces (+ stress) after Monkhorst–Pack energy foothold | dftb2 | C-chain / small crystal | F / stress | **oracle=dftb+**; today multi-k throws on `with_forces`/`with_stress`; restricted Mio first
+- [x] `dftb2-multi-k-forces` | Analytic multi-k nuclear forces **and** cell stress (Bloch-sum P̃/W̃ gradient, restricted Mio) | `reg_dftb2-multi-k-forces` | **oracle=dftb+** (formula-level; force + strain FD identity ≤1e-6). Also fixed the Γ pair virial, which dropped the self-image A–(A+T) terms (14% σ_xx error on a periodic cell) — `dftb2-analytic-stress` Gap 2 closed
 - [ ] `dftb2-dispersion-d3-periodic` | Periodic lattice-sum D3(BJ) for Γ-PBC cells (`d3_periodic`) | dftb2 | small ortho cell | E_disp / F | **oracle=dftb+|literature** (s-dftd3); molecular `d3` already lands — not a second molecular pin
 - [ ] `dftb2-analytic-stress-threeob` | Closed-form cell stress on `DftbSkSet::ThreeOb` (replace multi-SCC strain-FD) | dftb2 | CH4 / organic | stress [eV/Å³] | **oracle=dftb+** (formula); F closed-form already lands
 - [ ] `dftb2-spin-analytic-stress` | Collinear open-shell analytic cell stress (MioSketch) | dftb2 | O2 / open shell | stress | **oracle=dftb+** (formula); open-shell F already lands

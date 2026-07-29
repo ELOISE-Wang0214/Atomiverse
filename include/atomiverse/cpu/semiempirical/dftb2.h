@@ -41,8 +41,14 @@ enum class DftbSkSet {
 ///   `k_mesh = {n1,n2,n3}` (Monkhorst–Pack, CP2K/DFTB+ convention) for
 ///   Bloch-phased complex \(H^0(\mathbf{k})\), \(S(\mathbf{k})\), and
 ///   k-weighted SCC energy (`reg_dftb2-kpoints`). Default `{1,1,1}` keeps the
-///   real Γ solver (pin-safe). Multi-k is **energy-only** (restricted
-///   MioSketch); `with_forces` / `with_stress` / open shell / ThreeOb throw.
+///   real Γ solver (pin-safe). Multi-k also carries **analytic nuclear forces
+///   and cell stress** (restricted MioSketch): the Bloch-sum gradient contracts
+///   the image-resolved densities
+///   \(\tilde P(\mathbf T)=\sum_k w_k\,\mathrm{Re}[P(k)e^{-2\pi i\kappa\cdot n}]\)
+///   (and the energy-weighted \(\tilde W\)) with the same lattice-image walk
+///   the energy used, so \(F=-\nabla E\) of the sampled functional and
+///   \(\sigma\) is its pair virial (`reg_dftb2-multi-k-forces`). Multi-k open
+///   shell and ThreeOb still throw with a message naming the missing piece.
 ///   **Analytic** nuclear forces for closed shell **and** collinear open shell
 ///   (HF + Pulay + SCC γ + repulsive; spin shifts on ∂S) use the **same
 ///   lattice-image walk** as the energy — not min-image only — so
@@ -73,14 +79,23 @@ enum class DftbSkSet {
 /// `(xx,yy,zz,xy,xz,yz)` with mechanical convention
 /// \(\sigma=-(1/\Omega)\partial E/\partial\varepsilon\).
 ///
+/// Molecule, open shell, dispersion, forces + stress:
 /// @code
 ///   cpu::semiempirical::DFTB2 dftb;
-///   dftb.sk_set = cpu::semiempirical::DftbSkSet::ThreeOb;
 ///   dftb.multiplicity = 3;   // O2 triplet (MioSketch)
 ///   dftb.d3 = true;
 ///   dftb.with_forces = true;
 ///   dftb.with_stress = true;
-///   dftb.k_mesh = {4, 1, 1};   // multi-k energy (forces off)
+///   eval.on(evaluate::Phase::evaluate).add(std::move(dftb));
+/// @endcode
+///
+/// Periodic cell sampled beyond Γ — energy + analytic forces + analytic stress
+/// (open shell throws, `ThreeOb` throws):
+/// @code
+///   cpu::semiempirical::DFTB2 dftb;
+///   dftb.k_mesh = {4, 1, 1};
+///   dftb.with_forces = true;
+///   dftb.with_stress = true;
 ///   eval.on(evaluate::Phase::evaluate).add(std::move(dftb));
 /// @endcode
 class DFTB2 : public cpu::Semiempirical {
@@ -106,7 +121,12 @@ class DFTB2 : public cpu::Semiempirical {
     /// terms. Open-shell / ThreeOb: multi-SCC affine strain-FD of total E.
     /// **Excludes the `d3` dispersion term on both paths** — see
     /// `regressions/semiempirical/dftb2-analytic-stress/REFERENCE.md` Gaps.
-    /// Multi-k (`any k_mesh[d] > 1`) does not support stress.
+    /// Multi-k restricted MioSketch has its own closed-form Bloch pair virial.
+    ///
+    /// Both closed-form virials walk the **self-image** A–(A+T) bonds as well
+    /// as A–B: those carry no nuclear force (the bond is T, independent of
+    /// every nuclear coordinate) but do scale with the cell, so dropping them
+    /// is a silent error for any cell whose own images sit inside `r_cut`.
     bool with_stress = false;
     /// @brief Static SK parameter set (member — not a Config bag).
     DftbSkSet sk_set = DftbSkSet::MioSketch;
@@ -129,10 +149,16 @@ class DFTB2 : public cpu::Semiempirical {
     ///
     /// CP2K/DFTB+ convention: \(\kappa_d = (2r - N_d - 1)/(2 N_d)\),
     /// \(r = 1..N_d\). Any \(N_d < 1\) throws. Multi-k requires restricted
-    /// MioSketch and energy-only (`with_forces`/`with_stress` false).
+    /// MioSketch; it delivers energy, analytic nuclear forces, and the
+    /// analytic cell stress. Open shell / `ThreeOb` throw.
     std::array<int, 3> k_mesh{{1, 1, 1}};
     /// @brief Fold \(\pm\mathbf{k}\) pairs (double weight). Default true.
     ///        Exact for real-Hamiltonian closed-shell densities.
+    ///
+    /// Energy and forces are invariant under this flag: the folded entry
+    /// stands for its own conjugate partner (\(P(-k)=\overline{P(k)}\)).
+    /// Setting it false costs the full mesh and additionally arms the
+    /// imaginary-residue check inside the multi-k gradient.
     bool k_time_reversal = true;
 
     DFTB2() = default;

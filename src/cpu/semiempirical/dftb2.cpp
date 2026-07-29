@@ -3,7 +3,9 @@
 /// Closed-shell analytic nuclear forces on BOTH SK sets; MioSketch adds the
 /// collinear open-shell gradient and the closed-form pair-virial cell stress.
 /// Γ-point PBC (MioSketch): lattice-summed H0/S, screened γ, and repulsive.
-/// Multi-k (MioSketch restricted): Bloch-phased complex H0(k)/S(k), MP mesh.
+/// Multi-k (MioSketch restricted): Bloch-phased complex H0(k)/S(k) on an MP
+/// mesh, plus the Bloch-sum analytic gradient and pair virial (real
+/// image-resolved P̃/W̃ from P(k)/W(k)).
 /// Optional additive Grimme D3(BJ) dispersion (molecular sum, analytic forces).
 #include "atomiverse/cpu/semiempirical/dftb2.h"
 
@@ -357,6 +359,15 @@ void fill_sk_block_deriv(const DftbElementRow& ea, const DftbElementRow& eb,
     }
 }
 
+using Cplx = std::complex<double>;
+using CplxMatrix = linalg::CplxMatrix;
+
+/// One Monkhorst–Pack sampling point: fractional κ (dimensionless) + weight.
+struct KPoint {
+    double frac[3] = {0, 0, 0};
+    double weight = 1.0;
+};
+
 struct Occupancy {
     int n_alpha = 0;
     int n_beta = 0;
@@ -400,6 +411,11 @@ struct SccResult {
     int n_alpha = 0;
     int n_beta = 0;
     bool unrestricted = false;
+    // Multi-k restricted path: converged Bloch densities for the analytic
+    // gradient. P(k) = 2 Σ_o C_·o C†_o·, W(k) = 2 Σ_o ε_o C_·o C†_o· .
+    std::vector<KPoint> kpts;
+    std::vector<CplxMatrix> Pk;
+    std::vector<CplxMatrix> Wk;
 };
 
 /// Build lattice-summed H0/S at the Γ-point (molecular limit when L ≫ r_cut).
@@ -632,14 +648,6 @@ SccResult scc_energy_restricted(
 }
 
 // ── Multi-k (Bloch) restricted SCC ──────────────────────────────────────
-
-using Cplx = std::complex<double>;
-using CplxMatrix = linalg::CplxMatrix;
-
-struct KPoint {
-    double frac[3] = {0, 0, 0};
-    double weight = 1.0;
-};
 
 /// CP2K / DFTB+ Monkhorst–Pack: κ_d = (2r − N − 1)/(2N), r = 1..N.
 std::vector<KPoint> monkhorst_pack_mesh(const int mesh[3], bool time_reversal) {
@@ -943,8 +951,10 @@ SccResult scc_energy_restricted_kmesh(
     bool converged = false;
     internal::ChargeMixer mixer(mix_beta, kSccMixDepth);
 
-    // Last-iterate densities for the energy assembly after SCC.
+    // Last-iterate densities for the energy assembly after SCC; Wk is the
+    // energy-weighted twin the Pulay (−∂S) force term contracts against.
     std::vector<CplxMatrix> Pk(nk);
+    std::vector<CplxMatrix> Wk(nk);
 
     for (int it = 0; it < max_scc; ++it) {
         iterations = it + 1;
@@ -1021,14 +1031,21 @@ SccResult scc_energy_restricted_kmesh(
             CplxMatrix Hk;
             apply_shift_k(n_at, el, ao0, H0k[ik], Sk[ik], dV, Hk);
             auto sol = diagonalize_fock_generalized_k(Hk, Sk[ik]);
+            const std::vector<double>& eps_k = sol.first;
             const CplxMatrix& C = sol.second;
             CplxMatrix P = xt::zeros<Cplx>({n_ao, n_ao});
-            for (int o = 0; o < n_occ; ++o)
+            CplxMatrix W = xt::zeros<Cplx>({n_ao, n_ao});
+            for (int o = 0; o < n_occ; ++o) {
+                const double e_o = eps_k[static_cast<std::size_t>(o)];
                 for (int mu = 0; mu < n_ao; ++mu)
-                    for (int nu = 0; nu < n_ao; ++nu)
-                        P(mu, nu) +=
-                            2.0 * C(mu, o) * std::conj(C(nu, o));
+                    for (int nu = 0; nu < n_ao; ++nu) {
+                        const Cplx cc = C(mu, o) * std::conj(C(nu, o));
+                        P(mu, nu) += 2.0 * cc;
+                        W(mu, nu) += 2.0 * e_o * cc;
+                    }
+            }
             Pk[ik] = std::move(P);
+            Wk[ik] = std::move(W);
         }
     }
 
@@ -1052,7 +1069,11 @@ SccResult scc_energy_restricted_kmesh(
     out.dq = std::move(dq);
     out.spin.assign(static_cast<std::size_t>(n_at), 0.0);
     out.n_occ = n_occ;
-    // No real Γ orbitals for multi-k analytic forces (forces unsupported).
+    // No real Γ orbitals here — the multi-k analytic gradient consumes the
+    // Bloch pair (P(k), W(k)) below instead.
+    out.kpts = kpts;
+    out.Pk = std::move(Pk);
+    out.Wk = std::move(Wk);
     return out;
 }
 
@@ -1360,7 +1381,10 @@ void analytic_forces_unrestricted(
 /// Voigt (xx,yy,zz,xy,xz,yz) via pair virial of the same bond terms.
 ///
 /// **Γ-PBC:** walks the same lattice images as `build_h0_s` / `gamma_pair` /
-/// `repulsive_energy` (not min-image only). Self-images contribute zero F.
+/// `repulsive_energy` (not min-image only). Self-images (A, A+T) contribute
+/// zero F — the bond is T, independent of every nuclear coordinate — but a
+/// nonzero **virial**, because |T| scales with the cell; they are walked
+/// separately at the end for `stress_voigt` only.
 void analytic_forces_restricted(
     int n_at, int n_ao, int n_occ, const std::vector<const DftbElementRow*>& el,
     const std::vector<int>& ao0, const int* type, const StorageReal* x,
@@ -1483,6 +1507,65 @@ void analytic_forces_restricted(
         }
     }
 
+    // Self-images (A, A+T): the bond is T alone, independent of every nuclear
+    // coordinate, so they carry **no force** — but |T| scales with the cell, so
+    // the virial must carry them. Omitting them is invisible for a molecule in
+    // a large box (every image is beyond r_cut) and wrong for any cell whose
+    // own images sit inside it.
+    if (stress_voigt) {
+        for (int a = 0; a < n_at; ++a) {
+            const auto& ea = *el[static_cast<std::size_t>(a)];
+            const int ia = ao0[static_cast<std::size_t>(a)];
+            const int na = ea.n_ao;
+            const double rcut = pair_rcut_A(ea, ea, type[a], type[a]);
+            const auto& sk = pair_sk(type[a], type[a]);
+            const double dqa = dq[static_cast<std::size_t>(a)];
+            // ½(V_A + V_A) — the same Mulliken split as the a<b blocks.
+            const double shift = dV[static_cast<std::size_t>(a)];
+            for (const auto& T : images) {
+                const double r =
+                    std::sqrt(T.tx * T.tx + T.ty * T.ty + T.tz * T.tz);
+                if (r < 1e-12 || r > rcut)
+                    continue;
+                const double dir[3] = {T.tx / r, T.ty / r, T.tz / r};
+                for (int k = 0; k < 3; ++k) {
+                    dH0[k] = xt::zeros<double>({n_ao, n_ao});
+                    dS[k] = xt::zeros<double>({n_ao, n_ao});
+                }
+                fill_sk_block_deriv(ea, ea, sk, T.tx, T.ty, T.tz, r, dH0, dS,
+                                    ia, ia);
+                // Factor 1: the image walk already visits both T and −T, and
+                // the (a,a) block is contracted whole, not upper-triangle only.
+                // γ_AA and E_rep are each half-weighted per ordered image.
+                double dE_dT[3] = {0, 0, 0};
+                for (int k = 0; k < 3; ++k) {
+                    double acc = 0;
+                    for (int i = 0; i < na; ++i)
+                        for (int j = 0; j < na; ++j) {
+                            const double ds = dS[k](ia + i, ia + j);
+                            acc += P(ia + i, ia + j)
+                                       * (dH0[k](ia + i, ia + j) + shift * ds)
+                                   - W(ia + i, ia + j) * ds;
+                        }
+                    dE_dT[k] = acc;
+                }
+                const double half_pair =
+                    0.5 * dqa * dqa * dgamma_dr(r, ea.hubbard_u, ea.hubbard_u)
+                    + 0.5 * pair_repulsive_dE_dr(type[a], type[a], r);
+                for (int k = 0; k < 3; ++k)
+                    dE_dT[k] += half_pair * dir[k];
+
+                const double R[3] = {T.tx, T.ty, T.tz};
+                dE_de[0] += dE_dT[0] * R[0];
+                dE_de[1] += dE_dT[1] * R[1];
+                dE_de[2] += dE_dT[2] * R[2];
+                dE_de[3] += dE_dT[0] * R[1] + dE_dT[1] * R[0]; // xy
+                dE_de[4] += dE_dT[0] * R[2] + dE_dT[2] * R[0]; // xz
+                dE_de[5] += dE_dT[1] * R[2] + dE_dT[2] * R[1]; // yz
+            }
+        }
+    }
+
     if (stress_voigt) {
         const double vol = box.volume();
         if (vol <= 0.0)
@@ -1490,6 +1573,280 @@ void analytic_forces_restricted(
         for (int v = 0; v < 6; ++v)
             stress_voigt[v] = -dE_de[v] / vol;
     }
+}
+
+/// Closed-form nuclear gradient for **restricted multi-k** SCC-DFTB2 at fixed
+/// Δq and fixed Bloch densities. F = −∇E [eV/Å].
+///
+/// Elstner et al., Phys. Rev. B **58**, 7260 (1998) Eq. (15) carried to k ≠ Γ
+/// (DFTB+ periodic force module, Hourahine et al., J. Chem. Phys. **152**,
+/// 124101 (2020)). Substituting the Bloch sum
+/// H⁰(k)_{μa,νb} = Σ_T e^{2πi κ·n_T} h_{μν}(R_b + T − R_a) into
+/// E_band = Σ_k w_k Re Tr[P(k)H⁰(k)] and using P(k)† = P(k) collapses the band
+/// energy onto **real** image-resolved blocks
+///
+///   P̃_ij(a,b,T) = Σ_k w_k Re[ P(k)_{i_a,j_b} e^{−2πi κ·n_T} ]
+///
+/// (and W̃ from W(k)), so each (a<b, T) pair contributes the *same* pair form
+/// as the Γ path with 2P → P̃ and 2W → W̃. At Γ (one k, w = 1, κ = 0) this is
+/// an identity, not an approximation.
+///
+/// **Reality of the k-sum.** P(−k) = conj P(k) for a real real-space
+/// Hamiltonian and e^{−iθ(−k)} = conj e^{−iθ(k)}, so a ±k pair contributes
+/// w·Re(·) exactly. With `time_reversal` folding, each non-self-paired entry
+/// already stands for its conjugate partner — nothing is left to cancel. The
+/// two cases where the imaginary part must vanish on its own are checked and
+/// throw: an unfolded (full) mesh, and self-paired k (κ_d ∈ {0, ±½}).
+///
+/// Self-images (a = a + T, T ≠ 0) have bond T, independent of every nuclear
+/// coordinate, hence zero force — but |T| scales with the cell, so they are
+/// walked separately for the virial.
+///
+/// The k-mesh is defined in **fractional** coordinates, so an affine strain
+/// leaves every κ (and every Bloch phase) untouched and enters only through
+/// the image bonds: σ = −(1/Ω) Σ (∂E/∂d_α) d_β over the same terms.
+///
+/// @param dq            Converged k-integrated Mulliken Δq_A [e].
+/// @param kpts          Monkhorst–Pack points + weights (weights sum to 1).
+/// @param Pk            P(k) per k-point (AO×AO, Hermitian) [e].
+/// @param Wk            W(k) = 2Σ_o ε_o C C† per k-point [eV].
+/// @param time_reversal True when `kpts` is the ±k-folded mesh.
+/// @param fx,fy,fz      Per-atom force accumulators [eV/Å]; F is **added**.
+/// @param want_forces   Skip the force write (stress-only callers).
+/// @param stress_voigt  Nullable 6-vector; intensive σ [eV/Å³] Voigt
+///                      (xx,yy,zz,xy,xz,yz), **assigned** not accumulated.
+void analytic_forces_restricted_kmesh(
+    int n_at, int n_ao, const std::vector<const DftbElementRow*>& el,
+    const std::vector<int>& ao0, const int* type, const StorageReal* x,
+    const StorageReal* y, const StorageReal* z, const cpu::Box& box,
+    const std::vector<double>& dq, const std::vector<KPoint>& kpts,
+    const std::vector<CplxMatrix>& Pk, const std::vector<CplxMatrix>& Wk,
+    bool time_reversal, AccReal* fx, AccReal* fy, AccReal* fz,
+    bool want_forces, double* stress_voigt /* nullable, length 6 */) {
+    const std::size_t nk = kpts.size();
+    if (nk == 0 || Pk.size() != nk || Wk.size() != nk)
+        throw std::runtime_error(
+            "DFTB2 multi-k: missing converged Bloch densities for the gradient");
+
+    // ε_A = Σ_B γ_AB Δq_B — k-independent (real-space lattice-summed γ).
+    std::vector<double> dV(static_cast<std::size_t>(n_at), 0.0);
+    for (int a = 0; a < n_at; ++a) {
+        double shift = 0;
+        for (int b = 0; b < n_at; ++b)
+            shift += gamma_pair(a, b, el, x, y, z, box)
+                     * dq[static_cast<std::size_t>(b)];
+        dV[static_cast<std::size_t>(a)] = shift;
+    }
+
+    // κ ≡ −κ (mod 1) ⇔ every 2κ_d is an integer: those points have no
+    // time-reversal partner, so their own imaginary part must vanish.
+    std::vector<char> self_paired(nk, 0);
+    for (std::size_t ik = 0; ik < nk; ++ik) {
+        bool sp = true;
+        for (int d = 0; d < 3; ++d) {
+            const double two_k = 2.0 * kpts[ik].frac[d];
+            sp = sp && std::abs(two_k - std::nearbyint(two_k)) < 1e-12;
+        }
+        self_paired[ik] = sp ? 1 : 0;
+    }
+
+    linalg::RealMatrix dH0[3] = {xt::zeros<double>({n_ao, n_ao}),
+                                 xt::zeros<double>({n_ao, n_ao}),
+                                 xt::zeros<double>({n_ao, n_ao})};
+    linalg::RealMatrix dS[3] = {xt::zeros<double>({n_ao, n_ao}),
+                                xt::zeros<double>({n_ao, n_ao}),
+                                xt::zeros<double>({n_ao, n_ao})};
+
+    const auto images = lattice_images_for(box, el);
+    std::vector<Cplx> conj_phase(nk);
+    double max_imag = 0;
+    // ∂E/∂ε before the −1/Ω, in Voigt order.
+    double dE_de[6] = {0, 0, 0, 0, 0, 0};
+
+    for (int a = 0; a < n_at; ++a) {
+        const auto& ea = *el[static_cast<std::size_t>(a)];
+        const int ia = ao0[static_cast<std::size_t>(a)];
+        const double xa = static_cast<double>(x[a]);
+        const double ya = static_cast<double>(y[a]);
+        const double za = static_cast<double>(z[a]);
+        for (int b = a + 1; b < n_at; ++b) {
+            const auto& eb = *el[static_cast<std::size_t>(b)];
+            const int ib = ao0[static_cast<std::size_t>(b)];
+            const double xb = static_cast<double>(x[b]);
+            const double yb = static_cast<double>(y[b]);
+            const double zb = static_cast<double>(z[b]);
+            const double rcut = pair_rcut_A(ea, eb, type[a], type[b]);
+            const auto& sk = pair_sk(type[a], type[b]);
+            const double dqa = dq[static_cast<std::size_t>(a)];
+            const double dqb = dq[static_cast<std::size_t>(b)];
+            const double shift = 0.5 * (dV[static_cast<std::size_t>(a)]
+                                        + dV[static_cast<std::size_t>(b)]);
+            const int na = ea.n_ao;
+            const int nb = eb.n_ao;
+
+            for (const auto& T : images) {
+                const double dx = xb + T.tx - xa;
+                const double dy = yb + T.ty - ya;
+                const double dz = zb + T.tz - za;
+                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (r < 1e-12 || r > rcut)
+                    continue;
+                const double dir[3] = {dx / r, dy / r, dz / r};
+                double F_a[3] = {0, 0, 0};
+
+                for (std::size_t ik = 0; ik < nk; ++ik)
+                    conj_phase[ik] = std::conj(
+                        bloch_phase(kpts[ik].frac, T.n0, T.n1, T.n2));
+
+                for (int k = 0; k < 3; ++k) {
+                    dH0[k] = xt::zeros<double>({n_ao, n_ao});
+                    dS[k] = xt::zeros<double>({n_ao, n_ao});
+                }
+                fill_sk_block_deriv(ea, eb, sk, dx, dy, dz, r, dH0, dS, ia, ib);
+
+                double acc[3] = {0, 0, 0};
+                for (int i = 0; i < na; ++i) {
+                    for (int j = 0; j < nb; ++j) {
+                        double p_re = 0, w_re = 0, p_im = 0, w_im = 0;
+                        for (std::size_t ik = 0; ik < nk; ++ik) {
+                            const double wk = kpts[ik].weight;
+                            const Cplx zp = Pk[ik](ia + i, ib + j)
+                                            * conj_phase[ik];
+                            const Cplx zw = Wk[ik](ia + i, ib + j)
+                                            * conj_phase[ik];
+                            p_re += wk * zp.real();
+                            w_re += wk * zw.real();
+                            if (!time_reversal || self_paired[ik]) {
+                                p_im += wk * zp.imag();
+                                w_im += wk * zw.imag();
+                            }
+                        }
+                        max_imag = std::max(
+                            max_imag, std::max(std::abs(p_im), std::abs(w_im)));
+                        for (int k = 0; k < 3; ++k) {
+                            const double dh = dH0[k](ia + i, ib + j);
+                            const double ds = dS[k](ia + i, ib + j);
+                            acc[k] += p_re * (dh + shift * ds) - w_re * ds;
+                        }
+                    }
+                }
+                // Factor 2: the (b,a,−T) ordered twin of this block.
+                for (int k = 0; k < 3; ++k)
+                    F_a[k] += 2.0 * acc[k];
+
+                const double dgdR = dgamma_dr(r, ea.hubbard_u, eb.hubbard_u);
+                const double dErep_dr =
+                    pair_repulsive_dE_dr(type[a], type[b], r);
+                for (int k = 0; k < 3; ++k)
+                    F_a[k] += (dqa * dqb * dgdR + dErep_dr) * dir[k];
+
+                if (want_forces && fx && fy && fz) {
+                    fx[a] += static_cast<AccReal>(F_a[0]);
+                    fy[a] += static_cast<AccReal>(F_a[1]);
+                    fz[a] += static_cast<AccReal>(F_a[2]);
+                    fx[b] -= static_cast<AccReal>(F_a[0]);
+                    fy[b] -= static_cast<AccReal>(F_a[1]);
+                    fz[b] -= static_cast<AccReal>(F_a[2]);
+                }
+
+                if (stress_voigt) {
+                    const double R[3] = {dx, dy, dz};
+                    dE_de[0] += F_a[0] * R[0];
+                    dE_de[1] += F_a[1] * R[1];
+                    dE_de[2] += F_a[2] * R[2];
+                    dE_de[3] += F_a[0] * R[1] + F_a[1] * R[0]; // xy
+                    dE_de[4] += F_a[0] * R[2] + F_a[2] * R[0]; // xz
+                    dE_de[5] += F_a[1] * R[2] + F_a[2] * R[1]; // yz
+                }
+            }
+        }
+    }
+
+    // Self-images (A, A+T): zero nuclear force, nonzero strain response.
+    if (stress_voigt) {
+        for (int a = 0; a < n_at; ++a) {
+            const auto& ea = *el[static_cast<std::size_t>(a)];
+            const int ia = ao0[static_cast<std::size_t>(a)];
+            const int na = ea.n_ao;
+            const double rcut = pair_rcut_A(ea, ea, type[a], type[a]);
+            const auto& sk = pair_sk(type[a], type[a]);
+            const double dqa = dq[static_cast<std::size_t>(a)];
+            const double shift = dV[static_cast<std::size_t>(a)];
+            for (const auto& T : images) {
+                const double r =
+                    std::sqrt(T.tx * T.tx + T.ty * T.ty + T.tz * T.tz);
+                if (r < 1e-12 || r > rcut)
+                    continue;
+                const double dir[3] = {T.tx / r, T.ty / r, T.tz / r};
+                for (std::size_t ik = 0; ik < nk; ++ik)
+                    conj_phase[ik] = std::conj(
+                        bloch_phase(kpts[ik].frac, T.n0, T.n1, T.n2));
+                for (int k = 0; k < 3; ++k) {
+                    dH0[k] = xt::zeros<double>({n_ao, n_ao});
+                    dS[k] = xt::zeros<double>({n_ao, n_ao});
+                }
+                fill_sk_block_deriv(ea, ea, sk, T.tx, T.ty, T.tz, r, dH0, dS,
+                                    ia, ia);
+
+                // Factor 1: the image walk already visits both T and −T, and
+                // the (a,a) block is contracted whole. γ_AA and E_rep are each
+                // half-weighted per ordered image.
+                double dE_dT[3] = {0, 0, 0};
+                for (int i = 0; i < na; ++i) {
+                    for (int j = 0; j < na; ++j) {
+                        double p_re = 0, w_re = 0;
+                        for (std::size_t ik = 0; ik < nk; ++ik) {
+                            const double wk = kpts[ik].weight;
+                            p_re += wk * (Pk[ik](ia + i, ia + j)
+                                          * conj_phase[ik])
+                                             .real();
+                            w_re += wk * (Wk[ik](ia + i, ia + j)
+                                          * conj_phase[ik])
+                                             .real();
+                        }
+                        for (int k = 0; k < 3; ++k) {
+                            const double ds = dS[k](ia + i, ia + j);
+                            dE_dT[k] += p_re
+                                            * (dH0[k](ia + i, ia + j)
+                                               + shift * ds)
+                                        - w_re * ds;
+                        }
+                    }
+                }
+                const double half_pair =
+                    0.5 * dqa * dqa * dgamma_dr(r, ea.hubbard_u, ea.hubbard_u)
+                    + 0.5 * pair_repulsive_dE_dr(type[a], type[a], r);
+                for (int k = 0; k < 3; ++k)
+                    dE_dT[k] += half_pair * dir[k];
+
+                const double R[3] = {T.tx, T.ty, T.tz};
+                dE_de[0] += dE_dT[0] * R[0];
+                dE_de[1] += dE_dT[1] * R[1];
+                dE_de[2] += dE_dT[2] * R[2];
+                dE_de[3] += dE_dT[0] * R[1] + dE_dT[1] * R[0]; // xy
+                dE_de[4] += dE_dT[0] * R[2] + dE_dT[2] * R[0]; // xz
+                dE_de[5] += dE_dT[1] * R[2] + dE_dT[2] * R[1]; // yz
+            }
+        }
+    }
+
+    if (stress_voigt) {
+        const double vol = box.volume();
+        if (vol <= 0.0)
+            throw std::runtime_error(
+                "DFTB2 multi-k: non-positive box volume for stress");
+        for (int v = 0; v < 6; ++v)
+            stress_voigt[v] = -dE_de[v] / vol;
+    }
+
+    constexpr double kImagTol = 1e-9;
+    if (max_imag > kImagTol)
+        throw std::runtime_error(
+            "DFTB2 multi-k: Bloch density k-sum did not reduce to a real force "
+            "(max |Im| " + std::to_string(max_imag) + " > "
+            + std::to_string(kImagTol)
+            + "); the ±k mesh is not time-reversal symmetric or P(k) is not "
+              "Hermitian");
 }
 
 
@@ -1507,7 +1864,10 @@ SccResult scc_total(int n_at, int n_ao, const Occupancy& occ,
     if (multi_k) {
         if (occ.unrestricted)
             throw std::runtime_error(
-                "DFTB2 multi-k: open shell not supported (restricted only)");
+                "DFTB2 multi-k: collinear open shell not supported — the Bloch "
+                "path builds one restricted H(k), not the dual α/β Fock pair "
+                "with the spin shift W_A m_A; set multiplicity=1 (and an even "
+                "electron count) or k_mesh={1,1,1}");
         return scc_energy_restricted_kmesh(
             n_at, n_ao, occ.n_alpha, el, ao0, type, x, y, z, box, scc_tol,
             max_scc, mix_beta, mesh, time_reversal);
@@ -1592,10 +1952,6 @@ double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, double mix_beta,
 
     const bool multi_k =
         k_mesh[0] > 1 || k_mesh[1] > 1 || k_mesh[2] > 1;
-    if (multi_k && (with_forces || with_stress))
-        throw std::runtime_error(
-            "DFTB2 multi-k: forces/stress not supported (energy-only path; "
-            "set with_forces=false, with_stress=false)");
 
     std::vector<const DftbElementRow*> el(static_cast<std::size_t>(n_at));
     std::vector<int> ao0(static_cast<std::size_t>(n_at) + 1, 0);
@@ -1624,9 +1980,25 @@ double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, double mix_beta,
     // (esmm-contract-05): DFTB2 already accumulated into kEnergy.
     f.meta.get(kEnergyElectronic) += energy;
 
-    // Multi-k is energy-only (no real Γ orbitals for analytic forces).
-    if (multi_k)
+    // Multi-k: the analytic gradient (and pair virial) contracts the Bloch
+    // pair (P(k), W(k)) instead of the real Γ orbitals.
+    if (multi_k) {
+        if (with_forces || with_stress) {
+            double stress_buf[6] = {0, 0, 0, 0, 0, 0};
+            analytic_forces_restricted_kmesh(
+                n_at, n_ao, el, ao0, type, x, y, z, f.box, res.dq, res.kpts,
+                res.Pk, res.Wk, k_time_reversal, fx, fy, fz, with_forces,
+                with_stress ? stress_buf : nullptr);
+            if (with_stress) {
+                auto& st = f.meta.get(kStress);
+                for (int v = 0; v < 6; ++v) {
+                    out_stress[static_cast<std::size_t>(v)] = stress_buf[v];
+                    st[static_cast<std::size_t>(v)] += stress_buf[v];
+                }
+            }
+        }
         return energy;
+    }
 
     // Restricted closed shell has a closed-form gradient AND a closed-form pair
     // virial; collinear open shell has the closed-form gradient only, so its
@@ -2453,7 +2825,9 @@ void DFTB2::launch(const LaunchContext& ctx) {
     if (sk_set == DftbSkSet::ThreeOb) {
         if (multi_k)
             throw std::runtime_error(
-                "DFTB2(ThreeOb): multi-k not supported (MioSketch only)");
+                "DFTB2(ThreeOb): multi-k not supported — the 3ob radial-table "
+                "path has no Bloch-phased H0(k)/S(k) builder (and no lattice "
+                "sum at all); use sk_set=MioSketch or k_mesh={1,1,1}");
         if (multiplicity != 1 || charge != 0)
             throw std::runtime_error(
                 "DFTB2(ThreeOb): open-shell/charge not supported on this path");
