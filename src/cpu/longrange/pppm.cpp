@@ -22,15 +22,15 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
-// DomainDecomposition is complete without MPI; compute() reads n_local even
-// when the multi-rank branch is dead. Include always so non-MPI builds typecheck.
-#include "atomiverse/cpu/communication/domain.h"
+#include "atomiverse/cpu/component/owned_range.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/longrange/pme_influence.h"
 #include "atomiverse/cpu/longrange/pme_spline.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
+
+#include "atomiverse/cpu/communication/domain.h"
 #endif
 
 namespace ATV {
@@ -273,19 +273,19 @@ void KSpacePPPM::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     ensure_grid(f, false);
 
-    const auto* dd = ctx.runtime.md.dd;
-    const bool mpi = dd && ctx.runtime.mpi_size > 1;
-    const int n_local = mpi ? dd->n_local : f.nlocal();
-    const bool first_rank = !mpi || ctx.runtime.mpi_rank == 0;
-    ensure_atom_capacity(n_local, false);
-
+    // Serial: Frame only — no DomainDecomposition. Multi-rank: DD bricks.
+    const int n_local = owned_count(ctx);
 #ifdef ATV_HAS_MPI
-    // Refresh brick index bounds (cheap ints). Resize only if shape changed;
-    // do not zero here — spread does std::fill.
+    const bool mpi = multi_rank_dd(ctx.runtime);
+    const auto* dd = mpi ? ctx.runtime.md.dd : nullptr;
+    const bool first_rank = !mpi || ctx.runtime.mpi_rank == 0;
     if (mpi)
         setup_brick_partition_(const_cast<int*>(dd->coords),
                                const_cast<int*>(dd->dims));
+#else
+    const bool first_rank = true;
 #endif
+    ensure_atom_capacity(n_local, false);
 
     const StorageReal* __restrict x = f.span(kAtom_x);
     const StorageReal* __restrict y = f.span(kAtom_y);

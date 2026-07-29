@@ -1,10 +1,15 @@
 /// @file cpu/comm/domain.h
-/// @brief `DomainDecomposition` -- MD-specific spatial domain decomposition state.
+/// @brief `DomainDecomposition` — multi-rank spatial ownership / halo state.
 ///
-/// Owned by `cpu::Runtime`; non-owning pointer published through `cpu::Context::dd`.
-/// In single-rank mode the topology is `dims={1,1,1}` and `n_ghost==0`; the
-/// struct is still allocated so components can read it without null-checks beyond
-/// the usual `mpi_size==1` shortcut.
+/// **Not used for serial physics.** Without multi-rank MPI there is no
+/// spatial decomposition: components take atom counts from `Frame` via
+/// `cpu::owned_count` / `cpu::force_count` (see `owned_range.h`). This
+/// type is for multi-rank ownership slabs, ghost ranges, and halo
+/// bookkeeping only. Single-rank may still allocate a trivial
+/// `dims={1,1,1}` stub for infrastructure, but force kernels must not
+/// require it — prefer the owned_range helpers.
+///
+/// Owned by `cpu::Runtime`; non-owning pointer on `cpu::Context::dd`.
 ///
 /// @see .claude/specs/parallel-md-engine.md  § A.1
 #pragma once

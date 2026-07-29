@@ -14,7 +14,6 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/longrange/pme_influence.h"
@@ -22,6 +21,8 @@
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
+
+#include "atomiverse/cpu/communication/domain.h"
 #endif
 
 namespace ATV {
@@ -152,10 +153,15 @@ void KSpacePME::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     ensure_grid(f, false);
 
-    const auto* dd = ctx.runtime.md.dd;
-    const bool mpi = dd && ctx.runtime.mpi_size > 1;
-    const int n_local = mpi ? dd->n_local : f.nlocal();
+    // Serial: Frame only. Multi-rank: owned_count → DD n_local.
+    const int n_local = owned_count(ctx);
+#ifdef ATV_HAS_MPI
+    const bool mpi = multi_rank_dd(ctx.runtime);
+    const auto* dd = mpi ? ctx.runtime.md.dd : nullptr;
     const bool first_rank = !mpi || ctx.runtime.mpi_rank == 0;
+#else
+    const bool first_rank = true;
+#endif
     ensure_atom_capacity(n_local, false);
 
     const int ntot = K_[0] * K_[1] * K_[2];
