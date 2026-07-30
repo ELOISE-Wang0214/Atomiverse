@@ -32,6 +32,12 @@ differences of the total energy** \(E_{\mathrm{SCC}}+E_U\) (full re-SCC at each
 displaced geometry). The plain SCC analytic gradient alone is not \(-\nabla
 (E_{\mathrm{SCC}}+E_U)\).
 
+Under the Driver/Runtime path (`Evaluate` / `MD`), each component launch has a
+Frame resolution budget. The +U FD path parks that window around the multi-SCC
+probes (same pattern as `PWEvaluator` force/stress and MeanFieldMethod
+accumulator guards) and resolves Frame columns once at the outer launch
+boundary — never re-`span` inside the displacement loop.
+
 ## Non-goals (v1)
 
 - Shell-resolved \(U_{\ell}\) (s/p/d separate)

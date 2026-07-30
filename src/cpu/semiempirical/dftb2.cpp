@@ -2903,88 +2903,103 @@ void DFTB2::launch(const LaunchContext& ctx) {
     }
 
     // DFTB+U (Dudarev equal-filling on atomic Mulliken n) — post-SCC additive.
-    auto apply_e_u = [&](const std::vector<double>& dq) {
-        double eu = 0;
+    if (any_u) {
+        // Resolve Frame columns once at this launch boundary (13.7× rule).
         const int n_at = f.nlocal();
         const int* type = f.span(kAtom_type).data();
-        if (static_cast<int>(dq.size()) != n_at)
-            throw std::runtime_error("DFTB2+U: Mulliken Δq size mismatch");
-        for (int a = 0; a < n_at; ++a) {
-            const int Z = type[a];
-            if (Z < 1 || Z >= static_cast<int>(u_eff.size()))
-                throw std::runtime_error("DFTB2+U: atomic number out of range");
-            const double U = u_eff[static_cast<std::size_t>(Z)];
-            if (U == 0.0)
-                continue;
-            if (!(U > 0.0) || !std::isfinite(U))
-                throw std::invalid_argument(
-                    "DFTB2+U: u_eff[Z] must be finite and > 0 when set");
-            const auto& el = element_row(Z);
-            const double n =
-                static_cast<double>(el.n_val) - dq[static_cast<std::size_t>(a)];
-            const double Norb = 2.0 * static_cast<double>(el.n_ao);
-            if (Norb < 1.0)
-                throw std::runtime_error("DFTB2+U: atom has no AOs");
-            eu += 0.5 * U * n * (1.0 - n / Norb);
-        }
-        return eu;
-    };
+        double& energy_meta = f.meta.get(kEnergy);
+        double& energy_el_meta = f.meta.get(kEnergyElectronic);
 
-    if (any_u) {
+        auto apply_e_u = [&](const std::vector<double>& dq) {
+            double eu = 0;
+            if (static_cast<int>(dq.size()) != n_at)
+                throw std::runtime_error("DFTB2+U: Mulliken Δq size mismatch");
+            for (int a = 0; a < n_at; ++a) {
+                const int Z = type[a];
+                if (Z < 1 || Z >= static_cast<int>(u_eff.size()))
+                    throw std::runtime_error(
+                        "DFTB2+U: atomic number out of range");
+                const double U = u_eff[static_cast<std::size_t>(Z)];
+                if (U == 0.0)
+                    continue;
+                if (!(U > 0.0) || !std::isfinite(U))
+                    throw std::invalid_argument(
+                        "DFTB2+U: u_eff[Z] must be finite and > 0 when set");
+                const auto& el = element_row(Z);
+                const double n = static_cast<double>(el.n_val)
+                                 - dq[static_cast<std::size_t>(a)];
+                const double Norb = 2.0 * static_cast<double>(el.n_ao);
+                if (Norb < 1.0)
+                    throw std::runtime_error("DFTB2+U: atom has no AOs");
+                eu += 0.5 * U * n * (1.0 - n / Norb);
+            }
+            return eu;
+        };
+
         e_u_ = apply_e_u(last_dq_);
         energy_ += e_u_;
-        f.meta.get(kEnergy) += e_u_;
-        f.meta.get(kEnergyElectronic) += e_u_;
-    }
+        energy_meta += e_u_;
+        energy_el_meta += e_u_;
 
-    if (u_force_fd) {
-        // Central FD of E_tot = E_SCC + E_U (full re-SCC at each displaced
-        // geometry). h = 1e-4 Å matches other DFTB force gates.
-        constexpr double h = 1e-4;
-        const int n_at = f.nlocal();
-        AccReal* fx = f.span(kAtom_fx);
-        AccReal* fy = f.span(kAtom_fy);
-        AccReal* fz = f.span(kAtom_fz);
-        StorageReal* x = f.span(kAtom_x);
-        StorageReal* y = f.span(kAtom_y);
-        StorageReal* z = f.span(kAtom_z);
-        for (int a = 0; a < n_at; ++a) {
-            fx[a] = fy[a] = fz[a] = 0;
-        }
-        const int mesh[3] = {1, 1, 1};
-        auto e_total_at = [&]() {
-            // Zero frame energy so launch_mio's += is absolute for this probe.
-            f.meta.get(kEnergy) = 0;
-            f.meta.get(kEnergyElectronic) = 0;
-            std::vector<double> dq, spin;
-            std::array<double, 6> st{};
-            double res = 0;
-            int it = 0;
-            double e = launch_mio(f, scc_tol, max_scc, mix_beta, false, false,
-                                  charge, multiplicity, mesh, k_time_reversal,
-                                  dq, spin, st, res, it);
-            e += apply_e_u(dq);
-            return e;
-        };
-        for (int a = 0; a < n_at; ++a) {
-            StorageReal* coords[3] = {x, y, z};
-            AccReal* forces[3] = {fx, fy, fz};
-            for (int k = 0; k < 3; ++k) {
-                const StorageReal x0 = coords[k][a];
-                coords[k][a] = static_cast<StorageReal>(
-                    static_cast<double>(x0) + h);
-                const double ep = e_total_at();
-                coords[k][a] = static_cast<StorageReal>(
-                    static_cast<double>(x0) - h);
-                const double em = e_total_at();
-                coords[k][a] = x0;
-                forces[k][a] =
-                    static_cast<AccReal>(-(ep - em) / (2.0 * h));
+        if (u_force_fd) {
+            // Central FD of E_tot = E_SCC + E_U (full re-SCC at each displaced
+            // geometry). h = 1e-4 Å matches other DFTB force gates.
+            //
+            // Each probe re-enters launch_mio (many span resolutions). Same
+            // pattern as PWEvaluator force/stress and MeanFieldMethod
+            // accumulator guards: park the host launch window so nested
+            // multi-SCC probes are not billed against this component's
+            // single-launch budget (13.7× catches *loops that re-resolve*,
+            // not intentional multi-geometry energy probes).
+            constexpr double h = 1e-4;
+            AccReal* fx = f.span(kAtom_fx);
+            AccReal* fy = f.span(kAtom_fy);
+            AccReal* fz = f.span(kAtom_fz);
+            StorageReal* x = f.span(kAtom_x);
+            StorageReal* y = f.span(kAtom_y);
+            StorageReal* z = f.span(kAtom_z);
+            for (int a = 0; a < n_at; ++a) {
+                fx[a] = fy[a] = fz[a] = 0;
             }
+            const int mesh[3] = {1, 1, 1};
+            const auto saved_window = f.resolution_window();
+            auto e_total_at = [&]() {
+                // Zero frame energy so launch_mio's += is absolute for this
+                // probe.
+                energy_meta = 0;
+                energy_el_meta = 0;
+                std::vector<double> dq, spin;
+                std::array<double, 6> st{};
+                double res = 0;
+                int it = 0;
+                double e =
+                    launch_mio(f, scc_tol, max_scc, mix_beta, false, false,
+                               charge, multiplicity, mesh, k_time_reversal, dq,
+                               spin, st, res, it);
+                e += apply_e_u(dq);
+                return e;
+            };
+            for (int a = 0; a < n_at; ++a) {
+                StorageReal* coords[3] = {x, y, z};
+                AccReal* forces[3] = {fx, fy, fz};
+                for (int k = 0; k < 3; ++k) {
+                    const StorageReal x0 = coords[k][a];
+                    coords[k][a] = static_cast<StorageReal>(
+                        static_cast<double>(x0) + h);
+                    const double ep = e_total_at();
+                    coords[k][a] = static_cast<StorageReal>(
+                        static_cast<double>(x0) - h);
+                    const double em = e_total_at();
+                    coords[k][a] = x0;
+                    forces[k][a] =
+                        static_cast<AccReal>(-(ep - em) / (2.0 * h));
+                }
+            }
+            f.restore_resolution_window(saved_window);
+            // Restore frame energy to the equilibrium total.
+            energy_meta = energy_;
+            energy_el_meta = energy_;
         }
-        // Restore frame energy to the equilibrium total.
-        f.meta.get(kEnergy) = energy_;
-        f.meta.get(kEnergyElectronic) = energy_;
     }
 
     // Optional Grimme D3(BJ): geometry-only additive correction (no SCC re-entry).
