@@ -770,6 +770,26 @@ finite-q GGA after force dual depth or next wave). Resume workers:
 rebase `wf/*` onto `dev` (behind 17) then dual-gate / finish acceptance.
 **Pending residual after assign = 8** (not queue exhausted).
 
+**Recover 2026-07-31 (parent `dev` @ `c0a12f0b`):** clean —
+incomplete_count=**0**; `## in_progress` empty (no `[~]`; last close
+`gpw-fd-phonon-si` 2026-07-26); open CP2K/GPW/PW specs on `dev`=**0**
+(PySCF deferred only: `periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`);
+unmerged `wf/*`=**0** local + remote (even the blocked `wf/gpw-vv10-ice`
+docs tip is pruned — its row stays `## blocked`); isolation
+worktrees=**0**; half regressions=**0** (no regression dir exists for any
+of the 12 pending slugs; the only queue-unmatched dirs
+`regressions/pw/h_*` are pre-loop PW cases committed on `dev`). Leftover
+`build*` dirs + untracked `tools/bench_cuda_rhf_*` / nsys files belong to
+the concurrent CUDA RHF campaign (out of loop scope — not wiped
+mid-flight). Since wave-14 close, `dev` gained the esmm campaign + science
+fixes (`3ee28243` D4 analytic forces / D3 stress on the **molecular scf
+path**, OT gtol retune + thread-deterministic GPW grid kernels
+`0f78ff6d`, PW spin V_eff fix `e7b7b534`) — GapCensus must re-verify all
+12 pending rows against the tree (especially `gpw-d3-stress` /
+`gpw-d3-atm-forces` / `gpw-d4-atm-forces` overlap with `3ee28243`) before
+Assign. **Pending = 12**; **in_progress = 0**; **blocked = 6**. Do **not**
+invent methods — next is GapCensus/Assign from **pending**.
+
 ## pending
 
 - [ ] `gpw-d3bj-stress` | Analytic fixed-P cell stress with DFT-D3(BJ) | gpw | twin: CP2K D3(BJ) + NUMERICAL stress / extend d3bj ice | GapCensus wave 13
