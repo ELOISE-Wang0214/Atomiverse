@@ -110,31 +110,11 @@ if(NOT ATV_DOCS_ONLY)
     option(ATV_BUILD_XC_ORACLE
            "Build libxc-backed XC oracle (test-only scaffolding; deletable after native parity is locked in)"
            OFF)
-    # Hard dependency: molrs git submodule at ${CMAKE_SOURCE_DIR}/molrs
-    # (see .gitmodules). CI and normal builds use this pin only.
-    # -DATV_MOLRS_PATH=... is for local experiments; it still runs the
-    # CXX API contract check and never replaces the submodule pin in git.
+    # molrs path (optional product — gated by ATV_BUILD_MOLRS after module DAG).
+    # Submodule pin at ./molrs; -DATV_MOLRS_PATH only for local experiments.
     set(ATV_MOLRS_PATH "${CMAKE_SOURCE_DIR}/molrs" CACHE PATH
         "Path to molrs source tree (default: git submodule ./molrs)")
     include("${CMAKE_SOURCE_DIR}/cmake/MolrsContract.cmake")
-    if(NOT EXISTS "${ATV_MOLRS_PATH}/Cargo.toml")
-        message(FATAL_ERROR
-            "molrs not found at ATV_MOLRS_PATH='${ATV_MOLRS_PATH}'.\n"
-            "  Init the submodule:  git submodule update --init --recursive molrs\n"
-            "  (molrs is a required git submodule — do not vendor or pip-install it for C++)")
-    endif()
-    if(NOT ATV_MOLRS_PATH STREQUAL "${CMAKE_SOURCE_DIR}/molrs")
-        message(WARNING
-            "ATV_MOLRS_PATH='${ATV_MOLRS_PATH}' overrides the ./molrs submodule. "
-            "CI uses the submodule pin; prefer `git submodule update --init molrs`.")
-    endif()
-    atv_validate_molrs_source_contract("${ATV_MOLRS_PATH}")
-    atv_detect_molrs_wham("${ATV_MOLRS_PATH}" ATV_MOLRS_HAS_WHAM)
-    if(ATV_MOLRS_HAS_WHAM)
-        message(STATUS "molrs WhamCompute: available (cpu/observe/wham enabled)")
-    else()
-        message(STATUS "molrs WhamCompute: not in this pin (cpu/observe/wham skipped)")
-    endif()
     option(ATV_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
     # The nanobind module is a shared object linking the static atomiverse
     # and fetched-dependency archives (spdlog, ...): everything must be PIC.
@@ -151,9 +131,35 @@ if(NOT ATV_DOCS_ONLY)
     option(ATV_BUILD_LAUNCHER
            "Build the atomiverse MPI launcher executable (rank-0 embedded CPython)" OFF)
 
-    # Product-module gates (MD/MC/MINIMIZER/… + POTENTIALS/NEIGHBOR DAG).
-    # Must run after ATV_BUILD_KSPACE is declared (KSPACE → POTENTIALS edge).
+    # Product-module gates (MD/MC/… + ANALYSIS/IO/MOLRS DAG).
+    # Must run after ATV_BUILD_KSPACE / HF / GPW / PYTHON are declared.
     include("${CMAKE_SOURCE_DIR}/cmake/AtvProductModules.cmake")
+
+    # molrs contract only when the DAG left MOLRS on.
+    set(ATV_MOLRS_HAS_WHAM OFF)
+    if(ATV_BUILD_MOLRS)
+        if(NOT EXISTS "${ATV_MOLRS_PATH}/Cargo.toml")
+            message(FATAL_ERROR
+                "ATV_BUILD_MOLRS=ON but molrs not found at "
+                "ATV_MOLRS_PATH='${ATV_MOLRS_PATH}'.\n"
+                "  Init: git submodule update --init --recursive molrs\n"
+                "  Or turn off ANALYSIS/IO/PYTHON/GPW/HF/SEMIEMPIRICAL "
+                "(those products enable molrs).")
+        endif()
+        if(NOT ATV_MOLRS_PATH STREQUAL "${CMAKE_SOURCE_DIR}/molrs")
+            message(WARNING
+                "ATV_MOLRS_PATH='${ATV_MOLRS_PATH}' overrides the ./molrs submodule.")
+        endif()
+        atv_validate_molrs_source_contract("${ATV_MOLRS_PATH}")
+        atv_detect_molrs_wham("${ATV_MOLRS_PATH}" ATV_MOLRS_HAS_WHAM)
+        if(ATV_MOLRS_HAS_WHAM)
+            message(STATUS "molrs WhamCompute: available")
+        else()
+            message(STATUS "molrs WhamCompute: not in this pin (wham skipped)")
+        endif()
+    else()
+        message(STATUS "molrs CXX: OFF (no Rust link; pure engine build)")
+    endif()
 
     list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/deps")
 
@@ -228,7 +234,7 @@ if(NOT ATV_DOCS_ONLY)
         # Cross-cutting core (logging registry, metrics)
         src/core/log.cpp
         src/core/real_harmonics.cpp
-        src/core/molrs_contract.cpp
+        # molrs_contract.cpp — only with ATV_BUILD_MOLRS (below)
         # Backend-agnostic longrange operator math (Ewald/PME headers are
         # header-only; FMM needs translation-operator / tree sources). Always
         # compiled — not gated by ATV_BUILD_*.
@@ -247,16 +253,9 @@ if(NOT ATV_DOCS_ONLY)
         # dipoles (cpu/potentials/pim_xl_dipole.*, MD-only builds), so it is
         # never method-gated.
         src/cpu/electronic/xl_bomd.cpp
-        src/cpu/io/frame_writer.cpp
         src/cpu/io/lammps_data.cpp
-        src/cpu/io/extxyz.cpp
-        src/cpu/observe/rdf.cpp
-        src/cpu/observe/rdf_curve.cpp
-        src/cpu/observe/msd.cpp
-        src/cpu/observe/vacf.cpp
-        src/cpu/observe/trajectory_metrics.cpp
+        # molrs-backed IO / ANALYSIS / exchange — gated below (ATV_BUILD_*)
         src/cpu/record/thermo.cpp
-        src/cpu/record/xyz.cpp
         src/cpu/record/timing_report.cpp
         # CPU runtime infrastructure (Runtime + composed sub-runtimes)
         src/cpu/frame/frame.cpp
@@ -267,7 +266,6 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/driver/dof.cpp
         src/cpu/frame/box.cpp
         src/cpu/component/zero.cpp
-        src/cpu/frame/materialize.cpp
         src/cpu/driver/driver.cpp
         # Multiscale shared machinery (QmEngine slot; used by SE and HF couplings)
         src/cpu/multiscale/internal/qm_subsystem.cpp
@@ -306,6 +304,31 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/longrange/ewald.cpp
     )
 
+    # ── molrs surfaces (IO / ANALYSIS / exchange / Element tables) ─────────
+    if(ATV_BUILD_MOLRS)
+        list(APPEND ATOMIVERSE_SRCS
+            src/core/molrs_contract.cpp
+            src/cpu/frame/molrs_exchange.cpp
+        )
+    endif()
+    # Products own features; MOLRS is already derived (AtvProductModules).
+    if(ATV_BUILD_IO)
+        list(APPEND ATOMIVERSE_SRCS
+            src/cpu/io/frame_writer.cpp
+            src/cpu/io/extxyz.cpp
+            src/cpu/record/xyz.cpp
+        )
+    endif()
+    if(ATV_BUILD_ANALYSIS)
+        list(APPEND ATOMIVERSE_SRCS
+            src/cpu/observe/rdf.cpp
+            src/cpu/observe/rdf_curve.cpp
+            src/cpu/observe/msd.cpp
+            src/cpu/observe/vacf.cpp
+            src/cpu/observe/trajectory_metrics.cpp
+        )
+    endif()
+
     if(ATV_BUILD_SEMIEMPIRICAL)
         list(APPEND ATOMIVERSE_SRCS
             src/cpu/semiempirical/am1_parameters.cpp
@@ -322,7 +345,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/semiempirical/rm1_solver.cpp
             src/cpu/semiempirical/am1_evaluator.cpp
             src/cpu/semiempirical/rm1_evaluator.cpp
-            src/cpu/semiempirical/am1_bcc_charge_assigner.cpp
             src/cpu/semiempirical/dftb2.cpp
             src/cpu/semiempirical/dftb0.cpp
             src/cpu/semiempirical/dftb3.cpp
@@ -334,6 +356,10 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/multiscale/qmmm_oniom.cpp
             src/cpu/multiscale/internal/classical_nonbonded.cpp
         )
+        if(ATV_BUILD_MOLRS)
+            list(APPEND ATOMIVERSE_SRCS
+                src/cpu/semiempirical/am1_bcc_charge_assigner.cpp)
+        endif()
         if(ATV_BUILD_HF)
             list(APPEND ATOMIVERSE_SRCS
                 src/cpu/multiscale/qmmm_polarizable.cpp
@@ -454,10 +480,15 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     # CPU potentials — globbed so new pair/bond/angle/dihedral styles drop in.
+    # EAM/SW table lookups use molrs::Element — omit when MOLRS is off.
     if(ATV_BUILD_POTENTIALS)
         file(GLOB CPU_POTENTIALS_SRCS CONFIGURE_DEPENDS
             "${CMAKE_SOURCE_DIR}/src/cpu/potentials/*.cpp"
         )
+        if(NOT ATV_BUILD_MOLRS)
+            list(FILTER CPU_POTENTIALS_SRCS EXCLUDE REGEX ".*/eam\\.cpp$")
+            list(FILTER CPU_POTENTIALS_SRCS EXCLUDE REGEX ".*/sw\\.cpp$")
+        endif()
         list(APPEND ATOMIVERSE_SRCS ${CPU_POTENTIALS_SRCS})
     endif()
 
@@ -476,7 +507,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/asynchronous/async_bridge.cu
             src/cuda/asynchronous/record_base.cu
             src/cuda/frame/transfer.cu
-            src/cuda/frame/materialize.cu
             src/cuda/device/timer.cu
             src/cuda/driver/driver.cu
             src/cuda/communication/multi_gpu.cu
@@ -489,6 +519,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/scf/scf_evaluator.cu
             src/cuda/longrange/ewald.cu
         )
+        if(ATV_BUILD_MOLRS)
+            list(APPEND ATOMIVERSE_SRCS src/cuda/frame/molrs_exchange.cu)
+        endif()
         if(ATV_BUILD_MD)
             list(APPEND ATOMIVERSE_SRCS
                 src/cuda/dynamics/velocity_verlet.cu
@@ -537,15 +570,15 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     add_library(atomiverse ${ATOMIVERSE_SRCS})
-    target_compile_definitions(atomiverse PRIVATE
-        ATV_MOLRS_CXX_API_VERSION=${ATV_MOLRS_CXX_API_VERSION}
-        ATV_MOLRS_CXX_REQUIRED_CAPABILITIES=${ATV_MOLRS_CXX_REQUIRED_CAPABILITIES})
+    if(ATV_BUILD_MOLRS)
+        target_compile_definitions(atomiverse PRIVATE
+            ATV_MOLRS_CXX_API_VERSION=${ATV_MOLRS_CXX_API_VERSION}
+            ATV_MOLRS_CXX_REQUIRED_CAPABILITIES=${ATV_MOLRS_CXX_REQUIRED_CAPABILITIES})
+    endif()
     atv_apply_product_module_defs(atomiverse)
 
-    # Multi-window WHAM façade — only when the molrs submodule pin exports
-    # WhamCompute (see atv_detect_molrs_wham). Keeps the submodule pin buildable
-    # before that surface lands in MolCrafts/molrs.
-    if(ATV_MOLRS_HAS_WHAM)
+    # Multi-window WHAM — needs ANALYSIS + molrs pin with WhamCompute.
+    if(ATV_BUILD_ANALYSIS AND ATV_BUILD_MOLRS AND ATV_MOLRS_HAS_WHAM)
         target_sources(atomiverse PRIVATE src/cpu/observe/wham.cpp)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_MOLRS_WHAM=1)
     endif()
@@ -673,6 +706,7 @@ if(NOT ATV_DOCS_ONLY)
         )
         if(ATV_BUILD_CUDA)
             target_sources(atomiverse PRIVATE
+                src/cuda/scf/rhf.cu
                 src/cuda/scf/rhf_fock.cu
                 src/cuda/scf/rhf_density.cu
                 src/cuda/scf/device_integrals.cu
@@ -886,12 +920,14 @@ if(NOT ATV_DOCS_ONLY)
         find_package(Torch REQUIRED)
         target_sources(atomiverse PRIVATE
             src/torch/frame/transfer.cu
-            src/torch/frame/materialize.cu
             src/torch/device/stream_guard.cu
             src/torch/potentials/lj.cu
             src/torch/neighbor/neighbor_list.cu
             src/torch/potentials/harmonic_bond.cu
         )
+        if(ATV_BUILD_MOLRS)
+            target_sources(atomiverse PRIVATE src/torch/frame/molrs_exchange.cu)
+        endif()
         target_link_libraries(atomiverse PUBLIC ${TORCH_LIBRARIES})
         target_include_directories(atomiverse PUBLIC ${TORCH_INCLUDE_DIRS})
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_TORCH)
@@ -1027,44 +1063,39 @@ if(NOT ATV_DOCS_ONLY)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_MPI)
     endif()
 
-    # ── molrs (hard dependency via CXX FFI) ──
-    FetchContent_Declare(Corrosion
-        GIT_REPOSITORY https://github.com/corrosion-rs/corrosion
-        GIT_TAG v0.6.1
-    )
-    FetchContent_MakeAvailable(Corrosion)
-    corrosion_import_crate(
-        MANIFEST_PATH "${ATV_MOLRS_PATH}/Cargo.toml"
-        CRATES molcrafts-molrs-cxxapi
-    )
-    # molrs-core hardcodes F = f64.  Bridge always uses double.
-    # CPU backend uses double; zero-copy across the FFI boundary.
-    # Package is `molcrafts-molrs-cxxapi` in Cargo.toml, but `[lib] name` is
-    # `molrs_cxxapi` -- corrosion exposes the target under the lib name.
-    corrosion_add_cxxbridge(molrs_cxx
-        CRATE molrs_cxxapi
-        FILES bridge.rs
-    )
+    # ── molrs CXX (only when products derived ATV_BUILD_MOLRS) ──
+    if(ATV_BUILD_MOLRS)
+        FetchContent_Declare(Corrosion
+            GIT_REPOSITORY https://github.com/corrosion-rs/corrosion
+            GIT_TAG v0.6.1
+        )
+        FetchContent_MakeAvailable(Corrosion)
+        corrosion_import_crate(
+            MANIFEST_PATH "${ATV_MOLRS_PATH}/Cargo.toml"
+            CRATES molcrafts-molrs-cxxapi
+        )
+        # molrs-core hardcodes F = f64.  Bridge always uses double.
+        # Package is `molcrafts-molrs-cxxapi` in Cargo.toml, but `[lib] name` is
+        # `molrs_cxxapi` -- corrosion exposes the target under the lib name.
+        corrosion_add_cxxbridge(molrs_cxx
+            CRATE molrs_cxxapi
+            FILES bridge.rs
+        )
 
-    # corrosion v0.6.1's cxxbridge target carries the generated cxx runtime
-    # header `rust/cxx.h` as a source without the GENERATED property. On a
-    # fresh configure (no cached build tree) the file does not exist yet, so
-    # CMake's generate step aborts in every directory that links `molrs_cxx`
-    # transitively (e.g. tests/). Mark the generated cxxbridge outputs
-    # GENERATED so CMake trusts the build step to produce them. CMP0118 (NEW)
-    # makes the GENERATED property visible across directories.
-    if(POLICY CMP0118)
-        cmake_policy(SET CMP0118 NEW)
+        # corrosion v0.6.1: mark generated cxxbridge outputs GENERATED (CMP0118).
+        if(POLICY CMP0118)
+            cmake_policy(SET CMP0118 NEW)
+        endif()
+        set(_molrs_cxx_gen_dir
+            "${CMAKE_BINARY_DIR}/corrosion_generated/cxxbridge/molrs_cxx")
+        set_source_files_properties(
+            "${_molrs_cxx_gen_dir}/include/rust/cxx.h"
+            "${_molrs_cxx_gen_dir}/include/molrs_cxx/src/bridge.rs.h"
+            "${_molrs_cxx_gen_dir}/src/bridge.rs.cc"
+            PROPERTIES GENERATED TRUE)
+
+        target_link_libraries(atomiverse PUBLIC molrs_cxx)
     endif()
-    set(_molrs_cxx_gen_dir
-        "${CMAKE_BINARY_DIR}/corrosion_generated/cxxbridge/molrs_cxx")
-    set_source_files_properties(
-        "${_molrs_cxx_gen_dir}/include/rust/cxx.h"
-        "${_molrs_cxx_gen_dir}/include/molrs_cxx/src/bridge.rs.h"
-        "${_molrs_cxx_gen_dir}/src/bridge.rs.cc"
-        PROPERTIES GENERATED TRUE)
-
-    target_link_libraries(atomiverse PUBLIC molrs_cxx)
 
 
     # ── Python bindings (nanobind) ──
