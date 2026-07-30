@@ -9,7 +9,6 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/bias/angle_cv.h"
 #include "atomiverse/cpu/bias/harmonic_bias.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 

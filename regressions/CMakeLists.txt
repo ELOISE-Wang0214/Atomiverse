@@ -430,9 +430,65 @@ if(ATV_BUILD_HF)
     # Layout: SCF API hygiene — MolecularGrid ctor links + rys_roots throws
     # catchably (scf-review-05-api-hygiene). Needs the SCF headers, hence HF.
     atv_add_regression(layout scf_api_hygiene)
-    atv_add_regression(scf h2o_rhf_sto3g)
+    # One case per physics pin; multi-device via --device=cpu|cuda|both
+    # (PyTorch-style). When ATV_BUILD_CUDA=ON the .cu TU is the target so the
+    # same binary can run both backends; otherwise the .cpp (cpu only).
+    if(ATV_BUILD_CUDA)
+        set(_reg_h2o reg_h2o_rhf_sto3g)
+        add_executable(${_reg_h2o} scf/h2o_rhf_sto3g/${_reg_h2o}.cu)
+        target_link_libraries(${_reg_h2o} PRIVATE atomiverse)
+        set_target_properties(${_reg_h2o} PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON CXX_STANDARD 20)
+        target_compile_definitions(${_reg_h2o} PRIVATE
+            ATV_REG_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data")
+        add_custom_target(run_${_reg_h2o}
+            COMMAND ${CMAKE_COMMAND} -E env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+                    $<TARGET_FILE:${_reg_h2o}> --device=both
+            DEPENDS ${_reg_h2o}
+            COMMENT "regression [scf/h2o_rhf_sto3g] devices=both (1t)")
+        add_dependencies(regressions run_${_reg_h2o})
+        unset(_reg_h2o)
+    else()
+        atv_add_regression(scf h2o_rhf_sto3g)
+    endif()
     atv_add_regression(scf h2o_rhf_def2svp_sph)
-    atv_add_regression(scf h2o_rhf_def2svp_grad)
+    if(ATV_BUILD_CUDA)
+        set(_reg_h2o_g reg_h2o_rhf_def2svp_grad)
+        add_executable(${_reg_h2o_g} scf/h2o_rhf_def2svp_grad/${_reg_h2o_g}.cu)
+        target_link_libraries(${_reg_h2o_g} PRIVATE atomiverse)
+        set_target_properties(${_reg_h2o_g} PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON CXX_STANDARD 20)
+        target_compile_definitions(${_reg_h2o_g} PRIVATE
+            ATV_REG_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data")
+        add_custom_target(run_${_reg_h2o_g}
+            COMMAND ${CMAKE_COMMAND} -E env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+                    $<TARGET_FILE:${_reg_h2o_g}> --device=both
+            DEPENDS ${_reg_h2o_g}
+            COMMENT "regression [scf/h2o_rhf_def2svp_grad] devices=both (1t)")
+        add_dependencies(regressions run_${_reg_h2o_g})
+        unset(_reg_h2o_g)
+    else()
+        atv_add_regression(scf h2o_rhf_def2svp_grad)
+    endif()
+    # Short BOMD: MD + RHF composition (no AimdDriver); multi-device.
+    if(ATV_BUILD_CUDA)
+        set(_reg_aimd reg_h2_rhf_sto3g_aimd)
+        add_executable(${_reg_aimd} scf/h2_rhf_sto3g_aimd/${_reg_aimd}.cu)
+        target_link_libraries(${_reg_aimd} PRIVATE atomiverse)
+        set_target_properties(${_reg_aimd} PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON CXX_STANDARD 20)
+        target_compile_definitions(${_reg_aimd} PRIVATE
+            ATV_REG_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data")
+        add_custom_target(run_${_reg_aimd}
+            COMMAND ${CMAKE_COMMAND} -E env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+                    $<TARGET_FILE:${_reg_aimd}> --device=both
+            DEPENDS ${_reg_aimd}
+            COMMENT "regression [scf/h2_rhf_sto3g_aimd] devices=both (1t)")
+        add_dependencies(regressions run_${_reg_aimd})
+        unset(_reg_aimd)
+    else()
+        atv_add_regression(scf h2_rhf_sto3g_aimd)
+    endif()
     atv_add_regression(scf h2o_rhf_dipole)
     atv_add_regression(scf wannier-centers)
     atv_add_regression(scf static-polariz-h2o)
@@ -500,7 +556,7 @@ if(ATV_BUILD_HF)
     atv_add_regression(scf h2_alda_vs_cis)
     atv_add_regression(scf h2o_mp2_sto3g)
     # scf-review-07-posthf-perf: H2O/STO-3G plain RMP2 end-to-end through the
-    # block-assembled dense ERI tensor (IntegralPack::eri_dense); pinned PySCF
+    # block-assembled dense ERI tensor (IntegralWorkspace::eri_dense); pinned PySCF
     # 2.14.0 e_hf/e_corr, no live oracle at ctest time.
     atv_add_regression(scf posthf-eri-block-mp2)
     atv_add_regression(scf ccsd-h2-sto3g)

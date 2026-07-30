@@ -8,8 +8,8 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/fix_oscillating_efield.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -21,16 +21,6 @@ struct Pin {
     double Ez;
     double U;
 };
-
-void zero_forces_energy(cpu::Frame& frame) {
-    frame.meta.get(kEnergy) = 0.0;
-    const int n = frame.nlocal();
-    for (int i = 0; i < n; ++i) {
-        frame.span(kAtom_fx)[i] = 0.0;
-        frame.span(kAtom_fy)[i] = 0.0;
-        frame.span(kAtom_fz)[i] = 0.0;
-    }
-}
 
 } // namespace
 
@@ -73,13 +63,16 @@ int main() {
     }
     frame.box = cpu::Box::cubic(L);
 
-    cpu::Context ctx;
-    cpu::md::FixOscillatingEfield osc(0.0, 0.0, Ez0, period, dt);
-
+    // Evaluate always runs at step 0; bake pin step into phase so
+    // E(n=0, φ) = E(n=pin.step, φ=0).
     bool ok = true;
     for (const Pin& p : pins) {
-        zero_forces_energy(frame);
-        osc.launch({ctx, frame, /*stage=*/0, p.step});
+        const double phi = 2.0 * std::acos(-1.0) * p.step * dt / period;
+        cpu::md::FixOscillatingEfield osc(0.0, 0.0, Ez0, period, dt, phi);
+        cpu::Evaluate eval;
+        eval.set_evaluator_ref(osc);
+        eval.build();
+        eval.run(frame);
 
         const double Ez_got = osc.last_Ez();
         const double U = frame.meta.get(kEnergy);

@@ -4,7 +4,12 @@
 
 Restricted Hartree–Fock (RHF), minimal STO-3G Gaussian basis, single-point
 total electronic + nuclear-repulsion energy on a fixed water geometry. Driven
-by the concrete `cpu::scf::RHF` method through the public Frame API.
+by the concrete `RHF` method through the public Frame API.
+
+**One regression case, multi-device** (PyTorch-style): run
+`reg_h2o_rhf_sto3g --device=cpu|cuda|both` (default `both` when built with
+CUDA). Same geometry and literature pin on every device — not a separate
+`*_cuda` sibling case.
 
 ## Reference value
 
@@ -65,8 +70,10 @@ used above.
 
 ## What is checked
 
-`cpu::scf::RHF{basis = STO3G}.run(frame)` converges (`rhf.converged()`) and
+For each selected device, `RHF{STO3G}.run(frame)` converges and
 the Frame energy `frame.meta.get(kEnergy)` [eV], converted to Hartree via
 `units::kHartreeInEv`, lies within 1 × 10⁻³ Ha of the cited −74.961754 Ha.
 Non-convergence, a non-finite energy, or an out-of-tolerance value exits
-non-zero with `got / want / tol`.
+non-zero with `[device] got / want / tol`.
+
+No public integral pack / solver bag: Frame + concrete RHF only.

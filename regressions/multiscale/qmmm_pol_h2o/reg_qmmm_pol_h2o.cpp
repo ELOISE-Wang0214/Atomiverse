@@ -5,7 +5,6 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/column.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -79,30 +78,18 @@ int main() {
     }
     {
         auto f = water_plus_site();
-        cpu::Evaluate eval;
         cpu::QmmmPolarizable pol{{{8, 8, 0.01, 3.4}, {1, 1, 0.01, 3.4}}, 10.0,
                                 12.0};
         pol.alpha = 2.0;
         pol.thole_a = 2.6;
         pol.set_engine(make_rhf());
-        // Keep a handle for pol energy after move:
-        cpu::QmmmPolarizable pol2{{{8, 8, 0.01, 3.4}, {1, 1, 0.01, 3.4}}, 10.0,
-                                  12.0};
-        pol2.alpha = 2.0;
-        pol2.thole_a = 2.6;
-        pol2.set_engine(make_rhf());
-        eval.on(evaluate::Phase::evaluate).add(std::move(pol));
+
+        cpu::Evaluate eval;
+        eval.on(evaluate::Phase::evaluate).add_ref(pol);
         eval.build();
         eval.run(f);
         e_pol = f.meta.get(kEnergy);
-
-        cpu::Context ctx;
-        f.meta.get(kEnergy) = 0;
-        pol2.build({ctx, f});
-        cpu::LaunchContext lc{ctx, f, 0, 0};
-        lc.forces_requested = false;
-        pol2.launch(lc);
-        e_pol_term = pol2.last_pol_energy();
+        e_pol_term = pol.last_pol_energy();
     }
     std::printf("e_fix=%.6e e_pol=%.6e e_pol_term=%.6e\n", e_fix, e_pol,
                 e_pol_term);

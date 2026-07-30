@@ -12,7 +12,11 @@
 ///   1. element-wise |g_analytic − g_PySCF| ≤ 1e-6 Ha/Bohr
 ///   2. translational invariance |Σ_A g_A| ≤ 1e-8 Ha/Bohr
 ///
-/// Exit non-zero on mismatch, printing got / want / tol. <= 60 s, single CPU.
+/// CUDA-off path (cpu only). With `ATV_BUILD_CUDA=ON`, CMake builds the
+/// multi-device `reg_h2o_rhf_def2svp_grad.cu` (`--device=cpu|cuda|both`)
+/// instead — one case, not a `*_cuda` sibling.
+///
+/// Exit non-zero on mismatch, printing got / want / tol. <= 60 s.
 
 #include <cmath>
 #include <cstdio>
@@ -42,10 +46,7 @@ int main() {
     frame.span(kAtom_z)[2] = -0.4692;
     frame.box = cpu::Box::cubic(20.0);
 
-    cpu::scf::RHF rhf;
-    rhf.basis = cpu::scf::BasisSet::Def2SVP;
-    rhf.tol = 1e-12;
-    rhf.max_iter = 200;
+    cpu::scf::RHF rhf{cpu::scf::BasisSet::Def2SVP, 0, 1e-12, 200};
     const cpu::scf::GradientResult res = rhf.forces(frame);
 
     // Atomiverse reports FORCE (−dE/dR) in eV/Å; convert back to the gradient

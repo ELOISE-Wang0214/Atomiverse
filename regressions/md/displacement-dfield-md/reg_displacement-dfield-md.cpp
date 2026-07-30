@@ -1,12 +1,12 @@
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/dynamics/fix_dfield.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include <cmath>
 #include <cstdio>
 using namespace ATV;
 
-#include "atomiverse/cpu/dynamics/fix_dfield.h"
 int main() {
     cpu::Frame f(1);
     f.span(kAtom_x)[0] = 1;
@@ -21,9 +21,13 @@ int main() {
     f.span(kAtom_fx)[0] = f.span(kAtom_fy)[0] = f.span(kAtom_fz)[0] = 0;
     f.box = cpu::Box::cubic(10);
     f.meta.get(kEnergy) = 0;
+
     cpu::md::FixDfield d(0.1, 0, 0);
-    cpu::Context ctx;
-    d.launch({ctx, f, 0, 0});
+    cpu::Evaluate eval;
+    eval.set_evaluator_ref(d);
+    eval.build();
+    eval.run(f);
+
     std::printf("displacement-dfield-md fx=%.6e U=%.6e Pz=%.6e\n",
                 double(f.span(kAtom_fx)[0]), d.last_energy(), d.last_Pz());
     int fail = 0;

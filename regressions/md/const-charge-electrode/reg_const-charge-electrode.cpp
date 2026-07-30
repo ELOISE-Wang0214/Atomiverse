@@ -10,7 +10,6 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
@@ -43,6 +42,16 @@ cpu::Frame madelung_frame(bool with_electrolyte) {
     return f;
 }
 
+void solve_bo(cpu::md::ConstPotBO& conp, cpu::Frame& frame) {
+    cpu::md::MD sim;
+    sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/12.0, /*skin=*/0.5});
+    sim.set_evaluator(cpu::PairCoulCut{/*cutoff=*/12.0});
+    sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.0});
+    sim.set_observer_ref(conp);
+    sim.build();
+    sim.run(frame, 1);
+}
+
 } // namespace
 
 int main() {
@@ -64,20 +73,13 @@ int main() {
     int nfail = 0;
 
     // ── Stage 1: LAMMPS-anchored conp → conq duality (Q fixed, V back) ──
-    // conp at ΔΨ = 1 V (symm on) gives the self-consistent Q*; LAMMPS pin
-    // gates Q*. conq fed ±Q* must reproduce ΔΨ = 1 V — LAMMPS documents
-    // exactly this equivalence for fix electrode/conq (graph-il example:
-    // "symm on and off give different electrode potentials, but identical
-    // potential difference").
     auto fp = madelung_frame(true);
     cpu::md::ConstPotBO conp(kEta);
     conp.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);
     conp.add_electrode(/*type=*/2, /*Psi [V]=*/1.0);
     conp.electroneutrality = true;
     conp.xy_image_range = kImageRange;
-    cpu::Context ctx;
-    conp.build({ctx, fp});
-    conp.launch({ctx, fp, 0, 0});
+    solve_bo(conp, fp);
     const double q_star = conp.total_charge(1);
     const double rel_q = std::abs(q_star - kQTopPin) / kQTopPin;
 
@@ -86,8 +88,7 @@ int main() {
     conq.add_electrode_charge(/*type=*/1, -q_star);
     conq.add_electrode_charge(/*type=*/2, q_star);
     conq.xy_image_range = kImageRange;
-    conq.build({ctx, fq});
-    conq.launch({ctx, fq, 0, 0});
+    solve_bo(conq, fq);
 
     const double dv = conq.delta_psi();
     std::printf("const-charge-electrode\n");
@@ -133,17 +134,12 @@ int main() {
     }
 
     // ── Stage 2: V response magnitude with the LAMMPS pin as target Q ──
-    // Feeding the LAMMPS full-Ewald Q_pin through the v1 real-space A gives
-    // ΔΨ = 1 V + (Q_pin − Q*)·(dΔΨ/dQ); the plate stiffness dΔΨ/dQ ≈ 724 V/e
-    // amplifies the 0.07% A-matrix difference to ~0.14 V. Coarse gate 0.25 V
-    // (documented error budget in REFERENCE.md).
     auto fpin = madelung_frame(true);
     cpu::md::ConstPotBO conq_pin(kEta);
     conq_pin.add_electrode_charge(1, -kQTopPin);
     conq_pin.add_electrode_charge(2, kQTopPin);
     conq_pin.xy_image_range = kImageRange;
-    conq_pin.build({ctx, fpin});
-    conq_pin.launch({ctx, fpin, 0, 0});
+    solve_bo(conq_pin, fpin);
     const double dv_pin = conq_pin.delta_psi();
     std::printf("  conq(LAMMPS Q_pin) dV = % .6f V (budget 1.0 +- 0.25)\n",
                 dv_pin);
@@ -154,15 +150,12 @@ int main() {
     }
 
     // ── Stage 3: empty capacitor — literature Madelung-sum V response ──
-    // No electrolyte, Q = ±1 e: ΔΨ → 651.8103 V (Gaussian-lattice plate
-    // capacitor; R=250 real-space truncation ≈ −0.8%).
     auto fv = madelung_frame(false);
     cpu::md::ConstPotBO empty(kEta);
     empty.add_electrode_charge(1, -1.0);
     empty.add_electrode_charge(2, 1.0);
     empty.xy_image_range = kImageRange;
-    empty.build({ctx, fv});
-    empty.launch({ctx, fv, 0, 0});
+    solve_bo(empty, fv);
     const double dv_empty = empty.delta_psi();
     const double rel_plate = std::abs(dv_empty - kPlateDV) / kPlateDV;
     std::printf("  empty capacitor dV = % .4f V (Madelung pin %.4f, rel %.2e)\n",

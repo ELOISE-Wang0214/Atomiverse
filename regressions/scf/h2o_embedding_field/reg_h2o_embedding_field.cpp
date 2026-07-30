@@ -3,13 +3,16 @@
 ///        embedding vs pinned PySCF `qmmm.mm_charge` (see REFERENCE.md).
 ///
 /// Out-of-library consumer: public headers + link atomiverse only.
+/// Vacuum analytic dipole via Evaluate (RHF + MultipoleObserver);
+/// finite-field and MM embedding re-run the concrete method on Frame only.
 /// Exit non-zero on mismatch. <= 60 s, single CPU.
 
 #include <cmath>
 #include <cstdio>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/observe/multipole.h"
 #include "atomiverse/cpu/scf/methods.h"
@@ -47,16 +50,19 @@ int main() {
     rhf0.basis = cpu::scf::BasisSet::STO3G;
     rhf0.tol = 1e-12;
     rhf0.max_iter = 200;
-    rhf0.run(frame);
+    auto handle = rhf0.result_handle();
+
+    cpu::MultipoleObserver obs{handle};
+    cpu::Evaluate eval;
+    eval.on(evaluate::Phase::evaluate).add_ref(rhf0);
+    eval.on(evaluate::Phase::finalize).add_ref(obs);
+    eval.build();
+    eval.run(frame);
     if (!rhf0.converged()) {
         std::printf("FAIL: vacuum SCF did not converge\n");
         return 1;
     }
 
-    cpu::MultipoleObserver obs{rhf0.result_handle()};
-    cpu::Context ctx;
-    cpu::LaunchContext lc{ctx, frame, 0, 0};
-    obs.launch(lc);
     const auto mu = obs.dipole_au();
     std::printf("mu_z analytic = %.12f a.u.\n", mu[2]);
 

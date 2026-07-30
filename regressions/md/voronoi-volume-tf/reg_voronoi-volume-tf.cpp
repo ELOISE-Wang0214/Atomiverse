@@ -10,10 +10,13 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/observe/voronoi_volume.h"
+#include "atomiverse/cpu/potentials/pair_coul_cut.h"
 
 using namespace ATV;
 
@@ -108,9 +111,15 @@ double run_tf(double l_tf, const std::vector<double>& site_volume,
     conp.l_tf = l_tf;
     conp.site_volume = site_volume;
     conp.site_density = site_density;
-    cpu::Context ctx;
-    conp.build({ctx, f});
-    conp.launch({ctx, f, /*stage=*/0, /*step=*/0});
+    {
+        cpu::md::MD sim;
+        sim.set_neighbor(cpu::md::NeighborList<>{12.0, 0.5});
+        sim.set_evaluator(cpu::PairCoulCut{12.0});
+        sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+        sim.set_observer_ref(conp);
+        sim.build();
+        sim.run(f, 1);
+    }
     check(conp.neutrality_residual() <= 1e-10, "electroneutrality <= 1e-10 e");
     if (c_out)
         *c_out = conp.capacitance();

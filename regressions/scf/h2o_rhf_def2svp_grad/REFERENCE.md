@@ -1,5 +1,9 @@
 # Reference — H2O RHF/def2-SVP analytic gradient, spherical harmonics (5d)
 
+**One case, multi-device:** `reg_h2o_rhf_def2svp_grad --device=cpu|cuda|both`
+(default `both` when built with CUDA). Same PySCF pin on every device — not a
+`*_cuda` sibling. Public RHF + Frame only (no integral pack bag).
+
 Oracle protocol: docs/tutorial/appendix-pyscf-oracle.md (external run, pinned).
 
 | 字段 | 值 |

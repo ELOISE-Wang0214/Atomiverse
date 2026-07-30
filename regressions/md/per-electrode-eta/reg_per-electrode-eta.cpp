@@ -11,9 +11,12 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_coul_cut.h"
 
 using namespace ATV;
 
@@ -34,12 +37,24 @@ cpu::Frame two_walls() {
                 f.span(kAtom_type)[i] = wall + 1;
                 f.span(kAtom_mass)[i] = 196.97;
                 f.span(kAtom_tag)[i] = i + 1;
+                f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] =
+                    f.span(kAtom_vz)[i] = 0.0;
                 ++i;
             }
         }
     }
     f.box = cpu::Box::orthorhombic(4.0, 4.0, 24.0);
     return f;
+}
+
+void solve_bo(cpu::md::ConstPotBO& conp, cpu::Frame& f) {
+    cpu::md::MD sim;
+    sim.set_neighbor(cpu::md::NeighborList<>{12.0, 0.5});
+    sim.set_evaluator(cpu::PairCoulCut{12.0});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+    sim.set_observer_ref(conp);
+    sim.build();
+    sim.run(f, 1);
 }
 
 double solve_two_walls(double eta_bot, double eta_top, bool three_arg) {
@@ -55,9 +70,7 @@ double solve_two_walls(double eta_bot, double eta_top, bool three_arg) {
     }
     conp.electroneutrality = true;
     conp.xy_image_range = 100;
-    cpu::Context ctx;
-    conp.build({ctx, f});
-    conp.launch({ctx, f, /*stage=*/0, /*step=*/0});
+    solve_bo(conp, f);
     if (conp.neutrality_residual() > 1e-10) {
         std::fprintf(stderr, "FAIL two-wall neutrality %g\n",
                      conp.neutrality_residual());
@@ -85,6 +98,8 @@ int main() {
             f.span(kAtom_type)[i] = i + 1;
             f.span(kAtom_mass)[i] = 196.97;
             f.span(kAtom_tag)[i] = i + 1;
+            f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] =
+                0.0;
         }
         f.box = cpu::Box::cubic(40.0);
 
@@ -92,9 +107,7 @@ int main() {
         conp.add_electrode(/*type=*/1, /*Psi [V]=*/0.0, /*eta [1/Å]=*/1.979);
         conp.add_electrode(/*type=*/2, /*Psi [V]=*/1.0, /*eta [1/Å]=*/0.955);
         conp.electroneutrality = true;
-        cpu::Context ctx;
-        conp.build({ctx, f});
-        conp.launch({ctx, f, /*stage=*/0, /*step=*/0});
+        solve_bo(conp, f);
 
         const double q_top = conp.total_charge(1);
         const double rel = std::abs(q_top - kQPin) / kQPin;

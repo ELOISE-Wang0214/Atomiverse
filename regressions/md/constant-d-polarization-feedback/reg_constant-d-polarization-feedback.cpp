@@ -16,10 +16,10 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/fix_dfield.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -74,8 +74,12 @@ int main() {
         auto f = pair_frame(1.0);
         cpu::md::FixDfield d(0.0, 0.0, 0.5);
         d.polarization_feedback = true;
-        cpu::Context ctx;
-        d.launch({ctx, f, /*stage=*/0, /*step=*/0});
+        {
+            cpu::Evaluate eval;
+            eval.set_evaluator_ref(d);
+            eval.build();
+            eval.run(f);
+        }
 
         std::printf("Gate A: Pz=%.16e Ez=%.16e U=%.16e\n", d.last_Pz(),
                     d.last_Ez(), d.last_energy());
@@ -100,7 +104,12 @@ int main() {
         // Foothold twin: same D, no feedback — field is NOT screened.
         auto ft = pair_frame(1.0);
         cpu::md::FixDfield twin(0.0, 0.0, 0.5);
-        twin.launch({ctx, ft, 0, 0});
+        {
+            cpu::Evaluate eval;
+            eval.set_evaluator_ref(twin);
+            eval.build();
+            eval.run(ft);
+        }
         std::printf("Gate A twin: Ez=%.16e (foothold, = D_z)\n",
                     twin.last_Ez());
         if (twin.last_Ez() != 0.5) {
@@ -127,11 +136,13 @@ int main() {
         auto f = pair_frame(d0 / 2.0);
         // Seed forces before the first VV half-kick (same role as LAMMPS
         // fix setup(): step-0 initial_integrate must see F(t=0)).
-        cpu::md::FixDfield seed(0.0, 0.0, 0.0);
-        seed.polarization_feedback = true;
         {
-            cpu::Context ctx;
-            seed.launch({ctx, f, 0, 0});
+            cpu::md::FixDfield seed(0.0, 0.0, 0.0);
+            seed.polarization_feedback = true;
+            cpu::Evaluate seed_eval;
+            seed_eval.set_evaluator_ref(seed);
+            seed_eval.build();
+            seed_eval.run(f);
             f.meta.get(kEnergy) = 0.0;
         }
 

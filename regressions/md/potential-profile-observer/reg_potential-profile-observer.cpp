@@ -13,7 +13,9 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/dynamics/fix_addforce.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/observe/potential_profile.h"
 
@@ -70,9 +72,13 @@ int main() {
 
     auto frame = make_two_sheet();
     cpu::PotentialProfile obs(/*n_bins=*/20, /*z_min=*/0.0, /*z_max=*/20.0);
-    cpu::Context ctx;
-    cpu::LaunchContext lc{ctx, frame, /*stage=*/0, /*step=*/0};
-    obs.launch(lc);
+
+    cpu::md::MD sim;
+    sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+    sim.set_evaluator(cpu::md::FixAddForce{0.0, 0.0, 0.0, /*type=*/1});
+    sim.set_observer_ref(obs);
+    sim.build();
+    sim.run(frame, 1);
 
     ok = check("E mid-gap bin9", obs.field()[9], kPinEGap, kTol) && ok;
     ok = check("E vacuum left", obs.field()[0], 0.0, kTol) && ok;

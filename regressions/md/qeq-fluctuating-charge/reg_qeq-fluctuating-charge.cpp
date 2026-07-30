@@ -11,10 +11,12 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/dynamics/fix_addforce.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/qeq.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/neighbor/pair_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/pair_coul_cut.h"
 
 using namespace ATV;
@@ -53,6 +55,7 @@ int main() {
         f.span(kAtom_mass)[i] = masses[i];
         f.span(kAtom_tag)[i] = i + 1;
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0.0;
+        f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] = 0.0;
     }
     f.box = cpu::Box::cubic(40.0);
     f.meta.get(kEnergy) = 0.0;
@@ -63,9 +66,16 @@ int main() {
     qeq.set_type(2, 8.741, 13.364);   // O
     qeq.set_type(3, 4.528, 13.8904);  // H
 
-    cpu::Context ctx;
-    qeq.build({ctx, f});
-    qeq.launch({ctx, f, /*stage=*/0, /*step=*/0});
+    // QEq at pre_force, then coul/cut on the equilibrated charges.
+    {
+        cpu::md::MD sim;
+        sim.set_neighbor(cpu::md::NeighborList<>{10.0, 0.5});
+        sim.set_evaluator(cpu::PairCoulCut{/*cutoff [Å]=*/10.0});
+        sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+        sim.set_observer_ref(qeq);
+        sim.build();
+        sim.run(f, 1);
+    }
 
     // ── Pins: LAMMPS 30 Mar 2026 fix qeq/point dump (REFERENCE.md) ────
     check("q(C)  [e]", qeq.charges()[0], 0.046279970820, 1e-6);
@@ -76,39 +86,28 @@ int main() {
     // Derived QEq objective (bare-1/r kernel), see REFERENCE.md.
     check("E_qeq [eV]", qeq.qeq_energy(), -0.467311783767, 1e-6);
 
-    // ── Coulomb energy of the equilibrated charges via coul/cut ──────
-    // Half pair list over all 6 pairs (all inside the 10 Å cutoff).
-    cpu::md::PairList pairs;
-    pairs.inum = 4;
-    pairs.ilist = {0, 1, 2, 3};
-    pairs.numneigh = {3, 2, 1, 0};
-    pairs.firstneigh = {0, 3, 5, 6};
-    pairs.neighbors = {1, 2, 3, 2, 3, 3};
-    pairs.total_pairs = 6;
-    pairs.has_shifts = false;
-    pairs.version = 1;
-    ctx.md.pair_list = &pairs;
-
-    cpu::PairCoulCut coul(/*cutoff [Å]=*/10.0);
-    coul.build({ctx, f});
-    coul.launch({ctx, f, 0, 0});
-    coul.destroy({ctx, f});
+    // Coulomb energy of the equilibrated charges (from the same MD step).
     // LAMMPS thermo E_coul (metal units, qqr2e = 14.399645 = units::coulomb).
     check("E_coul [eV]", f.meta.get(kEnergy), -0.254699311955, 1e-6);
 
     // ── Fair perf twin: 1000 repeated equilibrations (see in.qeq_perf) ─
+    // QEq only — dummy Bias satisfies MD validation (no pair cost).
+    // Continuable MD::run(f,1) keeps QEq component state across solves.
     const int n_rep = 1000;
+    cpu::md::MD perf;
+    perf.set_evaluator(cpu::md::FixAddForce{0.0, 0.0, 0.0, /*type=*/1});
+    perf.set_integrator(cpu::md::VelocityVerlet{0.0});
+    perf.set_observer_ref(qeq);
+    perf.build();
     const auto t0 = std::chrono::steady_clock::now();
     for (int rep = 0; rep < n_rep; ++rep)
-        qeq.launch({ctx, f, 0, rep});
+        perf.run(f, 1);
     const auto t1 = std::chrono::steady_clock::now();
     const double t_atv =
         std::chrono::duration<double>(t1 - t0).count();
     const double t_lmp = 0.000610294; // LAMMPS loop time, 1000 solves (pin)
     std::printf("perf: T_atv=%.6f s  T_lmp=%.6f s  ratio=%.2f (1000 solves)\n",
                 t_atv, t_lmp, t_atv / t_lmp);
-
-    qeq.destroy({ctx, f});
 
     if (g_fail == 0)
         std::printf("qeq-fluctuating-charge: all pins OK\n");

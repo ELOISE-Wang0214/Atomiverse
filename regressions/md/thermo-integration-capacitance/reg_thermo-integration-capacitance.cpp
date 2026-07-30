@@ -17,11 +17,14 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/electrodes/charging_work.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/neighbor/pair_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_coul_cut.h"
 #include "atomiverse/cpu/potentials/pair_coul_soft.h"
 
 using namespace ATV;
@@ -52,6 +55,8 @@ cpu::Frame empty_plates() {
                 f.span(kAtom_charge)[a] = 0.0;
                 f.span(kAtom_mass)[a] = 12.0;
                 f.span(kAtom_tag)[a] = a + 1;
+                f.span(kAtom_vx)[a] = f.span(kAtom_vy)[a] =
+                    f.span(kAtom_vz)[a] = 0.0;
                 ++a;
             }
     }
@@ -71,16 +76,38 @@ QC solve_at_psi(double psi_top) {
     bo.add_electrode(2, psi_top);
     bo.electroneutrality = true;
     bo.xy_image_range = kImage;
-    cpu::Context ctx;
-    bo.build({ctx, f});
-    bo.launch({ctx, f, 0, 0});
-    // Write Q onto frame charges for ChargingWork.
-    // ConstPotBO already writes electrode charges to frame.
     cpu::electrodes::ChargingWork cw({1, 2}, {0.0, psi_top});
-    cw.build({ctx, f});
-    cw.launch({ctx, f, 0, 0});
+
+    cpu::md::MD sim;
+    // ChargingWork after BO: BO pre_force, ChargingWork on force phase.
+    sim.set_evaluator_ref(cw);
+    sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+    sim.set_observer_ref(bo);
+    sim.build();
+    sim.run(f, 1);
+
     const double Q = bo.total_charge(1);
     return {std::fabs(Q), cw.last_work()};
+}
+
+cpu::Frame soft_dimer() {
+    cpu::Frame f(2);
+    f.span(kAtom_x)[0] = 0;
+    f.span(kAtom_y)[0] = 0;
+    f.span(kAtom_z)[0] = 0;
+    f.span(kAtom_x)[1] = 3.0;
+    f.span(kAtom_y)[1] = 0;
+    f.span(kAtom_z)[1] = 0;
+    f.span(kAtom_charge)[0] = 1.0;
+    f.span(kAtom_charge)[1] = -1.0;
+    f.span(kAtom_mass)[0] = f.span(kAtom_mass)[1] = 1.0;
+    f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 0;
+    f.span(kAtom_tag)[0] = 1;
+    f.span(kAtom_tag)[1] = 2;
+    f.box = cpu::Box::cubic(50.0);
+    f.meta.get(kEnergy) = 0;
+    f.meta.get(kEnergyPair) = 0;
+    return f;
 }
 
 } // namespace
@@ -113,17 +140,13 @@ int main() {
     }
 
     // ── Gate C: charging free energy A = ½ Q Ψ = −W for linear response ─
-    // ChargingWork = −Σ Ψ_i Q_i; for two plates with Ψ_bot=0, Ψ_top=Ψ, W=−Ψ Q_top.
-    // For linear capacitor A_charge = ½ Q Ψ, so −W should equal Q Ψ and A = ½(−W).
     const double W = s2.W;
     const double QPsi = s2.Q * psi2;
     std::printf("Gate C: W=%.6e  Q*Ψ=%.6e  ½QΨ=%.6e\n", W, QPsi, 0.5 * QPsi);
     if (!(std::fabs(W + QPsi) <= 1e-8 * std::fmax(1.0, QPsi))) {
-        // W should be −Q_top * Ψ_top (bot contributes 0).
         std::printf("FAIL ChargingWork vs −QΨ (W=%.6e want %.6e)\n", W, -QPsi);
         ++fail;
     }
-    // Free-energy proxy consistency: ½ C Ψ² = ½ Q Ψ
     const double A = 0.5 * C2 * psi2 * psi2;
     if (!(std::fabs(A - 0.5 * QPsi) <= 1e-8 * std::fmax(1.0, A))) {
         std::printf("FAIL A≠½QΨ\n");
@@ -132,43 +155,15 @@ int main() {
 
     // ── Gate B: Kirkwood TI on soft Coulomb dimer (workflow primitive) ─
     {
-        cpu::md::PairList pairs;
-        pairs.inum = 1;
-        pairs.ilist = {0};
-        pairs.numneigh = {1, 0};
-        pairs.firstneigh = {0, 0};
-        pairs.neighbors = {1};
-        pairs.total_pairs = 1;
-        pairs.has_shifts = false;
-        pairs.version = 1;
-
-        auto energy_at = [&](double lam) {
-            cpu::Frame f(2);
-            f.span(kAtom_x)[0] = 0;
-            f.span(kAtom_y)[0] = 0;
-            f.span(kAtom_z)[0] = 0;
-            f.span(kAtom_x)[1] = 3.0;
-            f.span(kAtom_y)[1] = 0;
-            f.span(kAtom_z)[1] = 0;
-            f.span(kAtom_charge)[0] = 1.0;
-            f.span(kAtom_charge)[1] = -1.0;
-            f.span(kAtom_mass)[0] = f.span(kAtom_mass)[1] = 1.0;
-            f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 0;
-            f.span(kAtom_tag)[0] = 1;
-            f.span(kAtom_tag)[1] = 2;
-            f.box = cpu::Box::cubic(50.0);
-            f.meta.get(kEnergy) = 0;
-            f.meta.get(kEnergyPair) = 0;
-            for (int i = 0; i < 2; ++i)
-                f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] =
-                    f.span(kAtom_fz)[i] = 0;
-            cpu::Context ctx;
-            ctx.md.pair_list = &pairs;
+        auto energy_at = [](double lam) {
+            auto f = soft_dimer();
             cpu::PairCoulSoft soft(/*cutoff=*/8.0, /*sigma_c=*/1.0, 0.5, 1.0);
             soft.lambda = lam;
-            soft.build({ctx, f});
-            soft.launch({ctx, f, 0, 0});
-            soft.destroy({ctx, f});
+            cpu::Evaluate eval;
+            eval.set_neighbor(cpu::md::NeighborList<>{8.0, 0.5});
+            eval.set_evaluator_ref(soft);
+            eval.build();
+            eval.run(f);
             return f.meta.get(kEnergy);
         };
 
@@ -176,36 +171,20 @@ int main() {
         const double U1 = energy_at(1.0);
         const int N = 200;
         double integral = 0.0;
+
+        auto f = soft_dimer();
+        cpu::PairCoulSoft soft(8.0, 1.0, 0.5, 1.0);
+        // Continuable MD (dt=0) keeps soft-core component state across λ grid.
+        cpu::md::MD sim;
+        sim.set_neighbor(cpu::md::NeighborList<>{8.0, 0.5});
+        sim.set_evaluator_ref(soft);
+        sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+        sim.build();
         for (int i = 0; i <= N; ++i) {
-            const double lam = static_cast<double>(i) / N;
-            cpu::Frame f(2);
-            f.span(kAtom_x)[0] = 0;
-            f.span(kAtom_y)[0] = 0;
-            f.span(kAtom_z)[0] = 0;
-            f.span(kAtom_x)[1] = 3.0;
-            f.span(kAtom_y)[1] = 0;
-            f.span(kAtom_z)[1] = 0;
-            f.span(kAtom_charge)[0] = 1.0;
-            f.span(kAtom_charge)[1] = -1.0;
-            f.span(kAtom_mass)[0] = f.span(kAtom_mass)[1] = 1.0;
-            f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 0;
-            f.span(kAtom_tag)[0] = 1;
-            f.span(kAtom_tag)[1] = 2;
-            f.box = cpu::Box::cubic(50.0);
-            f.meta.get(kEnergy) = 0;
-            f.meta.get(kEnergyPair) = 0;
-            for (int a = 0; a < 2; ++a)
-                f.span(kAtom_fx)[a] = f.span(kAtom_fy)[a] =
-                    f.span(kAtom_fz)[a] = 0;
-            cpu::Context ctx;
-            ctx.md.pair_list = &pairs;
-            cpu::PairCoulSoft soft(8.0, 1.0, 0.5, 1.0);
-            soft.lambda = lam;
-            soft.build({ctx, f});
-            soft.launch({ctx, f, 0, 0});
+            soft.lambda = static_cast<double>(i) / N;
+            sim.run(f, 1);
             const double w = (i == 0 || i == N) ? 0.5 : 1.0;
             integral += w * soft.dU_dlambda();
-            soft.destroy({ctx, f});
         }
         integral *= 1.0 / N;
         std::printf("Gate B soft-Coul TI: ∫dU/dλ=%.12e  U1-U0=%.12e\n",
@@ -220,6 +199,6 @@ int main() {
         std::printf("FAIL: thermo-integration-capacitance (%d)\n", fail);
         return 1;
     }
-    std::printf("PASS: thermo-integration-capacitance  C=%.6e e/V\n", C2);
+    std::printf("PASS: thermo-integration-capacitance\n");
     return 0;
 }

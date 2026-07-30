@@ -1,14 +1,14 @@
 /// @file regressions/semiempirical/dftb-plus-u/reg_dftb-plus-u.cpp
-/// @brief DFTB2+U: Dudarev E_U identity + FD nuclear forces on water.
+/// @brief DFTB2+U: Dudarev E_U identity + analytic FD forces vs energy FD.
 ///
 /// Domain: Dudarev et al., Phys. Rev. B 57, 1505 (1998); design
-/// `.claude/notes/dftb-plus-u.md`.
-/// Exit non-zero on failure. Public API only. <= 60 s.
+/// `.claude/notes/dftb-plus-u.md`. Driven via `cpu::Evaluate` only (Frame is
+/// the sole I/O token). Exit non-zero on failure. Public API only. <= 60 s.
 #include <cmath>
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/semiempirical/dftb2.h"
 
@@ -40,14 +40,17 @@ cpu::Frame make_water() {
     return f;
 }
 
+/// @brief Single-point DFTB2(+U) energy via Evaluate (Frame only).
 double energy_only(cpu::Frame g, double u_o) {
-    cpu::Context ctx;
     cpu::semiempirical::DFTB2 d;
     d.with_forces = false;
     d.scc_tol = 1e-10;
-    d.u_eff[8] = u_o;
-    d.build({ctx, g});
-    d.launch({ctx, g, 0, 0});
+    if (u_o > 0.0)
+        d.u_eff[8] = u_o;
+    cpu::Evaluate eval;
+    eval.set_evaluator_ref(d);
+    eval.build();
+    eval.run(g);
     return d.last_energy();
 }
 
@@ -56,14 +59,17 @@ double energy_only(cpu::Frame g, double u_o) {
 int main() {
     constexpr double kU = 4.0;
     constexpr double kTol = 1e-9;
-    cpu::Context ctx;
 
     auto f0 = make_water();
     cpu::semiempirical::DFTB2 plain;
     plain.with_forces = false;
     plain.scc_tol = 1e-10;
-    plain.build({ctx, f0});
-    plain.launch({ctx, f0, 0, 0});
+    {
+        cpu::Evaluate eval;
+        eval.set_evaluator_ref(plain);
+        eval.build();
+        eval.run(f0);
+    }
     const double e0 = plain.last_energy();
 
     auto f = make_water();
@@ -71,8 +77,12 @@ int main() {
     dftb.with_forces = true;
     dftb.scc_tol = 1e-10;
     dftb.u_eff[8] = kU;
-    dftb.build({ctx, f});
-    dftb.launch({ctx, f, 0, 0});
+    {
+        cpu::Evaluate eval;
+        eval.set_evaluator_ref(dftb);
+        eval.build();
+        eval.run(f);
+    }
     const double e_tot = dftb.last_energy();
     const double e_u = dftb.last_e_u();
     const auto& dq = dftb.last_mulliken_dq();
@@ -106,7 +116,8 @@ int main() {
         return 1;
     }
 
-    // FD force gate: F_O_x vs −∂E/∂x_O on the same +U surface.
+    // FD force gate: F_O_x (from Evaluate+with_forces) vs −∂E/∂x_O on the
+    // same +U surface (energy-only Evaluate at ±h).
     constexpr double h = 1e-4;
     auto fp = make_water();
     auto fm = make_water();
@@ -114,8 +125,9 @@ int main() {
         static_cast<StorageReal>(static_cast<double>(fp.span(kAtom_x)[0]) + h);
     fm.span(kAtom_x)[0] =
         static_cast<StorageReal>(static_cast<double>(fm.span(kAtom_x)[0]) - h);
-    const double fd = -(energy_only(std::move(fp), kU) - energy_only(std::move(fm), kU))
-                      / (2.0 * h);
+    const double fd =
+        -(energy_only(std::move(fp), kU) - energy_only(std::move(fm), kU))
+        / (2.0 * h);
     const double fox = static_cast<double>(f.span(kAtom_fx)[0]);
     std::printf("  F_O_x analytic/FD-path=%.12f  fd=%.12f  |d|=%.3e eV/A\n", fox,
                 fd, std::fabs(fox - fd));
@@ -123,7 +135,6 @@ int main() {
         std::printf("FAIL force vs energy FD (tol 5e-4 eV/A)\n");
         return 1;
     }
-    // Force should be nonzero at this off-eq water geometry.
     if (std::fabs(fox) < 1e-4) {
         std::printf("FAIL F_O_x ~ 0\n");
         return 1;

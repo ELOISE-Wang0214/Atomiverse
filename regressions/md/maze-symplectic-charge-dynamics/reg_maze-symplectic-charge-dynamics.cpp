@@ -2,11 +2,8 @@
 /// @brief E2E: true mass-zero constrained (SHAKE-like) MaZe charge dynamics —
 ///        time-reversibility + energy conservation vs the CG+ASPC twin.
 ///
-/// Public API only: `ConstPotMaZe` + `PairGaussianCoul` components driven by
-/// an explicit NVE velocity-Verlet loop (the elastance/RHS build is a full
-/// min-image sum with no cutoff, so the pair twin must also see every
-/// min-image pair — a driver NeighborList cannot cover that; the explicit
-/// loop also makes the velocity-flip palindrome exact).
+/// Public API only: `ConstPotMaZe` + `PairGaussianCoul` on `cpu::md::MD`
+/// (Frame-only; walls frozen). Palindrome velocity flip for reversibility.
 ///
 /// Oracles: MetalWalls c8ad175d (the real binary — MaZe invariants on this
 /// geometry and the dilute-limit electrode charge) over Coretti et al.,
@@ -19,9 +16,12 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_maze.h"
+#include "atomiverse/cpu/dynamics/fix_freeze.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/pair_gaussian_coul.h"
 
 using namespace ATV;
@@ -67,6 +67,8 @@ cpu::Frame make_capacitor(double lxy = kLxy, double lz = kLz) {
                 f.span(kAtom_charge)[a] = 0.0;
                 f.span(kAtom_mass)[a] = 196.97;
                 f.span(kAtom_tag)[a] = a + 1;
+                f.span(kAtom_vx)[a] = f.span(kAtom_vy)[a] =
+                    f.span(kAtom_vz)[a] = 0.0;
                 ++a;
             }
     }
@@ -84,6 +86,7 @@ cpu::Frame make_capacitor(double lxy = kLxy, double lz = kLz) {
         f.span(kAtom_charge)[a] = ion_q[i];
         f.span(kAtom_mass)[a] = kMion;
         f.span(kAtom_tag)[a] = a + 1;
+        f.span(kAtom_vx)[a] = f.span(kAtom_vy)[a] = f.span(kAtom_vz)[a] = 0.0;
         ++a;
     }
     f.box = cpu::Box::orthorhombic(lxy, lxy, lz);
@@ -118,14 +121,19 @@ RunResult run_case(bool symplectic, double foothold_cg_tol) {
     std::vector<double> etas = {0.0, kEta, kEta, 0.0};
     cpu::PairGaussianCoul pg(kCut, etas, /*include_self=*/true);
 
-    cpu::Context ctx;
-    maze.build({ctx, f});
-    pg.build({ctx, f});
+    cpu::md::MD sim;
+    sim.set_neighbor(cpu::md::NeighborList<>{kCut, 0.5});
+    sim.set_evaluator_ref(pg);
+    sim.set_integrator(cpu::md::VelocityVerlet{kDt});
+    sim.set_observer_ref(maze);
+    sim.set_observer(cpu::md::FixFreeze{1});
+    sim.set_observer(cpu::md::FixFreeze{2});
+    sim.enable_timing(false);
+    sim.build();
 
     const double x0[2] = {f.span(kAtom_x)[kIon0], f.span(kAtom_x)[kIon0 + 1]};
     const double y0[2] = {f.span(kAtom_y)[kIon0], f.span(kAtom_y)[kIon0 + 1]};
     const double z0[2] = {f.span(kAtom_z)[kIon0], f.span(kAtom_z)[kIon0 + 1]};
-    double vel[2][3] = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
 
     RunResult res;
     auto q_plate = [&](int typ) {
@@ -135,25 +143,17 @@ RunResult run_case(bool symplectic, double foothold_cg_tol) {
                 s += f.span(kAtom_charge)[i];
         return s;
     };
-    // Charge solve (pre_force) then pair energy/forces at current positions.
-    int step = 0;
-    auto eval = [&]() {
-        for (int i = 0; i < f.nlocal(); ++i)
-            f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] =
-                0.0;
-        f.meta.get(kEnergy) = 0.0;
-        maze.launch({ctx, f, 0, step});
-        pg.launch({ctx, f, 0, step});
-        ++step;
-    };
     auto conserved = [&]() {
         // E = KE + U_pair − Σ_i Ψ_i Q_i  (constant-potential grand energy)
-        double mv2 = 0.0;
-        for (int k = 0; k < 2; ++k)
-            mv2 += kMion
-                   * (vel[k][0] * vel[k][0] + vel[k][1] * vel[k][1]
-                      + vel[k][2] * vel[k][2]);
-        return 0.5 * units::mass_v2_to_energy * mv2 + f.meta.get(kEnergy)
+        double ke = 0.0;
+        for (int k = 0; k < 2; ++k) {
+            const int i = kIon0 + k;
+            const double vx = f.span(kAtom_vx)[i];
+            const double vy = f.span(kAtom_vy)[i];
+            const double vz = f.span(kAtom_vz)[i];
+            ke += 0.5 * kMion * (vx * vx + vy * vy + vz * vz);
+        }
+        return units::mass_v2_to_energy * ke + f.meta.get(kEnergy)
                - (kPsiBot * q_plate(1) + kPsiTop * q_plate(2));
     };
     auto observe = [&]() {
@@ -168,38 +168,20 @@ RunResult run_case(bool symplectic, double foothold_cg_tol) {
         res.min_sep = std::min(res.min_sep,
                                std::sqrt(dx * dx + dy * dy + dz * dz));
     };
-    auto half_kick = [&]() {
-        for (int k = 0; k < 2; ++k) {
-            const int i = kIon0 + k;
-            vel[k][0] += 0.5 * kDt * f.span(kAtom_fx)[i]
-                         * units::force_to_accel / kMion;
-            vel[k][1] += 0.5 * kDt * f.span(kAtom_fy)[i]
-                         * units::force_to_accel / kMion;
-            vel[k][2] += 0.5 * kDt * f.span(kAtom_fz)[i]
-                         * units::force_to_accel / kMion;
-        }
-    };
-
-    eval(); // initial charges + forces
-    observe();
-    res.q_top_first = q_plate(2);
-    std::vector<double> q_start(maze.solver().charges());
 
     const int settle = 5; // skip bootstrap / ASPC-fill transient
     double e_ref = 0.0;
     int sampled = 0;
+    std::vector<double> q_start;
+
     auto do_leg = [&]() {
         for (int s = 0; s < kSteps; ++s) {
-            half_kick();
-            for (int k = 0; k < 2; ++k) {
-                const int i = kIon0 + k;
-                f.span(kAtom_x)[i] += kDt * vel[k][0];
-                f.span(kAtom_y)[i] += kDt * vel[k][1];
-                f.span(kAtom_z)[i] += kDt * vel[k][2];
-            }
-            eval();
-            half_kick();
+            sim.run(f, 1);
             observe();
+            if (sampled == 0) {
+                res.q_top_first = q_plate(2);
+                q_start = maze.solver().charges();
+            }
             if (sampled == settle)
                 e_ref = conserved();
             if (sampled > settle)
@@ -210,10 +192,14 @@ RunResult run_case(bool symplectic, double foothold_cg_tol) {
     };
 
     do_leg(); // forward
-    for (int k = 0; k < 2; ++k)
-        for (int d = 0; d < 3; ++d)
-            vel[k][d] = -vel[k][d]; // velocity flip
-    do_leg();                       // backward (palindrome)
+    // Velocity flip on free ions only (walls stay frozen with v=0).
+    for (int k = 0; k < 2; ++k) {
+        const int i = kIon0 + k;
+        f.span(kAtom_vx)[i] = -f.span(kAtom_vx)[i];
+        f.span(kAtom_vy)[i] = -f.span(kAtom_vy)[i];
+        f.span(kAtom_vz)[i] = -f.span(kAtom_vz)[i];
+    }
+    do_leg(); // backward (palindrome)
 
     for (int k = 0; k < 2; ++k) {
         const int i = kIon0 + k;
@@ -227,6 +213,8 @@ RunResult run_case(bool symplectic, double foothold_cg_tol) {
     const auto& q_end = maze.solver().charges();
     for (std::size_t i = 0; i < q_end.size() && i < q_start.size(); ++i)
         res.ret_q = std::max(res.ret_q, std::abs(q_end[i] - q_start[i]));
+
+    // ~MD flushes continuable destroy
     return res;
 }
 
@@ -247,26 +235,23 @@ int main() {
                 aspc.drift, aspc.ret_pos, aspc.ret_q, aspc.max_neut,
                 aspc.min_sep, aspc.q_top_first);
 
-    // ── External oracle: MetalWalls c8ad175d ────────────────────────────
-    // The 6×6×20 Å cell above is evaluated in **minimum image** (hard-cutoff
-    // `PairGaussianCoul` + `ConstPotBO::xy_image_range = 0`), which
-    // MetalWalls cannot express — its Coulomb is always Ewald-summed
-    // (`num_pbc` 2 or 3), and on this cell MW answers Q_top = +0.152960 e,
-    // 11.2% above the truncated model. The identical cluster in a dilute
-    // cell **is** expressible: MW's Ewald converges to the isolated pairwise
-    // Gaussian-Coulomb sum, which is exactly what the minimum-image path
-    // computes once the cell exceeds twice the cluster extent.
+    // ── External oracle: MetalWalls c8ad175d dilute-limit Q_top ─────────
     cpu::Frame dil = make_capacitor(kLDilute, kLDilute);
     cpu::md::ConstPotMaZe dil_maze(kEta);
     dil_maze.add_electrode(1, kPsiBot);
     dil_maze.add_electrode(2, kPsiTop);
     cpu::PairGaussianCoul dil_pg(kCutDilute, {0.0, kEta, kEta, 0.0}, true);
-    cpu::Context dil_ctx;
-    dil_maze.build({dil_ctx, dil});
-    dil_pg.build({dil_ctx, dil});
-    dil.meta.get(kEnergy) = 0.0;
-    dil_maze.launch({dil_ctx, dil, 0, 0});
-    dil_pg.launch({dil_ctx, dil, 0, 0});
+    {
+        cpu::md::MD sim;
+        sim.set_neighbor(cpu::md::NeighborList<>{kCutDilute, 0.5});
+        sim.set_evaluator_ref(dil_pg);
+        sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+        sim.set_observer_ref(dil_maze);
+        sim.set_observer(cpu::md::FixFreeze{1});
+        sim.set_observer(cpu::md::FixFreeze{2});
+        sim.build();
+        sim.run(dil, 1);
+    }
     double q_top_dilute = 0.0;
     for (int i = 0; i < dil.nlocal(); ++i)
         if (dil.span(kAtom_type)[i] == 2)
@@ -283,21 +268,16 @@ int main() {
         ++fail;
     }
 
-    // ── Validity of the scenario itself ─────────────────────────────────
-    // Ions must stay well separated (bound smooth motion, no collapse).
     if (!(maze.min_sep > 1.8)) {
         std::printf("FAIL: ion collapse (min_sep=%.3f Å <= 1.8)\n",
                     maze.min_sep);
         ++fail;
     }
-    // +1 V plate polarizes positive vs the 0 V plate (physical polarity).
     if (!(maze.q_top_first > 0.0)) {
         std::printf("FAIL: Q_top=%.3e <= 0 at ΔΨ=+1 V\n", maze.q_top_first);
         ++fail;
     }
 
-    // ── MaZe constraint pins (Coretti 2020: constraint at solver precision,
-    //    electroneutrality exact) ─────────────────────────────────────────
     if (!(maze.max_resid <= 1e-10)) {
         std::printf("FAIL: constraint residual %.3e V > 1e-10\n",
                     maze.max_resid);
@@ -308,8 +288,6 @@ int main() {
         ++fail;
     }
 
-    // ── Time reversibility (Coretti 2020 §III: mass-zero constrained
-    //    dynamics is time-reversible; dissipative predictor twins are not) ─
     if (!(maze.ret_pos <= 1e-6)) {
         std::printf("FAIL: MaZe palindrome position error %.3e Å > 1e-6\n",
                     maze.ret_pos);
@@ -327,8 +305,6 @@ int main() {
         ++fail;
     }
 
-    // ── Energy conservation (Coretti 2020 fig. 2-style: no secular drift
-    //    for MaZe; loose-tolerance adiabatic twin drifts) ────────────────
     if (!(maze.drift <= 1e-6)) {
         std::printf("FAIL: MaZe energy drift %.3e eV > 1e-6\n", maze.drift);
         ++fail;

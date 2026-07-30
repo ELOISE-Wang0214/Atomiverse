@@ -19,7 +19,6 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
 #include "atomiverse/cpu/dynamics/const_pot_cg.h"
 #include "atomiverse/cpu/dynamics/md.h"
@@ -103,6 +102,17 @@ cpu::Frame madelung_primary() {
     return frame;
 }
 
+template <typename Solver>
+void solve_once(Solver& s, cpu::Frame& f) {
+    cpu::md::MD sim;
+    sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/12.0, /*skin=*/0.5});
+    sim.set_evaluator(cpu::PairCoulCut{/*cutoff=*/12.0});
+    sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.0});
+    sim.set_observer_ref(s);
+    sim.build();
+    sim.run(f, 1);
+}
+
 } // namespace
 
 int main() {
@@ -126,9 +136,7 @@ int main() {
         cg.electroneutrality = true;
         cg.xy_image_range = 0;
         cg.cg_tol = 1e-14;
-        cpu::Context ctx;
-        cg.build({ctx, f});
-        cg.launch({ctx, f, 0, 0});
+        solve_once(cg, f);
         const double q_top = cg.total_charge(1);
         const double neut = cg.neutrality_residual();
         std::printf(
@@ -163,15 +171,12 @@ int main() {
     bo.electroneutrality = true;
     bo.xy_image_range = 0;
 
-    cpu::Context ctx;
     const auto t0_bo = std::chrono::steady_clock::now();
-    bo.build({ctx, f_bo});
-    bo.launch({ctx, f_bo, 0, 0});
+    solve_once(bo, f_bo);
     const auto t1_bo = std::chrono::steady_clock::now();
 
     const auto t0_cg = std::chrono::steady_clock::now();
-    cg.build({ctx, f_cg});
-    cg.launch({ctx, f_cg, 0, 0});
+    solve_once(cg, f_cg);
     const auto t1_cg = std::chrono::steady_clock::now();
 
     const double ms_bo =

@@ -14,7 +14,9 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/dynamics/fix_addforce.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/observe/capacitance_charge_fluctuation.h"
 
@@ -42,6 +44,7 @@ cpu::Frame make_parallel_plate() {
         f.span(kAtom_charge)[i] = 0.0;
         f.span(kAtom_mass)[i] = 12.0;
         f.span(kAtom_tag)[i] = i + 1;
+        f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] = 0;
     }
     for (int i = 4; i < 8; ++i) {
         f.span(kAtom_x)[i] = static_cast<double>(i - 4);
@@ -51,6 +54,7 @@ cpu::Frame make_parallel_plate() {
         f.span(kAtom_charge)[i] = 0.0;
         f.span(kAtom_mass)[i] = 12.0;
         f.span(kAtom_tag)[i] = i + 1;
+        f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] = 0;
     }
     f.box = cpu::Box::cubic(20.0);
     return f;
@@ -84,12 +88,15 @@ int main() {
 
     auto frame = make_parallel_plate();
     cpu::CapacitanceChargeFluctuation obs({1, 2}, T, dPsi);
-    cpu::Context ctx;
 
+    cpu::md::MD sim;
+    sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+    sim.set_evaluator(cpu::md::FixAddForce{0.0, 0.0, 0.0, /*type=*/1});
+    sim.set_observer_ref(obs);
+    sim.build();
     for (int s = 0; s < kNSamples; ++s) {
         set_wall_total_Q(frame, kQL[s], -kQL[s]);
-        cpu::LaunchContext lc{ctx, frame, /*stage=*/0, /*step=*/s};
-        obs.launch(lc);
+        sim.run(frame, 1);
     }
 
     bool ok = true;

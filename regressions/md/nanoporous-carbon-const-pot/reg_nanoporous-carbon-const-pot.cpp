@@ -22,6 +22,7 @@
 #include "atomiverse/cpu/longrange/pme.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/coul_long.h"
+#include "atomiverse/cpu/potentials/pair_coul_cut.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 using namespace ATV;
@@ -125,9 +126,15 @@ int main() {
         bo.add_electrode(3, kPsiTop);
         bo.electroneutrality = true;
         bo.xy_image_range = kImageRange;
-        cpu::Context ctx;
-        bo.build({ctx, f});
-        bo.launch({ctx, f, 0, 0});
+        {
+            cpu::md::MD sim;
+            sim.set_neighbor(cpu::md::NeighborList<>{10.0, 0.5});
+            sim.set_evaluator(cpu::PairCoulCut{10.0});
+            sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+            sim.set_observer_ref(bo);
+            sim.build();
+            sim.run(f, 1);
+        }
         const double QL = bo.total_charge(0);
         const double QR = bo.total_charge(1);
         std::printf("empty slit: QL=%+.6e QR=%+.6e neut=%.3e\n", QL, QR,

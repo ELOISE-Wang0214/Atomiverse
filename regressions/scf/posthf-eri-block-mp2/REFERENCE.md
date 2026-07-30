@@ -2,7 +2,7 @@
 
 Plain (canonical, non-RI) second-order Møller–Plesset on water / STO-3G, driven
 through the public `RHF::mp2` path. Canonical RMP2 consumes the full N⁴ AO ERI
-tensor materialized by `IntegralPack::eri_dense`; this case is the end-to-end
+tensor materialized by `IntegralWorkspace::eri_dense`; this case is the end-to-end
 witness for spec **scf-review-07-posthf-perf item 17** — the dense ERI tensor
 is re-assembled from a per-AO scalar `native::eri` loop to a `native::eri_block`
 shell-block engine (amortized Boys/R-table + OpenMP, 8-fold-symmetry scatter),

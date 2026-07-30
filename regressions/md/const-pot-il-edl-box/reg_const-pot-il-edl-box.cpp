@@ -23,7 +23,6 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
 #include "atomiverse/cpu/dynamics/fix_freeze.h"
 #include "atomiverse/cpu/dynamics/init.h"
@@ -37,6 +36,7 @@
 #include "atomiverse/cpu/observe/potential_profile.h"
 #include "atomiverse/cpu/observe/species_density_profile.h"
 #include "atomiverse/cpu/potentials/coul_long.h"
+#include "atomiverse/cpu/potentials/pair_coul_cut.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 using namespace ATV;
@@ -146,9 +146,13 @@ SolveQ solve_box(cpu::Frame& f) {
     bo.use_cg = true;
     bo.cg_tol = 1e-12;
     bo.max_cg_iters = 5000;
-    cpu::Context ctx;
-    bo.build({ctx, f});
-    bo.launch({ctx, f, 0, 0});
+    cpu::md::MD sim;
+    sim.set_neighbor(cpu::md::NeighborList<>{10.0, 0.5});
+    sim.set_evaluator(cpu::PairCoulCut{10.0});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+    sim.set_observer_ref(bo);
+    sim.build();
+    sim.run(f, 1);
     return {bo.total_charge(0), bo.total_charge(1), bo.neutrality_residual()};
 }
 

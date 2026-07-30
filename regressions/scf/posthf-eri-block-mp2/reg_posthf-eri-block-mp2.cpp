@@ -5,7 +5,7 @@
 /// Out-of-library consumer: public headers + link atomiverse only. This case
 /// specifically gates the block-assembled dense-ERI path end-to-end
 /// (spec scf-review-07-posthf-perf, item 17): plain canonical RMP2 consumes the
-/// full N⁴ AO ERI tensor materialized by IntegralPack::eri_dense — after the
+/// full N⁴ AO ERI tensor materialized by IntegralWorkspace::eri_dense — after the
 /// scalar→native::eri_block rewrite, this witness confirms the assembled tensor
 /// still reproduces the PySCF correlation energy end-to-end.
 ///
@@ -57,7 +57,7 @@ int main() {
     rhf.max_iter = 200;
 
     // Plain canonical RMP2 (default scales, no RI) → consumes the dense ERI
-    // tensor assembled by IntegralPack::eri_dense (the block path under test).
+    // tensor assembled by IntegralWorkspace::eri_dense (the block path under test).
     const cpu::scf::MP2Result mp2 = rhf.mp2(frame);
 
     // PySCF 2.14.0 pins — see REFERENCE.md (never live-import PySCF here).

@@ -11,10 +11,13 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/electrodes/charge_aspc.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_coul_cut.h"
 
 using namespace ATV;
 
@@ -89,6 +92,34 @@ cpu::md::ConstPotBO make_solver(int pred_order) {
     c.predictor_order = pred_order;
     return c;
 }
+
+/// One-shot BO solve (dt=0).
+void solve_once(cpu::md::ConstPotBO& bo, cpu::Frame& f) {
+    cpu::md::MD sim;
+    sim.set_neighbor(cpu::md::NeighborList<>{12.0, 0.5});
+    sim.set_evaluator(cpu::PairCoulCut{12.0});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+    sim.set_observer_ref(bo);
+    sim.build();
+    sim.run(f, 1);
+}
+
+/// Multi-step ASPC path with geometry updates between steps (Frame-only).
+/// Continuable MD::run(f,1) preserves BO/ASPC state; ~MD flushes destroy.
+struct SteppedBo {
+    cpu::md::ConstPotBO& bo;
+    cpu::Frame& f;
+    cpu::md::MD sim;
+
+    SteppedBo(cpu::md::ConstPotBO& bo_, cpu::Frame& f_) : bo(bo_), f(f_) {
+        sim.set_neighbor(cpu::md::NeighborList<>{12.0, 0.5});
+        sim.set_evaluator(cpu::PairCoulCut{12.0});
+        sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+        sim.set_observer_ref(bo);
+        sim.build();
+    }
+    void step() { sim.run(f, 1); }
+};
 
 } // namespace
 
@@ -167,11 +198,8 @@ int main() {
         dense.use_cg = false;
         dense.xy_image_range = 0;
         cpu::md::ConstPotBO cg = make_solver(/*pred_order=*/0);
-        cpu::Context ctx;
-        dense.build({ctx, f_d});
-        dense.launch({ctx, f_d, 0, 0});
-        cg.build({ctx, f_c});
-        cg.launch({ctx, f_c, 0, 0});
+        solve_once(dense, f_d);
+        solve_once(cg, f_c);
         const double dQ = std::fabs(cg.total_charge(1) - dense.total_charge(1));
         if (dQ > 1e-8) {
             std::printf("FAIL: CG vs dense |ΔQ_top|=%.3e > 1e-8\n", dQ);
@@ -190,10 +218,9 @@ int main() {
         auto f_cold = make_multi(3);
         auto f_warm2 = make_multi(3);
         auto f_warm5 = make_multi(3);
-        cpu::Context ctx;
-        cold.build({ctx, f_cold});
-        warm2.build({ctx, f_warm2});
-        warm5.build({ctx, f_warm5});
+        SteppedBo run_cold(cold, f_cold);
+        SteppedBo run_w2(warm2, f_warm2);
+        SteppedBo run_w5(warm5, f_warm5);
 
         const int n = f_cold.nlocal();
         const int ion0 = n - 4;
@@ -214,9 +241,9 @@ int main() {
                     f->span(kAtom_z)[ion0 + k] = z0 + sign * dz;
                 }
             }
-            cold.launch({ctx, f_cold, 0, s});
-            warm2.launch({ctx, f_warm2, 0, s});
-            warm5.launch({ctx, f_warm5, 0, s});
+            run_cold.step();
+            run_w2.step();
+            run_w5.step();
             if (s >= first_scored) {
                 sum_cold += cold.last_iters();
                 sum_w2 += warm2.last_iters();

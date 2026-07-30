@@ -20,7 +20,6 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
 #include "atomiverse/cpu/dynamics/fix_efield.h"
 #include "atomiverse/cpu/dynamics/md.h"
@@ -55,7 +54,7 @@ int main() {
 
     int nfail = 0;
 
-    // ── Standalone ConstPotBO + ClassicalPolarization ────────────────
+    // ── Standalone ConstPotBO + ClassicalPolarization (Frame-only MD) ─
     {
         cpu::Frame frame(1);
         frame.span(kAtom_x)[0] = 0.0;
@@ -74,9 +73,16 @@ int main() {
         conp.Ez = kEz;
         conp.electroneutrality = false;
 
-        cpu::Context ctx;
-        conp.build({ctx, frame});
-        conp.launch({ctx, frame, 0, 0});
+        cpu::md::ClassicalPolarization pol;
+        cpu::md::MD sim;
+        sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/2.0, /*skin=*/0.3});
+        sim.set_evaluator(cpu::PairLJCut{/*eps=*/0.0, /*sigma=*/1.0,
+                                         /*cutoff=*/2.0});
+        sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.0});
+        sim.set_observer_ref(conp);
+        sim.set_observer_ref(pol);
+        sim.build();
+        sim.run(frame, 1);
 
         const double Q = conp.total_charge(0);
         std::printf("finite-field-single-electrode\n");
@@ -87,8 +93,6 @@ int main() {
             ++nfail;
         }
 
-        cpu::md::ClassicalPolarization pol;
-        pol.launch({ctx, frame, 0, 0});
         std::printf("  Pz      = %.12e e/Å²  (pin %.12e)\n", pol.Pz(), Pz_pin);
         if (std::abs(pol.Pz() - Pz_pin) > 1e-12) {
             std::fprintf(stderr, "FAIL Pz |%g - %g| > 1e-12\n", pol.Pz(),

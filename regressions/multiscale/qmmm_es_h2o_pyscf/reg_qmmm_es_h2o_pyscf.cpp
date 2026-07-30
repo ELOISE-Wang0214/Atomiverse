@@ -7,8 +7,9 @@
 #include <cmath>
 #include <cstdio>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/column.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/multiscale/qm_mask.h"
@@ -55,19 +56,10 @@ int main() {
     rhf.max_iter = 200;
     qmmm.set_engine(std::move(rhf));
 
-    cpu::Context ctx;
-    qmmm.build({ctx, frame});
-    cpu::LaunchContext lc{ctx, frame, 0, 0};
-    lc.forces_requested = true;
-    // Zero force channels
-    for (int i = 0; i < 5; ++i) {
-        frame.span(kAtom_fx)[i] = 0;
-        frame.span(kAtom_fy)[i] = 0;
-        frame.span(kAtom_fz)[i] = 0;
-    }
-    frame.meta.get(kEnergy) = 0;
-    frame.meta.get(kEnergyElectronic) = 0;
-    qmmm.launch(lc);
+    cpu::Evaluate eval;
+    eval.on(evaluate::Phase::evaluate).add_ref(qmmm);
+    eval.build();
+    eval.run(frame);
 
     auto g_ha = [&](int i, int d) {
         const double f =

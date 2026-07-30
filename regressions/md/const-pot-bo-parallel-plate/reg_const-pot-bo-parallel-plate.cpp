@@ -8,7 +8,6 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
@@ -18,24 +17,10 @@
 
 using namespace ATV;
 
-int main() {
-    // ── LAMMPS ELECTRODE madelung geometry (metal units) ─────────────
-    // Pin: Q_top = +0.279214485147238 e at ΔΨ = 1 V, η = 2 Å⁻¹, symm on.
-    constexpr double kQTopPin = 0.279214485147238; // [e], oracle lammps
-    constexpr double kRelTol = 0.01;               // 1% (v1 vs Ewald electrode)
-    constexpr double kEta = 2.0;                   // [1/Å]
-    constexpr double kPsiBot = 0.0;                // [V]
-    constexpr double kPsiTop = 1.0;                // [V]
-    constexpr int kImageRange = 250;               // 2D xy Gaussian images
+namespace {
 
-    cpu::Frame frame(4);
-    // Atom order: bot elec, top elec, bot elyt (+0.5), top elyt (−0.5).
-    // z shifted into (0, Lz) so 3D PBC wrap cannot flip the slab spacing
-    // under VelocityVerlet (ATV box is fully periodic; LAMMPS madelung uses
-    // boundary p p f). Relative z = −2, +2, −1, +1 → here 8, 12, 9, 11.
-    const double z[4] = {8.0, 12.0, 9.0, 11.0};
-    const double q0[4] = {0.0, 0.0, 0.5, -0.5};
-    const int typ[4] = {1, 2, 3, 3};
+void fill_madelung(cpu::Frame& frame, const double z[4], const double q0[4],
+                   const int typ[4]) {
     for (int i = 0; i < 4; ++i) {
         frame.span(kAtom_x)[i] = 0.0;
         frame.span(kAtom_y)[i] = 0.0;
@@ -48,17 +33,44 @@ int main() {
             frame.span(kAtom_vz)[i] = 0.0;
     }
     frame.box = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
+}
 
-    // Standalone solve (no need for a long MD trajectory — BO is algebraic).
+/// Algebraic BO solve via one MD step (Frame-only; dt=0 holds geometry).
+void solve_bo(cpu::md::ConstPotBO& conp, cpu::Frame& frame) {
+    cpu::md::MD sim;
+    sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/12.0, /*skin=*/0.5});
+    sim.set_evaluator(cpu::PairCoulCut{/*cutoff=*/12.0});
+    sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.0});
+    sim.set_observer_ref(conp);
+    sim.build();
+    sim.run(frame, 1);
+}
+
+} // namespace
+
+int main() {
+    // ── LAMMPS ELECTRODE madelung geometry (metal units) ─────────────
+    // Pin: Q_top = +0.279214485147238 e at ΔΨ = 1 V, η = 2 Å⁻¹, symm on.
+    constexpr double kQTopPin = 0.279214485147238; // [e], oracle lammps
+    constexpr double kRelTol = 0.01;               // 1% (v1 vs Ewald electrode)
+    constexpr double kEta = 2.0;                   // [1/Å]
+    constexpr double kPsiBot = 0.0;                // [V]
+    constexpr double kPsiTop = 1.0;                // [V]
+    constexpr int kImageRange = 250;               // 2D xy Gaussian images
+
+    const double z[4] = {8.0, 12.0, 9.0, 11.0};
+    const double q0[4] = {0.0, 0.0, 0.5, -0.5};
+    const int typ[4] = {1, 2, 3, 3};
+
+    cpu::Frame frame(4);
+    fill_madelung(frame, z, q0, typ);
+
     cpu::md::ConstPotBO conp(kEta);
     conp.add_electrode(/*type=*/1, kPsiBot);
     conp.add_electrode(/*type=*/2, kPsiTop);
     conp.electroneutrality = true;
     conp.xy_image_range = kImageRange;
-
-    cpu::Context ctx;
-    conp.build({ctx, frame});
-    conp.launch({ctx, frame, /*stage=*/0, /*step=*/0});
+    solve_bo(conp, frame);
 
     const double q_bot = conp.total_charge(0);
     const double q_top = conp.total_charge(1);
@@ -101,21 +113,10 @@ int main() {
         ++nfail;
     }
 
-    // Also exercise MD binding path (one step). Hold component via add_ref.
+    // Rebuild-every-step path (one VelocityVerlet step with finite dt).
     {
         cpu::Frame f2(4);
-        for (int i = 0; i < 4; ++i) {
-            f2.span(kAtom_x)[i] = 0.0;
-            f2.span(kAtom_y)[i] = 0.0;
-            f2.span(kAtom_z)[i] = z[i];
-            f2.span(kAtom_charge)[i] = q0[i];
-            f2.span(kAtom_type)[i] = typ[i];
-            f2.span(kAtom_mass)[i] = (typ[i] < 3) ? 196.966553 : 1.0;
-            f2.span(kAtom_tag)[i] = i + 1;
-            f2.span(kAtom_vx)[i] = f2.span(kAtom_vy)[i] = f2.span(kAtom_vz)[i] =
-                0.0;
-        }
-        f2.box = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
+        fill_madelung(f2, z, q0, typ);
 
         cpu::md::ConstPotBO conp2(kEta);
         conp2.add_electrode(1, kPsiBot);

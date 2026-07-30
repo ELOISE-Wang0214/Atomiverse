@@ -1,7 +1,10 @@
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_coul_cut.h"
 #include <cmath>
 #include <cstdio>
 
@@ -27,6 +30,7 @@ int main() {
         f.span(kAtom_charge)[i] = qq[i];
         f.span(kAtom_mass)[i] = 1;
         f.span(kAtom_tag)[i] = i + 1;
+        f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] = 0;
     }
     f.box = cpu::Box::orthorhombic(10, 10, 20);
 
@@ -39,9 +43,13 @@ int main() {
     // closely enough to pin per-electrode Q (see REFERENCE.md).
     bo.xy_image_range = 1280;
 
-    cpu::Context ctx;
-    bo.build({ctx, f});
-    bo.launch({ctx, f, 0, 0});
+    cpu::md::MD sim;
+    sim.set_neighbor(cpu::md::NeighborList<>{12.0, 0.5});
+    sim.set_evaluator(cpu::PairCoulCut{12.0});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+    sim.set_observer_ref(bo);
+    sim.build();
+    sim.run(f, 1);
 
     const double q0 = bo.total_charge(0);
     const double q1 = bo.total_charge(1);

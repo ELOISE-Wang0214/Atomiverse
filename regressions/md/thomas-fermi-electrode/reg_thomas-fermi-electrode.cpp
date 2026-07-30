@@ -10,9 +10,12 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_coul_cut.h"
 
 using namespace ATV;
 
@@ -70,9 +73,13 @@ cpu::Frame gold_capacitor() {
 }
 
 void run_solve(cpu::md::ConstPotBO& conp, cpu::Frame& f) {
-    cpu::Context ctx;
-    conp.build({ctx, f});
-    conp.launch({ctx, f, /*stage=*/0, /*step=*/0});
+    cpu::md::MD sim;
+    sim.set_neighbor(cpu::md::NeighborList<>{12.0, 0.5});
+    sim.set_evaluator(cpu::PairCoulCut{12.0});
+    sim.set_integrator(cpu::md::VelocityVerlet{0.0});
+    sim.set_observer_ref(conp);
+    sim.build();
+    sim.run(f, 1);
 }
 
 int check_case(const char* label, double l_tf, double q_pin) {

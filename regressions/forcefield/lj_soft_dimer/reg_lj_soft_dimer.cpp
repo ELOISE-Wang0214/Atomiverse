@@ -11,9 +11,9 @@
 #include <cmath>
 #include <cstdio>
 
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/neighbor/pair_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/pair_lj_soft.h"
 
 using namespace ATV;
@@ -46,29 +46,14 @@ int main() {
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
     f.box = cpu::Box::cubic(50.0);
-    f.meta.get(kEnergy) = 0;
-    f.meta.get(kEnergyPair) = 0;
-    for (int i = 0; i < 2; ++i)
-        f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
-
-    cpu::md::PairList pairs;
-    pairs.inum = 1;
-    pairs.ilist = {0};
-    pairs.numneigh = {1, 0};
-    pairs.firstneigh = {0, 0};
-    pairs.neighbors = {1};
-    pairs.total_pairs = 1;
-    pairs.has_shifts = false;
-    pairs.version = 1;
-
-    cpu::Context ctx;
-    ctx.md.pair_list = &pairs;
 
     cpu::PairLJSoft soft(eps, sigma, rc, alpha, p);
     soft.lambda = lam;
-    soft.build({ctx, f});
-    soft.launch({ctx, f, 0, 0});
-    soft.destroy({ctx, f});
+    cpu::Evaluate eval;
+    eval.set_evaluator(std::move(soft));
+    eval.set_neighbor(cpu::md::NeighborList<>{rc, 0.3});
+    eval.build();
+    eval.run(f);
 
     const double E = f.meta.get(kEnergy);
     const double fx0 = f.span(kAtom_fx)[0];

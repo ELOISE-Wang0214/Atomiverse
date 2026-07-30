@@ -9,7 +9,6 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/fix_addforce.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
@@ -138,9 +137,11 @@ int main() {
         // step 0 initial_integrate sees F=0 and the trajectory lags half a
         // force application vs LAMMPS metal NVE.
         {
-            cpu::Context ctx;
-            cpu::md::FixAddForce seed{0.0, 0.0, Fz, ion_type};
-            seed.launch({ctx, frame, /*stage=*/0, /*step=*/0});
+            cpu::Evaluate seed_eval;
+            seed_eval.on(evaluate::Phase::evaluate)
+                .add(cpu::md::FixAddForce{0.0, 0.0, Fz, ion_type});
+            seed_eval.build();
+            seed_eval.run(frame);
             // Bias energy from the seed is overwritten by ZeroEnergy + post_force
             // each MD step; leave frame energy as-is.
         }

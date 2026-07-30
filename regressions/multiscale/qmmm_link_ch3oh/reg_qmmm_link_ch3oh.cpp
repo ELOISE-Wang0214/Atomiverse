@@ -9,8 +9,8 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/component.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/column.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/multiscale/qm_mask.h"
@@ -79,12 +79,11 @@ Energies energy_link(double scale) {
     rhf.tol = 1e-8;
     rhf.max_iter = 80;
     qmmm.set_engine(std::move(rhf));
-    cpu::Context ctx;
-    qmmm.build({ctx, f});
-    cpu::LaunchContext lc{ctx, f, 0, 0};
-    lc.forces_requested = false;
-    f.meta.get(kEnergy) = 0;
-    qmmm.launch(lc);
+
+    cpu::Evaluate eval;
+    eval.on(evaluate::Phase::evaluate).add_ref(qmmm);
+    eval.build();
+    eval.run(f);
     if (qmmm.last_n_links() != 1)
         throw std::runtime_error("expected one link");
     return {f.meta.get(kEnergy), qmmm.last_qm_energy()};

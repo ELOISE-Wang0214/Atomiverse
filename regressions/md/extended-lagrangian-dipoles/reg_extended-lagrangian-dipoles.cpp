@@ -11,7 +11,9 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/potentials/pim_induced_dipole.h"
 #include "atomiverse/cpu/potentials/pim_xl_dipole.h"
@@ -29,15 +31,6 @@ void check(bool ok, const char* what) {
     }
 }
 
-void zero_out(cpu::Frame& f) {
-    for (int i = 0; i < f.nlocal(); ++i) {
-        f.span(kAtom_fx)[i] = 0;
-        f.span(kAtom_fy)[i] = 0;
-        f.span(kAtom_fz)[i] = 0;
-    }
-    f.meta.get(kEnergy) = 0;
-}
-
 /// Two-site pin geometry of pim-induced-dipole-bulk/REFERENCE.md.
 cpu::Frame two_site() {
     cpu::Frame f(2);
@@ -48,6 +41,7 @@ cpu::Frame two_site() {
         f.span(kAtom_mass)[i] = 1.0;
         f.span(kAtom_tag)[i] = i + 1;
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
+        f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] = 0;
     }
     f.span(kAtom_charge)[0] = 1.0;
     f.span(kAtom_charge)[1] = -1.0;
@@ -105,40 +99,30 @@ void run_traj(Pot& pot, int nsteps, double dt,
               std::vector<std::vector<double>>& mu_trace, long& iters,
               double& e_tot0, double& e_tot1) {
     cpu::Frame f = bulk_box();
-    cpu::Context ctx;
-    pot.build({ctx, f});
 
-    zero_out(f);
-    pot.launch({ctx, f, 0, 0});
+    // Seed F(t=0) before the first VV half-kick (LAMMPS run-0 / fix setup).
+    {
+        cpu::Evaluate seed;
+        seed.set_evaluator_ref(pot);
+        seed.build();
+        seed.run(f);
+    }
     mu_trace.push_back(pot.last_mu());
     iters += pot.last_pol_iters();
     e_tot0 = f.meta.get(kEnergy) + kinetic(f);
 
-    const int nl = f.nlocal();
-    for (int s = 1; s <= nsteps; ++s) {
-        for (int i = 0; i < nl; ++i) {
-            const double c =
-                0.5 * dt * units::force_to_accel / f.span(kAtom_mass)[i];
-            f.span(kAtom_vx)[i] += c * f.span(kAtom_fx)[i];
-            f.span(kAtom_vy)[i] += c * f.span(kAtom_fy)[i];
-            f.span(kAtom_vz)[i] += c * f.span(kAtom_fz)[i];
-            f.span(kAtom_x)[i] += dt * f.span(kAtom_vx)[i];
-            f.span(kAtom_y)[i] += dt * f.span(kAtom_vy)[i];
-            f.span(kAtom_z)[i] += dt * f.span(kAtom_vz)[i];
-        }
-        zero_out(f);
-        pot.launch({ctx, f, 0, s});
+    cpu::md::MD sim;
+    sim.set_integrator(cpu::md::VelocityVerlet{dt});
+    sim.set_evaluator_ref(pot);
+    sim.enable_timing(false);
+    sim.build();
+    for (int s = 0; s < nsteps; ++s) {
+        sim.run(f, 1);
         mu_trace.push_back(pot.last_mu());
         iters += pot.last_pol_iters();
-        for (int i = 0; i < nl; ++i) {
-            const double c =
-                0.5 * dt * units::force_to_accel / f.span(kAtom_mass)[i];
-            f.span(kAtom_vx)[i] += c * f.span(kAtom_fx)[i];
-            f.span(kAtom_vy)[i] += c * f.span(kAtom_fy)[i];
-            f.span(kAtom_vz)[i] += c * f.span(kAtom_fz)[i];
-        }
     }
     e_tot1 = f.meta.get(kEnergy) + kinetic(f);
+    // ~MD flushes continuable destroy
 }
 
 } // namespace
@@ -154,12 +138,15 @@ int main() {
     const double tol_f = 1e-7 * std::fabs(F_pin);
 
     cpu::Frame f2 = two_site();
-    cpu::Context ctx;
     cpu::PimXlDipole xl(20.0, {0.0, 1.0, 1.5}, /*thole_a=*/0.0, /*xl_order=*/5,
                         /*pol_tol=*/1e-12, /*pol_max_iter=*/200);
-    xl.build({ctx, f2});
+    // Continuable MD preserves XL aux state for warm-start checks (dt=0).
+    cpu::md::MD sim_stat;
+    sim_stat.set_integrator(cpu::md::VelocityVerlet{0.0});
+    sim_stat.set_evaluator_ref(xl);
+    sim_stat.build();
 
-    xl.launch({ctx, f2, 0, 0}); // cold
+    sim_stat.run(f2, 1); // cold
     const int iters_cold = xl.last_pol_iters();
     std::printf("stationary cold : E=%.16e iters=%d\n", xl.last_pol_energy(),
                 iters_cold);
@@ -172,8 +159,7 @@ int main() {
     check(!xl.last_warm(), "first launch must be cold");
 
     for (int rep = 1; rep <= 2; ++rep) {
-        zero_out(f2);
-        xl.launch({ctx, f2, 0, rep}); // warm — aux seeded stationary
+        sim_stat.run(f2, 1); // warm — aux seeded stationary
         std::printf("stationary warm%d: E=%.16e iters=%d aux_err=%.3e\n", rep,
                     xl.last_pol_energy(), xl.last_pol_iters(),
                     xl.last_aux_error());

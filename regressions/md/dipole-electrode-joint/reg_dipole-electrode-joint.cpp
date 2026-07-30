@@ -17,7 +17,6 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
 #include "atomiverse/cpu/dynamics/dipole_electrode_joint.h"
 #include "atomiverse/cpu/dynamics/md.h"
@@ -51,6 +50,17 @@ cpu::Frame make_frame() {
     return f;
 }
 
+template <typename Solver>
+void solve_once(Solver& s, cpu::Frame& frame) {
+    cpu::md::MD sim;
+    sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/8.0, /*skin=*/0.5});
+    sim.set_evaluator(cpu::PairCoulCut{/*cutoff=*/8.0});
+    sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.0});
+    sim.set_observer_ref(s);
+    sim.build();
+    sim.run(frame, 1);
+}
+
 } // namespace
 
 int main() {
@@ -78,9 +88,7 @@ int main() {
     joint.joint_max_iter = 100;
     joint.pol_max_iter = 200;
 
-    cpu::Context ctx;
-    joint.build({ctx, frame});
-    joint.launch({ctx, frame, /*stage=*/0, /*step=*/0});
+    solve_once(joint, frame);
 
     const double q_bot = joint.total_charge(0);
     const double q_top = joint.total_charge(1);
@@ -152,8 +160,7 @@ int main() {
         j0.electroneutrality = true;
         j0.xy_image_range = 0;
         j0.joint_tol = 1e-12;
-        j0.build({ctx, f0});
-        j0.launch({ctx, f0, 0, 0});
+        solve_once(j0, f0);
         const double q0 = j0.total_charge(1);
         const double rel0 = std::abs(q0 - kQTopAlpha0) / std::abs(kQTopAlpha0);
         std::printf("  alpha0 Q_top = % .16e  rel=% .3e\n", q0, rel0);
@@ -176,8 +183,7 @@ int main() {
         bo.add_electrode(2, 1.0);
         bo.electroneutrality = true;
         bo.xy_image_range = 0;
-        bo.build({ctx, fbo});
-        bo.launch({ctx, fbo, 0, 0});
+        solve_once(bo, fbo);
         if (std::abs(bo.total_charge(1) - q0) > 1e-10) {
             std::fprintf(stderr, "FAIL alpha0 vs ConstPotBO |Δ|=%g\n",
                          std::abs(bo.total_charge(1) - q0));
