@@ -39,14 +39,8 @@
 #include "atomiverse/cuda/asynchronous/async_bridge.cuh"
 
 #ifdef ATV_HAS_HF
+#include "atomiverse/cpu/scf/internal/integral_view.h"
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
-namespace ATV {
-namespace cpu {
-namespace scf {
-struct IntegralPack; // cpu/scf/internal/integrals.h — not a public include
-} // namespace scf
-} // namespace cpu
-} // namespace ATV
 #endif
 
 namespace ATV {
@@ -65,14 +59,14 @@ namespace cuda {
 class MullikenObs : public AsyncBridge {
   public:
     /// @brief Construct a Mulliken observer.
-    /// @param ints      Integral pack carrying atoms, shells, and overlap S.
+    /// @param ints      Non-owning view (S, shells, atoms); field storage must
+    ///                  outlive this observer.
     /// @param evaluator SCF evaluator whose converged workspace supplies the
     ///                  density matrix (borrowed -- must outlive this observer).
     /// @param every     Sampling stride in steps (1 = every step).
-    /// @param ints Borrowed integral pack (must outlive this observer).
-    MullikenObs(const cpu::scf::IntegralPack& ints, const scf::SCF& evaluator,
+    MullikenObs(cpu::scf::internal::IntegralView ints, const scf::SCF& evaluator,
                 int every = 1)
-        : integrals_(&ints), evaluator_(&evaluator), every_(every) {}
+        : integrals_(ints), evaluator_(&evaluator), every_(every) {}
 
     ~MullikenObs() override = default;
 
@@ -135,7 +129,7 @@ class MullikenObs : public AsyncBridge {
                                 std::vector<std::size_t>{nb, nb});
         const xt::xtensor<double, 2> P = P_view;
 
-        charges_ = cpu::mulliken_charge(*integrals_, P);
+        charges_ = cpu::mulliken_charge(integrals_, P);
         energy_val_ = *h_energy_[slot];
         iterations_ = evaluator_->workspace().iteration;
         n_occ_ = static_cast<int>(evaluator_->workspace().n_occ);
@@ -163,8 +157,7 @@ class MullikenObs : public AsyncBridge {
     }
 
   private:
-    const cpu::scf::IntegralPack* integrals_ =
-        nullptr; ///< Borrowed pack (S, shells, atoms).
+    cpu::scf::internal::IntegralView integrals_; ///< Refs into method-owned fields.
     const scf::SCF* evaluator_ =
         nullptr; ///< Borrowed SCF evaluator (density source).
     int every_;

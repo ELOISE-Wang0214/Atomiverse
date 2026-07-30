@@ -6,7 +6,7 @@
 /// DensityMatrix` (no Force), so it binds to `cpu::single_point` and never
 /// to the MD driver. Energy [eV] lands on the frame's scalar channel;
 /// Mulliken charges [e] write back into the borrowed molrs.Frame per the
-/// pinned write_back round-trip contract (charge is in the write-back set).
+/// pinned to_molrs round-trip contract (charge is in the write-back set).
 
 #include "molrs_frame_bridge.h"
 
@@ -16,7 +16,7 @@
 #include <nanobind/stl/vector.h>
 
 #include "atomiverse/cpu/evaluate/single_point.h"
-#include "atomiverse/cpu/frame/materialize.h"
+#include "atomiverse/cpu/frame/molrs_exchange.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #include "atomiverse/cpu/task/launcher_gate.h"
 #include "atomiverse/cpu/task/task_spec.h"
@@ -92,7 +92,7 @@ void bind_semiempirical(nb::module_& m) {
         [](nb::object frame_obj, AM1Evaluator& evaluator) {
             const cpu::task::LauncherGate gate;
             auto fref = borrow_molrs_frame(frame_obj);
-            cpu::Frame work = cpu::materialize(*fref);
+            cpu::Frame work = cpu::from_molrs(*fref);
             if (!gate.active()) {
                 {
                     nb::gil_scoped_release release;
@@ -100,8 +100,8 @@ void bind_semiempirical(nb::module_& m) {
                 }
                 // Unlike the PW path, AM1 declares Capability::Charge —
                 // the per-atom charges must return to the SAME molrs.Frame
-                // via the pinned write_back round-trip contract.
-                cpu::write_back(work, *fref);
+                // via the pinned to_molrs round-trip contract.
+                cpu::to_molrs(work, *fref);
                 return;
             }
 #ifdef ATV_HAS_MPI
@@ -126,7 +126,7 @@ void bind_semiempirical(nb::module_& m) {
                     /*handshake=*/false); // main's dispatcher handshook
                 result = dispatcher.dispatch(spec, std::move(work)).frame;
             }
-            cpu::write_back(result, *fref);
+            cpu::to_molrs(result, *fref);
 #endif
         },
         nb::arg("frame"), nb::arg("evaluator"),

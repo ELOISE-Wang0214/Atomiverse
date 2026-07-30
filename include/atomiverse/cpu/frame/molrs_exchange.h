@@ -1,15 +1,15 @@
-/// @file cpu/frame/materialize.h
-/// @brief cpu::materialize / cpu::write_back -- molrs.Frame <-> cpu::Frame.
+/// @file cpu/frame/molrs_exchange.h
+/// @brief cpu::from_molrs / cpu::to_molrs -- molrs.Frame <-> cpu::Frame.
 ///
 /// `molrs.Frame` is the canonical exchange layer; `cpu::Frame` is the CPU
 /// backend's execution frame. The materializer belongs to the CPU `frame/`
 /// pillar and runs once per `run()` -- never inside a step loop.
 ///
-/// `materialize()` accepts only the schema-v2 atoms/bonds/angles/dihedrals
+/// `from_molrs()` accepts only the schema-v2 atoms/bonds/angles/dihedrals
 /// blocks and their declared columns. Unknown blocks/columns, wrong dtypes,
 /// and inconsistent row counts fail immediately. Required fields (positions,
 /// type) fail with a named exception; optional state defaults to zero/empty.
-/// `write_back()` pushes mutable atom state and every serializable exact-dtype
+/// `to_molrs()` pushes mutable atom state and every serializable exact-dtype
 /// metadata entry back into the same molrs.Frame.
 ///
 /// @see cpu::Frame for the CPU execution frame
@@ -22,7 +22,7 @@
 namespace ATV {
 namespace cpu {
 
-/// @brief Materialize a molrs.Frame into a new cpu::Frame.
+/// @brief Build a .Frame into a new cpu::Frame.
 ///
 /// Reads the `atoms` block (`x, y, z, vx, vy, vz, fx, fy, fz, mass, type,
 /// tag, charge`, plus per-axis image columns `ix, iy, iz`), the `bonds`,
@@ -35,14 +35,14 @@ namespace cpu {
 /// @param src molrs.Frame to read (introspected by block/column name).
 /// @return Newly constructed cpu::Frame with all available fields filled.
 /// @throws std::runtime_error if a required field is missing.
-Frame materialize(const molrs::FrameRef& src);
+Frame from_molrs(const molrs::FrameRef& src);
 
-/// @brief Write a cpu::Frame's results back into an existing molrs.Frame.
+/// @brief Export a cpu::Frame into an existing molrs.Frame.
 ///
 /// Round-trip field contract (arch-refactor-06-frame; the golden test in
-/// tests/cpu/test_materialize.cpp asserts both directions):
+/// tests/cpu/test_molrs_exchange.cpp asserts both directions):
 ///
-/// | field | materialize (molrs→cpu) | write_back (cpu→molrs) |
+/// | field | from_molrs (molrs→cpu) | to_molrs (cpu→molrs) |
 /// |---|---|---|
 /// | x/y/z [Å]              | required (throws)       | written |
 /// | vx/vy/vz, fx/fy/fz     | optional (zero default) | written |
@@ -66,7 +66,7 @@ Frame materialize(const molrs::FrameRef& src);
 /// @param dst molrs.Frame to update in place (must be the same frame that
 ///            was materialized, or any frame with a compatible atom count).
 /// @throws std::runtime_error when an atom tag does not fit i32.
-void write_back(const Frame& src, molrs::FrameRef& dst);
+void to_molrs(const Frame& src, molrs::FrameRef& dst);
 
 } // namespace cpu
 } // namespace ATV

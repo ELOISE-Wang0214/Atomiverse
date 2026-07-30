@@ -1,5 +1,5 @@
 /// @file tests/test_torch_materialize.cu
-/// @brief Round-trip test for torch::materialize / torch::write_back.
+/// @brief Round-trip test for torch::from_molrs / torch::to_molrs.
 ///
 /// Mirrors tests/cpu/test_materialize.cpp: a molrs.Frame is materialized
 /// into a torch::Frame (H2D) and written back (D2H), and the per-atom
@@ -15,7 +15,7 @@
 
 #include "atomiverse/molrs.hpp"
 #include "atomiverse/torch/frame/frame.cuh"
-#include "atomiverse/torch/frame/materialize.cuh"
+#include "atomiverse/torch/frame/molrs_exchange.cuh"
 
 namespace atorch = ATV::torch;
 
@@ -130,12 +130,12 @@ double scalar_of(const atorch::Tensor& t) {
 
 } // anonymous namespace
 
-// -- molrs.Frame -> torch::Frame -> write_back round trip ----------------
+// -- molrs.Frame -> torch::Frame -> to_molrs round trip ----------------
 
 TEST(TorchMaterialize, RoundTrip) {
     auto fr = make_full_frame();
 
-    atorch::Frame tf = atorch::materialize(*fr);
+    atorch::Frame tf = atorch::from_molrs(*fr);
 
     ASSERT_EQ(tf.n_atoms(), 3);
     ASSERT_EQ(tf.n_bonds(), 1);
@@ -170,7 +170,7 @@ TEST(TorchMaterialize, RoundTrip) {
     tf.stress_kinetic =
         ::torch::tensor({10.0, 11.0, 12.0, 13.0, 14.0, 15.0}, scalar_opts);
 
-    atorch::write_back(tf, *fr);
+    atorch::to_molrs(tf, *fr);
 
     // Per-atom result columns round-trip element-wise.
     auto rx = molrs::frame_column_f64(*fr, "atoms", "x");
@@ -211,7 +211,7 @@ TEST(TorchMaterialize, MissingPositionsThrows) {
         *fr, "atoms", "type",
         ::rust::Slice<const std::int32_t>(type.data(), type.size()));
 
-    EXPECT_THROW({ atorch::materialize(*fr); }, std::exception);
+    EXPECT_THROW({ atorch::from_molrs(*fr); }, std::exception);
 }
 
 // -- optional fields default to zero without throwing -------------------
@@ -230,7 +230,7 @@ TEST(TorchMaterialize, OptionalFieldsDefaultToZero) {
         *fr, "atoms", "type",
         ::rust::Slice<const std::int32_t>(type.data(), type.size()));
 
-    atorch::Frame tf = atorch::materialize(*fr); // must NOT throw
+    atorch::Frame tf = atorch::from_molrs(*fr); // must NOT throw
 
     ASSERT_EQ(tf.n_atoms(), 3);
     auto vx = tf.atoms.vx.to(::torch::kCPU);

@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "atomiverse/cpu/driver/criteria.h"
-#include "atomiverse/cpu/frame/materialize.h"
+#include "atomiverse/cpu/frame/molrs_exchange.h"
 #include "atomiverse/cpu/minimize/lbfgs.h"
 #include "atomiverse/cpu/minimize/minimize.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
@@ -97,7 +97,7 @@ struct MinimizeHandle {
 
 #ifdef ATV_HAS_MPI
         auto frame = borrow_molrs_frame(frame_obj);
-        cpu::Frame work = cpu::materialize(*frame);
+        cpu::Frame work = cpu::from_molrs(*frame);
         cpu::task::DispatchResult dispatched{cpu::Frame(0), {}};
         {
             nb::gil_scoped_release release;
@@ -106,7 +106,7 @@ struct MinimizeHandle {
                                                  /*do_handshake=*/false);
             dispatched = dispatcher.dispatch(spec, std::move(work));
         }
-        cpu::write_back(dispatched.frame, *frame);
+        cpu::to_molrs(dispatched.frame, *frame);
         return std::move(dispatched.control);
 #else
         throw std::runtime_error(

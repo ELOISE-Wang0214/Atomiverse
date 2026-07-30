@@ -1,7 +1,7 @@
-/// @file src/cpu/frame/materialize.cpp
+/// @file src/cpu/frame/molrs_exchange.cpp
 /// @brief molrs.Frame <-> canonical CPU block Frame.
 
-#include "atomiverse/cpu/frame/materialize.h"
+#include "atomiverse/cpu/frame/molrs_exchange.h"
 
 #include <cstdint>
 #include <initializer_list>
@@ -37,7 +37,7 @@ void validate_columns(const molrs::FrameRef& src, const char* block,
     for (const rust::String& raw : molrs::frame_block_columns(src, block)) {
         const std::string column = as_string(raw);
         if (!contains(column, allowed))
-            throw std::runtime_error("cpu::materialize: unsupported column '"
+            throw std::runtime_error("cpu::from_molrs: unsupported column '"
                                      + std::string(block) + "." + column + "'");
     }
 }
@@ -47,7 +47,7 @@ void validate_exchange_schema(const molrs::FrameRef& src) {
         const std::string block = as_string(raw);
         if (!contains(block,
                       {"atoms", "bonds", "angles", "dihedrals", "impropers"}))
-            throw std::runtime_error("cpu::materialize: unsupported block '"
+            throw std::runtime_error("cpu::from_molrs: unsupported block '"
                                      + block + "'");
     }
 
@@ -74,7 +74,7 @@ bool has_column(const molrs::FrameRef& src, const char* block,
                                 const char* col) {
     auto values = molrs::frame_column_f64(src, block, col);
     if (values.empty())
-        throw std::runtime_error("cpu::materialize: required field '"
+        throw std::runtime_error("cpu::from_molrs: required field '"
                                  + std::string(block) + "." + col
                                  + "' is missing or empty");
     return values;
@@ -84,7 +84,7 @@ bool has_column(const molrs::FrameRef& src, const char* block,
                                       const char* block, const char* col) {
     auto values = molrs::frame_column_i32(src, block, col);
     if (values.empty())
-        throw std::runtime_error("cpu::materialize: required field '"
+        throw std::runtime_error("cpu::from_molrs: required field '"
                                  + std::string(block) + "." + col
                                  + "' is missing or empty");
     return values;
@@ -97,7 +97,7 @@ void copy_optional_f64(const molrs::FrameRef& src, const char* key,
         return;
     auto values = molrs::frame_column_f64(src, "atoms", key);
     if (static_cast<int>(values.size()) != n)
-        throw std::runtime_error("cpu::materialize: optional field 'atoms."
+        throw std::runtime_error("cpu::from_molrs: optional field 'atoms."
                                  + std::string(key)
                                  + "' has the wrong dtype or row count");
     T* out = destination.data();
@@ -110,7 +110,7 @@ std::vector<int> topology_column(const molrs::FrameRef& src, const char* block,
     auto values = molrs::frame_column_i32(src, block, key);
     if (static_cast<int>(values.size()) != n)
         throw std::runtime_error(
-            "cpu::materialize: topology field '" + std::string(block) + "."
+            "cpu::from_molrs: topology field '" + std::string(block) + "."
             + key + "' is missing or has the wrong dtype/row count");
     std::vector<int> out(static_cast<std::size_t>(n));
     for (int i = 0; i < n; ++i)
@@ -130,7 +130,7 @@ void write_f64(molrs::FrameRef& dst, const char* key, const T* source, int n) {
 
 } // namespace
 
-Frame materialize(const molrs::FrameRef& src) {
+Frame from_molrs(const molrs::FrameRef& src) {
     internal::require_molrs_frame_schema_v2();
     validate_exchange_schema(src);
     auto x = require_f64(src, "atoms", "x");
@@ -141,7 +141,7 @@ Frame materialize(const molrs::FrameRef& src) {
     if (static_cast<int>(y.size()) != n || static_cast<int>(z.size()) != n
         || static_cast<int>(type.size()) != n)
         throw std::runtime_error(
-            "cpu::materialize: required atom columns have inconsistent rows");
+            "cpu::from_molrs: required atom columns have inconsistent rows");
 
     Frame frame(n);
     StorageReal* px = frame.span(kAtom_x).data();
@@ -168,7 +168,7 @@ Frame materialize(const molrs::FrameRef& src) {
         auto tags = molrs::frame_column_i32(src, "atoms", "tag");
         if (static_cast<int>(tags.size()) != n)
             throw std::runtime_error(
-                "cpu::materialize: optional field 'atoms.tag' has the wrong "
+                "cpu::from_molrs: optional field 'atoms.tag' has the wrong "
                 "dtype or row count");
         TagInt* destination = frame.span(kAtom_tag).data();
         for (int i = 0; i < n; ++i)
@@ -182,7 +182,7 @@ Frame materialize(const molrs::FrameRef& src) {
             continue;
         auto values = molrs::frame_column_i32(src, "atoms", axes[d]);
         if (static_cast<int>(values.size()) != n)
-            throw std::runtime_error("cpu::materialize: optional field 'atoms."
+            throw std::runtime_error("cpu::from_molrs: optional field 'atoms."
                                      + std::string(axes[d])
                                      + "' has the wrong dtype or row count");
         for (int i = 0; i < n; ++i)
@@ -242,7 +242,7 @@ Frame materialize(const molrs::FrameRef& src) {
     return frame;
 }
 
-void write_back(const Frame& src, molrs::FrameRef& dst) {
+void to_molrs(const Frame& src, molrs::FrameRef& dst) {
     internal::require_molrs_frame_schema_v2();
     const int n = src.nlocal();
     write_f64(dst, "x", src.span(kAtom_x).data(), n);
@@ -268,7 +268,7 @@ void write_back(const Frame& src, molrs::FrameRef& dst) {
         iz[i] = image(i, 2);
         if (tags[i] > std::numeric_limits<std::int32_t>::max()
             || tags[i] < std::numeric_limits<std::int32_t>::min())
-            throw std::runtime_error("write_back: atom tag does not fit i32");
+            throw std::runtime_error("to_molrs: atom tag does not fit i32");
         tag_values[i] = static_cast<std::int32_t>(tags[i]);
     }
     auto set_i32 = [&](const char* key,

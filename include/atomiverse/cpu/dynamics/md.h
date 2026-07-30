@@ -36,7 +36,7 @@
 #include "atomiverse/cpu/dynamics/nose_hoover.h"
 #include "atomiverse/cpu/dynamics/nvt.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
-#include "atomiverse/cpu/frame/materialize.h"
+#include "atomiverse/cpu/frame/molrs_exchange.h"
 #include "atomiverse/cpu/observe/virial_stress.h"
 #include "atomiverse/cpu/record/timing_report.h"
 
@@ -149,9 +149,9 @@ class MD : public Driver<ATV::md::Phase> {
     /// @param n_steps Step budget.
     /// @return Number of iterations actually executed.
     int run(molrs::FrameRef& frame, int n_steps) {
-        cpu::Frame work = cpu::materialize(frame);
+        cpu::Frame work = cpu::from_molrs(frame);
         const int iterations = run(work, n_steps);
-        cpu::write_back(work, frame);
+        cpu::to_molrs(work, frame);
         return iterations;
     }
 

@@ -6,7 +6,7 @@
 #include <nanobind/stl/string.h>
 
 #ifdef ATV_HAS_PW
-#include "atomiverse/cpu/frame/materialize.h"
+#include "atomiverse/cpu/frame/molrs_exchange.h"
 #include "atomiverse/cpu/planewave/pw_solver.h"
 #endif
 
@@ -50,7 +50,7 @@ void bind_pw(nb::module_& m) {
             [](PW& solver, nb::object frame_obj) {
                 auto fref = borrow_molrs_frame(frame_obj);
                 nb::gil_scoped_release release;
-                cpu::Frame work = cpu::materialize(*fref);
+                cpu::Frame work = cpu::from_molrs(*fref);
                 solver.build(work);
             },
             nb::arg("frame"),
@@ -62,7 +62,7 @@ void bind_pw(nb::module_& m) {
                 PWResult result;
                 {
                     nb::gil_scoped_release release;
-                    cpu::Frame work = cpu::materialize(*fref);
+                    cpu::Frame work = cpu::from_molrs(*fref);
                     result = solver.run(work);
                 }
                 return result;

@@ -31,7 +31,7 @@
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/nose_hoover.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
-#include "atomiverse/cpu/frame/materialize.h"
+#include "atomiverse/cpu/frame/molrs_exchange.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
@@ -102,7 +102,7 @@ struct MdHandle {
         cpu::task::TaskSpec spec(
             cpu::task::MDTask{mirror, static_cast<std::int64_t>(n_steps)});
         auto fref = borrow_molrs_frame(frame_obj);
-        cpu::Frame work = cpu::materialize(*fref);
+        cpu::Frame work = cpu::from_molrs(*fref);
         cpu::Frame result(0);
         {
             nb::gil_scoped_release release;
@@ -111,7 +111,7 @@ struct MdHandle {
                                                  /*handshake=*/false);
             result = dispatcher.dispatch(spec, std::move(work)).frame;
         }
-        cpu::write_back(result, *fref);
+        cpu::to_molrs(result, *fref);
 #endif
     }
 };

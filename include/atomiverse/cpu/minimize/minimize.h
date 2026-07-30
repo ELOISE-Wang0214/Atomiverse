@@ -65,7 +65,7 @@
 #include "atomiverse/cpu/component/zero.h"
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/driver/driver.h"
-#include "atomiverse/cpu/frame/materialize.h"
+#include "atomiverse/cpu/frame/molrs_exchange.h"
 
 namespace ATV {
 namespace cpu {
@@ -126,9 +126,9 @@ class Minimize : public Driver<ATV::minimizer::Phase> {
     /// @param max_iter Iteration budget.
     /// @return Number of iterations actually executed (≤ `max_iter`).
     int run(molrs::FrameRef& frame, int max_iter) {
-        cpu::Frame work = cpu::materialize(frame);
+        cpu::Frame work = cpu::from_molrs(frame);
         const int iters = run(work, max_iter);
-        cpu::write_back(work, frame);
+        cpu::to_molrs(work, frame);
         return iters;
     }
 

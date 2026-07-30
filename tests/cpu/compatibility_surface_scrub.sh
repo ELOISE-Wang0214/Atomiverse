@@ -103,7 +103,7 @@ else
 fi
 
 # The old aggregate spelling is checked only where the receiver is visibly a
-# Frame.  Scientific helper types such as IntegralPack::atoms remain valid.
+# Frame.  Scientific helper types such as IntegralWorkspace::atoms remain valid.
 matches="$(common_grep '(ctx[.]frame|(^|[^[:alnum:]_])(frame|f))[.](atoms|scalars|simbox)([^[:alnum:]_]|$)|->[[:space:]]*(atoms|scalars|simbox)([^[:alnum:]_]|$)')"
 fail_matches 'legacy CPU Frame atoms/scalars/simbox surface remains' "${matches}"
 

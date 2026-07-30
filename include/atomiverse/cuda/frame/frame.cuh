@@ -67,7 +67,7 @@ struct DihedralList {
 /// n_bonds_, etc.) are host-cached counts set at materialize time to avoid
 /// D2H transfers.
 ///
-/// Created by cpu::to_cuda() / cuda::materialize(), freed by cuda::destroy().
+/// Created by cpu::to_cuda() / cuda::from_molrs(), freed by cuda::destroy().
 struct Frame {
     // -- Per-atom arrays (device pointers, molcrafts "atoms" block) --
 

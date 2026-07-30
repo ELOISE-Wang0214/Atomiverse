@@ -7,7 +7,8 @@
 /// geometry": single-point energy, force, density, dipole, charge.
 ///
 /// Single-point CUDA SCF energy / density workflows go here:
-/// `cuda::Evaluate + cuda::scf::SCF`.
+/// `cuda::Evaluate + cuda::scf::RHF` (preferred) or the synthetic
+/// `cuda::scf::SCF` test path.
 ///
 /// Validation rule (build-time): at least one hot-path energy/force
 /// Component (Role flags; no Capability bitset).
@@ -20,10 +21,12 @@
 /// once" is a *budget of one*, not a taxonomy.
 ///
 /// @code{.cpp}
+///   cuda::scf::RHF rhf;
+///   rhf.basis = cpu::scf::BasisSet::STO3G;
 ///   cuda::Evaluate eval;
-///   eval.on(evaluate::Phase::evaluate).add(cuda::scf::SCF{integrals, tol, max_iter});
+///   eval.on(evaluate::Phase::evaluate).add(std::move(rhf));
 ///   eval.build();
-///   eval.run(frame);            // frame.meta.get(kEnergy) populated
+///   eval.run(frame);            // frame.meta.get(kEnergy) [eV]
 /// @endcode
 ///
 /// @see cuda::single_point for the free-function single-evaluator helper

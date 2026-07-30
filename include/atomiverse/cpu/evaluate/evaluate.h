@@ -56,7 +56,7 @@
 #include "atomiverse/cpu/component/zero.h"
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/frame/materialize.h"
+#include "atomiverse/cpu/frame/molrs_exchange.h"
 
 namespace ATV {
 namespace cpu {
@@ -81,9 +81,20 @@ class Evaluate : public Driver<ATV::evaluate::Phase> {
 
     /// @brief Run a single evaluation pass through the compiled Plan.
     /// @param frame Host-resident system state, updated in place.
-    void run(cpu::Frame& frame) {
+    void run(cpu::Frame& frame) { run(frame, /*step=*/0); }
+
+    /// @brief One-pass evaluation at a caller-chosen step index.
+    ///
+    /// Same lifecycle as `run(frame)` (setup → one Plan pass → teardown). The
+    /// step index is what time-dependent components see on `LaunchContext::step`
+    /// (e.g. oscillating field phase). Prefer this over reaching into protected
+    /// `setup_pass` / `step_once` — Frame remains the only user I/O token.
+    ///
+    /// @param frame Host-resident system state, updated in place.
+    /// @param step 0-based step index published to components for this pass.
+    void run(cpu::Frame& frame, int step) {
         setup_pass(frame);
-        step_once(0);
+        step_once(step);
         teardown_pass();
     }
 
@@ -94,9 +105,9 @@ class Evaluate : public Driver<ATV::evaluate::Phase> {
     /// window is strictly this one call.
     /// @param frame molrs.Frame handle (input geometry + output sink).
     void run(molrs::FrameRef& frame) {
-        cpu::Frame work = cpu::materialize(frame);
+        cpu::Frame work = cpu::from_molrs(frame);
         run(work);
-        cpu::write_back(work, frame);
+        cpu::to_molrs(work, frame);
     }
 
   protected:

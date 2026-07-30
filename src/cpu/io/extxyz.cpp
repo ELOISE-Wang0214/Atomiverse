@@ -5,7 +5,7 @@
 
 #include <stdexcept>
 
-#include "atomiverse/cpu/frame/materialize.h"
+#include "atomiverse/cpu/frame/molrs_exchange.h"
 #include "atomiverse/molrs.hpp"
 
 namespace ATV {
@@ -24,7 +24,7 @@ Frame load_extxyz(const std::string& path) {
                                    "Lattice=\"...\" header (no box)");
     }
 
-    return materialize(*fref);
+    return from_molrs(*fref);
 }
 
 } // namespace cpu
