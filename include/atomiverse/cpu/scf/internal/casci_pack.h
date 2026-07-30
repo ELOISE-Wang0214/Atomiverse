@@ -24,7 +24,7 @@ namespace scf {
 /// @return CASCI total / correlation energies [Hartree].
 /// @throws std::invalid_argument on open-shell, missing ERI, or invalid
 ///         active-space dimensions (no silent fallback).
-CASCIResult casci_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+CASCIResult casci_energy(const internal::IntegralView& ints, const SlaterDeterminant& det,
                          double e_scf_ha, int ncas, int nelecas);
 
 } // namespace scf

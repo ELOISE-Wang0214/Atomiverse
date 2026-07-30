@@ -19,7 +19,7 @@ namespace scf {
 namespace internal {
 
 RealMatrix alda_kernel_matrix(const SlaterDeterminant& det,
-                              const IntegralPack& pack,
+                              const internal::IntegralView& pack,
                               const MolecularGrid& grid,
                               ExcitationChannel /*channel*/) {
     // Pure Dirac exchange: f_αβ = 0 ⇒ singlet (f_αα+f_αβ) = triplet (f_αα−f_αβ).
@@ -29,7 +29,7 @@ RealMatrix alda_kernel_matrix(const SlaterDeterminant& det,
             "(no fallback)");
     if (pack.shells.empty())
         throw std::invalid_argument(
-            "alda_kernel_matrix: IntegralPack has no shells (no fallback)");
+            "alda_kernel_matrix: internal::IntegralWorkspace has no shells (no fallback)");
 
     using Spin = SlaterDeterminant::Spin;
     const RealMatrix& C = det.coefficients(Spin::alpha);

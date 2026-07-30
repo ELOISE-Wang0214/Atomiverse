@@ -181,7 +181,7 @@ std::vector<double> matvec_ip(const EomImds& im,
 
 } // namespace
 
-EOMIPCCSDResult eom_ip_ccsd_energies(const IntegralPack& ints,
+EOMIPCCSDResult eom_ip_ccsd_energies(const internal::IntegralView& ints,
                                      const SlaterDeterminant& det,
                                      double e_scf_ha, int n_states, double tol,
                                      int max_iter) {
@@ -264,7 +264,7 @@ EOMIPCCSDResult RHF::eom_ip_ccsd(Frame& frame, int n_states) {
             "RHF::eom_ip_ccsd: SCF reference did not converge — refusing to "
             "compute EOM-IP-CCSD on a non-stationary determinant (no "
             "fallback).");
-    return eom_ip_ccsd_energies(integral_workspace_(), determinant(), energy(),
+    return eom_ip_ccsd_energies(integral_view_(), determinant(), energy(),
                                 n_states);
 }
 

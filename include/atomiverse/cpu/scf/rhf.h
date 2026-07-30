@@ -61,9 +61,29 @@ struct StabilityResult {
 ///        fully paired case.
 class RHF : public MeanFieldMethod<RHF> {
   public:
-    /// @brief Construct with the RHF defaults (restricted HF; MINAO initial
-    ///        guess; no density damping; energy tolerance 1e-9 Ha).
+    /// @brief Construct with the RHF defaults (STO-3G; restricted HF; MINAO;
+    ///        no density damping; energy tolerance 1e-9 Ha).
+    ///
+    /// Prefer the basis ctor: `RHF{BasisSet::STO3G}` — **do not** write
+    /// `rhf.basis = …` after default construction.
     RHF();
+
+    /// @brief Construct with an explicit basis (primary public form).
+    /// @param basis_in Basis set (e.g. `BasisSet::STO3G`).
+    explicit RHF(BasisSet basis_in);
+
+    /// @brief Construct with basis and molecular charge.
+    /// @param basis_in Basis set.
+    /// @param charge_in Molecular charge [e] (electrons = ΣZ − charge).
+    RHF(BasisSet basis_in, int charge_in);
+
+    /// @brief Construct with basis, charge, SCF tolerance, and iteration cap.
+    /// @param basis_in Basis set.
+    /// @param charge_in Molecular charge [e].
+    /// @param tol_in Energy / residual tolerance [Ha] (see base `tol`).
+    /// @param max_iter_in Maximum SCF iterations [dimensionless].
+    RHF(BasisSet basis_in, int charge_in, double tol_in, int max_iter_in = 100);
+
     std::string name() const { return "rhf"; }
 
     /// @brief Seeger-Pople stability analysis of the most recent `run()`:

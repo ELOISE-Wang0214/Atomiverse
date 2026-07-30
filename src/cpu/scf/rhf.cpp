@@ -42,6 +42,18 @@ RHF::RHF() {
     damping_factor = 0.0;
     tol = 1e-9;
 }
+
+RHF::RHF(BasisSet basis_in) : RHF() { basis = basis_in; }
+
+RHF::RHF(BasisSet basis_in, int charge_in) : RHF(basis_in) {
+    charge = charge_in;
+}
+
+RHF::RHF(BasisSet basis_in, int charge_in, double tol_in, int max_iter_in)
+    : RHF(basis_in, charge_in) {
+    tol = tol_in;
+    max_iter = max_iter_in;
+}
 void RHF::resolve_occupation(int n_electrons) {
     n_alpha_ = n_electrons / 2;
     n_beta_ = n_electrons / 2;
@@ -53,7 +65,7 @@ StabilityResult RHF::stability() const {
             "RHF::stability: no SCF result — call run(frame) first");
 
     const SlaterDeterminant& det = determinant();
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
 
     // Dense working-dimension ERI: reuse the materialized tensor when the
     // run kept one (compute_eri), otherwise rebuild it from the private
@@ -135,7 +147,7 @@ vib::HessianResult RHF::hessian(Frame& frame) {
     run(frame);
 
     const SlaterDeterminant& det = determinant();
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     // Shared guard: non-convergence, spherical-harmonic pack, ECP pack.
     check_hessian_preconditions("RHF::hessian", pack);
 
@@ -221,7 +233,7 @@ xt::xtensor<double, 2> RHF::polarizability() const {
             "RHF::polarizability: no SCF result — call run(frame) first");
 
     const SlaterDeterminant& det = determinant();
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 

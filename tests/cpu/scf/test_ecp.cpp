@@ -1,7 +1,7 @@
 /// @file tests/cpu/scf/test_ecp.cpp
 /// @brief Unit: semi-local ECP (def2-ECP) — static table structure, the
 ///        EcpPotential lookup class, EcpIntegrals U-matrix elements pinned
-///        against PySCF, IntegralPack valence wiring, and the ECP↔x2c
+///        against PySCF, internal::IntegralWorkspace valence wiring, and the ECP↔x2c
 ///        double-counting gate (hf-capability-gaps-06-ecp). No full SCF
 ///        solve beyond the millisecond H2/STO-3G gate check.
 ///
@@ -58,7 +58,7 @@
 using namespace ATV;
 using cpu::scf::BasisSet;
 using cpu::scf::EcpPotential;
-using cpu::scf::IntegralPack;
+using cpu::scf::internal::IntegralWorkspace;
 using cpu::scf::basis_data::AtomEcp;
 using cpu::scf::basis_data::EcpChannel;
 using cpu::scf::basis_data::EcpGaussianTerm;
@@ -315,12 +315,12 @@ TEST(EcpIntegrals_, UMatrixPinnedVsPyscfSyntheticFChannel) {
     EXPECT_NEAR(U(2, 7), 0.0, tol);
 }
 
-// ── IntegralPack wiring: valence counting, Z_val, untouched S/T ────────
+// ── internal::IntegralWorkspace wiring: valence counting, Z_val, untouched S/T ────────
 
-TEST(EcpIntegralPack, I2ValenceWiring) {
+TEST(EcpIntegralWorkspace, I2ValenceWiring) {
     const auto frame = i2_frame();
-    const IntegralPack ae{frame, BasisSet::Def2SVP};
-    const IntegralPack ve{frame, BasisSet::Def2SVP, 0, false, "def2-ECP"};
+    const internal::IntegralWorkspace ae{frame, BasisSet::Def2SVP};
+    const internal::IntegralWorkspace ve{frame, BasisSet::Def2SVP, 0, false, "def2-ECP"};
 
     // Electron and AO bookkeeping: 2 * (53 - 28) = 50 valence electrons.
     EXPECT_EQ(ae.n_electrons, 106);
@@ -354,7 +354,7 @@ TEST(EcpIntegralPack, I2ValenceWiring) {
     EXPECT_GT(max_dV, 1.0); // core removal changes V by O(Z_core)
 }
 
-TEST(EcpIntegralPack, LightMoleculeUnchangedAndUnknownNameThrows) {
+TEST(EcpIntegralWorkspace, LightMoleculeUnchangedAndUnknownNameThrows) {
     // H2O: every atom is all-electron in def2-ECP — the pack must be
     // identical to the empty-ecp path (per-element table, no global switch).
     cpu::Frame h2o(3);
@@ -372,8 +372,8 @@ TEST(EcpIntegralPack, LightMoleculeUnchangedAndUnknownNameThrows) {
     h2o.span(kAtom_z)[2] = -0.4692;
     h2o.box = cpu::Box::cubic(20.0);
 
-    const IntegralPack plain{h2o, BasisSet::Def2SVP};
-    const IntegralPack named{h2o, BasisSet::Def2SVP, 0, false, "def2-ECP"};
+    const internal::IntegralWorkspace plain{h2o, BasisSet::Def2SVP};
+    const internal::IntegralWorkspace named{h2o, BasisSet::Def2SVP, 0, false, "def2-ECP"};
     EXPECT_FALSE(named.has_ecp);
     EXPECT_EQ(named.n_electrons, plain.n_electrons);
     EXPECT_EQ(named.V_nuc, plain.V_nuc);
@@ -384,7 +384,7 @@ TEST(EcpIntegralPack, LightMoleculeUnchangedAndUnknownNameThrows) {
                               std::abs(plain.Hcore(i, j) - named.Hcore(i, j)));
     EXPECT_EQ(max_dH, 0.0);
 
-    EXPECT_THROW(IntegralPack(h2o, BasisSet::Def2SVP, 0, false, "no-such"),
+    EXPECT_THROW(internal::IntegralWorkspace(h2o, BasisSet::Def2SVP, 0, false, "no-such"),
                  std::runtime_error);
 }
 

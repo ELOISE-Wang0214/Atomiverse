@@ -1,7 +1,7 @@
 /// @file tests/cpu/scf/test_ghost_basis.cpp
 /// @brief Workspace-level ghost-atom semantics (BSSE plumbing).
 ///
-/// No full SCF loop — exercises AtomList / ShellList / IntegralPack only:
+/// No full SCF loop — exercises AtomList / ShellList / internal::IntegralWorkspace only:
 /// ghost Z→0 for nuclear + electron counting, basis still from true Z via
 /// basis_z, out-of-range ghost indices throw.
 
@@ -21,7 +21,7 @@
 using namespace ATV;
 using cpu::scf::AtomList;
 using cpu::scf::BasisSet;
-using cpu::scf::IntegralPack;
+using cpu::scf::internal::IntegralWorkspace;
 using cpu::scf::ShellList;
 
 namespace {
@@ -76,10 +76,10 @@ TEST(GhostBasis, ShellListUsesBasisZ) {
     EXPECT_EQ(shells_ghost.n_basis, 2);
 }
 
-TEST(GhostBasis, IntegralPackGhostSemantics) {
+TEST(GhostBasis, IntegralWorkspaceGhostSemantics) {
     auto frame = make_he2(2.5);
-    IntegralPack pack_real{frame, BasisSet::STO3G, 0, false, {}, {}};
-    IntegralPack pack_ghost{frame, BasisSet::STO3G, 0, false, {}, {1}};
+    internal::IntegralWorkspace pack_real{frame, BasisSet::STO3G, 0, false, {}, {}};
+    internal::IntegralWorkspace pack_ghost{frame, BasisSet::STO3G, 0, false, {}, {1}};
 
     EXPECT_EQ(pack_real.n_electrons, 4);
     EXPECT_EQ(pack_ghost.n_electrons, 2);
@@ -106,14 +106,14 @@ TEST(GhostBasis, OutOfRangeGhostIndexThrows) {
     auto frame = make_he2();
     EXPECT_THROW((AtomList{frame, 0, {2}}), std::out_of_range);
     EXPECT_THROW((AtomList{frame, 0, {-1}}), std::out_of_range);
-    EXPECT_THROW((IntegralPack{frame, BasisSet::STO3G, 0, false, {}, {99}}),
+    EXPECT_THROW((internal::IntegralWorkspace{frame, BasisSet::STO3G, 0, false, {}, {99}}),
                  std::out_of_range);
 }
 
 TEST(GhostBasis, EmptyGhostIsNoOp) {
     auto frame = make_he2();
-    IntegralPack a{frame, BasisSet::STO3G};
-    IntegralPack b{frame, BasisSet::STO3G, 0, false, {}, {}};
+    internal::IntegralWorkspace a{frame, BasisSet::STO3G};
+    internal::IntegralWorkspace b{frame, BasisSet::STO3G, 0, false, {}, {}};
     EXPECT_EQ(a.n_electrons, b.n_electrons);
     EXPECT_EQ(a.n_basis, b.n_basis);
     EXPECT_NEAR(a.V_nuc, b.V_nuc, 1e-14);

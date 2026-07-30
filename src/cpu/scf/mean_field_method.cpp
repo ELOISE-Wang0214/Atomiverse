@@ -260,7 +260,7 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
             "coulomb = Coulomb::Direct with GHF.");
     fock_stage_ = std::make_unique<FockStage>(
         restricted_, is_hf_, xc_type_, grid_level, n_radial, n_angular,
-        hybrid_alpha_override, fixed_grid, *integrals_sp_, P_alpha_, P_beta_,
+        hybrid_alpha_override, fixed_grid, integral_view_(), P_alpha_, P_beta_,
         F_alpha_, F_beta_, J_, e_xc_grid_, e_exact_exchange_, int_n_alpha_,
         int_n_beta_, ri, aux_basis, generalized, pcm_.get(), e_solvent_,
         e_pcm_fock_half_, coulomb, cfmm_order, cfmm_threshold);
@@ -271,7 +271,7 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
     }
     if (soscf) {
         soscf_stepper_ = std::make_unique<internal::SOSCFStepper>(
-            restricted_, *integrals_sp_, n_alpha_, n_beta_, Hcore_, v_nuc_,
+            restricted_, integral_view_(), n_alpha_, n_beta_, Hcore_, v_nuc_,
             F_alpha_, F_beta_, P_alpha_, P_beta_, C_alpha_, C_beta_, eig_alpha_,
             eig_beta_, soscf_max_micro, soscf_trust);
     }
@@ -316,7 +316,7 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
 
 template <typename D>
 void MeanFieldMethod<D>::build_on(cpu::Runtime& rt) {
-    // Stage wiring needs geometry (IntegralPack dimensions); deferred to the
+    // Stage wiring needs geometry (internal::IntegralWorkspace dimensions); deferred to the
     // first drive_scf_. Parent Runtime does not own this method's Plan.
     (void)rt;
     // The one thing a nested build CAN check: Car-Parrinello shares the
@@ -667,17 +667,47 @@ void MeanFieldMethod<D>::drive_scf_(Frame& frame, const SCFInitialGuess* guess,
     }
 }
 
-// @brief Rebuild the private integral workspace at the current geometry and
-// resolve the occupation from its electron count — see the header for why
-// PositionGuard and the ghost-atom/x2c refusal guards stay with the caller.
+// @brief Rebuild private integral fields at the current geometry and resolve
+// occupation — see the header for why PositionGuard and ghost/x2c guards stay
+// with the caller. Fill still uses a transitional temporary storage type.
 template <typename D>
-const IntegralPack&
+internal::IntegralView
 MeanFieldMethod<D>::rebuild_integrals_(const Frame& frame, bool compute_pvp) {
-    *integrals_sp_ =
-        IntegralPack{frame, basis, charge, compute_eri, ecp, ghost_atoms,
-                    compute_pvp};
-    resolve_occupation(integrals_sp_->n_electrons);
-    return *integrals_sp_;
+    // Fill into a temporary, then move into method-owned **fields** (no bag kept).
+    internal::IntegralWorkspace fill{frame, basis, charge, compute_eri, ecp, ghost_atoms,
+                                     compute_pvp};
+    ints_S_ = std::move(fill.S);
+    ints_T_ = std::move(fill.T);
+    ints_V_ = std::move(fill.V);
+    ints_Hcore_ = std::move(fill.Hcore);
+    ints_W_ = std::move(fill.W);
+    ints_ERI_ = std::move(fill.ERI);
+    ints_V_nuc_ = fill.V_nuc;
+    ints_n_basis_ = fill.n_basis;
+    ints_n_basis_cart_ = fill.n_basis_cart;
+    ints_n_electrons_ = fill.n_electrons;
+    ints_ecp_ = std::move(fill.ecp);
+    ints_has_ecp_ = fill.has_ecp;
+    ints_ecp_centers_ = std::move(fill.ecp_centers);
+    ints_embed_charges_.clear();
+    ints_embed_self_energy_ = true;
+    ints_external_field_ = {{0.0, 0.0, 0.0}};
+    ints_solvent_eps_ = 0.0;
+    ints_solvent_radii_scale_ = fill.solvent_radii_scale;
+    ints_solvent_x_ = fill.solvent_x;
+    ints_solvent_model_ = fill.solvent_model;
+    ints_atoms_ = std::move(fill.atoms);
+    ints_shell_data_ = std::move(fill.shell_data);
+    *ints_shells_sp_ = std::move(fill.shells);
+    for (std::size_t i = 0; i < ints_shells_sp_->size(); ++i) {
+        auto& sh = (*ints_shells_sp_)[i];
+        const int np = sh.n_prim;
+        sh.alpha = ints_shell_data_[i].data();
+        sh.coeff = ints_shell_data_[i].data() + np;
+    }
+    *ints_c2s_sp_ = std::move(fill.c2s);
+    resolve_occupation(ints_n_electrons_);
+    return integral_view_();
 }
 
 template <typename D>
@@ -701,21 +731,21 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             "Kohn-Sham (RKS/UKS) — ghost / counterpoise support is pure HF "
             "only in this link. Use RHF/UHF, or clear ghost_atoms.");
 
-    const IntegralPack& ints = rebuild_integrals_(frame, /*compute_pvp=*/x2c);
+    const internal::IntegralView ints = rebuild_integrals_(frame, /*compute_pvp=*/x2c);
     // x2c-1e: replace the non-relativistic core Hamiltonian with the
     // one-step exact-two-component h^X2C. S / ERI / Fock loop are untouched
     // (two-electron integrals stay non-relativistic by definition of
     // x2c-1e). W was assembled only when x2c=true.
     if (x2c) {
-        // RealMatrix is column-major; IntegralPack stores row-major
+        // RealMatrix is column-major; internal::IntegralWorkspace stores row-major
         // xtensor — copy into RealMatrix so the workspace binds cleanly.
-        const RealMatrix S = integrals_sp_->S;
-        const RealMatrix T = integrals_sp_->T;
-        const RealMatrix V = integrals_sp_->V;
-        const RealMatrix W = integrals_sp_->W;
+        const RealMatrix S = ints_S_;
+        const RealMatrix T = ints_T_;
+        const RealMatrix V = ints_V_;
+        const RealMatrix W = ints_W_;
         const internal::X2cWorkspace x2c_ws(S, T, V, W,
                                             internal::kLightSpeedAU);
-        integrals_sp_->Hcore = x2c_ws.hcore();
+        ints_Hcore_ = x2c_ws.hcore();
     }
 
     // SOSCF is HF-only in this link: the CIAH Hessian products carry no XC
@@ -858,8 +888,8 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         if (embed_self_energy)
             v_nuc += emb.self_energy();
         // Retain charges + self-energy gate for the analytic gradient.
-        integrals_sp_->embed_charges = point_charges;
-        integrals_sp_->embed_self_energy = embed_self_energy;
+        ints_embed_charges_ = point_charges;
+        ints_embed_self_energy_ = embed_self_energy;
     }
     if (field_active) {
         const internal::ExternalField field(external_field, ints.atoms);
@@ -872,7 +902,7 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         v_nuc += field.nuclear_energy(ints.atoms);
         // Retain the field on the pack so the analytic gradient can rebuild
         // dV_field/dR + the nuclear field-energy derivative.
-        integrals_sp_->external_field = external_field;
+        ints_external_field_ = external_field;
     }
 
     // Publish the environment-augmented Hcore back onto the private pack so
@@ -880,8 +910,8 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     // method member) build F = H_env + G. Energy uses Hcore_ + v_nuc_ below;
     // if only the member were updated, ½Tr[(H_env+F_vac)P] would undercount
     // the field/embedding by exactly ½.
-    integrals_sp_->Hcore = H;
-    integrals_sp_->V_nuc = v_nuc;
+    ints_Hcore_ = H;
+    ints_V_nuc_ = v_nuc;
 
     // C-PCM: private reaction-field workspace. Rebuilt every run (geometry
     // may have moved). solvent_eps == 0 keeps pcm_ null so FockStage is a
@@ -904,16 +934,16 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             pcm_->prepare(ints.shells);
         // Retain solvent parameters so ScfGradient can rebuild the cavity at
         // displaced geometries for ∂ΔG_el/∂R at fixed density.
-        integrals_sp_->solvent_eps = solvent_eps;
-        integrals_sp_->solvent_radii_scale = solvent_radii_scale;
-        integrals_sp_->solvent_x = solvent_x;
-        integrals_sp_->solvent_model = solvent_model;
+        ints_solvent_eps_ = solvent_eps;
+        ints_solvent_radii_scale_ = solvent_radii_scale;
+        ints_solvent_x_ = solvent_x;
+        ints_solvent_model_ = solvent_model;
     } else {
         pcm_.reset();
-        integrals_sp_->solvent_eps = 0.0;
-        integrals_sp_->solvent_radii_scale = solvent_radii_scale;
-        integrals_sp_->solvent_x = solvent_x;
-        integrals_sp_->solvent_model = solvent_model;
+        ints_solvent_eps_ = 0.0;
+        ints_solvent_radii_scale_ = solvent_radii_scale;
+        ints_solvent_x_ = solvent_x;
+        ints_solvent_model_ = solvent_model;
     }
     // Rebind whenever the solvent workspace is present (pointer always new)
     // or when it was dropped after a previous solvent run.
@@ -926,7 +956,7 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
 
     // n-dimensional Hcore (with environment) kept for the GHF n-dim aufbau
     // seed below; the loop members may then be spinor-embedded.
-    const RealMatrix& H_ao = integrals_sp_->Hcore;
+    const RealMatrix& H_ao = ints_Hcore_;
 
     // Generalized (GHF): the loop members live at spinor dimension 2n. The
     // spin-independent one-electron operators are embedded block-diagonally
@@ -1245,7 +1275,11 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
                                        xc_grad_project_translation,
                                        d3bj,
                                        d4};
-        last_grad_ = gradient.compute(frame, ints, *det_sp_, e_total_);
+        // Fresh view after env (embed/field/solvent) was written onto storage —
+        // IntegralView scalars (V_nuc, embed_self_energy, …) are by value and
+        // the prologue view is stale for those; refs alone are not enough.
+        last_grad_ = gradient.compute(frame, integral_view_(), *det_sp_,
+                                      e_total_);
         // Republish embedding-site forces for the public accessor.
         embed_site_forces_.clear();
         if (last_grad_.embedding_forces.size() > 0) {
@@ -1495,7 +1529,7 @@ void MeanFieldMethod<D>::cpmd_step_(Frame& frame) {
 
     // 1. Integrals at the new geometry (ERI is direct; CP never needs the
     //    dense tensor, and the guards already refused every knob that would).
-    const IntegralPack& ints =
+    const internal::IntegralView ints =
         rebuild_integrals_(frame, /*compute_pvp=*/false);
     const int n = ints.n_basis;
     S_ = ints.S;
@@ -1684,20 +1718,20 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame, const SCFInitialGuess* guess) {
             throw std::invalid_argument(
                 "MeanFieldMethod::mp2: RI-MP2 is closed-shell only — set "
                 "ri=RI::None for UMP2/ROMP2, or use RHF.");
-        return ri_mp2_energy(*integrals_sp_, *det_sp_, e_total_, aux_basis,
+        return ri_mp2_energy(integral_view_(), *det_sp_, e_total_, aux_basis,
                              frozen, mp2_os_scale, mp2_ss_scale);
     }
     if (spin_ == SpinType::RestrictedOpen) {
         // PySCF ROMP2: UMP2 on ROHF orbitals with semi-canonical spin-Fock
         // diagonal denominators (F_alpha_uncoupled_ / F_beta_uncoupled_).
-        return romp2_energy(*integrals_sp_, *det_sp_, F_alpha_uncoupled_,
+        return romp2_energy(integral_view_(), *det_sp_, F_alpha_uncoupled_,
                             F_beta_uncoupled_, e_total_, mp2_os_scale,
                             mp2_ss_scale);
     }
     if (spin_ == SpinType::Unrestricted)
-        return ump2_energy(*integrals_sp_, *det_sp_, e_total_, mp2_os_scale,
+        return ump2_energy(integral_view_(), *det_sp_, e_total_, mp2_os_scale,
                            mp2_ss_scale);
-    return mp2_energy(*integrals_sp_, *det_sp_, e_total_, frozen, mp2_os_scale,
+    return mp2_energy(integral_view_(), *det_sp_, e_total_, frozen, mp2_os_scale,
                       mp2_ss_scale);
 }
 
@@ -1734,15 +1768,15 @@ GradientResult MeanFieldMethod<D>::mp2_forces(Frame& frame,
     GradientResult gr;
     if (spin_ == SpinType::Unrestricted) {
         const MP2Result corr =
-            ump2_energy(*integrals_sp_, *det_sp_, e_total_, /*os_scale=*/1.0,
+            ump2_energy(integral_view_(), *det_sp_, e_total_, /*os_scale=*/1.0,
                         /*ss_scale=*/1.0);
-        gr = internal::ump2_analytic_forces(frame, *integrals_sp_, *det_sp_,
+        gr = internal::ump2_analytic_forces(frame, integral_view_(), *det_sp_,
                                             e_total_, corr.e_corr);
     } else {
         const MP2Result corr =
-            mp2_energy(*integrals_sp_, *det_sp_, e_total_, /*n_frozen=*/0,
+            mp2_energy(integral_view_(), *det_sp_, e_total_, /*n_frozen=*/0,
                        /*os_scale=*/1.0, /*ss_scale=*/1.0);
-        gr = internal::mp2_analytic_forces(frame, *integrals_sp_, *det_sp_,
+        gr = internal::mp2_analytic_forces(frame, integral_view_(), *det_sp_,
                                            e_total_, corr.e_corr);
     }
     // `e_total_` (and therefore `gr.energy`) already carries E_disp; the MP2
@@ -1790,7 +1824,7 @@ MP3Result MeanFieldMethod<D>::mp3(Frame& frame, const SCFInitialGuess* guess) {
             "MeanFieldMethod::mp3: SCF reference did not converge — refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
-    return mp3_energy(*integrals_sp_, *det_sp_, e_total_, frozen);
+    return mp3_energy(integral_view_(), *det_sp_, e_total_, frozen);
 }
 
 template <typename D>
@@ -1818,7 +1852,7 @@ MP4Result MeanFieldMethod<D>::mp4(Frame& frame, const SCFInitialGuess* guess) {
             "MeanFieldMethod::mp4: SCF reference did not converge — refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
-    return mp4_energy(*integrals_sp_, *det_sp_, e_total_, frozen);
+    return mp4_energy(integral_view_(), *det_sp_, e_total_, frozen);
 }
 
 template <typename D>
@@ -1840,7 +1874,7 @@ FCIResult MeanFieldMethod<D>::fci(Frame& frame) {
             "MeanFieldMethod::fci: SCF reference did not converge — refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
-    return fci_energy(*integrals_sp_, *det_sp_, e_total_);
+    return fci_energy(integral_view_(), *det_sp_, e_total_);
 }
 
 template <typename D>
@@ -1866,7 +1900,7 @@ CASCIResult MeanFieldMethod<D>::casci(Frame& frame, int ncas, int nelecas) {
             "MeanFieldMethod::casci: SCF reference did not converge — refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
-    return casci_energy(*integrals_sp_, *det_sp_, e_total_, ncas, nelecas);
+    return casci_energy(integral_view_(), *det_sp_, e_total_, ncas, nelecas);
 }
 
 template <typename D>
@@ -1893,7 +1927,7 @@ CASSCFResult MeanFieldMethod<D>::casscf(Frame& frame, int ncas, int nelecas) {
                                     "to optimize orbitals on a non-stationary "
                                     "determinant (no fallback)");
     // Orbital gradient tol tracks the SCF energy tolerance (Ha).
-    return casscf_energy(*integrals_sp_, *det_sp_, e_total_, ncas, nelecas,
+    return casscf_energy(integral_view_(), *det_sp_, e_total_, ncas, nelecas,
                          /*orb_tol=*/std::max(tol, 1e-8), /*max_macro=*/50);
 }
 
@@ -1920,7 +1954,7 @@ NEVPT2Result MeanFieldMethod<D>::nevpt2(Frame& frame, int ncas, int nelecas) {
                                     "did not converge — refusing "
                                     "to run CASSCF/NEVPT2 on a non-stationary "
                                     "determinant (no fallback)");
-    return nevpt2_energy(*integrals_sp_, *det_sp_, e_total_, ncas, nelecas,
+    return nevpt2_energy(integral_view_(), *det_sp_, e_total_, ncas, nelecas,
                          /*orb_tol=*/std::max(tol, 1e-8), /*max_macro=*/50);
 }
 
@@ -1939,7 +1973,7 @@ CCSDResult MeanFieldMethod<D>::ccsd(Frame& frame) {
             "MeanFieldMethod::ccsd: SCF reference did not converge — refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
-    return ccsd_energy(*integrals_sp_, *det_sp_, e_total_, /*tol=*/1e-10,
+    return ccsd_energy(integral_view_(), *det_sp_, e_total_, /*tol=*/1e-10,
                        /*max_iter=*/100, /*use_diis=*/cc_diis);
 }
 
@@ -1968,9 +2002,9 @@ GradientResult MeanFieldMethod<D>::ccsd_forces(Frame& frame,
             "MeanFieldMethod::ccsd_forces: SCF reference did not converge — "
             "refusing gradient on a non-stationary determinant (no fallback)");
 
-    const CCSDResult corr = ccsd_energy(*integrals_sp_, *det_sp_, e_total_);
+    const CCSDResult corr = ccsd_energy(integral_view_(), *det_sp_, e_total_);
     GradientResult gr = internal::ccsd_analytic_forces(
-        frame, *integrals_sp_, *det_sp_, e_total_, corr.e_corr);
+        frame, integral_view_(), *det_sp_, e_total_, corr.e_corr);
     // Same reason as mp2_forces: the reference energy folded in E_disp, so the
     // published force must fold in −∂E_disp/∂R (internal/dispersion.h).
     internal::add_dispersion_forces(frame, d3bj, d4, gr);
@@ -2004,7 +2038,7 @@ CC2Result MeanFieldMethod<D>::cc2(Frame& frame) {
             "MeanFieldMethod::cc2: SCF reference did not converge — refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
-    return cc2_energy(*integrals_sp_, *det_sp_, e_total_);
+    return cc2_energy(integral_view_(), *det_sp_, e_total_);
 }
 
 template <typename D>
@@ -2023,7 +2057,7 @@ CCSDTResult MeanFieldMethod<D>::ccsd_t(Frame& frame) {
             "refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
-    return ccsd_t_energy(*integrals_sp_, *det_sp_, e_total_);
+    return ccsd_t_energy(integral_view_(), *det_sp_, e_total_);
 }
 
 // ── MOM/IMOM reference install ────────────────────────────────────────────────
@@ -2158,7 +2192,7 @@ vib::HessianResult MeanFieldMethod<D>::central_difference_nuclear_hessian(
 
 template <typename D>
 void MeanFieldMethod<D>::check_hessian_preconditions(
-    std::string_view method_name, const IntegralPack& pack) const {
+    std::string_view method_name, const internal::IntegralView& pack) const {
     if (!converged())
         throw std::runtime_error(std::string(method_name)
                                  + ": SCF did not converge — no reference "
@@ -2205,9 +2239,9 @@ void MeanFieldMethod<D>::evaluate(const cpu::LaunchContext& qm_ctx) {
     drive_scf_(qm_ctx.frame, /*guess=*/nullptr, opts);
 
     // Mulliken charges [e] onto the private QM frame when a density exists.
-    if (det_sp_ && integrals_sp_) {
+    if (det_sp_ && ints_n_basis_ > 0) {
         const auto charges =
-            cpu::mulliken_charge(*integrals_sp_, det_sp_->density_total());
+            cpu::mulliken_charge(integral_view_(), det_sp_->density_total());
         StorageReal* __restrict q = qm_ctx.frame.span(kAtom_charge);
         const int n = static_cast<int>(qm_ctx.frame.nlocal());
         const int nc = static_cast<int>(charges.size());

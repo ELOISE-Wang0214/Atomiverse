@@ -56,7 +56,7 @@ struct DummyS {
 
 // Contracted same-center Cartesian overlap of two components of one aux
 // shell block (needed to self-normalize the spherical aux columns the
-// same way IntegralPack::c2s does for the orbital basis).
+// same way internal::IntegralWorkspace::c2s does for the orbital basis).
 double intra_block_overlap(const native::ShellBlock& b, const int ang_i[3],
                            const int ang_k[3]) {
     double s = 0.0;
@@ -92,7 +92,7 @@ DensityFitting::DensityFitting(const std::vector<native::Shell>& orbital_shells,
         n_aux_ += 2 * b.l + 1;
 
     // ── Spherical transform per aux block, self-normalized in the aux
-    //    Cartesian overlap metric (mirrors IntegralPack::c2s: the engine
+    //    Cartesian overlap metric (mirrors internal::IntegralWorkspace::c2s: the engine
     //    primitive-normalizes but does not unit-normalize contractions).
     //    def2-universal-jkfit is a spherical basis family — fitting in
     //    the raw Cartesian aux span would span extra lower-l functions

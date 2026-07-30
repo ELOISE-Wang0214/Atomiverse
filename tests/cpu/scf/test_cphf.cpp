@@ -6,7 +6,7 @@
 ///
 /// FD gates use the 5-point central stencil
 ///   f'(x) ≈ [8(f(h) − f(−h)) − (f(2h) − f(−2h))] / (12h),  O(h⁴),
-/// at h = 1e-3 Å over rebuilt IntegralPack / IntegralDerivPack objects,
+/// at h = 1e-3 Å over rebuilt internal::IntegralWorkspace / IntegralDerivPack objects,
 /// so the classic bug sources (skeleton derivatives, B^x inhomogeneity)
 /// are each pinned independently before any Hessian is assembled.
 ///
@@ -36,7 +36,7 @@
 using namespace ATV;
 using cpu::scf::BasisSet;
 using cpu::scf::IntegralDerivPack;
-using cpu::scf::IntegralPack;
+using cpu::scf::internal::IntegralWorkspace;
 using cpu::scf::IntegralSecondDerivPack;
 using cpu::scf::RealMatrix;
 using cpu::scf::RealVector;
@@ -100,7 +100,7 @@ double max_abs(const RealMatrix& m) {
 
 TEST(Cphf, SecondDerivativeIntegralsMatchFdOfFirst) {
     const auto frame = make_hehp();
-    const IntegralPack pack{frame, BasisSet::STO3G, +1};
+    const internal::IntegralWorkspace pack{frame, BasisSet::STO3G, +1};
     const IntegralSecondDerivPack d2{pack};
     const int natm = 2;
     const double h = 1e-3; // Å
@@ -114,7 +114,7 @@ TEST(Cphf, SecondDerivativeIntegralsMatchFdOfFirst) {
                         // read slice (A, di).
                         const auto eval =
                             [&](const cpu::Frame& fr) -> RealMatrix {
-                            const IntegralPack p{fr, BasisSet::STO3G, +1};
+                            const internal::IntegralWorkspace p{fr, BasisSet::STO3G, +1};
                             const IntegralDerivPack dp{p};
                             const auto& t = (tensor == 0)   ? dp.dS
                                             : (tensor == 1) ? dp.dT
@@ -139,14 +139,14 @@ TEST(Cphf, SecondDerivativeIntegralsMatchFdOfFirst) {
 
 TEST(Cphf, NuclearRepulsionSecondDerivativeMatchesFd) {
     const auto frame = make_hehp();
-    const IntegralPack pack{frame, BasisSet::STO3G, +1};
+    const internal::IntegralWorkspace pack{frame, BasisSet::STO3G, +1};
     const IntegralSecondDerivPack d2{pack};
     const double h = 1e-3; // Å
 
     for (int B = 0; B < 2; ++B) {
         for (int dj = 0; dj < 3; ++dj) {
             const auto eval = [&](const cpu::Frame& fr) -> RealMatrix {
-                const IntegralPack p{fr, BasisSet::STO3G, +1};
+                const internal::IntegralWorkspace p{fr, BasisSet::STO3G, +1};
                 const IntegralDerivPack dp{p};
                 RealMatrix out = xt::zeros<double>({2, 3});
                 for (int A = 0; A < 2; ++A)
@@ -180,7 +180,7 @@ TEST(Cphf, SkeletonMoDerivativesMatchFdOfSAndF) {
     const RealMatrix C = det.coefficients(SlaterDeterminant::Spin::alpha);
     const RealMatrix P = det.density_total();
 
-    const IntegralPack pack{frame, BasisSet::STO3G, +1};
+    const internal::IntegralWorkspace pack{frame, BasisSet::STO3G, +1};
     const IntegralDerivPack dpack{pack};
     xt::xtensor<double, 4> dF = dpack.dT + dpack.dV;
     cpu::scf::accumulate_two_electron_fock_derivative(dF, pack, P);
@@ -190,7 +190,7 @@ TEST(Cphf, SkeletonMoDerivativesMatchFdOfSAndF) {
         for (int d = 0; d < 3; ++d) {
             // S^(x) in MO: Cᵀ dS C  vs  FD of Cᵀ S(R) C.
             const auto eval_S = [&](const cpu::Frame& fr) -> RealMatrix {
-                const IntegralPack p{fr, BasisSet::STO3G, +1};
+                const internal::IntegralWorkspace p{fr, BasisSet::STO3G, +1};
                 return xt::linalg::dot(xt::transpose(C),
                                        xt::linalg::dot(p.S, C));
             };
@@ -203,7 +203,7 @@ TEST(Cphf, SkeletonMoDerivativesMatchFdOfSAndF) {
             // F^(x) in MO: skeleton Fock at frozen density,
             // F(R; P₀) = Hcore(R) + G(R)[P₀] via coulomb_exchange_fused.
             const auto eval_F = [&](const cpu::Frame& fr) -> RealMatrix {
-                const IntegralPack p{fr, BasisSet::STO3G, +1,
+                const internal::IntegralWorkspace p{fr, BasisSet::STO3G, +1,
                                      /*compute_eri=*/true};
                 RealMatrix G = xt::zeros<double>({p.n_basis, p.n_basis});
                 p.coulomb_exchange_fused(P, G);
@@ -225,7 +225,7 @@ namespace {
 
 struct CphfFixture {
     cpu::scf::RHF rhf;
-    IntegralPack pack;
+    internal::IntegralWorkspace pack;
     xt::xtensor<double, 4> eri;
     IntegralDerivPack dpack;
     xt::xtensor<double, 4> dF;
@@ -233,7 +233,7 @@ struct CphfFixture {
 
     explicit CphfFixture(const cpu::Frame& frame, BasisSet basis, int charge)
         : rhf(), pack((run_scf(frame, basis, charge),
-                       IntegralPack{frame, basis, charge,
+                       internal::IntegralWorkspace{frame, basis, charge,
                                     /*compute_eri=*/true})),
           eri(pack.ERI), dpack(pack), dF(dpack.dT + dpack.dV),
           oh(rhf.determinant(), eri) {

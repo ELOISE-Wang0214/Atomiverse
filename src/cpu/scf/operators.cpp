@@ -1,10 +1,10 @@
 /// @file cpu/scf/operators.cpp
 /// @brief Two-electron Fock operator members: stored-ERI
-///        (IntegralPack::coulomb_exchange_fused) and direct-SCF
+///        (internal::IntegralView::coulomb_exchange_fused) and direct-SCF
 ///        (ShellPairList / ShellBlockPairList members).
 
 #include "atomiverse/cpu/scf/cart.h"
-#include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/internal/integral_view.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
@@ -26,14 +26,14 @@ namespace scf {
 
 // ── Stored-ERI operator (BLAS via xtensor-blas) ─────────────────────────
 //
-// `IntegralPack::coulomb_exchange_fused` reshapes the 4-index ERI tensor into
+// `internal::IntegralView::coulomb_exchange_fused` reshapes the 4-index ERI tensor into
 // an [n²×n²] matrix, turning the Coulomb double-sum into a single DGEMV call.
-// `HamiltonianBuilder` selects this path whenever `IntegralPack::ERI` is a
+// `HamiltonianBuilder` selects this path whenever `IntegralView::ERI` is a
 // materialized dense tensor; otherwise the direct-SCF
 // `ShellBlockPairList::g_rhf` path runs without ever materializing ERI.
 
-void IntegralPack::coulomb_exchange_fused(const RealMatrix& P_total,
-                                          RealMatrix& G) const {
+void internal::IntegralView::coulomb_exchange_fused(const RealMatrix& P_total,
+                                                    RealMatrix& G) const {
     const int n = n_basis;
     // PySCF approach: J via BLAS DGEMV, K via einsum-equivalent contraction.
     //   J(i,j) = einsum('ijkl,kl->', ERI, P)  → reshape(n²,n²) @ flatten(P)

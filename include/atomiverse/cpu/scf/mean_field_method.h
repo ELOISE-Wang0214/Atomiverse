@@ -3,9 +3,12 @@
 ///        concrete Gaussian mean-field methods: `MeanFieldMethod<D>` (base of
 ///        RHF / ROHF / UHF / RKS / UKS).
 ///
-/// There is no bag named `SCFSolver` and no user-facing `SCFConfig` /
-/// `IntegralPack` step. Each method is a concrete class; parameters are
-/// **members**; the only I/O currency is `Frame`.
+/// There is no bag named `SCFSolver` / freestanding integral bag / `SCFConfig`.
+/// Each method is a concrete class; parameters are **constructor arguments**
+/// (e.g. `RHF{BasisSet::STO3G, charge, tol}`); **never** `rhf.basis = …`
+/// after default construction. The only I/O currency is `Frame`. Integral
+/// **fields** live as method-private members; engines take
+/// `internal::IntegralView` (non-owning refs).
 ///
 /// SCF self-consistency is a **Driver loop**: `MeanFieldMethod<D>` derives
 /// `cpu::Driver<ATV::scf::Phase>` and the pure tag `HF` (not a Component).
@@ -15,13 +18,10 @@
 /// `uhf.h` / `rks.h` / `uks.h`; `methods.h` is their umbrella.
 ///
 /// @code
-///   cpu::scf::RHF rhf;
-///   rhf.basis = BasisSet::STO3G;
-///   rhf.tol = 1e-10;
-///   rhf.run(frame);                    // eV energy on frame.meta[kEnergy];
-///                                      // Hartree on rhf.energy();
-///                                      // wavefunction on rhf.determinant()
-///   // forces: rhf.with_gradient(true) then nest at force phase, or
+///   cpu::scf::RHF rhf{BasisSet::STO3G};           // preferred
+///   // or: RHF{BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-10, /*max_iter=*/100};
+///   rhf.run(frame);                              // eV on frame.meta[kEnergy]
+///   // forces: RHF{…}.with_gradient(true) nested at force phase, or
 ///   //         GradientResult g = rhf.forces(frame);
 /// @endcode
 #pragma once
@@ -55,6 +55,8 @@
 #include "atomiverse/cpu/scf/mp2.h"
 #include "atomiverse/cpu/scf/mp3.h"
 #include "atomiverse/cpu/scf/mp4.h"
+#include "atomiverse/cpu/scf/internal/integral_view.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/nevpt2.h"
 #include "atomiverse/cpu/scf/scf_enums.h"
@@ -86,8 +88,8 @@ class Pcm; // continuum solvent private workspace (pcm.h)
 ///
 /// `shells` is the basis-function set (pointer storage owned by the method's
 /// private integral workspace via shared_ptr aliasing). Spin treatment is
-/// read from the wavefunction (`result->restricted()`). `IntegralPack` is
-/// not public.
+/// read from the wavefunction (`result->restricted()`). Integral storage is
+/// method-private (not a public bag).
 struct MeanFieldOutputs {
     std::shared_ptr<const SlaterDeterminant> result;
     std::shared_ptr<const std::vector<native::Shell>> shells;
@@ -747,11 +749,9 @@ public:
     /// @return Shared view of determinant / shells for cube writers.
     MeanFieldOutputs result_handle() const {
         return {det_sp_,
-                std::shared_ptr<const std::vector<native::Shell>>(
-                    integrals_sp_, &integrals_sp_->shells),
+                std::shared_ptr<const std::vector<native::Shell>>(ints_shells_sp_),
                 has_result_sp_,
-                std::shared_ptr<const xt::xtensor<double, 2>>(
-                    integrals_sp_, &integrals_sp_->c2s)};
+                std::shared_ptr<const xt::xtensor<double, 2>>(ints_c2s_sp_)};
     }
 
     Derived& with_gradient(bool enabled) & noexcept {
@@ -792,12 +792,38 @@ public:
     /// @brief Set n_alpha/n_beta from electron count (and subclass rules).
     virtual void resolve_occupation(int n_electrons) = 0;
 
-    /// @brief Read access to the private integral workspace of the most
-    ///        recent run (shells, S, c2s, dense ERI when materialized) for
-    ///        derived-method post-run analyses (e.g. `RHF::stability()`).
-    ///        Never exposed publicly — Frame stays the sole I/O currency.
-    /// @return The method-owned IntegralPack (borrowed const view).
-    const IntegralPack& integral_workspace_() const { return *integrals_sp_; }
+    /// @brief Non-owning view of this method's private integral **members**
+    ///        (shells, S, c2s, dense ERI when materialized) for derived
+    ///        post-run analyses (e.g. `RHF::stability()`). Not a bag type —
+    ///        only binds refs to the expanded fields below. Never public.
+    [[nodiscard]] internal::IntegralView integral_view_() const {
+        return internal::IntegralView{
+            ints_S_,
+            ints_T_,
+            ints_V_,
+            ints_Hcore_,
+            ints_W_,
+            ints_ERI_,
+            ints_V_nuc_,
+            ints_n_basis_,
+            ints_n_basis_cart_,
+            *ints_c2s_sp_,
+            ints_n_electrons_,
+            ints_ecp_,
+            ints_has_ecp_,
+            ints_ecp_centers_,
+            ints_embed_charges_,
+            ints_embed_self_energy_,
+            ints_external_field_,
+            ints_solvent_eps_,
+            ints_solvent_radii_scale_,
+            ints_solvent_x_,
+            ints_solvent_model_,
+            ints_atoms_,
+            *ints_shells_sp_,
+            ints_shell_data_,
+        };
+    }
 
     /// @brief Central finite-difference nuclear Hessian [eV/Å²] from analytic
     ///        forces — the shared skeleton of the RKS/UKS/ROHF FD Hessian.
@@ -823,16 +849,12 @@ public:
         Frame& frame, const std::function<GradientResult(Frame&)>& forces_at);
 
     /// @brief Throw if the converged reference cannot support an analytic
-    ///        second derivative: SCF non-convergence, a spherical-harmonic
-    ///        integral pack, or an ECP pack. Centralizes the guard block
-    ///        shared by `RHF::hessian` / `UHF::hessian`; `method_name` is
-    ///        interpolated so each message reads identically across methods.
+    ///        second derivative: SCF non-convergence, spherical AOs, or ECP.
     /// @param method_name Fully-qualified method label, e.g. "RHF::hessian".
-    /// @param pack        The method's private integral workspace of the most
-    ///                    recent run.
-    /// @throws std::runtime_error on non-convergence / spherical / ECP pack.
+    /// @param ints        View of this method's integral members.
+    /// @throws std::runtime_error on non-convergence / spherical / ECP.
     void check_hessian_preconditions(std::string_view method_name,
-                                     const IntegralPack& pack) const;
+                                     const internal::IntegralView& ints) const;
 
   private:
     // ── Per-run SCF iteration state — plainly-named private members ────────────
@@ -952,28 +974,12 @@ public:
     void drive_scf_core_(Frame& frame, const SCFInitialGuess* guess,
                          const DriveOpts& opts);
 
-    /// @brief Rebuild the private integral workspace at the current geometry
-    ///        and resolve the occupation from its electron count — the
-    ///        assembly step shared by `drive_scf_core_` (full SCF drive) and
-    ///        `cpmd_step_` (one fixed-density Fock build per production CP
-    ///        step).
-    ///
-    ///        `PositionGuard` and the ghost-atom/x2c refusal guards stay with
-    ///        the caller, not in this helper: the guard's lifetime must span
-    ///        the whole calling function (through the later force/gradient
-    ///        assembly downstream, which needs the same unwrapped geometry),
-    ///        and the ghost-atom guard must fire before any integral rebuild
-    ///        happens — both are `drive_scf_core_`-only.
-    /// @param frame       Geometry to integrate over [Å]; already
-    ///                    position-guarded by the caller.
-    /// @param compute_pvp Forwarded to `IntegralPack` (x2c's ⟨∇|V|∇⟩ term);
-    ///                    `cpmd_step_` always passes false — x2c is refused
-    ///                    under cpmd (`validate_cpmd_config_`).
-    /// @return The freshly rebuilt pack (`*integrals_sp_`, borrowed const
-    ///         view). `drive_scf_core_` mutates its `Hcore` further (the x2c
-    ///         one-step replacement) after this call returns.
-    const IntegralPack& rebuild_integrals_(const Frame& frame,
-                                           bool compute_pvp);
+    /// @brief Rebuild private integral **members** at the current geometry
+    ///        and resolve occupation — shared by `drive_scf_core_` and
+    ///        `cpmd_step_`. Returns a view bound to those members.
+    /// @param frame Geometry [Å]; already position-guarded by the caller.
+    /// @param compute_pvp When true, assemble ⟨∇|V|∇⟩ (x2c).
+    internal::IntegralView rebuild_integrals_(const Frame& frame, bool compute_pvp);
 
     /// @brief Lazily wire the five stages + `ScfConverged` and compile the Plan.
     ///        Deferred to first `drive_scf_` so member config (grid, level
@@ -988,12 +994,38 @@ public:
     ///        when a move leaves the stages bound to a stale address.
     void reset_built_driver_();
 
-    // Shared workspace (shells published via result_handle aliasing). The
-    // determinant slot is stable (handle-before-run contract): it starts as
-    // the empty determinant (0 electrons, 0 orbitals) and each run assigns
-    // the fresh wavefunction into the same pointee.
-    std::shared_ptr<IntegralPack> integrals_sp_{
-        std::make_shared<IntegralPack>()};
+    // ── Private integral members (expanded fields — not a freestanding bag) ─
+    // Host AO matrices / shells / env retained across the SCF loop and post-HF.
+    // `ints_shells_sp_` / `ints_c2s_sp_` are shared so result_handle can alias
+    // them for cube writers without copying.
+    xt::xtensor<double, 2> ints_S_;
+    xt::xtensor<double, 2> ints_T_;
+    xt::xtensor<double, 2> ints_V_;
+    xt::xtensor<double, 2> ints_Hcore_;
+    xt::xtensor<double, 2> ints_W_;
+    xt::xtensor<double, 4> ints_ERI_;
+    double ints_V_nuc_ = 0;
+    int ints_n_basis_ = 0;
+    int ints_n_basis_cart_ = 0;
+    int ints_n_electrons_ = 0;
+    std::string ints_ecp_;
+    bool ints_has_ecp_ = false;
+    std::vector<internal::EcpCenter> ints_ecp_centers_;
+    std::vector<cpu::EmbeddingSite> ints_embed_charges_;
+    bool ints_embed_self_energy_ = true;
+    std::array<double, 3> ints_external_field_{{0.0, 0.0, 0.0}};
+    double ints_solvent_eps_ = 0;
+    double ints_solvent_radii_scale_ = 1.2;
+    double ints_solvent_x_ = 0;
+    SolventModel ints_solvent_model_ = SolventModel::CPCM;
+    std::vector<native::Atom> ints_atoms_;
+    std::shared_ptr<std::vector<native::Shell>> ints_shells_sp_{
+        std::make_shared<std::vector<native::Shell>>()};
+    std::vector<std::vector<double>> ints_shell_data_;
+    std::shared_ptr<xt::xtensor<double, 2>> ints_c2s_sp_{
+        std::make_shared<xt::xtensor<double, 2>>()};
+
+    // Determinant slot is stable (handle-before-run contract).
     std::shared_ptr<SlaterDeterminant> det_sp_{
         std::make_shared<SlaterDeterminant>(RealMatrix{}, RealVector{},
                                             RealVector{}, 0)};

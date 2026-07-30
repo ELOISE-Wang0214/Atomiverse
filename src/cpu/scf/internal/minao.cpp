@@ -42,7 +42,7 @@ struct MinaoAO {
 // Build all MINAO AOs for the molecule. `storage` holds the per-AO exponent
 // and coefficient data; `shell` views into the owned vectors, so `storage`
 // must outlive any use of the shell pointers.
-static void build_minao_ao_list(const IntegralPack& integrals,
+static void build_minao_ao_list(const internal::IntegralView& integrals,
                                 std::vector<MinaoAO>& out) {
     out.clear();
     for (const auto& atom : integrals.atoms) {
@@ -110,7 +110,7 @@ static void build_minao_ao_list(const IntegralPack& integrals,
 
 } // namespace
 
-bool minao_supported(const IntegralPack& integrals) {
+bool minao_supported(const internal::IntegralView& integrals) {
     // Spherical-convention packs: the MINAO cross-overlap machinery is
     // Cartesian; the MINAO→spherical projection is deferred. Falling back to
     // the Hcore guess keeps the converged energy identical — the guess only
@@ -129,7 +129,7 @@ bool minao_supported(const IntegralPack& integrals) {
     return true;
 }
 
-RealMatrix build_minao_density(const IntegralPack& integrals) {
+RealMatrix build_minao_density(const internal::IntegralView& integrals) {
     // ── 1. Build MINAO AO list (and owning storage) ─────────────────────
     std::vector<MinaoAO> minao_aos;
     build_minao_ao_list(integrals, minao_aos);
@@ -139,7 +139,7 @@ RealMatrix build_minao_density(const IntegralPack& integrals) {
 
     // ── 2. Target-basis shells already normalized by build_integrals
     //        — just borrow the pointers.
-    //        Reconstruct native::Shell views from the IntegralPack to avoid
+    //        Reconstruct native::Shell views from the internal::IntegralWorkspace to avoid
     //        depending on its internal shell_data layout past its lifetime.
     //        Use the already-stored `shells` vector directly.
     const auto& target_shells = integrals.shells;

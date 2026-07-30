@@ -96,7 +96,7 @@ using cpu::linalg::RealMatrix;
 using cpu::linalg::RealVector;
 using cpu::scf::BasisSet;
 using cpu::scf::GradientResult;
-using cpu::scf::IntegralPack;
+using cpu::scf::internal::IntegralWorkspace;
 using cpu::scf::SlaterDeterminant;
 using Spin = cpu::scf::SlaterDeterminant::Spin;
 
@@ -685,7 +685,7 @@ TEST(ScfGradientAtDensity, RestrictedMatchesComputeAtConvergedDeterminant) {
     rhf.run(f);
     ASSERT_TRUE(rhf.converged());
 
-    const IntegralPack ints{f, BasisSet::STO3G, /*charge=*/0,
+    const internal::IntegralWorkspace ints{f, BasisSet::STO3G, /*charge=*/0,
                             /*compute_eri=*/false};
     const SlaterDeterminant& det = rhf.determinant();
     ASSERT_TRUE(det.restricted());
@@ -717,7 +717,7 @@ TEST(ScfGradientAtDensity, UnrestrictedMatchesComputeAtConvergedDeterminant) {
     uhf.run(f);
     ASSERT_TRUE(uhf.converged());
 
-    const IntegralPack ints{f, BasisSet::STO3G, /*charge=*/0,
+    const internal::IntegralWorkspace ints{f, BasisSet::STO3G, /*charge=*/0,
                             /*compute_eri=*/false};
     const SlaterDeterminant& det = uhf.determinant();
     ASSERT_FALSE(det.restricted());

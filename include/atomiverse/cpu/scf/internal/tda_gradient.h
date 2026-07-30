@@ -26,7 +26,7 @@ namespace internal {
 /// @param state 0-based TDA root index.
 /// @return Force array fx0,fy0,fz0,... [eV/Å].
 std::vector<double> tda_analytic_forces(const Frame& frame,
-                                        const IntegralPack& pack,
+                                        const internal::IntegralView& pack,
                                         const SlaterDeterminant& det,
                                         double e_scf_ha, int state);
 

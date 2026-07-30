@@ -4,7 +4,7 @@
 /// Asserts:
 /// - Evaluate / MD / Minimize accept a pure method-driver as an HF energy source
 /// - single_point and Evaluate+add produce consistent energies with run()
-/// - MeanFieldOutputs exposes shells (not IntegralPack)
+/// - MeanFieldOutputs exposes shells (not internal::IntegralWorkspace)
 /// - Nested multi-step MD reuses the method (no per-step rebuild of stages)
 
 #include <gtest/gtest.h>
@@ -109,7 +109,7 @@ TEST(MethodDriverWire, SinglePointMatchesRun) {
                 static_cast<double>(frame_b.meta.get(kEnergy)), 1e-8);
 }
 
-// ac-007: MeanFieldOutputs carries shells, not IntegralPack.
+// ac-007: MeanFieldOutputs carries shells, not internal::IntegralWorkspace.
 TEST(MethodDriverWire, MeanFieldOutputsExposesShells) {
     auto frame = make_h2();
     cpu::scf::RHF rhf;

@@ -11,8 +11,8 @@
 ///   ShellBlock + eri_block() amortize Boys/R-table computation across all
 ///   angular combinations in a shell-block quartet (libcint/PySCF approach).
 ///
-/// @see cpu::scf::IntegralPack for the output data structure
-/// @see cpu::scf::IntegralPack for the entry point
+/// Integral matrices are private method workspace (`internal::IntegralWorkspace`);
+/// public code uses concrete methods (`RHF` / …) with Frame only.
 #pragma once
 
 namespace ATV {

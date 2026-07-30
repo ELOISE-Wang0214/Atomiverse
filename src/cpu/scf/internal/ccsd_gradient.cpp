@@ -62,7 +62,7 @@ double ccsd_tot_ha(const Frame& frame, BasisSet basis, double scf_tol) {
 } // namespace
 
 GradientResult ccsd_analytic_forces(const Frame& frame,
-                                    const IntegralPack& pack,
+                                    const internal::IntegralView& pack,
                                     const SlaterDeterminant& det,
                                     double e_scf_ha, double e_corr_ha) {
     if (!det.restricted())

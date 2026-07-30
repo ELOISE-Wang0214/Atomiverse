@@ -2,7 +2,7 @@
 /// @brief Unit: spherical AO dimension switch for spherical-convention bases.
 ///
 /// def2 sets are DEFINED with real spherical harmonics (5d/7f); Pople sets
-/// stay Cartesian (6d by definition). The IntegralPack sandwiches its
+/// stay Cartesian (6d by definition). The internal::IntegralWorkspace sandwiches its
 /// matrices to the spherical dimension via the engine-convention c2s blocks;
 /// the unit-diagonal of the spherical overlap is the end-to-end proof that
 /// the double-factorial normalization was absorbed correctly.
@@ -27,7 +27,7 @@
 using namespace ATV;
 using cpu::scf::angular_convention;
 using cpu::scf::BasisSet;
-using cpu::scf::IntegralPack;
+using cpu::scf::internal::IntegralWorkspace;
 using cpu::scf::basis_data::AngularConvention;
 
 namespace {
@@ -73,7 +73,7 @@ TEST(SphericalBasis, ConventionGate) {
 /// H2O/def2-SVP: 25 Cartesian AOs collapse to 24 spherical AOs.
 TEST(SphericalBasis, Def2SvpDimensionIs24) {
     const auto f = water();
-    const IntegralPack p{f, BasisSet::Def2SVP};
+    const internal::IntegralWorkspace p{f, BasisSet::Def2SVP};
     EXPECT_TRUE(p.spherical());
     EXPECT_EQ(p.n_basis, 24);
     EXPECT_EQ(p.n_basis_cart, 25);
@@ -85,7 +85,7 @@ TEST(SphericalBasis, Def2SvpDimensionIs24) {
 /// 6-31G* stays Cartesian by definition: dimension unchanged (19 for H2O).
 TEST(SphericalBasis, Pople631GsStaysCartesian) {
     const auto f = water();
-    const IntegralPack p{f, BasisSet::Pople631Gs};
+    const internal::IntegralWorkspace p{f, BasisSet::Pople631Gs};
     EXPECT_FALSE(p.spherical());
     EXPECT_EQ(p.n_basis, 19);
     EXPECT_EQ(p.n_ao_cart(), 19);
@@ -96,7 +96,7 @@ TEST(SphericalBasis, Pople631GsStaysCartesian) {
 /// (The explicit 5x5 sandwich identity at 1e-12 lives in test_cart2sph.cpp.)
 TEST(SphericalBasis, SphericalOverlapDiagonalIsUnit) {
     const auto f = water();
-    const IntegralPack p{f, BasisSet::Def2SVP};
+    const internal::IntegralWorkspace p{f, BasisSet::Def2SVP};
     for (int i = 0; i < p.n_basis; ++i)
         EXPECT_NEAR(p.S(i, i), 1.0, 1e-12) << "S diag " << i;
 }
@@ -106,7 +106,7 @@ TEST(SphericalBasis, SphericalOverlapDiagonalIsUnit) {
 /// constant difference between codes).
 TEST(SphericalBasis, SphericalOverlapMatchesPinnedPyscf) {
     const auto f = water();
-    const IntegralPack p{f, BasisSet::Def2SVP};
+    const internal::IntegralWorkspace p{f, BasisSet::Def2SVP};
     EXPECT_NEAR(p.S(0, 1), -0.3440165538027238, 1e-8);
     EXPECT_NEAR(p.S(0, 14), -0.04787596383062501, 1e-8);
     EXPECT_NEAR(p.S(5, 20), -0.06485770181065395, 1e-8);
@@ -117,7 +117,7 @@ TEST(SphericalBasis, SphericalOverlapMatchesPinnedPyscf) {
 /// dS/dT/dV collapse to n_sph (24 for H2O/def2-SVP), not n_cart (25).
 TEST(SphericalGradient, DerivPackReportsSphericalDim) {
     const auto f = water();
-    const IntegralPack p{f, BasisSet::Def2SVP};
+    const internal::IntegralWorkspace p{f, BasisSet::Def2SVP};
     ASSERT_TRUE(p.spherical());
     const cpu::scf::IntegralDerivPack dp{p};
     EXPECT_EQ(dp.n_basis, p.n_basis);               // 24, spherical
@@ -135,7 +135,7 @@ TEST(SphericalGradient, DerivPackReportsSphericalDim) {
 /// missing/wrong one; no SCF solve, just three integral-pack builds.
 TEST(SphericalGradient, SphericalOverlapDerivMatchesFiniteDifference) {
     const auto f = water();
-    const IntegralPack p{f, BasisSet::Def2SVP};
+    const internal::IntegralWorkspace p{f, BasisSet::Def2SVP};
     const cpu::scf::IntegralDerivPack dp{p};
 
     // Central difference of S w.r.t. the O atom's z coordinate, in Bohr.
@@ -148,7 +148,7 @@ TEST(SphericalGradient, SphericalOverlapDerivMatchesFiniteDifference) {
     auto perturbed = [&](double dz_ang) {
         cpu::Frame g = water();
         g.span(kAtom_z)[atom] += dz_ang;
-        return IntegralPack{g, BasisSet::Def2SVP}.S;
+        return internal::IntegralWorkspace{g, BasisSet::Def2SVP}.S;
     };
     const auto S_plus = perturbed(+h_ang);
     const auto S_minus = perturbed(-h_ang);
@@ -167,7 +167,7 @@ TEST(SphericalGradient, RhfSphericalRunsSiblingsStillThrow) {
     cpu::Frame f(1);
     f.span(kAtom_type)[0] = 8; // O
     f.box = cpu::Box::cubic(50.0);
-    const IntegralPack p{f, BasisSet::Def2SVP};
+    const internal::IntegralWorkspace p{f, BasisSet::Def2SVP};
     ASSERT_TRUE(p.spherical());
 
     const int n = p.n_basis;

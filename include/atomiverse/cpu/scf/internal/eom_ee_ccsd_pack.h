@@ -25,7 +25,7 @@ namespace scf {
 /// @return Singlet ω [eV] plus CCSD energetics.
 /// @throws std::invalid_argument on open-shell / missing ERI / bad n_states /
 ///         non-convergence (no silent fallback).
-EOMEECCSDResult eom_ee_ccsd_energies(const IntegralPack& ints,
+EOMEECCSDResult eom_ee_ccsd_energies(const internal::IntegralView& ints,
                                      const SlaterDeterminant& det,
                                      double e_scf_ha, int n_states = 1,
                                      double tol = 1e-10, int max_iter = 100);

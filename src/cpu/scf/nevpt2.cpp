@@ -23,7 +23,7 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-NEVPT2Result nevpt2_energy(const IntegralPack& ints,
+NEVPT2Result nevpt2_energy(const internal::IntegralView& ints,
                            const SlaterDeterminant& det, double e_scf_ha,
                            int ncas, int nelecas, double orb_tol,
                            int max_macro) {

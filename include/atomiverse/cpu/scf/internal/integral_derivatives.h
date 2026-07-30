@@ -3,7 +3,7 @@
 ///
 /// Computes dS/dR, dT/dR, dV/dR, d(ERI)/dR, and dV_nuc/dR for contracted
 /// Gaussians of any l <= kMaxL (s, p, d shells). Works with any basis the
-/// SCF path resolves into an `IntegralPack`.
+/// SCF path resolves into an `internal::IntegralWorkspace`.
 /// Uses the angular momentum raising formula for derivatives:
 ///   d/dA_d <a|O|b> = 2*alpha_a * <a+1_d|O|b> - a_d * <a-1_d|O|b>
 ///
@@ -61,7 +61,7 @@ struct IntegralDerivPack {
     /// is basis-independent and untouched.
     ///
     /// @param pack Integral pack (provides atoms in Bohr + resolved shells).
-    explicit IntegralDerivPack(const IntegralPack& pack);
+    explicit IntegralDerivPack(const internal::IntegralView& pack);
 };
 
 /// @brief Contract two-electron derivative integrals directly into the gradient.
@@ -96,7 +96,7 @@ struct IntegralDerivPack {
 /// @param spin           Restricted or unrestricted spin treatment.
 /// @param xc_type        XC functional (KS hybrid exact-exchange fraction).
 void accumulate_two_electron_gradient(
-    xt::xtensor<double, 2>& grad, const IntegralPack& integrals,
+    xt::xtensor<double, 2>& grad, const internal::IntegralView& integrals,
     const xt::xtensor<double, 2>& P_total, const SlaterDeterminant& det,
     MeanFieldType method, SpinType spin, XCType xc_type);
 
@@ -118,7 +118,7 @@ void accumulate_two_electron_gradient(
 /// @param xc_type   XC functional (KS hybrid exact-exchange fraction).
 /// @throws std::invalid_argument when `spin == SpinType::Generalized`.
 void accumulate_two_electron_gradient(xt::xtensor<double, 2>& grad,
-                                      const IntegralPack& integrals,
+                                      const internal::IntegralView& integrals,
                                       const xt::xtensor<double, 2>& P_total,
                                       const xt::xtensor<double, 2>& P_alpha,
                                       const xt::xtensor<double, 2>& P_beta,
@@ -162,7 +162,7 @@ struct IntegralSecondDerivPack {
     /// @param pack Integral pack (atoms in Bohr + resolved Cartesian shells).
     /// @throws std::runtime_error on a spherical-convention pack (the
     ///         derivative c2s sandwich is a follow-up link — no fallback).
-    explicit IntegralSecondDerivPack(const IntegralPack& pack);
+    explicit IntegralSecondDerivPack(const internal::IntegralView& pack);
 };
 
 /// @brief Accumulate the skeleton two-electron derivative Fock matrices
@@ -182,7 +182,7 @@ struct IntegralSecondDerivPack {
 ///                    0 for pure semi-local KS, hybrid_exchange_fraction(xc)
 ///                    for global hybrids. Scales the −½K channel only.
 void accumulate_two_electron_fock_derivative(
-    xt::xtensor<double, 4>& dF, const IntegralPack& integrals,
+    xt::xtensor<double, 4>& dF, const internal::IntegralView& integrals,
     const xt::xtensor<double, 2>& P_total, double alpha_hf = 1.0);
 
 /// @brief Unrestricted skeleton Fock derivatives into separate α/β
@@ -200,7 +200,7 @@ void accumulate_two_electron_fock_derivative(
 /// @param Pb          β density (factor-1, dimensionless).
 void accumulate_two_electron_fock_derivative_uhf(
     xt::xtensor<double, 4>& dFa, xt::xtensor<double, 4>& dFb,
-    const IntegralPack& integrals, const xt::xtensor<double, 2>& Pa,
+    const internal::IntegralView& integrals, const xt::xtensor<double, 2>& Pa,
     const xt::xtensor<double, 2>& Pb);
 
 /// @brief Accumulate the skeleton two-electron second-derivative energy
@@ -222,7 +222,7 @@ void accumulate_two_electron_fock_derivative_uhf(
 ///                    `accumulate_two_electron_fock_derivative`); scales the
 ///                    exchange second-derivative channel only.
 void accumulate_two_electron_hessian(xt::xtensor<double, 2>& hess,
-                                     const IntegralPack& integrals,
+                                     const internal::IntegralView& integrals,
                                      const xt::xtensor<double, 2>& P_total,
                                      double alpha_hf = 1.0);
 
@@ -238,7 +238,7 @@ void accumulate_two_electron_hessian(xt::xtensor<double, 2>& hess,
 /// @param Pa          α density (factor-1, dimensionless).
 /// @param Pb          β density (factor-1, dimensionless).
 void accumulate_two_electron_hessian_uhf(xt::xtensor<double, 2>& hess,
-                                         const IntegralPack& integrals,
+                                         const internal::IntegralView& integrals,
                                          const xt::xtensor<double, 2>& Pa,
                                          const xt::xtensor<double, 2>& Pb);
 

@@ -357,7 +357,7 @@ struct QuartetDerivTotals {
 static inline int pair_multiplicity(int a, int b) { return (a == b) ? 1 : 2; }
 
 static std::vector<int>
-build_shell_to_atom_from_integrals(const IntegralPack& integrals) {
+build_shell_to_atom_from_integrals(const internal::IntegralView& integrals) {
     const int n = integrals.n_basis;
     const int natm = static_cast<int>(integrals.atoms.size());
     std::vector<int> shell_to_atom(n, -1);
@@ -453,7 +453,7 @@ static void accumulate_quartet_into_gradient(xt::xtensor<double, 2>& grad,
 
 // ── Main entry point ─────────────────────────────────────────────────
 
-IntegralDerivPack::IntegralDerivPack(const IntegralPack& ipack) {
+IntegralDerivPack::IntegralDerivPack(const internal::IntegralView& ipack) {
     const int natm = static_cast<int>(ipack.atoms.size());
     // Build the Cartesian derivative blocks in the engine's Cartesian AO count
     // (== shells.size()); for a spherical pack these are sandwiched down to the
@@ -468,7 +468,7 @@ IntegralDerivPack::IntegralDerivPack(const IntegralPack& ipack) {
     dV = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
     dV_nuc = xt::zeros<double>({(int)natm, (int)3});
 
-    // Reuse the shell list already resolved in the IntegralPack — same
+    // Reuse the shell list already resolved in the internal::IntegralWorkspace — same
     // normalization, same ordering as the SCF path, works for any l.
     const auto& shells = ipack.shells;
     const auto& atoms = ipack.atoms;
@@ -682,7 +682,7 @@ IntegralDerivPack::IntegralDerivPack(const IntegralPack& ipack) {
 }
 
 void accumulate_two_electron_gradient(
-    xt::xtensor<double, 2>& grad, const IntegralPack& integrals,
+    xt::xtensor<double, 2>& grad, const internal::IntegralView& integrals,
     const xt::xtensor<double, 2>& P_total_sph, const SlaterDeterminant& det,
     MeanFieldType method, SpinType spin, XCType xc_type) {
     const auto t_total = LogClock::now();
@@ -852,7 +852,7 @@ void accumulate_two_electron_gradient(
 }
 
 void accumulate_two_electron_gradient(xt::xtensor<double, 2>& grad,
-                                      const IntegralPack& integrals,
+                                      const internal::IntegralView& integrals,
                                       const xt::xtensor<double, 2>& P_total_sph,
                                       const xt::xtensor<double, 2>& P_alpha_in,
                                       const xt::xtensor<double, 2>& P_beta_in,
@@ -1214,7 +1214,7 @@ static double d2_cross_center(const Eval2& eval, const int a_ang[3],
 
 } // namespace
 
-IntegralSecondDerivPack::IntegralSecondDerivPack(const IntegralPack& ipack) {
+IntegralSecondDerivPack::IntegralSecondDerivPack(const internal::IntegralView& ipack) {
     if (ipack.spherical())
         throw std::runtime_error(
             "cpu::scf::IntegralSecondDerivPack: spherical-convention packs "
@@ -1431,7 +1431,7 @@ IntegralSecondDerivPack::IntegralSecondDerivPack(const IntegralPack& ipack) {
 }
 
 void accumulate_two_electron_fock_derivative(
-    xt::xtensor<double, 4>& dF, const IntegralPack& integrals,
+    xt::xtensor<double, 4>& dF, const internal::IntegralView& integrals,
     const xt::xtensor<double, 2>& P_total, double alpha_hf) {
     const auto t_total = LogClock::now();
     const int natm = static_cast<int>(integrals.atoms.size());
@@ -1566,7 +1566,7 @@ void accumulate_two_electron_fock_derivative(
 
 void accumulate_two_electron_fock_derivative_uhf(
     xt::xtensor<double, 4>& dFa, xt::xtensor<double, 4>& dFb,
-    const IntegralPack& integrals, const xt::xtensor<double, 2>& Pa,
+    const internal::IntegralView& integrals, const xt::xtensor<double, 2>& Pa,
     const xt::xtensor<double, 2>& Pb) {
     const auto t_total = LogClock::now();
     const int natm = static_cast<int>(integrals.atoms.size());
@@ -2332,7 +2332,7 @@ void quartet_second_derivatives(const native::ShellBlock& A,
 } // namespace
 
 void accumulate_two_electron_hessian(xt::xtensor<double, 2>& hess,
-                                     const IntegralPack& integrals,
+                                     const internal::IntegralView& integrals,
                                      const xt::xtensor<double, 2>& P_total,
                                      double alpha_hf) {
     const auto t_total = LogClock::now();
@@ -2469,7 +2469,7 @@ void accumulate_two_electron_hessian(xt::xtensor<double, 2>& hess,
 }
 
 void accumulate_two_electron_hessian_uhf(xt::xtensor<double, 2>& hess,
-                                         const IntegralPack& integrals,
+                                         const internal::IntegralView& integrals,
                                          const xt::xtensor<double, 2>& Pa,
                                          const xt::xtensor<double, 2>& Pb) {
     const auto t_total = LogClock::now();

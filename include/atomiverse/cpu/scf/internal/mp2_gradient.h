@@ -30,7 +30,7 @@ namespace internal {
 /// @return Forces [eV/Å] and total MP2 energy [eV].
 /// @throws std::invalid_argument on open-shell / empty ERI / n_virt=0 /
 ///         frozen-core requests (caller must pass a full-valence reference).
-GradientResult mp2_analytic_forces(const Frame& frame, const IntegralPack& pack,
+GradientResult mp2_analytic_forces(const Frame& frame, const internal::IntegralView& pack,
                                    const SlaterDeterminant& det,
                                    double e_scf_ha, double e_corr_ha);
 
@@ -44,7 +44,7 @@ GradientResult mp2_analytic_forces(const Frame& frame, const IntegralPack& pack,
 /// @throws std::invalid_argument on restricted / empty ERI / spherical /
 ///         missing virtual on either spin.
 GradientResult ump2_analytic_forces(const Frame& frame,
-                                    const IntegralPack& pack,
+                                    const internal::IntegralView& pack,
                                     const SlaterDeterminant& det,
                                     double e_scf_ha, double e_corr_ha);
 

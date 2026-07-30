@@ -7,9 +7,12 @@
 #ifdef ATV_HAS_HF
 
 #include <cmath>
+#include <vector>
+
 #include <gtest/gtest.h>
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/scf/basis_data/accessors.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
@@ -18,10 +21,6 @@ using namespace ATV;
 using namespace ATV::cpu::scf;
 
 namespace {
-
-// STO-3G hydrogen parameters
-constexpr double sto3g_exp[3] = {3.42525091, 0.62391373, 0.16885540};
-constexpr double sto3g_coeff[3] = {0.15432897, 0.53532814, 0.44463454};
 
 /// @brief Build an H2 frame at a given bond length along x.
 cpu::Frame make_h2(double bond_length) {
@@ -41,15 +40,22 @@ cpu::Frame make_h2(double bond_length) {
 }
 
 /// @brief Build Shell structs for native API (physical normalization).
+///
+/// Exponents/coeffs from `basis_data::pure_s_sto3g_shell(1)` — no retyped table.
 struct H2Setup {
-    double norm_coeff[3];
+    std::vector<double> norm_coeff;
     double centers[2][3];
     native::Shell shells[2];
     native::Atom atoms[2];
 
     explicit H2Setup(double bond_angstrom = 0.74) {
-        for (int p = 0; p < 3; ++p)
-            norm_coeff[p] = sto3g_coeff[p] * native::phys_norm(sto3g_exp[p]);
+        const auto& h1s = basis_data::pure_s_sto3g_shell(/*Z=*/1);
+        const int n_prim = static_cast<int>(h1s.alpha.size());
+        norm_coeff.resize(static_cast<std::size_t>(n_prim));
+        for (int p = 0; p < n_prim; ++p)
+            norm_coeff[static_cast<std::size_t>(p)] =
+                h1s.coeff[static_cast<std::size_t>(p)]
+                * native::phys_norm(h1s.alpha[static_cast<std::size_t>(p)]);
         centers[0][0] = 0;
         centers[0][1] = 0;
         centers[0][2] = 0;
@@ -57,9 +63,9 @@ struct H2Setup {
         centers[1][1] = 0;
         centers[1][2] = 0;
         for (int s = 0; s < 2; ++s) {
-            shells[s].n_prim = 3;
-            shells[s].alpha = sto3g_exp;
-            shells[s].coeff = norm_coeff;
+            shells[s].n_prim = n_prim;
+            shells[s].alpha = h1s.alpha.data();
+            shells[s].coeff = norm_coeff.data();
             shells[s].center[0] = centers[s][0];
             shells[s].center[1] = centers[s][1];
             shells[s].center[2] = centers[s][2];
@@ -218,11 +224,11 @@ TEST(NativeIntegrals, RegressionValues_H2) {
                 kRefERI_0101, tol);
 }
 
-// ── IntegralPack sanity ───────────────────────────────────────────────
+// ── internal::IntegralWorkspace sanity ───────────────────────────────────────────────
 
-TEST(NativeIntegrals, IntegralPack_Sanity) {
+TEST(NativeIntegrals, IntegralWorkspace_Sanity) {
     auto frame = make_h2(double(0.74));
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
+    auto pack = cpu::scf::internal::IntegralWorkspace{frame, cpu::scf::BasisSet::STO3G};
 
     EXPECT_NEAR(static_cast<double>(pack.S(0, 0)), 1.0, 0.01);
     EXPECT_NEAR(static_cast<double>(pack.V_nuc), kRefVnuc, 0.01);
@@ -247,12 +253,12 @@ TEST(NativeIntegrals, MultiGeometry_OverlapDecay) {
     }
 }
 
-TEST(NativeIntegrals, MultiGeometry_IntegralPack) {
+TEST(NativeIntegrals, MultiGeometry_IntegralWorkspace) {
     // build_integrals should work at various geometries
     double bond_lengths[] = {0.5, 0.74, 1.0, 1.5, 2.0};
     for (double bl : bond_lengths) {
         auto frame = make_h2(double(bl));
-        auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
+        auto pack = cpu::scf::internal::IntegralWorkspace{frame, cpu::scf::BasisSet::STO3G};
         // S diagonal must be ~1 regardless of geometry
         EXPECT_NEAR(static_cast<double>(pack.S(0, 0)), 1.0, 0.01)
             << "S(0,0) != 1.0 at bond_length=" << bl;
@@ -319,9 +325,9 @@ cpu::Frame make_ch4() {
     return f;
 }
 
-TEST(NativeIntegrals, H2O_IntegralPack_Sanity) {
+TEST(NativeIntegrals, H2O_IntegralWorkspace_Sanity) {
     auto frame = make_h2o();
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
+    auto pack = cpu::scf::internal::IntegralWorkspace{frame, cpu::scf::BasisSet::STO3G};
     // O: 1s + 2s + 2px + 2py + 2pz = 5, each H: 1s = 1
     EXPECT_EQ(pack.n_basis, 7);
     EXPECT_EQ(pack.n_electrons, 10);
@@ -337,9 +343,9 @@ TEST(NativeIntegrals, H2O_IntegralPack_Sanity) {
                 << "S not symmetric at (" << i << "," << j << ")";
 }
 
-TEST(NativeIntegrals, CH4_IntegralPack_Sanity) {
+TEST(NativeIntegrals, CH4_IntegralWorkspace_Sanity) {
     auto frame = make_ch4();
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
+    auto pack = cpu::scf::internal::IntegralWorkspace{frame, cpu::scf::BasisSet::STO3G};
     // C: 5 bf, 4 H: 1 bf each = 9 total
     EXPECT_EQ(pack.n_basis, 9);
     EXPECT_EQ(pack.n_electrons, 10);
@@ -351,7 +357,7 @@ TEST(NativeIntegrals, CH4_IntegralPack_Sanity) {
 TEST(NativeIntegrals, PType_SelfOverlap) {
     // px should have <px|px> = 1 for a properly normalized shell
     auto frame = make_h2o();
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
+    auto pack = cpu::scf::internal::IntegralWorkspace{frame, cpu::scf::BasisSet::STO3G};
     // Basis order for O: 1s(0), 2s(1), 2px(2), 2py(3), 2pz(4), H1(5), H2(6)
     EXPECT_NEAR(static_cast<double>(pack.S(2, 2)), 1.0, 0.01) << "<px|px> != 1";
     EXPECT_NEAR(static_cast<double>(pack.S(3, 3)), 1.0, 0.01) << "<py|py> != 1";
@@ -361,7 +367,7 @@ TEST(NativeIntegrals, PType_SelfOverlap) {
 TEST(NativeIntegrals, PType_Orthogonality) {
     // px, py, pz on the SAME center should be orthogonal
     auto frame = make_h2o();
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
+    auto pack = cpu::scf::internal::IntegralWorkspace{frame, cpu::scf::BasisSet::STO3G};
     EXPECT_NEAR(static_cast<double>(pack.S(2, 3)), 0.0, 1e-10)
         << "<px|py> != 0";
     EXPECT_NEAR(static_cast<double>(pack.S(2, 4)), 0.0, 1e-10)
@@ -372,7 +378,7 @@ TEST(NativeIntegrals, PType_Orthogonality) {
 
 /// @brief Verify block-level g_rhf matches AO-level g_rhf for a given frame.
 static void compare_g_ao_vs_block(const cpu::Frame& frame, const char* label) {
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
+    auto pack = cpu::scf::internal::IntegralWorkspace{frame, cpu::scf::BasisSet::STO3G};
     int n = pack.n_basis;
 
     // Dense test density with off-diagonal elements to exercise all contributions.

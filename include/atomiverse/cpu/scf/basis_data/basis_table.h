@@ -40,7 +40,7 @@ struct ContractedShell {
 ///
 /// Pople sets (6-31G family) are defined with 6 Cartesian d components;
 /// def2/cc- sets are defined with real spherical harmonics (5d/7f).
-/// The ShellList/IntegralPack pipeline reads this per-set flag to pick the
+/// The ShellList/internal::IntegralWorkspace pipeline reads this per-set flag to pick the
 /// AO dimension; there is no runtime override (the convention is part of
 /// the basis-set definition, not a user knob).
 enum class AngularConvention {

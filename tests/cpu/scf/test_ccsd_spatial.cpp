@@ -8,7 +8,7 @@
 /// computing function the closed-shell energy entry routes to.
 ///
 /// This test builds the same private inputs the public path builds
-/// (`IntegralPack{frame, …, compute_eri=true}` + the converged RHF
+/// (`internal::IntegralWorkspace{frame, …, compute_eri=true}` + the converged RHF
 /// determinant + the Hartree SCF energy) and calls the kernel in isolation.
 /// Written RED-first: internal/ccsd_spatial.h does not exist yet.
 ///
@@ -68,7 +68,7 @@ TEST(TestCcsdSpatial, H2Sto3gClosedShellCorrelation) {
     rhf.run(frame);
     ASSERT_TRUE(rhf.converged());
 
-    const cpu::scf::IntegralPack ints{frame, cpu::scf::BasisSet::STO3G,
+    const cpu::scf::internal::IntegralWorkspace ints{frame, cpu::scf::BasisSet::STO3G,
                                       /*charge=*/0, /*compute_eri=*/true};
     const cpu::scf::CCSDResult r = cpu::scf::ccsd_energy_spatial(
         ints, rhf.determinant(), rhf.energy(), /*tol=*/1e-10, /*max_iter=*/100);
@@ -89,7 +89,7 @@ TEST(TestCcsdSpatial, HeSto3gZeroVirtualsZeroCorrelation) {
     rhf.run(frame);
     ASSERT_TRUE(rhf.converged());
 
-    const cpu::scf::IntegralPack ints{frame, cpu::scf::BasisSet::STO3G,
+    const cpu::scf::internal::IntegralWorkspace ints{frame, cpu::scf::BasisSet::STO3G,
                                       /*charge=*/0, /*compute_eri=*/true};
     const cpu::scf::CCSDResult r = cpu::scf::ccsd_energy_spatial(
         ints, rhf.determinant(), rhf.energy(), /*tol=*/1e-10, /*max_iter=*/100);

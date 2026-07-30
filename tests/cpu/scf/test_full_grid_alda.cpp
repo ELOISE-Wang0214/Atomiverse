@@ -37,7 +37,7 @@ TEST(FullGridAlda, KernelSymmetric) {
     rks.run(f);
     ASSERT_TRUE(rks.converged());
 
-    IntegralPack pack{f, BasisSet::STO3G};
+    internal::IntegralWorkspace pack{f, BasisSet::STO3G};
     const MolecularGrid grid(pack.atoms.data(),
                              static_cast<int>(pack.atoms.size()),
                              rks.grid_level, rks.n_radial, rks.n_angular);
@@ -82,7 +82,7 @@ TEST(FullGridAlda, FullGridDiffersFromDiagonalOnly) {
     EXPECT_GT(std::fabs(e_full.energy_ev[0] - e_pbe.energy_ev[0]), 1e-3);
 
     // H2/STO-3G: n_ov = 1; K(0,0) finite and nonzero.
-    IntegralPack pack{f, BasisSet::STO3G};
+    internal::IntegralWorkspace pack{f, BasisSet::STO3G};
     const MolecularGrid grid(pack.atoms.data(),
                              static_cast<int>(pack.atoms.size()),
                              lsda.grid_level, lsda.n_radial, lsda.n_angular);

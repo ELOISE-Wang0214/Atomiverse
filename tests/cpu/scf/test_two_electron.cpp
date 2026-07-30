@@ -1,5 +1,5 @@
 /// @file tests/cpu/scf/test_two_electron.cpp
-/// @brief Equivalence guard for IntegralPack::eri_dense (src/cpu/scf/two_electron.cpp).
+/// @brief Equivalence guard for internal::IntegralWorkspace::eri_dense (src/cpu/scf/two_electron.cpp).
 ///
 /// Spec scf-review-07-posthf-perf, item 17: the dense N⁴ AO ERI tensor is
 /// re-implemented from a per-AO scalar `native::eri` double shell-pair loop to a
@@ -28,7 +28,7 @@
 #include "atomiverse/cpu/scf/native_integrals.h"
 
 using namespace ATV;
-using cpu::scf::IntegralPack;
+using cpu::scf::internal::IntegralWorkspace;
 
 namespace {
 
@@ -70,9 +70,9 @@ cpu::Frame make_h2o() {
 ///        `native::eri` calls over the pack's shell list — the still-present,
 ///        libcint-benchmarked scalar kernel. This is deliberately NOT the
 ///        (about-to-be-rewritten) `eri_dense`; it is the independent judge.
-/// @param pack IntegralPack built with compute_eri=true on a Cartesian basis.
+/// @param pack internal::IntegralWorkspace built with compute_eri=true on a Cartesian basis.
 /// @return (n × n × n × n) chemist-notation tensor [Hartree].
-xt::xtensor<double, 4> reference_eri(const IntegralPack& pack) {
+xt::xtensor<double, 4> reference_eri(const internal::IntegralWorkspace& pack) {
     const int n = pack.n_basis;
     xt::xtensor<double, 4> ref = xt::zeros<double>(
         {static_cast<std::size_t>(n), static_cast<std::size_t>(n),
@@ -111,7 +111,7 @@ constexpr double kEriEquivTol = 1e-12;
 // slip; energy-exact FP tier.
 constexpr double kEriAnchorTol = 1e-10;
 
-// Hard-coded ERI anchors captured from the CURRENT scalar IntegralPack::eri_dense
+// Hard-coded ERI anchors captured from the CURRENT scalar internal::IntegralWorkspace::eri_dense
 // (H2/STO-3G @ 0.74 Å), 2026-07-24, GCC 14.3, double precision.
 constexpr double kH2_ERI_0000 = 7.7460592980626808e-01;
 constexpr double kH2_ERI_0011 = 5.6999487185769371e-01;
@@ -127,7 +127,7 @@ constexpr double kH2O_ERI_2323 = 4.7444446970738241e-02;
 // (a) Block-assembled dense ERI == per-AO scalar reference on a p-shell fixture.
 TEST(TestEriDense, EriDenseMatchesScalarReference) {
     const cpu::Frame frame = make_h2o();
-    const IntegralPack pack{frame, cpu::scf::BasisSet::STO3G, 0,
+    const internal::IntegralWorkspace pack{frame, cpu::scf::BasisSet::STO3G, 0,
                             /*compute_eri=*/true};
 
     ASSERT_EQ(pack.n_basis, 7);
@@ -145,7 +145,7 @@ TEST(TestEriDense, EriDenseMatchesScalarReference) {
 // (b) Pure-s fixture (H2/STO-3G) — exercises the eri_blk_ss_ss path.
 TEST(TestEriDense, EriDensePureSFixture) {
     const cpu::Frame frame = make_h2(0.74);
-    const IntegralPack pack{frame, cpu::scf::BasisSet::STO3G, 0,
+    const internal::IntegralWorkspace pack{frame, cpu::scf::BasisSet::STO3G, 0,
                             /*compute_eri=*/true};
 
     ASSERT_EQ(pack.n_basis, 2) << "H2/STO-3G is a pure-s 2-AO fixture";
@@ -162,7 +162,7 @@ TEST(TestEriDense, EriDensePureSFixture) {
 //     scatter must fill every mirror of a canonical block identically.
 TEST(TestEriDense, EriDenseSymmetrySpotChecks) {
     const cpu::Frame frame = make_h2o();
-    const IntegralPack pack{frame, cpu::scf::BasisSet::STO3G, 0,
+    const internal::IntegralWorkspace pack{frame, cpu::scf::BasisSet::STO3G, 0,
                             /*compute_eri=*/true};
     const auto& E = pack.ERI;
 
@@ -195,14 +195,14 @@ TEST(TestEriDense, EriDenseSymmetrySpotChecks) {
 //     implementations against same-direction drift the equivalence judge
 //     would miss.
 TEST(TestEriDense, EriDenseAnchorValues) {
-    const IntegralPack h2{make_h2(0.74), cpu::scf::BasisSet::STO3G, 0,
+    const internal::IntegralWorkspace h2{make_h2(0.74), cpu::scf::BasisSet::STO3G, 0,
                           /*compute_eri=*/true};
     EXPECT_NEAR(h2.ERI(0, 0, 0, 0), kH2_ERI_0000, kEriAnchorTol);
     EXPECT_NEAR(h2.ERI(0, 0, 1, 1), kH2_ERI_0011, kEriAnchorTol);
     EXPECT_NEAR(h2.ERI(0, 1, 0, 1), kH2_ERI_0101, kEriAnchorTol);
     EXPECT_NEAR(h2.ERI(1, 1, 1, 1), kH2_ERI_1111, kEriAnchorTol);
 
-    const IntegralPack h2o{make_h2o(), cpu::scf::BasisSet::STO3G, 0,
+    const internal::IntegralWorkspace h2o{make_h2o(), cpu::scf::BasisSet::STO3G, 0,
                            /*compute_eri=*/true};
     EXPECT_NEAR(h2o.ERI(2, 2, 2, 2), kH2O_ERI_2222, kEriAnchorTol);
     EXPECT_NEAR(h2o.ERI(2, 3, 2, 3), kH2O_ERI_2323, kEriAnchorTol);

@@ -194,7 +194,7 @@ TEST(BasisTables, NewEnumNamesAndConvention) {
 
 TEST(BasisTables, ShellListConstructsForNewSets) {
     // Cl: 6-31+G* → 23 Cartesian AOs; aug-cc-pVDZ → 29 Cartesian shells
-    // (spherical collapse to 27 happens downstream in IntegralPack).
+    // (spherical collapse to 27 happens downstream in internal::IntegralWorkspace).
     const auto f = one_atom(17);
     const AtomList atoms{f, -1};
     EXPECT_EQ(atoms.n_electrons, 18);

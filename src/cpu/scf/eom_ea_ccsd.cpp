@@ -177,7 +177,7 @@ std::vector<double> matvec_ea(const EomImds& im,
 
 } // namespace
 
-EOMEACCSDResult eom_ea_ccsd_energies(const IntegralPack& ints,
+EOMEACCSDResult eom_ea_ccsd_energies(const internal::IntegralView& ints,
                                      const SlaterDeterminant& det,
                                      double e_scf_ha, int n_states, double tol,
                                      int max_iter) {
@@ -260,7 +260,7 @@ EOMEACCSDResult RHF::eom_ea_ccsd(Frame& frame, int n_states) {
             "RHF::eom_ea_ccsd: SCF reference did not converge — refusing to "
             "compute EOM-EA-CCSD on a non-stationary determinant (no "
             "fallback).");
-    return eom_ea_ccsd_energies(integral_workspace_(), determinant(), energy(),
+    return eom_ea_ccsd_energies(integral_view_(), determinant(), energy(),
                                 n_states);
 }
 

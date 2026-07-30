@@ -76,7 +76,7 @@ RealMatrix k_contraction(const xt::xtensor<double, 4>& eri,
 
 } // namespace
 
-UCphfPack::UCphfPack(const SlaterDeterminant& det, const IntegralPack& pack,
+UCphfPack::UCphfPack(const SlaterDeterminant& det, const internal::IntegralView& pack,
                      const xt::xtensor<double, 4>& eri_ao,
                      const xt::xtensor<double, 4>& dS_ao,
                      const xt::xtensor<double, 4>& dFa_ao,

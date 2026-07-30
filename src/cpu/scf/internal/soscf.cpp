@@ -48,7 +48,7 @@ constexpr double kEnergyRiseTol = 1e-10;
 constexpr double kX0Floor = 1e-10;
 } // namespace
 
-SOSCFStepper::SOSCFStepper(bool restricted, const IntegralPack& ints,
+SOSCFStepper::SOSCFStepper(bool restricted, const internal::IntegralView& ints,
                            const int& n_alpha, const int& n_beta,
                            const RealMatrix& Hcore, const double& v_nuc,
                            const RealMatrix& F_alpha, const RealMatrix& F_beta,

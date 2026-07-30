@@ -28,7 +28,7 @@ namespace scf {
 /// @return CASSCF total / correlation energies [Hartree] and bookkeeping.
 /// @throws std::invalid_argument on open-shell, missing ERI, or invalid
 ///         active-space dimensions (no silent fallback).
-CASSCFResult casscf_energy(const IntegralPack& ints,
+CASSCFResult casscf_energy(const internal::IntegralView& ints,
                            const SlaterDeterminant& det, double e_scf_ha,
                            int ncas, int nelecas, double orb_tol = 1e-8,
                            int max_macro = 50);

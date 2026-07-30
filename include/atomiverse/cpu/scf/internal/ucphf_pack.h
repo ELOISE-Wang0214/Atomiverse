@@ -61,7 +61,7 @@ class UCphfPack {
     /// @param dFb_ao Skeleton β Fock derivatives (same layout).
     /// @throws std::invalid_argument on a restricted determinant, a missing
     ///         virtual space on either spin, or dimension mismatches.
-    UCphfPack(const SlaterDeterminant& det, const IntegralPack& pack,
+    UCphfPack(const SlaterDeterminant& det, const internal::IntegralView& pack,
               const xt::xtensor<double, 4>& eri_ao,
               const xt::xtensor<double, 4>& dS_ao,
               const xt::xtensor<double, 4>& dFa_ao,
@@ -124,7 +124,7 @@ class UCphfPack {
     RealMatrix dense_lhs_() const;
 
     const SlaterDeterminant& det_;
-    const IntegralPack& pack_;
+    internal::IntegralView pack_;
     const xt::xtensor<double, 4>& eri_;
     const xt::xtensor<double, 4>& dS_ao_;
     const xt::xtensor<double, 4>& dFa_ao_;

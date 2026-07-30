@@ -10,7 +10,7 @@
 /// orbital energies follow from ONE Fock build over the symmetry-determined
 /// density (ε_p = c_pᵀ F c_p; the density is already self-consistent, so
 /// this single build IS the converged Fock). Integrals come from
-/// IntegralPack (internal workspace — allowed in unit tests).
+/// internal::IntegralWorkspace (internal workspace — allowed in unit tests).
 
 #ifdef ATV_HAS_HF
 
@@ -26,7 +26,7 @@
 #include "atomiverse/cpu/scf/slater_determinant.h"
 
 using namespace ATV;
-using cpu::scf::IntegralPack;
+using cpu::scf::internal::IntegralWorkspace;
 using cpu::scf::RealMatrix;
 using cpu::scf::RealVector;
 using cpu::scf::SlaterDeterminant;
@@ -57,7 +57,7 @@ struct H2Reference {
 
 H2Reference make_h2_reference(double r_angstrom) {
     auto frame = make_h2(r_angstrom);
-    IntegralPack pack{frame, cpu::scf::BasisSet::STO3G, 0,
+    internal::IntegralWorkspace pack{frame, cpu::scf::BasisSet::STO3G, 0,
                       /*compute_eri=*/true};
     const double s12 = pack.S(0, 1);
     const double cg = 1.0 / std::sqrt(2.0 * (1.0 + s12));

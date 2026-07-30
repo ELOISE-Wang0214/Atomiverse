@@ -1,13 +1,11 @@
-/// @file cpu/scf/integrals.h
-/// @brief IntegralPack — molecular integrals via native C++.
+/// @file cpu/scf/internal/integrals.h
+/// @brief Host integral **computation** (private). No user pack/bag API.
 ///
-/// All arrays are xtensor. Computes overlap (S), kinetic (T), nuclear attraction (V),
-/// core Hamiltonian (Hcore = T + V), two-electron repulsion integrals (ERI),
-/// and nuclear repulsion energy (V_nuc) for a given molecular geometry.
-///
-/// Supports elements H through O (Z=1..8) with STO-3G basis (s and sp shells).
-///
-/// @see cpu::scf::SCFSolver for the CPU RHF solver that consumes IntegralPack
+/// Public code: `RHF{basis}.run(frame)` only. Matrices live as **private
+/// members of the concrete method** (`MeanFieldMethod` / `cuda::scf::RHF`);
+/// this header provides fill helpers and transitional storage used only
+/// inside mean-field rebuild. Do **not** invent a parallel public integral
+/// bag type.
 #pragma once
 
 #include <array>
@@ -20,6 +18,7 @@
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/internal/basis_workspace.h"
 #include "atomiverse/cpu/scf/internal/ecp_integrals.h"
+#include "atomiverse/cpu/scf/internal/integral_view.h"
 #include "atomiverse/cpu/scf/internal/point_charges.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/scf_enums.h"
@@ -27,12 +26,15 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
+namespace internal {
 
-/// @brief Molecular integrals for a Hartree-Fock / Kohn-Sham calculation.
+/// @brief Transitional storage for mean-field rebuild (not a public bag).
 ///
-/// Construct from a Frame + basis set. There is no free-function factory —
-/// `IntegralPack{frame, basis}` is the only entry point.
-struct IntegralPack {
+/// **Do not construct this from user code.** Prefer free fill helpers or
+/// method-owned private matrices. Exists only so MeanFieldMethod /
+/// internal engines can rebuild S/Hcore/ERI from Frame without a parallel
+/// public pack type.
+struct IntegralWorkspace {
     xt::xtensor<double, 2> S; ///< Overlap matrix [n_basis x n_basis].
     xt::xtensor<double, 2> T; ///< Kinetic energy matrix [n_basis x n_basis].
     xt::xtensor<double, 2>
@@ -131,8 +133,28 @@ struct IntegralPack {
     /// that copies `shell_data` must also rebind those pointers.
     std::vector<std::vector<double>> shell_data;
 
-    /// @brief Empty pack (fields filled by the caller or left default).
-    IntegralPack() = default;
+    /// @brief Empty (fields filled by the method rebuild / fill helpers).
+    IntegralWorkspace() = default;
+
+    /// @brief Fill S, Hcore, optional ERI (+ counts) from Frame for RHF-like paths.
+    ///
+    /// Out-params only — no pack returned to the caller. Used by CUDA RHF and
+    /// any path that must upload dense matrices without owning a bag type.
+    /// @param frame Geometry [Å]; Z from type column.
+    /// @param basis Basis set.
+    /// @param charge Molecular charge [e].
+    /// @param compute_eri When true, fill dense ERI [Hartree]; else ERI empty.
+    /// @param[out] S Overlap.
+    /// @param[out] Hcore Core Hamiltonian [Hartree].
+    /// @param[out] ERI Two-electron tensor or empty.
+    /// @param[out] V_nuc Nuclear repulsion [Hartree].
+    /// @param[out] n_basis AO dimension.
+    /// @param[out] n_electrons Electron count (valence if ECP).
+    static void fill_rhf_matrices(const Frame& frame, BasisSet basis, int charge,
+                                  bool compute_eri, xt::xtensor<double, 2>& S,
+                                  xt::xtensor<double, 2>& Hcore,
+                                  xt::xtensor<double, 4>& ERI, double& V_nuc,
+                                  int& n_basis, int& n_electrons);
 
     /// @brief Compute integrals for a molecular geometry via native C++.
     ///
@@ -165,7 +187,7 @@ struct IntegralPack {
     /// @param compute_pvp If true, assemble the spin-free nuclear pVp matrix
     ///                    `W` (needed by scalar-relativistic x2c-1e). Default
     ///                    false keeps the non-relativistic path untouched.
-    IntegralPack(const Frame& frame, BasisSet basis, int charge = 0,
+    IntegralWorkspace(const Frame& frame, BasisSet basis, int charge = 0,
                  bool compute_eri = false, std::string ecp = {},
                  const std::vector<int>& ghost_atoms = {},
                  bool compute_pvp = false);
@@ -174,30 +196,54 @@ struct IntegralPack {
     /// @return `n_electrons / 2`.
     int n_occ() const { return n_electrons / 2; }
 
-    /// @brief Fused Coulomb + exchange G = J - 0.5*K (RHF stored-ERI path).
-    /// @details G_ij = sum_kl P_kl [(ij|kl) - 0.5*(ik|jl)].
-    ///          P is the total RHF density (includes factor of 2).
-    ///          Selected by `HamiltonianBuilder` when `ERI` holds a
-    ///          materialized dense tensor; otherwise the direct-SCF
-    ///          `ShellBlockPairList::g_rhf` path runs. Requires
-    ///          `compute_eri=true` at construction.
-    /// @param P_total Total RHF density matrix [n x n, unitless].
-    /// @param[out] G Fused two-electron matrix [n x n, Hartree].
-    void coulomb_exchange_fused(const RealMatrix& P_total, RealMatrix& G) const;
+    /// @brief Non-owning view of these fields (engines take IntegralView).
+    /// @return View bound to this object's members; valid while `*this` lives.
+    [[nodiscard]] IntegralView view() const {
+        // All fields are const refs into *this — safe while the workspace lives.
+        return IntegralView{S,
+                            T,
+                            V,
+                            Hcore,
+                            W,
+                            ERI,
+                            V_nuc,
+                            n_basis,
+                            n_basis_cart,
+                            c2s,
+                            n_electrons,
+                            ecp,
+                            has_ecp,
+                            ecp_centers,
+                            embed_charges,
+                            embed_self_energy,
+                            external_field,
+                            solvent_eps,
+                            solvent_radii_scale,
+                            solvent_x,
+                            solvent_model,
+                            atoms,
+                            shells,
+                            shell_data};
+    }
 
-    /// @brief Materialize the dense two-electron tensor in the pack's
-    ///        working AO dimension from the stored shell workspace, without
-    ///        re-running the one-electron build: Cartesian `eri_dense` over
-    ///        `shells`, sandwiched through `c2s` for spherical-convention
-    ///        bases. O(N⁴) memory — validation / post-run analysis scale
-    ///        (orbital-Hessian stability, MP2/FCI-sized systems).
-    /// @return (n_basis × n_basis × n_basis × n_basis) chemist-notation
-    ///         tensor (ij|kl) [Hartree], same dimension as S/Hcore.
-    /// @throws std::runtime_error when the shell workspace is empty (pack
-    ///         not built from a Frame — no fallback).
-    [[nodiscard]] xt::xtensor<double, 4> eri_working() const;
+    /// @brief Implicit conversion for engine APIs that take `IntegralView`.
+    ///        Temporary view is valid only for the full-expression that uses it;
+    ///        store by value when holding longer than a call.
+    operator IntegralView() const { return view(); }
+
+    /// @brief Fused Coulomb + exchange — delegates to `view()`.
+    void coulomb_exchange_fused(const RealMatrix& P_total, RealMatrix& G) const {
+        view().coulomb_exchange_fused(P_total, G);
+    }
+
+    /// @brief Materialize dense ERI — delegates to `view()`.
+    [[nodiscard]] xt::xtensor<double, 4> eri_working() const {
+        return view().eri_working();
+    }
 
   private:
+    friend struct IntegralView; // eri_working uses eri_dense / eri_to_spherical
+
     /// @brief Overlap matrix S_ij = <φ_i|φ_j>.
     /// @param shells Resolved shell list.
     /// @return (n_basis × n_basis) symmetric matrix [unitless].
@@ -263,6 +309,7 @@ struct IntegralPack {
                      const xt::xtensor<double, 2>& c2s);
 };
 
+} // namespace internal
 } // namespace scf
 } // namespace cpu
 } // namespace ATV

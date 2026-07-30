@@ -154,7 +154,7 @@ double approx_hess(const xt::xtensor<double, 2>& F,
 
 } // namespace
 
-CASSCFResult casscf_energy(const IntegralPack& ints,
+CASSCFResult casscf_energy(const internal::IntegralView& ints,
                            const SlaterDeterminant& det, double e_scf_ha,
                            int ncas, int nelecas, double orb_tol,
                            int max_macro) {

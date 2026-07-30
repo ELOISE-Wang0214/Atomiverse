@@ -45,21 +45,21 @@ blocks_from_shells(const std::vector<native::Shell>& shells) {
     return blocks;
 }
 
-ShellPairList::ShellPairList(const IntegralPack& pack, double thr) {
-    const int n = pack.n_ao_cart(); // Cartesian engine dimension
+ShellPairList::ShellPairList(const internal::IntegralView& ints, double thr) {
+    const int n = ints.n_ao_cart(); // Cartesian engine dimension
 
     ShellPairList spl;
     spl.n_basis = n;
     spl.threshold = thr;
 
     // Copy backing storage and fix up shell pointers to own data.
-    // pack.shells[i].alpha/coeff point into pack.shell_data; after copy they
+    // ints.shells[i].alpha/coeff point into method shell_data; after copy they
     // must be redirected into spl.shell_data.
-    spl.shell_data = pack.shell_data;
-    spl.atoms = pack.atoms;
+    spl.shell_data = ints.shell_data;
+    spl.atoms = ints.atoms;
     spl.shells.resize(n);
     for (int i = 0; i < n; ++i) {
-        spl.shells[i] = pack.shells[i];
+        spl.shells[i] = ints.shells[i];
         const int np = spl.shells[i].n_prim;
         spl.shells[i].alpha = spl.shell_data[i].data();
         spl.shells[i].coeff = spl.shell_data[i].data() + np;
@@ -100,28 +100,28 @@ ShellPairList::ShellPairList(const IntegralPack& pack, double thr) {
     *this = std::move(spl);
 }
 
-ShellBlockPairList::ShellBlockPairList(const IntegralPack& pack, double thr) {
-    const int n = pack.n_ao_cart(); // Cartesian engine dimension
-    const int n_raw_shells = static_cast<int>(pack.shells.size());
+ShellBlockPairList::ShellBlockPairList(const internal::IntegralView& ints, double thr) {
+    const int n = ints.n_ao_cart(); // Cartesian engine dimension
+    const int n_raw_shells = static_cast<int>(ints.shells.size());
 
     ShellBlockPairList sbl;
     sbl.n_basis = n;
     sbl.threshold = thr;
 
     // ── Step 1: Group shells into blocks (shared helper).
-    sbl.blocks = blocks_from_shells(pack.shells);
+    sbl.blocks = blocks_from_shells(ints.shells);
     const int n_blocks = static_cast<int>(sbl.blocks.size());
 
     // ── Step 2: Copy the primitive data into owned storage so the
-    // block pair list can outlive `pack`, then redirect ShellBlock
+    // block pair list can outlive the view, then redirect ShellBlock
     // alpha/coeff pointers into it.
     sbl.block_data.resize(n_blocks);
     int ao_idx = 0;
     for (int i = 0; i < n_blocks; ++i) {
-        // ao_idx marches with the block; pack.shell_data is indexed by
+        // ao_idx marches with the block; shell_data is indexed by
         // AO-level shell idx, and consecutive AOs in one block share
         // the same shell_data entry, so taking the first one suffices.
-        sbl.block_data[i] = pack.shell_data[static_cast<std::size_t>(ao_idx)];
+        sbl.block_data[i] = ints.shell_data[static_cast<std::size_t>(ao_idx)];
         sbl.blocks[i].alpha = sbl.block_data[i].data();
         sbl.blocks[i].coeff = sbl.block_data[i].data() + sbl.blocks[i].n_prim;
         ao_idx += sbl.blocks[i].n_cart;

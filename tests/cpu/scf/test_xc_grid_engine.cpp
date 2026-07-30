@@ -86,7 +86,7 @@ void expect_bitwise_2d(const xt::xtensor<double, 2>& cached,
 ///        for one functional; both must be bitwise-equal on the same inputs.
 void check_cache_equivalence(XCType xc, bool is_gga, const char* label) {
     auto frame = make_h2();
-    auto pack = IntegralPack{frame, BasisSet::STO3G};
+    auto pack = internal::IntegralWorkspace{frame, BasisSet::STO3G};
     const int N = pack.n_ao_cart();
     MolecularGrid grid(pack.atoms.data(), static_cast<int>(pack.atoms.size()),
                        GridLevel::SG0, /*n_radial=*/30, /*n_angular=*/50);
@@ -132,7 +132,7 @@ TEST(TestXcGridEngine, CachedBasisMatchesRebuild_PBE) {
 
 TEST(TestXcGridEngine, BuildSetsBuiltAndGgaFlags) {
     auto frame = make_h2();
-    auto pack = IntegralPack{frame, BasisSet::STO3G};
+    auto pack = internal::IntegralWorkspace{frame, BasisSet::STO3G};
     const int N = pack.n_ao_cart();
     MolecularGrid grid(pack.atoms.data(), static_cast<int>(pack.atoms.size()),
                        GridLevel::SG0, /*n_radial=*/30, /*n_angular=*/50);

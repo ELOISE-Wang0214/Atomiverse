@@ -73,7 +73,7 @@ RealMatrix A_from_C_eri(const RealMatrix& C, const RealVector& occ_f, int no,
 } // namespace
 
 std::vector<double> tda_analytic_forces(const Frame& frame,
-                                        const IntegralPack& pack,
+                                        const internal::IntegralView& pack,
                                         const SlaterDeterminant& det,
                                         double /*e_scf_ha*/, int state) {
     if (!det.restricted())
@@ -121,17 +121,17 @@ std::vector<double> tda_analytic_forces(const Frame& frame,
     // Basis for displaced packs — use pack's basis via STO3G only when
     // shells match STO-3G; general case: rebuild from frame + same BasisSet
     // by reading Z from frame.
-    // Frame-based IntegralPack{frame, basis, charge, compute_eri=true}.
+    // Frame-based internal::IntegralWorkspace{frame, basis, charge, compute_eri=true}.
     // We do not have basis enum on pack; use the same Frame + caller basis
     // by reconstructing from shell angular momentum: only STO-3G/s,p in tests.
     // The public API always runs through RHF which sets basis — store not on
     // pack. Infer: if all shells l<=1 and few prims → STO3G path via frame.
-    // Safer: rebuild using IntegralPack from frame at displaced positions
+    // Safer: rebuild using internal::IntegralWorkspace from frame at displaced positions
     // with the same shell table by shifting centers of pack shells... use
     // Frame + BasisSet::STO3G for the H2 regression; general: Frame path
     // with STO3G is wrong for 6-31G.
     // Fix: the caller RHF has basis member — pass via pack is unavailable.
-    // Use eri_working rebuild: construct IntegralPack from frame with
+    // Use eri_working rebuild: construct internal::IntegralWorkspace from frame with
     // BasisSet matching n_basis of pack.
     auto basis_of = [&]() {
         if (pack.n_basis == 2)
@@ -183,9 +183,9 @@ std::vector<double> tda_analytic_forces(const Frame& frame,
 
             const double x0 = coords[d][A];
             coords[d][A] = x0 + h;
-            IntegralPack pp{fwork, basis, charge, /*compute_eri=*/true};
+            internal::IntegralWorkspace pp{fwork, basis, charge, /*compute_eri=*/true};
             coords[d][A] = x0 - h;
-            IntegralPack pm{fwork, basis, charge, /*compute_eri=*/true};
+            internal::IntegralWorkspace pm{fwork, basis, charge, /*compute_eri=*/true};
             coords[d][A] = x0;
 
             // C(R±h) ≈ C0 ± dC * h_bohr

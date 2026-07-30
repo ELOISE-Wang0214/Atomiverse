@@ -38,7 +38,7 @@ namespace internal {
 class CfmmJ {
   public:
     /// @brief Own copies of the Cartesian engine shells and build parameters.
-    /// @param shells     Cartesian AO shells (IntegralPack::shells layout);
+    /// @param shells     Cartesian AO shells (internal::IntegralWorkspace::shells layout);
     ///                   centres in Bohr.
     /// @param order      Multipole truncation order p ≥ 0 (member
     ///                   `cfmm_order`; default 10). Controls M2L accuracy for

@@ -1,16 +1,16 @@
 /// @file cpu/scf/integrals.cpp
-/// @brief IntegralPack constructor — production compositor over the
+/// @brief internal::IntegralWorkspace constructor — production compositor over the
 ///        private integral members (AtomList / ShellList +
-///        IntegralPack::overlap/kinetic/nuclear_attraction/eri_dense).
+///        internal::IntegralWorkspace::overlap/kinetic/nuclear_attraction/eri_dense).
 ///
-/// This is the canonical entry point for assembling an `IntegralPack` from a
+/// This is the canonical entry point for assembling an `internal::IntegralWorkspace` from a
 /// `Frame` and a `BasisSet`. The single-responsibility integral kernels are
-/// private static members of `IntegralPack`, composed here:
+/// private static members of `internal::IntegralWorkspace`, composed here:
 ///
 /// @code
-///   IntegralPack pack{frame, cpu::scf::BasisSet::STO3G};
+///   internal::IntegralWorkspace pack{frame, cpu::scf::BasisSet::STO3G};
 ///   // pack.S, pack.T, pack.V, pack.Hcore, pack.V_nuc are filled;
-///   // pack.ERI additionally with IntegralPack{frame, basis, 0, true}.
+///   // pack.ERI additionally with internal::IntegralWorkspace{frame, basis, 0, true}.
 /// @endcode
 
 #include "atomiverse/cpu/scf/internal/integrals.h"
@@ -34,8 +34,9 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
+namespace internal {
 
-IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
+IntegralWorkspace::IntegralWorkspace(const Frame& frame, BasisSet basis, int charge,
                            bool compute_eri, std::string ecp_name,
                            const std::vector<int>& ghost_atoms,
                            bool compute_pvp) {
@@ -165,7 +166,7 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
 
     V_nuc = nuclear_repulsion_energy(atom_list);
 
-    // IntegralPack preserves owned shell storage because downstream
+    // internal::IntegralWorkspace preserves owned shell storage because downstream
     // consumers (UKS grid, gradient, ASPC) hold references to it.
     atoms = atom_list.atoms;
     shell_data = shell_list.shell_storage;
@@ -182,7 +183,7 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
 }
 
 xt::xtensor<double, 4>
-IntegralPack::eri_to_spherical(const xt::xtensor<double, 4>& eri_cart,
+IntegralWorkspace::eri_to_spherical(const xt::xtensor<double, 4>& eri_cart,
                                const xt::xtensor<double, 2>& c2s) {
     // Four-index transform, one index at a time (small systems only — the
     // dense path is validation/MP2/FCI scale by charter).
@@ -202,22 +203,41 @@ IntegralPack::eri_to_spherical(const xt::xtensor<double, 4>& eri_cart,
     return xt::transpose(cur, {3, 0, 1, 2});
 }
 
-xt::xtensor<double, 4> IntegralPack::eri_working() const {
+xt::xtensor<double, 4> IntegralView::eri_working() const {
     if (shells.empty())
         throw std::runtime_error(
-            "IntegralPack::eri_working: empty shell workspace — the pack "
-            "was not built from a Frame");
-    // Local view of the stored shells: the Shell descriptors point into this
-    // pack's owned shell_data, which stays alive for the whole call.
+            "internal::IntegralView::eri_working: empty shell workspace — "
+            "integrals were not built from a Frame");
+    // Shell descriptors point into the method-owned shell_data (or fill temp).
     ShellList shell_list;
     shell_list.shells = shells;
     shell_list.n_basis = static_cast<int>(shells.size());
-    xt::xtensor<double, 4> eri = eri_dense(shell_list);
+    xt::xtensor<double, 4> eri = IntegralWorkspace::eri_dense(shell_list);
     if (spherical())
-        eri = eri_to_spherical(eri, c2s);
+        eri = IntegralWorkspace::eri_to_spherical(eri, c2s);
     return eri;
 }
 
+
+void IntegralWorkspace::fill_rhf_matrices(const Frame& frame, BasisSet basis,
+                                          int charge, bool compute_eri,
+                                          xt::xtensor<double, 2>& S,
+                                          xt::xtensor<double, 2>& Hcore,
+                                          xt::xtensor<double, 4>& ERI,
+                                          double& V_nuc, int& n_basis,
+                                          int& n_electrons) {
+    // One-shot fill of the discrete matrices the method owns. No pack is
+    // returned; callers (cuda::scf::RHF, …) store S/Hcore/ERI as members.
+    IntegralWorkspace tmp(frame, basis, charge, compute_eri);
+    S = std::move(tmp.S);
+    Hcore = std::move(tmp.Hcore);
+    ERI = std::move(tmp.ERI);
+    V_nuc = tmp.V_nuc;
+    n_basis = tmp.n_basis;
+    n_electrons = tmp.n_electrons;
+}
+
+} // namespace internal
 } // namespace scf
 } // namespace cpu
 } // namespace ATV

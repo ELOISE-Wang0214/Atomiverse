@@ -70,7 +70,7 @@ double trace_ps(const RealMatrix& P, const RealMatrix& S) {
 
 TEST(HueckelGuess, DiagonalIsVsipH2OSto3G) {
     cpu::Frame frame = make_h2o();
-    IntegralPack ints{frame, BasisSet::STO3G};
+    internal::IntegralWorkspace ints{frame, BasisSet::STO3G};
     HueckelGuess hg(ints.shells, ints.S, ints.atoms);
 
     // STO-3G H2O AO order: O 1s, O 2s, O 2p x3, H 1s, H 1s.
@@ -85,7 +85,7 @@ TEST(HueckelGuess, DiagonalIsVsipH2OSto3G) {
 
 TEST(HueckelGuess, OffDiagonalWolfsbergHelmholzElementWise) {
     cpu::Frame frame = make_h2o();
-    IntegralPack ints{frame, BasisSet::STO3G};
+    internal::IntegralWorkspace ints{frame, BasisSet::STO3G};
     HueckelGuess hg(ints.shells, ints.S, ints.atoms);
 
     const double K = internal::kWolfsbergHelmholz;
@@ -103,7 +103,7 @@ TEST(HueckelGuess, OffDiagonalWolfsbergHelmholzElementWise) {
 
 TEST(HueckelGuess, SphericalBasisWorkingDimension) {
     cpu::Frame frame = make_h2o();
-    IntegralPack ints{frame, BasisSet::Def2SVP}; // spherical convention
+    internal::IntegralWorkspace ints{frame, BasisSet::Def2SVP}; // spherical convention
     ASSERT_TRUE(ints.spherical());
     HueckelGuess hg(ints.shells, ints.S, ints.atoms);
     ASSERT_EQ(static_cast<int>(hg.F.shape()[0]), ints.n_basis);
@@ -120,7 +120,7 @@ TEST(HueckelGuess, SphericalBasisWorkingDimension) {
 
 TEST(HueckelGuess, InitialDensityTracePSEqualsElectronCount) {
     cpu::Frame frame = make_h2o();
-    IntegralPack ints{frame, BasisSet::STO3G};
+    internal::IntegralWorkspace ints{frame, BasisSet::STO3G};
     HueckelGuess hg(ints.shells, ints.S, ints.atoms);
 
     internal::EigenSolver eigen;
@@ -137,7 +137,7 @@ TEST(HueckelGuess, UnsupportedElementOrShellThrows) {
     EXPECT_THROW(HueckelGuess::vsip(1, 3), std::invalid_argument);
 
     cpu::Frame frame = make_h2o();
-    IntegralPack ints{frame, BasisSet::STO3G};
+    internal::IntegralWorkspace ints{frame, BasisSet::STO3G};
     ints.atoms[0].Z = 105; // beyond the VSIP table
     EXPECT_THROW(HueckelGuess(ints.shells, ints.S, ints.atoms),
                  std::invalid_argument);
@@ -147,7 +147,7 @@ TEST(HueckelGuess, UnsupportedElementOrShellThrows) {
 
 TEST(SapGuess, PotentialMatrixSymmetricAndNegativeDiagonal) {
     cpu::Frame frame = make_h2o();
-    IntegralPack ints{frame, BasisSet::STO3G};
+    internal::IntegralWorkspace ints{frame, BasisSet::STO3G};
     const MolecularGrid grid(ints.atoms.data(),
                              static_cast<int>(ints.atoms.size()),
                              GridLevel::SG0, 50, 110);
@@ -173,7 +173,7 @@ TEST(SapGuess, HydrogenAtomHandComputedReferenceElement) {
     //   ∫ e^{-γr²} / r d³r                = 2π/γ,
     //   ∫ e^{-γr²} erf(sqrt(a) r)/r d³r   = (2π/γ)·sqrt(a/(a+γ)).
     cpu::Frame frame = make_h_atom();
-    IntegralPack ints{frame, BasisSet::STO3G};
+    internal::IntegralWorkspace ints{frame, BasisSet::STO3G};
     ASSERT_EQ(ints.n_basis, 1);
 
     const MolecularGrid grid(ints.atoms.data(), 1, GridLevel::SG0, 50, 110);
@@ -206,7 +206,7 @@ TEST(SapGuess, HydrogenAtomHandComputedReferenceElement) {
 
 TEST(SapGuess, InitialDensityTracePSEqualsElectronCountSpherical) {
     cpu::Frame frame = make_h2o();
-    IntegralPack ints{frame, BasisSet::Def2SVP};
+    internal::IntegralWorkspace ints{frame, BasisSet::Def2SVP};
     ASSERT_TRUE(ints.spherical());
     const MolecularGrid grid(ints.atoms.data(),
                              static_cast<int>(ints.atoms.size()),
@@ -227,7 +227,7 @@ TEST(SapGuess, UnsupportedElementThrows) {
     EXPECT_THROW(SapAtomicPotential(119), std::invalid_argument);
 
     cpu::Frame frame = make_h_atom();
-    IntegralPack ints{frame, BasisSet::STO3G};
+    internal::IntegralWorkspace ints{frame, BasisSet::STO3G};
     const MolecularGrid grid(ints.atoms.data(), 1, GridLevel::SG0, 50, 110);
     ints.atoms[0].Z = 200;
     EXPECT_THROW(SapGuess(ints.shells, ints.T, ints.atoms, grid, ints.c2s),

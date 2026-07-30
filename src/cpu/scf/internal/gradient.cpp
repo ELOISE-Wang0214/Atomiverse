@@ -142,7 +142,7 @@ static void accumulate_common_gradient(xt::xtensor<double, 2>& grad,
 /// @param n             Number of basis functions.
 
 static void accumulate_xc_gradient(
-    xt::xtensor<double, 2>& grad_out, const IntegralPack& integrals,
+    xt::xtensor<double, 2>& grad_out, const internal::IntegralView& integrals,
     const xt::xtensor<double, 2>& Pa, const xt::xtensor<double, 2>& Pb,
     XCType xc_type, GridLevel grid_level, int n_radial, int n_angular,
     const std::vector<int>& shell_to_atom,
@@ -470,7 +470,7 @@ ScfGradient::ScfGradient(MeanFieldType method, SpinType spin, XCType xc_type,
       d4_(d4) {}
 
 GradientResult ScfGradient::compute(const Frame& frame,
-                                    const IntegralPack& integrals,
+                                    const internal::IntegralView& integrals,
                                     const SlaterDeterminant& det,
                                     double e_scf_ha) const {
     // This entry answers exactly one question — what are P and W at a
@@ -572,7 +572,7 @@ GradientResult ScfGradient::compute(const Frame& frame,
 }
 
 GradientResult ScfGradient::compute_at_density(
-    const Frame& frame, const IntegralPack& integrals,
+    const Frame& frame, const internal::IntegralView& integrals,
     const RealMatrix& C_occ_alpha, const RealMatrix& F_alpha,
     const RealMatrix& C_occ_beta, const RealMatrix& F_beta, double e_ha) const {
     const int n = integrals.n_basis;
@@ -660,7 +660,7 @@ GradientResult ScfGradient::compute_at_density(
 }
 
 GradientResult ScfGradient::assemble_(
-    const Frame& frame, const IntegralPack& integrals,
+    const Frame& frame, const internal::IntegralView& integrals,
     const xt::xtensor<double, 2>& P, const xt::xtensor<double, 2>& Pa,
     const xt::xtensor<double, 2>& Pb, const xt::xtensor<double, 2>& W,
     double e_scf_ha, const SlaterDeterminant* generalized_det) const {

@@ -42,7 +42,7 @@ namespace scf {
 /// @return CCSD correlation and total energies [Hartree], iteration count.
 /// @throws std::invalid_argument on open-shell / missing ERI / non-aufbau
 ///         denominators / non-convergence (no silent fallback).
-CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
+CCSDResult ccsd_energy_spatial(const internal::IntegralView& ints,
                                const SlaterDeterminant& det, double e_scf_ha,
                                double tol = 1e-10, int max_iter = 100,
                                bool use_diis = true);

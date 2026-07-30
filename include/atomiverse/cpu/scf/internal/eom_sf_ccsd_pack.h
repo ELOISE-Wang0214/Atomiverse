@@ -26,7 +26,7 @@ namespace scf {
 /// @return SF ω [eV] plus UCCSD energetics.
 /// @throws std::invalid_argument on restricted / missing ERI / bad n_states /
 ///         non-convergence (no silent fallback).
-EOMSFCCSDResult eom_sf_ccsd_energies(const IntegralPack& ints,
+EOMSFCCSDResult eom_sf_ccsd_energies(const internal::IntegralView& ints,
                                      const SlaterDeterminant& det,
                                      double e_scf_ha, int n_states = 1,
                                      double tol = 1e-10, int max_iter = 100);

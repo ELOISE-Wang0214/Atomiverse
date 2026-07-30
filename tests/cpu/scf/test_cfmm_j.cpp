@@ -78,7 +78,7 @@ double max_abs_diff(const RealMatrix& A, const RealMatrix& B) {
 TEST(CfmmJ, SSMonopoleEqualsOverlap) {
     // H2 STO-3G: all AOs are s — unit monopole must match overlap.
     auto frame = make_h2_far();
-    IntegralPack pack(frame, BasisSet::STO3G, 0, /*compute_eri=*/false);
+    internal::IntegralWorkspace pack(frame, BasisSet::STO3G, 0, /*compute_eri=*/false);
     internal::CfmmJ cfmm(pack.shells, /*order=*/6, /*threshold=*/1e-9);
     cfmm.prepare();
     ASSERT_GT(cfmm.n_distributions(), 0);
@@ -96,7 +96,7 @@ TEST(CfmmJ, SSMonopoleEqualsOverlap) {
 
 TEST(CfmmJ, NearFarComplementaryNoDoubleCount) {
     auto frame = make_h2_far();
-    IntegralPack pack(frame, BasisSet::STO3G, 0, /*compute_eri=*/false);
+    internal::IntegralWorkspace pack(frame, BasisSet::STO3G, 0, /*compute_eri=*/false);
     // Loose threshold → smaller extents → more far pairs.
     internal::CfmmJ cfmm(pack.shells, /*order=*/6, /*threshold=*/1e-3);
     cfmm.prepare();
@@ -122,7 +122,7 @@ TEST(CfmmJ, NearFarComplementaryNoDoubleCount) {
 
 TEST(CfmmJ, H2OSto3GMatchesDirectJ) {
     auto frame = make_h2o();
-    IntegralPack pack(frame, BasisSet::STO3G, 0, /*compute_eri=*/false);
+    internal::IntegralWorkspace pack(frame, BasisSet::STO3G, 0, /*compute_eri=*/false);
     const int n = pack.n_ao_cart();
 
     // A simple positive-semidefinite density (not from SCF).
@@ -148,7 +148,7 @@ TEST(CfmmJ, H2OSto3GMatchesDirectJ) {
 
 TEST(CfmmJ, CfmmTimesRiThrows) {
     auto frame = make_h2o();
-    IntegralPack pack(frame, BasisSet::STO3G, 0, /*compute_eri=*/false);
+    internal::IntegralWorkspace pack(frame, BasisSet::STO3G, 0, /*compute_eri=*/false);
     internal::HamiltonianBuilder hb;
     EXPECT_THROW(hb.prepare(pack, /*is_hf=*/true, GridLevel::SG1, 0, 0, nullptr,
                             RI::J, AuxBasis::Def2JKFIT, Coulomb::CFMM, 10,
@@ -160,7 +160,7 @@ TEST(CfmmJ, DefaultDirectUnaffected) {
     // prepare with defaults must not build a CFMM workspace path that
     // changes the Direct branch (smoke: no throw, step returns finite F).
     auto frame = make_h2o();
-    IntegralPack pack(frame, BasisSet::STO3G, 0, /*compute_eri=*/false);
+    internal::IntegralWorkspace pack(frame, BasisSet::STO3G, 0, /*compute_eri=*/false);
     const int n = pack.n_basis;
     RealMatrix P = xt::zeros<double>({n, n});
     for (int i = 0; i < n; ++i)

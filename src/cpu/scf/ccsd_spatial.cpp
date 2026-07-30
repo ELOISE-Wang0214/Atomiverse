@@ -29,7 +29,7 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
+CCSDResult ccsd_energy_spatial(const internal::IntegralView& ints,
                                const SlaterDeterminant& det, double e_scf_ha,
                                double tol, int max_iter, bool use_diis) {
     using Spin = SlaterDeterminant::Spin;

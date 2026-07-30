@@ -27,7 +27,7 @@ namespace scf {
 /// @return Singlet ω [eV] plus CC2 energetics.
 /// @throws std::invalid_argument on open-shell / missing ERI / bad n_states /
 ///         non-convergence (no silent fallback).
-EOMCC2Result eom_cc2_energies(const IntegralPack& ints,
+EOMCC2Result eom_cc2_energies(const internal::IntegralView& ints,
                               const SlaterDeterminant& det, double e_scf_ha,
                               int n_states = 1, double tol = 1e-10,
                               int max_iter = 100);

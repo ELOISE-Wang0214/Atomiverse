@@ -79,7 +79,7 @@ class SOSCFStepper {
     ///        (dimensionless); the solve returns its best Ritz pair at the
     ///        budget (co-iteration, not failure).
     /// @param trust_radius Initial trust radius on ‖κ‖₂ (dimensionless).
-    SOSCFStepper(bool restricted, const IntegralPack& ints, const int& n_alpha,
+    SOSCFStepper(bool restricted, const internal::IntegralView& ints, const int& n_alpha,
                  const int& n_beta, const RealMatrix& Hcore,
                  const double& v_nuc, const RealMatrix& F_alpha,
                  const RealMatrix& F_beta, const RealMatrix& P_alpha,
@@ -209,7 +209,7 @@ class SOSCFStepper {
                                 RealMatrix& C);
 
     bool restricted_;           ///< Closed-shell (single channel) mode.
-    const IntegralPack& ints_;  ///< Integral workspace (ERI source).
+    internal::IntegralView ints_;  ///< Integral workspace (ERI source).
     const int& n_alpha_;        ///< α electron count (read).
     const int& n_beta_;         ///< β electron count (read).
     const RealMatrix& Hcore_;   ///< Core Hamiltonian [Hartree] (read).

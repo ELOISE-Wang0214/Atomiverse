@@ -52,7 +52,7 @@ vib::HessianResult UHF::hessian(Frame& frame, const SCFInitialGuess* guess) {
     run(frame, guess);
 
     const SlaterDeterminant& det = determinant();
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     // Shared guard: non-convergence, spherical-harmonic pack, ECP pack.
     check_hessian_preconditions("UHF::hessian", pack);
 

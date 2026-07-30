@@ -48,7 +48,7 @@ RealMatrix g_contraction(const xt::xtensor<double, 4>& eri,
 } // namespace
 
 CphfPack::CphfPack(const SlaterDeterminant& det, const OrbitalHessian& oh,
-                   const IntegralPack& pack,
+                   const internal::IntegralView& pack,
                    const xt::xtensor<double, 4>& eri_ao,
                    const xt::xtensor<double, 4>& dS_ao,
                    const xt::xtensor<double, 4>& dF_ao)

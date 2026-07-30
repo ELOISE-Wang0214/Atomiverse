@@ -4,7 +4,7 @@
 ///
 /// Layout mirrors `cpu/scf/operators.cpp` (the two-electron Fock operators:
 /// `ShellBlockPairList::{g_rhf,k,jk_rhf}` and
-/// `IntegralPack::coulomb_exchange_fused`).
+/// `internal::IntegralWorkspace::coulomb_exchange_fused`).
 ///
 /// RED until the planned `ShellBlockPairList::jk_rhf(P_total, J, K)` member
 /// (one shell-block sweep producing bare J and bare K) exists.
@@ -95,7 +95,7 @@ namespace {
 ///        fixture for the classic multiplicity-unpack bug).
 void check_fused_vs_twopass(const cpu::Frame& frame, BasisSet basis,
                             const char* label) {
-    auto pack = IntegralPack{frame, basis};
+    auto pack = internal::IntegralWorkspace{frame, basis};
     auto sp = ShellBlockPairList{pack};
     const int n = sp.n_basis;
     RealMatrix P = make_density(n);
@@ -143,18 +143,18 @@ TEST(TestShellBlockPairList, FusedJkMatchesTwoPass_H2O_631Gs_DShell) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// TestIntegralPack — coulomb_exchange_fused thread-count invariance (ac-004)
+// TestIntegralWorkspace — coulomb_exchange_fused thread-count invariance (ac-004)
 // ═══════════════════════════════════════════════════════════════════════
 
-// NOTE: today the K contraction in IntegralPack::coulomb_exchange_fused is
+// NOTE: today the K contraction in internal::IntegralWorkspace::coulomb_exchange_fused is
 // serial, so this test passes trivially. It becomes the guarding regression
 // AFTER the planned `#pragma omp parallel for` reduction is added to the K
 // contraction: each output element (i, j>=j') and its mirror (j, i) is owned
 // by a single i-iteration and reduced in ascending k,l order, so the result
 // must stay bit-for-bit identical for any thread count.
-TEST(TestIntegralPack, CoulombExchangeFusedThreadInvariant) {
+TEST(TestIntegralWorkspace, CoulombExchangeFusedThreadInvariant) {
     auto frame = make_h2o();
-    auto pack = IntegralPack{frame, BasisSet::STO3G, 0, /*compute_eri=*/true};
+    auto pack = internal::IntegralWorkspace{frame, BasisSet::STO3G, 0, /*compute_eri=*/true};
     const int n = pack.n_basis;
     RealMatrix P = make_density(n);
 

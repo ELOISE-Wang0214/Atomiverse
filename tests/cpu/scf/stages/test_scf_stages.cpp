@@ -29,7 +29,7 @@
 ///   FockStage(bool restricted, bool is_hf, XCType, GridLevel, int n_radial,
 ///             int n_angular, double hybrid_alpha_override,
 ///             const MolecularGrid* fixed_grid,
-///             const IntegralPack& integrals,
+///             const internal::IntegralWorkspace& integrals,
 ///             const RealMatrix& P_alpha, const RealMatrix& P_beta,
 ///             RealMatrix& F_alpha, RealMatrix& F_beta, RealMatrix& J,
 ///             double& e_xc_grid, double& e_exact_exchange,
@@ -320,7 +320,7 @@ TEST(EigenSolver, GeneralizedEigIdentityOverlap) {
 
 TEST(FockStage, ReproducesHamiltonianBuilderRestrictedHF) {
     cpu::Frame h2 = make_h2_frame();
-    cpu::scf::IntegralPack ints{h2, cpu::scf::BasisSet::STO3G};
+    cpu::scf::internal::IntegralWorkspace ints{h2, cpu::scf::BasisSet::STO3G};
 
     // A nonzero density (core guess) so J/K actually contribute.
     RealMatrix S = ints.S;
@@ -366,7 +366,7 @@ TEST(FockStage, ReproducesHamiltonianBuilderRestrictedHF) {
 
 TEST(FockStage, ReproducesHamiltonianBuilderRestrictedKS) {
     cpu::Frame h2 = make_h2_frame();
-    cpu::scf::IntegralPack ints{h2, cpu::scf::BasisSet::STO3G};
+    cpu::scf::internal::IntegralWorkspace ints{h2, cpu::scf::BasisSet::STO3G};
 
     RealMatrix S = ints.S, Hcore = ints.Hcore;
     EigenSolver es;
@@ -407,7 +407,7 @@ TEST(FockStage, ReproducesHamiltonianBuilderRestrictedKS) {
 
 TEST(FockStage, BindsFockPhaseAndGuardsWithCtxAt) {
     cpu::Frame h2 = make_h2_frame();
-    cpu::scf::IntegralPack ints{h2, cpu::scf::BasisSet::STO3G};
+    cpu::scf::internal::IntegralWorkspace ints{h2, cpu::scf::BasisSet::STO3G};
     RealMatrix S = ints.S, Hcore = ints.Hcore;
     EigenSolver es;
     auto [eig0, C0] = es.step(Hcore, S);

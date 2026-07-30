@@ -34,14 +34,14 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-xt::xtensor<double, 2> fci_hamiltonian(const IntegralPack& ints,
+xt::xtensor<double, 2> fci_hamiltonian(const internal::IntegralView& ints,
                                        const SlaterDeterminant& det) {
     using Spin = SlaterDeterminant::Spin;
     // No-fallback guards -- throw, never return a sentinel (mirror
     // mp2_energy). Convergence of the reference is guarded by the caller.
     if (ints.ERI.size() == 0) {
         throw std::invalid_argument(
-            "fci_energy: ERI is not materialized; call IntegralPack{..., "
+            "fci_energy: ERI is not materialized; call internal::IntegralWorkspace{..., "
             "compute_eri=true}.");
     }
     if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta)) {
@@ -106,14 +106,14 @@ xt::xtensor<double, 2> fci_hamiltonian(const IntegralPack& ints,
     return hci;
 }
 
-FCIResult fci_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+FCIResult fci_energy(const internal::IntegralView& ints, const SlaterDeterminant& det,
                      double e_scf_ha) {
     using Spin = SlaterDeterminant::Spin;
     // No-fallback guards -- throw, never return a sentinel (mirror
     // fci_hamiltonian). Convergence of the reference is guarded by the caller.
     if (ints.ERI.size() == 0) {
         throw std::invalid_argument(
-            "fci_energy: ERI is not materialized; call IntegralPack{..., "
+            "fci_energy: ERI is not materialized; call internal::IntegralWorkspace{..., "
             "compute_eri=true}.");
     }
     if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta)) {
@@ -155,7 +155,7 @@ FCIResult fci_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     return {sol.energy, sol.energy - e_scf_ha};
 }
 
-CASCIResult casci_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+CASCIResult casci_energy(const internal::IntegralView& ints, const SlaterDeterminant& det,
                          double e_scf_ha, int ncas, int nelecas) {
     using Spin = SlaterDeterminant::Spin;
     if (ints.ERI.size() == 0) {

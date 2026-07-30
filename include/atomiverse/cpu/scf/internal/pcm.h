@@ -65,7 +65,7 @@ namespace internal {
 /// @brief PCM reaction-field workspace (geometry-scoped).
 ///
 /// Positions and matrices are internal Hartree–Bohr units after construction
-/// (atoms enter in Bohr, as in `IntegralPack::atoms`).
+/// (atoms enter in Bohr, as in `internal::IntegralWorkspace::atoms`).
 class Pcm {
   public:
     /// @brief Result of one density-dependent reaction-field update.

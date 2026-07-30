@@ -19,10 +19,10 @@ namespace {
 ///
 /// Both native::Shell.center and native::Atom.pos are populated from the
 /// same Frame positions converted to Bohr, so bit-exact equality holds
-/// within a single IntegralPack. The observer derives the mapping itself
-/// rather than caching it on IntegralPack: hot-path data structures carry
+/// within a single internal::IntegralWorkspace. The observer derives the mapping itself
+/// rather than caching it on internal::IntegralWorkspace: hot-path data structures carry
 /// only fundamental physical quantities.
-std::vector<int> derive_basis_to_atom(const scf::IntegralPack& pack) {
+std::vector<int> derive_basis_to_atom(const scf::internal::IntegralView& pack) {
     const int n_basis = pack.n_basis;
     const int natm = static_cast<int>(pack.atoms.size());
 
@@ -39,7 +39,7 @@ std::vector<int> derive_basis_to_atom(const scf::IntegralPack& pack) {
         if (b2a[static_cast<std::size_t>(mu)] < 0) {
             throw std::runtime_error("cpu::mulliken: shell center at AO "
                                      + std::to_string(mu)
-                                     + " matches no atom in IntegralPack");
+                                     + " matches no atom in internal::IntegralWorkspace");
         }
     }
     return b2a;
@@ -63,7 +63,7 @@ accumulate_diag_ds_per_atom(const xt::xtensor<double, 2>& D,
 
 } // namespace
 
-std::vector<double> mulliken_charge(const scf::IntegralPack& pack,
+std::vector<double> mulliken_charge(const scf::internal::IntegralView& pack,
                                     const xt::xtensor<double, 2>& P) {
     const int natm = static_cast<int>(pack.atoms.size());
     const auto b2a = derive_basis_to_atom(pack);
@@ -79,7 +79,7 @@ std::vector<double> mulliken_charge(const scf::IntegralPack& pack,
     return q;
 }
 
-std::vector<double> mulliken_spin(const scf::IntegralPack& pack,
+std::vector<double> mulliken_spin(const scf::internal::IntegralView& pack,
                                   const xt::xtensor<double, 2>& P_alpha,
                                   const xt::xtensor<double, 2>& P_beta) {
     const int natm = static_cast<int>(pack.atoms.size());

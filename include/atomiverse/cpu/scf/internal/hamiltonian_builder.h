@@ -16,7 +16,7 @@
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/cfmm_j.h"
 #include "atomiverse/cpu/scf/internal/density_fitting.h"
-#include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/internal/integral_view.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/scf_enums.h" // MeanFieldType / SpinType / RI / Coulomb
 #include "atomiverse/cpu/scf/xc_functional.h" // XCType
@@ -49,7 +49,7 @@ class HamiltonianBuilder {
     /// @brief One-time setup from discrete method parameters — the entry used
     ///        by the driver-side `FockStage`.
     /// @details Builds shell-pair lists and (for KS) the XC integration grid.
-    /// @param integrals Reference IntegralPack (ownership stays with caller).
+    /// @param integrals Non-owning view of method-owned integral fields.
     /// @param is_hf     true → Hartree-Fock (no grid); false → Kohn-Sham
     ///                  (builds the XC integration grid).
     /// @param grid_level Named DFT integration-grid quality level (KS only).
@@ -59,7 +59,7 @@ class HamiltonianBuilder {
     /// @param ri         Density-fitting mode; `RI::None` (default) keeps
     ///                   the exact-ERI path bit-identical. Non-None builds
     ///                   the `internal::DensityFitting` workspace over the
-    ///                   pack's Cartesian shells (this seam is reused by
+    ///                   method's Cartesian shells (this seam is reused by
     ///                   the CFMM link).
     /// @param aux_basis  Auxiliary basis for the fit (ignored when
     ///                   `ri == RI::None`); an element without a table row
@@ -70,7 +70,7 @@ class HamiltonianBuilder {
     ///                   `ri != RI::None` throws (J route is exclusive).
     /// @param cfmm_order Multipole truncation order p for CFMM (default 10).
     /// @param cfmm_threshold Extent threshold ε_thr for CFMM (default 1e-9).
-    void prepare(const IntegralPack& integrals, bool is_hf,
+    void prepare(const internal::IntegralView& integrals, bool is_hf,
                  GridLevel grid_level, int n_radial, int n_angular,
                  const MolecularGrid* fixed_grid, RI ri = RI::None,
                  AuxBasis aux_basis = AuxBasis::Def2JKFIT,
@@ -79,7 +79,7 @@ class HamiltonianBuilder {
 
     /// @brief Build F from the current α/β densities.
     /// @details Method-dispatched F = Hcore + J − αK + V_xc.
-    /// @param integrals Same IntegralPack passed to prepare() — caller-owned.
+    /// @param integrals Same IntegralView passed to prepare() (refs still live).
     /// @param restricted true → restricted spin (α mirrors β); false → open.
     /// @param is_hf      true → Hartree-Fock; false → Kohn-Sham.
     /// @param xc_type    Exchange-correlation functional (KS only).
@@ -88,7 +88,7 @@ class HamiltonianBuilder {
     /// @param P_alpha    α density (full density when restricted).
     /// @param P_beta     β density (alias of P_alpha when restricted).
     /// @return Filled FockResult.
-    FockResult step(const IntegralPack& integrals, bool restricted, bool is_hf,
+    FockResult step(const internal::IntegralView& integrals, bool restricted, bool is_hf,
                     XCType xc_type, double hybrid_alpha_override,
                     const RealMatrix& P_alpha, const RealMatrix& P_beta) const;
 

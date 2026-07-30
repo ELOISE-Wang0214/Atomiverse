@@ -1,5 +1,5 @@
 /// @file cpu/scf/two_electron.cpp
-/// @brief Dense ERI tensor assembly (IntegralPack::eri_dense) via the
+/// @brief Dense ERI tensor assembly (internal::IntegralWorkspace::eri_dense) via the
 ///        amortized shell-block engine native::eri_block + OpenMP.
 
 #include "atomiverse/cpu/scf/internal/integrals.h"
@@ -20,7 +20,7 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-xt::xtensor<double, 4> IntegralPack::eri_dense(const ShellList& shells) {
+xt::xtensor<double, 4> internal::IntegralWorkspace::eri_dense(const ShellList& shells) {
     const int n = shells.n_basis;
     xt::xtensor<double, 4> ERI = xt::zeros<double>({n, n, n, n});
 

@@ -68,7 +68,7 @@ struct CCSDSolution {
 /// @return CCSD correlation and total energies [Hartree].
 /// @throws std::invalid_argument on open-shell / missing ERI / non-aufbau
 ///         denominators / non-convergence (no silent fallback).
-CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+CCSDResult ccsd_energy(const internal::IntegralView& ints, const SlaterDeterminant& det,
                        double e_scf_ha, double tol = 1e-10, int max_iter = 100,
                        bool use_diis = true);
 
@@ -85,7 +85,7 @@ CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
 /// @param max_iter Jacobi iteration budget (dimensionless).
 /// @return CCSD(T) correlation pieces and total energy [Hartree].
 /// @throws std::invalid_argument as for `ccsd_energy`.
-CCSDTResult ccsd_t_energy(const IntegralPack& ints,
+CCSDTResult ccsd_t_energy(const internal::IntegralView& ints,
                           const SlaterDeterminant& det, double e_scf_ha,
                           double tol = 1e-10, int max_iter = 100);
 
@@ -93,7 +93,7 @@ CCSDTResult ccsd_t_energy(const IntegralPack& ints,
 ///        blocks for EOM-EE-CCSD (private). Closed-shell RHF only.
 /// @param cc2 When true, use the CC2 doubles residual (Christiansen 1995)
 ///            instead of full CCSD; singles residual stays full CCSD.
-CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
+CCSDSolution ccsd_solve(const internal::IntegralView& ints, const SlaterDeterminant& det,
                         double e_scf_ha, double tol = 1e-10, int max_iter = 100,
                         bool cc2 = false);
 
@@ -109,7 +109,7 @@ CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
 /// @param max_iter Jacobi iteration budget (dimensionless).
 /// @return CC2 correlation and total energies [Hartree].
 /// @throws std::invalid_argument as for `ccsd_energy`.
-CC2Result cc2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+CC2Result cc2_energy(const internal::IntegralView& ints, const SlaterDeterminant& det,
                      double e_scf_ha, double tol = 1e-10, int max_iter = 100);
 
 /// @brief Unrestricted (UHF) spin-orbital CCSD — same Gauss–Stanton
@@ -124,7 +124,7 @@ CC2Result cc2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
 /// @return Spin-orbital amplitudes + SO integral blocks for EOM-SF.
 /// @throws std::invalid_argument on restricted det / missing ERI / GHF /
 ///         non-aufbau denominators / non-convergence (no silent fallback).
-CCSDSolution uccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
+CCSDSolution uccsd_solve(const internal::IntegralView& ints, const SlaterDeterminant& det,
                          double e_scf_ha, double tol = 1e-10,
                          int max_iter = 100);
 

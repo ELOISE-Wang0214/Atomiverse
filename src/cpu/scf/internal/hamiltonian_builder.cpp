@@ -18,7 +18,7 @@ namespace cpu {
 namespace scf {
 namespace internal {
 
-void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
+void HamiltonianBuilder::prepare(const internal::IntegralView& integrals, bool is_hf,
                                  GridLevel grid_level, int n_radial,
                                  int n_angular, const MolecularGrid* fixed_grid,
                                  RI ri, AuxBasis aux_basis, Coulomb coulomb,
@@ -97,7 +97,7 @@ void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
     }
 }
 
-FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
+FockResult HamiltonianBuilder::step(const internal::IntegralView& integrals,
                                     bool restricted, bool is_hf, XCType xc_type,
                                     double hybrid_alpha_override,
                                     const RealMatrix& P_alpha,

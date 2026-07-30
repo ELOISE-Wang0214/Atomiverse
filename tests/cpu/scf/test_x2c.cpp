@@ -2,7 +2,7 @@
 /// @brief Unit tests for spin-free x2c-1e (hf-capability-gaps-18-x2c).
 ///
 /// Covers:
-///   - IntegralPack::pvp vs externally pinned PySCF int1e_pnucp (H2, HeH+;
+///   - internal::IntegralWorkspace::pvp vs externally pinned PySCF int1e_pnucp (H2, HeH+;
 ///     tol 1e-7 = engine nuclear Boys floor)
 ///   - W matrix symmetry
 ///   - X2cWorkspace non-relativistic limit (c → ∞ ⇒ h^X2C ≈ T+V)
@@ -43,7 +43,7 @@
 
 using namespace ATV;
 using cpu::scf::BasisSet;
-using cpu::scf::IntegralPack;
+using cpu::scf::internal::IntegralWorkspace;
 using cpu::scf::RealMatrix;
 using cpu::scf::internal::kLightSpeedAU;
 using cpu::scf::internal::X2cWorkspace;
@@ -114,7 +114,7 @@ TEST(X2cPvp, H2Sto3gMatchesPySCF) {
     constexpr double kW01 = -0.5567807782313442;
 
     auto frame = h2_frame();
-    IntegralPack pack{frame,
+    internal::IntegralWorkspace pack{frame,
                       BasisSet::STO3G,
                       /*charge=*/0,
                       /*compute_eri=*/false,
@@ -141,7 +141,7 @@ TEST(X2cPvp, HeHSto3gMatchesPySCF) {
     constexpr double kW11 = -3.6296210235782542;
 
     auto frame = heh_frame();
-    IntegralPack pack{frame,
+    internal::IntegralWorkspace pack{frame,
                       BasisSet::STO3G,
                       /*charge=*/1,
                       /*compute_eri=*/false,
@@ -159,7 +159,7 @@ TEST(X2cPvp, HeHSto3gMatchesPySCF) {
 
 TEST(X2cPvp, Symmetric) {
     auto frame = heh_frame();
-    IntegralPack pack{frame, BasisSet::STO3G, 1, false, {}, {}, true};
+    internal::IntegralWorkspace pack{frame, BasisSet::STO3G, 1, false, {}, {}, true};
     const int n = pack.n_basis;
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
@@ -172,7 +172,7 @@ TEST(X2cPvp, Symmetric) {
 TEST(X2cWorkspace, NonrelativisticLimit) {
     // With c = 1e8 the x2c correction vanishes and h^X2C → T+V.
     auto frame = h2_frame();
-    IntegralPack pack{frame, BasisSet::STO3G, 0, false, {}, {}, true};
+    internal::IntegralWorkspace pack{frame, BasisSet::STO3G, 0, false, {}, {}, true};
     const RealMatrix S = pack.S;
     const RealMatrix T = pack.T;
     const RealMatrix V = pack.V;
@@ -191,7 +191,7 @@ TEST(X2cWorkspace, ExactDecouplingHAtom) {
     // One-electron H atom / def2-SVP: lowest h^X2C eigenvalue equals the
     // lowest positive-energy eigenvalue of the modified Dirac matrix.
     auto frame = h_atom_frame();
-    IntegralPack pack{frame, BasisSet::Def2SVP, 0, false, {}, {}, true};
+    internal::IntegralWorkspace pack{frame, BasisSet::Def2SVP, 0, false, {}, {}, true};
     const RealMatrix S = pack.S;
     const RealMatrix T = pack.T;
     const RealMatrix V = pack.V;
@@ -247,7 +247,7 @@ TEST(X2cGate, ForcesThrowWhenX2c) {
 
 TEST(X2cGate, X2cFalseLeavesHcoreAsTplusV) {
     auto frame = h2_frame();
-    IntegralPack pack{frame,
+    internal::IntegralWorkspace pack{frame,
                       BasisSet::STO3G,
                       0,
                       false,

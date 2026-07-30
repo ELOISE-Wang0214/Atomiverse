@@ -77,7 +77,7 @@ class ScfGradient {
     /// @param e_scf_ha  Converged SCF total energy [Hartree] (reported on the
     ///                  returned GradientResult in eV).
     /// @return Forces on all atoms (eV/Angstrom) and total energy (eV).
-    GradientResult compute(const Frame& frame, const IntegralPack& integrals,
+    GradientResult compute(const Frame& frame, const internal::IntegralView& integrals,
                            const SlaterDeterminant& det, double e_scf_ha) const;
 
     /// @brief Analytic nuclear gradient at an arbitrary (non-stationary)
@@ -116,7 +116,7 @@ class ScfGradient {
     ///         weights are not this one), on a shape mismatch, or when a
     ///         restricted call supplies β matrices.
     GradientResult
-    compute_at_density(const Frame& frame, const IntegralPack& integrals,
+    compute_at_density(const Frame& frame, const internal::IntegralView& integrals,
                        const RealMatrix& C_occ_alpha, const RealMatrix& F_alpha,
                        const RealMatrix& C_occ_beta, const RealMatrix& F_beta,
                        double e_ha) const;
@@ -138,7 +138,7 @@ class ScfGradient {
     ///        only by the `SpinType::Generalized` exchange contraction, which
     ///        needs all four spin blocks; null for every other spin treatment.
     /// @return Forces [eV/Å] + energy [eV].
-    GradientResult assemble_(const Frame& frame, const IntegralPack& integrals,
+    GradientResult assemble_(const Frame& frame, const internal::IntegralView& integrals,
                              const xt::xtensor<double, 2>& P_total,
                              const xt::xtensor<double, 2>& P_alpha,
                              const xt::xtensor<double, 2>& P_beta,

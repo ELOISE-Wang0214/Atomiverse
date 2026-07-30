@@ -507,14 +507,14 @@ internal::Channel internal_channel(ExcitationChannel ch) {
 /// on the KS grid (closed-shell singlet). Same convention as hybrid TDA /
 /// full LR-TDDFT (PySCF get_ab hybrid path). Returns K such that A and B
 /// both receive K under the adiabatic approximation.
-RealMatrix fxc_kernel_fd(const SlaterDeterminant& det, const IntegralPack& pack,
+RealMatrix fxc_kernel_fd(const SlaterDeterminant& det, const internal::IntegralView& pack,
                          XCType xc, GridLevel grid_level, int n_radial,
                          int n_angular) {
     if (!det.restricted())
         throw std::runtime_error(
             "fxc_kernel_fd: restricted closed-shell determinant required");
     if (pack.shells.empty())
-        throw std::runtime_error("fxc_kernel_fd: IntegralPack has no shells");
+        throw std::runtime_error("fxc_kernel_fd: internal::IntegralWorkspace has no shells");
 
     using Spin = SlaterDeterminant::Spin;
     const RealMatrix& C = det.coefficients(Spin::alpha);
@@ -685,7 +685,7 @@ internal::TDHFPack::Roots rpa_from_ab(const RealMatrix& A, const RealMatrix& B,
 /// and f = (2/3)·ω[Ha]·|μ|²; the triplet channel is spin-forbidden (μ = 0,
 /// f = 0). Two callers (tda / tdhf) — second-caller extraction rule.
 ExcitedStatesResult
-excited_states_result(const SlaterDeterminant& det, const IntegralPack& pack,
+excited_states_result(const SlaterDeterminant& det, const internal::IntegralView& pack,
                       const internal::TDHFPack::Roots& roots,
                       ExcitationChannel channel, bool tda_flag) {
     const std::size_t k = roots.omega.size();
@@ -769,7 +769,7 @@ ExcitedStatesResult RHF::tda(int n_states, ExcitationChannel channel) const {
         throw std::runtime_error(
             "RHF::tda: no SCF result — call run(frame) first");
     const SlaterDeterminant& det = determinant();
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
     const internal::OrbitalHessian hessian{det, eri};
@@ -783,7 +783,7 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
         throw std::runtime_error(
             "RKS::tda: no SCF result — call run(frame) first");
     const SlaterDeterminant& det = determinant();
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
     const internal::OrbitalHessian hessian{det, eri};
@@ -867,7 +867,7 @@ ExcitedStatesResult RKS::tddft(int n_states, ExcitationChannel channel) const {
         throw std::runtime_error(
             "RKS::tddft: no SCF result — call run(frame) first");
     const SlaterDeterminant& det = determinant();
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
     const internal::OrbitalHessian hessian{det, eri};
@@ -947,7 +947,7 @@ std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state, double h,
         auto es0 = probe.tda(state + 1);
         if (state < 0 || state >= static_cast<int>(es0.energy_ev.size()))
             throw std::invalid_argument("RHF::tda_forces: state out of range");
-        return internal::tda_analytic_forces(frame, probe.integral_workspace_(),
+        return internal::tda_analytic_forces(frame, probe.integral_view_(),
                                              probe.determinant(),
                                              probe.energy(), state);
     }
@@ -1055,7 +1055,7 @@ ExcitedStatesResult RHF::tdhf(int n_states, ExcitationChannel channel) const {
         throw std::runtime_error(
             "RHF::tdhf: no SCF result — call run(frame) first");
     const SlaterDeterminant& det = determinant();
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
     const internal::OrbitalHessian hessian{det, eri};
@@ -1194,7 +1194,7 @@ struct UksLsdaCasidaWork {
 
 /// @brief Build spin-conserving Casida A for UKS/LSDA (pure, α_hf = 0).
 UksLsdaCasidaWork build_uks_lsda_casida_A(const SlaterDeterminant& det,
-                                          const IntegralPack& pack,
+                                          const internal::IntegralView& pack,
                                           GridLevel grid_level, int n_radial,
                                           int n_angular, int n_states,
                                           const char* tag) {
@@ -1318,7 +1318,7 @@ UksLsdaCasidaWork build_uks_lsda_casida_A(const SlaterDeterminant& det,
 
     if (pack.shells.empty())
         throw std::runtime_error(
-            std::string(tag) + ": IntegralPack has no shells (no fallback)");
+            std::string(tag) + ": internal::IntegralWorkspace has no shells (no fallback)");
     const MolecularGrid grid(pack.atoms.data(),
                              static_cast<int>(pack.atoms.size()), grid_level,
                              n_radial, n_angular);
@@ -1472,7 +1472,7 @@ UksLsdaCasidaWork build_uks_lsda_casida_A(const SlaterDeterminant& det,
 /// Package open-shell (X,Y) into ExcitedStatesResult with length-gauge μ, f.
 /// Full RPA uses X+Y; TDA uses X only (Y = 0). No √2 closed-shell factor.
 ExcitedStatesResult package_uks_excited(const SlaterDeterminant& det,
-                                        const IntegralPack& pack,
+                                        const internal::IntegralView& pack,
                                         const UksLsdaCasidaWork& w,
                                         const internal::TDHFPack::Roots& roots,
                                         bool tda_flag) {
@@ -1563,7 +1563,7 @@ ExcitedStatesResult UKS::tda(int n_states) const {
             "UKS::tda: only LSDA is implemented (pure open-shell ALDA); "
             "requested functional is not LSDA (no fallback)");
 
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     const UksLsdaCasidaWork w = build_uks_lsda_casida_A(
         det, pack, grid_level, n_radial, n_angular, n_states, "UKS::tda");
 
@@ -1595,7 +1595,7 @@ ExcitedStatesResult UKS::tddft(int n_states) const {
             "UKS::tddft: only LSDA is implemented (pure open-shell ALDA); "
             "requested functional is not LSDA (no fallback)");
 
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     const UksLsdaCasidaWork w = build_uks_lsda_casida_A(
         det, pack, grid_level, n_radial, n_angular, n_states, "UKS::tddft");
 
@@ -1653,7 +1653,7 @@ ExcitedStatesResult UHF::sf_tda(int n_states) const {
             "UHF::sf_tda: n_ov = " + std::to_string(nov)
             + " exceeds dense threshold 512 (no fallback)");
 
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 
@@ -1823,7 +1823,7 @@ ExcitedStatesResult UHF::sf_tddft(int n_states) const {
             "UHF::sf_tddft: n_ov = " + std::to_string(nov)
             + " exceeds dense SF-RPA threshold 256 (no fallback)");
 
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 

@@ -30,7 +30,7 @@ DirectRPAResult RHF::direct_rpa() const {
             "RHF::direct_rpa: closed-shell RHF reference required "
             "(no fallback)");
 
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     const xt::xtensor<double, 4> eri_ao =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 

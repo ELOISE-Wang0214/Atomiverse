@@ -46,7 +46,7 @@ inline double alda_fx_dirac(double rho) {
 /// @param channel Singlet/triplet (selects f_αα±f_αβ; pure exchange f_αβ=0).
 /// @return Symmetric [n_ov × n_ov] [Hartree].
 RealMatrix alda_kernel_matrix(const SlaterDeterminant& det,
-                              const IntegralPack& pack,
+                              const internal::IntegralView& pack,
                               const MolecularGrid& grid,
                               ExcitationChannel channel);
 

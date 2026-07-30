@@ -8,7 +8,7 @@
 /// Existing includers of `methods.h` compile unchanged.
 ///
 /// There is no bag named `SCFSolver` and no user-facing `SCFConfig` /
-/// `IntegralPack` step. Each method is a concrete class; parameters are
+/// public integral bag. Each method is a concrete class; parameters are
 /// **members**; the only I/O currency is `Frame`. SCF self-consistency is a
 /// **Driver loop** — see `mean_field_method.h`.
 ///

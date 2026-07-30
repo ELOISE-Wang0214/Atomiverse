@@ -561,7 +561,7 @@ std::vector<double> eom_ee_singlet_roots_ha(const CCSDSolution& sol,
 
 } // namespace
 
-EOMEECCSDResult eom_ee_ccsd_energies(const IntegralPack& ints,
+EOMEECCSDResult eom_ee_ccsd_energies(const internal::IntegralView& ints,
                                      const SlaterDeterminant& det,
                                      double e_scf_ha, int n_states, double tol,
                                      int max_iter) {
@@ -586,7 +586,7 @@ EOMEECCSDResult eom_ee_ccsd_energies(const IntegralPack& ints,
     return out;
 }
 
-EOMCC2Result eom_cc2_energies(const IntegralPack& ints,
+EOMCC2Result eom_cc2_energies(const internal::IntegralView& ints,
                               const SlaterDeterminant& det, double e_scf_ha,
                               int n_states, double tol, int max_iter) {
     if (n_states < 1)
@@ -620,7 +620,7 @@ EOMEECCSDResult RHF::eom_ee_ccsd(Frame& frame, int n_states) {
             "RHF::eom_ee_ccsd: SCF reference did not converge — refusing to "
             "compute EOM-EE-CCSD on a non-stationary determinant (no "
             "fallback).");
-    return eom_ee_ccsd_energies(integral_workspace_(), determinant(), energy(),
+    return eom_ee_ccsd_energies(integral_view_(), determinant(), energy(),
                                 n_states);
 }
 
@@ -633,11 +633,11 @@ EOMCC2Result RHF::eom_cc2(Frame& frame, int n_states) {
         throw std::invalid_argument(
             "RHF::eom_cc2: SCF reference did not converge — refusing to "
             "compute EOM-CC2 on a non-stationary determinant (no fallback).");
-    return eom_cc2_energies(integral_workspace_(), determinant(), energy(),
+    return eom_cc2_energies(integral_view_(), determinant(), energy(),
                             n_states);
 }
 
-EOMSFCCSDResult eom_sf_ccsd_energies(const IntegralPack& ints,
+EOMSFCCSDResult eom_sf_ccsd_energies(const internal::IntegralView& ints,
                                      const SlaterDeterminant& det,
                                      double e_scf_ha, int n_states, double tol,
                                      int max_iter) {
@@ -771,7 +771,7 @@ EOMSFCCSDResult UHF::eom_sf_ccsd(Frame& frame, int n_states,
             "UHF::eom_sf_ccsd: SCF reference did not converge — refusing to "
             "compute EOM-SF-CCSD on a non-stationary determinant (no "
             "fallback).");
-    return eom_sf_ccsd_energies(integral_workspace_(), determinant(), energy(),
+    return eom_sf_ccsd_energies(integral_view_(), determinant(), energy(),
                                 n_states);
 }
 

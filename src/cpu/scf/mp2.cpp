@@ -168,7 +168,7 @@ xt::xtensor<double, 2> mo_hcore(const xt::xtensor<double, 2>& Hcore,
     return xt::linalg::dot(xt::transpose(Cm), tmp);          // [n_mo x n_mo]
 }
 
-MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+MP2Result mp2_energy(const internal::IntegralView& ints, const SlaterDeterminant& det,
                      double e_scf_ha, int n_frozen, double os_scale,
                      double ss_scale) {
     using Spin = SlaterDeterminant::Spin;
@@ -176,7 +176,7 @@ MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     // the reference is guarded by the caller, not here.)
     if (ints.ERI.size() == 0) {
         throw std::invalid_argument(
-            "mp2_energy: ERI is not materialized; call IntegralPack{..., "
+            "mp2_energy: ERI is not materialized; call internal::IntegralWorkspace{..., "
             "compute_eri=true}.");
     }
     if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta)) {
@@ -239,12 +239,12 @@ MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     return {e_corr, e_scf_ha + e_corr, /*ri=*/false, n_frozen, e_os, e_ss};
 }
 
-MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+MP2Result ump2_energy(const internal::IntegralView& ints, const SlaterDeterminant& det,
                       double e_scf_ha, double os_scale, double ss_scale) {
     using Spin = SlaterDeterminant::Spin;
     if (ints.ERI.size() == 0) {
         throw std::invalid_argument(
-            "ump2_energy: ERI is not materialized; call IntegralPack{..., "
+            "ump2_energy: ERI is not materialized; call internal::IntegralWorkspace{..., "
             "compute_eri=true}.");
     }
     if (det.generalized()) {
@@ -338,13 +338,13 @@ MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     return {e_corr, e_scf_ha + e_corr, /*ri=*/false, /*frozen=*/0, e_os, e_ss};
 }
 
-MP2Result romp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+MP2Result romp2_energy(const internal::IntegralView& ints, const SlaterDeterminant& det,
                        const RealMatrix& F_alpha, const RealMatrix& F_beta,
                        double e_scf_ha, double os_scale, double ss_scale) {
     using Spin = SlaterDeterminant::Spin;
     if (ints.ERI.size() == 0) {
         throw std::invalid_argument(
-            "romp2_energy: ERI is not materialized; call IntegralPack{..., "
+            "romp2_energy: ERI is not materialized; call internal::IntegralWorkspace{..., "
             "compute_eri=true}.");
     }
     if (det.generalized()) {
@@ -401,7 +401,7 @@ MP2Result romp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     return ump2_energy(ints, udet, e_scf_ha, os_scale, ss_scale);
 }
 
-MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+MP2Result ri_mp2_energy(const internal::IntegralView& ints, const SlaterDeterminant& det,
                         double e_scf_ha, AuxBasis aux, int n_frozen,
                         double os_scale, double ss_scale) {
     using Spin = SlaterDeterminant::Spin;
@@ -411,7 +411,7 @@ MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
             "n_beta).");
     if (ints.shells.empty())
         throw std::invalid_argument(
-            "ri_mp2_energy: IntegralPack has no shells for density fitting.");
+            "ri_mp2_energy: internal::IntegralWorkspace has no shells for density fitting.");
 
     const RealMatrix& C_rm = det.coefficients(Spin::alpha);
     // Working AO coefficients may be spherical; DensityFitting lives in

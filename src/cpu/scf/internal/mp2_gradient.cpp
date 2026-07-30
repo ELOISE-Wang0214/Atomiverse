@@ -50,7 +50,7 @@ RealMatrix g_contraction(const xt::xtensor<double, 4>& eri,
 
 } // namespace
 
-GradientResult mp2_analytic_forces(const Frame& frame, const IntegralPack& pack,
+GradientResult mp2_analytic_forces(const Frame& frame, const internal::IntegralView& pack,
                                    const SlaterDeterminant& det,
                                    double e_scf_ha, double e_corr_ha) {
     if (!det.restricted())
@@ -421,7 +421,7 @@ void g_uhf(const xt::xtensor<double, 4>& eri, const RealMatrix& Pa,
 } // namespace
 
 GradientResult ump2_analytic_forces(const Frame& frame,
-                                    const IntegralPack& pack,
+                                    const internal::IntegralView& pack,
                                     const SlaterDeterminant& det,
                                     double e_scf_ha, double e_corr_ha) {
     if (det.restricted())

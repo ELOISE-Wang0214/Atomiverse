@@ -2,7 +2,7 @@
 /// @brief Correctness test for the native Rys-quadrature ERI engine.
 ///
 /// Strategy: build a real molecular system via the existing native
-/// IntegralPack + ShellBlockPairList, then compute the full
+/// internal::IntegralWorkspace + ShellBlockPairList, then compute the full
 /// ERI tensor two ways — once through the canonical McMurchie–Davidson
 /// `native::eri_block` and once through `native::rys_eri_block`. The two
 /// must agree (cross-check of the two native engines).
@@ -180,7 +180,7 @@ void compare_tensors(const xt::xtensor<double, 4>& a,
 // catches gross algebraic errors in rys_eri_block.
 TEST(RysEri, MatchesMcMurchieDavidson_H2O) {
     auto frame = make_water();
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0,
+    auto pack = cpu::scf::internal::IntegralWorkspace{frame, cpu::scf::BasisSet::STO3G, 0,
                                        /*need_eri=*/true};
     auto sp = ShellBlockPairList{pack, 1e-14};
 
@@ -190,7 +190,7 @@ TEST(RysEri, MatchesMcMurchieDavidson_H2O) {
 
 TEST(RysEri, MatchesMcMurchieDavidson_CO) {
     auto frame = make_co();
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0,
+    auto pack = cpu::scf::internal::IntegralWorkspace{frame, cpu::scf::BasisSet::STO3G, 0,
                                        /*need_eri=*/true};
     auto sp = ShellBlockPairList{pack, 1e-14};
 
@@ -214,7 +214,7 @@ TEST(RysEri, MatchesMcMurchieDavidson_CO) {
 TEST(RysEri, ThreadLocalReuseDeterminism_DShell) {
     auto frame = make_water();
     // 6-31G* places a Cartesian d-shell on oxygen.
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::Pople631Gs, 0,
+    auto pack = cpu::scf::internal::IntegralWorkspace{frame, cpu::scf::BasisSet::Pople631Gs, 0,
                                        /*need_eri=*/false};
     auto sp = ShellBlockPairList{pack, 1e-14};
 

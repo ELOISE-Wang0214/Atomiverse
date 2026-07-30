@@ -1198,7 +1198,7 @@ std::vector<double> davidson_ea_adc_(const xt::xtensor<double, 2>& Mab,
 namespace {
 
 ADC2Result run_adc_ee_member_(const RHF& self, int n_states, bool extended,
-                              const IntegralPack& pack,
+                              const internal::IntegralView& pack,
                               const SlaterDeterminant& det) {
     const char* api = extended ? "RHF::adc2x" : "RHF::adc2";
     const xt::xtensor<double, 4> eri_ao =
@@ -1249,7 +1249,7 @@ ADC2Result RHF::adc2(int n_states) const {
         throw std::runtime_error(
             "RHF::adc2: no SCF result — call run(frame) first");
     return run_adc_ee_member_(*this, n_states, /*extended=*/false,
-                              integral_workspace_(), determinant());
+                              integral_view_(), determinant());
 }
 
 ADC2Result RHF::adc2x(int n_states) const {
@@ -1257,7 +1257,7 @@ ADC2Result RHF::adc2x(int n_states) const {
         throw std::runtime_error(
             "RHF::adc2x: no SCF result — call run(frame) first");
     return run_adc_ee_member_(*this, n_states, /*extended=*/true,
-                              integral_workspace_(), determinant());
+                              integral_view_(), determinant());
 }
 
 inline int idx_ajk_(int a, int j, int k, int nocc) {
@@ -1411,7 +1411,7 @@ IPADC2Result RHF::ip_adc2(int n_states) const {
             "RHF::ip_adc2: no SCF result — call run(frame) first");
 
     const SlaterDeterminant& det = determinant();
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     const xt::xtensor<double, 4> eri_ao =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 
@@ -1458,7 +1458,7 @@ EAADC2Result RHF::ea_adc2(int n_states) const {
             "RHF::ea_adc2: no SCF result — call run(frame) first");
 
     const SlaterDeterminant& det = determinant();
-    const IntegralPack& pack = integral_workspace_();
+    const internal::IntegralView pack = integral_view_();
     const xt::xtensor<double, 4> eri_ao =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 

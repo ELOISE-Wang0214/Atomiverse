@@ -293,7 +293,7 @@ TEST(GShellIntegrals, FourCenterGQuartetThrows) {
 // aux c2s — against PySCF's spherical convention with no rescaling.
 TEST(DensityFitting, OxygenSphericalMetricVsPySCF) {
     cpu::Frame f = single_atom_frame(8);
-    IntegralPack pack{f, BasisSet::STO3G};
+    internal::IntegralWorkspace pack{f, BasisSet::STO3G};
     internal::DensityFitting df(pack.shells, pack.atoms, AuxBasis::Def2JKFIT);
 
     ASSERT_EQ(df.n_aux(), 77);
@@ -312,7 +312,7 @@ TEST(DensityFitting, OxygenSphericalMetricVsPySCF) {
 // ── Whitening algebra: W·V·Wᵀ = I to 1e-12. ──────────────────────────
 TEST(DensityFitting, MetricWhiteningIdentity) {
     cpu::Frame f = h2_frame();
-    IntegralPack pack{f, BasisSet::STO3G};
+    internal::IntegralWorkspace pack{f, BasisSet::STO3G};
     internal::DensityFitting df(pack.shells, pack.atoms, AuxBasis::Def2JKFIT);
 
     const auto& V = df.metric();
@@ -340,7 +340,7 @@ TEST(DensityFitting, MetricWhiteningIdentity) {
 //    path was silently substituted). ────────────────────────────────
 TEST(DensityFitting, FittedJKCloseToDenseH2) {
     cpu::Frame f = h2_frame();
-    IntegralPack pack{f, BasisSet::STO3G, 0, /*compute_eri=*/true};
+    internal::IntegralWorkspace pack{f, BasisSet::STO3G, 0, /*compute_eri=*/true};
     internal::DensityFitting df(pack.shells, pack.atoms, AuxBasis::Def2JKFIT);
 
     // Hcore-guess density: P = 2 C_occ C_occᵀ, n_occ = 1.
@@ -405,7 +405,7 @@ TEST(DensityFitting, FittedJKCloseToDenseH2) {
 //    every auxiliary function → Cholesky pivot collapse). ─────────────
 TEST(DensityFitting, NearSingularMetricThrows) {
     cpu::Frame f = h2_frame(1e-7);
-    IntegralPack pack{f, BasisSet::STO3G};
+    internal::IntegralWorkspace pack{f, BasisSet::STO3G};
     EXPECT_THROW(
         internal::DensityFitting(pack.shells, pack.atoms, AuxBasis::Def2JKFIT),
         std::runtime_error);

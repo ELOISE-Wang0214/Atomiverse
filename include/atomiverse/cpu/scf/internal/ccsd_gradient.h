@@ -31,7 +31,7 @@ namespace internal {
 /// @throws std::invalid_argument on open-shell / empty ERI / n_virt=0 /
 ///         non-converged amplitudes / spherical packs (no fallback).
 GradientResult ccsd_analytic_forces(const Frame& frame,
-                                    const IntegralPack& pack,
+                                    const internal::IntegralView& pack,
                                     const SlaterDeterminant& det,
                                     double e_scf_ha, double e_corr_ha);
 

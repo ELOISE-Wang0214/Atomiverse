@@ -177,7 +177,7 @@ void CfmmJ::prepare() {
     form_distributions_();
     classify_pairs_();
     // Own a ShellPairList for the exact near-field baseline. Built from the
-    // owned shells via a thin IntegralPack-free path: fill pairs from dists_.
+    // owned shells via a thin internal::IntegralWorkspace-free path: fill pairs from dists_.
     sp_.n_basis = n_ao_;
     sp_.threshold = schwarz_thr_;
     sp_.shells = shells_;

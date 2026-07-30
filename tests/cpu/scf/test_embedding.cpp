@@ -73,7 +73,7 @@ cpu::Frame make_asymmetric() {
 
 TEST(PointChargeEmbedding, CoreMatrixMatchesNuclearAttractionUnitCharge) {
     auto frame = make_h2o();
-    IntegralPack pack{frame, BasisSet::STO3G};
+    internal::IntegralWorkspace pack{frame, BasisSet::STO3G};
 
     // Unit charge at a fixed site [Å] → matches Z=1 pseudo-atom nuclear V
     // on the same shell list (the nuclear-attraction primitive).
@@ -148,7 +148,7 @@ TEST(PointChargeEmbedding, NonFiniteThrows) {
 TEST(PointChargeEmbedding, AnalyticQmCenterMatchesCoreMatrixFD) {
     // Two-charge H2O toy: analytic Tr[P dV/dR] vs central FD of core_matrix.
     auto frame = make_h2o();
-    IntegralPack pack{frame, BasisSet::STO3G};
+    internal::IntegralWorkspace pack{frame, BasisSet::STO3G};
     const std::vector<cpu::EmbeddingSite> sites = {{0.0, 0.0, 3.0, 0.5},
                                                    {0.0, 0.0, -3.0, -0.5}};
     PointChargeEmbedding emb(sites);
@@ -308,7 +308,7 @@ TEST(MeanFieldEmbedding, SiteForcesThirdLawAndEmptyAbsence) {
 TEST(ExternalField, OriginMatchesMultipoleCenterOfNuclearCharge) {
     auto frame = make_asymmetric();
     // charge = +1 → 2 electrons (closed shell) on Z=1+2 nuclei.
-    IntegralPack pack{frame, BasisSet::STO3G, /*charge=*/1};
+    internal::IntegralWorkspace pack{frame, BasisSet::STO3G, /*charge=*/1};
     const std::array<double, 3> F{{1e-4, 0.0, 0.0}};
     ExternalField field(F, pack.atoms);
 

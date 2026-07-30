@@ -1,5 +1,5 @@
 /// @file tests/cpu/scf/test_fci.cpp
-/// @brief Unit checks for RHF::fci(frame) (no public IntegralPack).
+/// @brief Unit checks for RHF::fci(frame) (no public internal::IntegralWorkspace).
 
 #ifdef ATV_HAS_HF
 

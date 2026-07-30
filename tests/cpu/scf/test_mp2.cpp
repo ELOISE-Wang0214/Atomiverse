@@ -1,5 +1,5 @@
 /// @file tests/cpu/scf/test_mp2.cpp
-/// @brief Unit checks for RHF::mp2 / UHF::mp2 (no public IntegralPack).
+/// @brief Unit checks for RHF::mp2 / UHF::mp2 (no public internal::IntegralWorkspace).
 
 #ifdef ATV_HAS_HF
 

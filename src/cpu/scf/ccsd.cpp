@@ -409,7 +409,7 @@ so_ccsd_kernel(int no, int nv, xt::xtensor<double, 4> oooo,
     return sol;
 }
 
-CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
+CCSDSolution ccsd_solve(const internal::IntegralView& ints, const SlaterDeterminant& det,
                         double e_scf_ha, double tol, int max_iter, bool cc2) {
     using Spin = SlaterDeterminant::Spin;
     if (ints.ERI.size() == 0) {
@@ -964,7 +964,7 @@ CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
     return sol;
 }
 
-CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+CCSDResult ccsd_energy(const internal::IntegralView& ints, const SlaterDeterminant& det,
                        double e_scf_ha, double tol, int max_iter,
                        bool use_diis) {
     // Closed-shell RHF energy entry: route to the spatial-orbital fast path
@@ -973,7 +973,7 @@ CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     return ccsd_energy_spatial(ints, det, e_scf_ha, tol, max_iter, use_diis);
 }
 
-CC2Result cc2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+CC2Result cc2_energy(const internal::IntegralView& ints, const SlaterDeterminant& det,
                      double e_scf_ha, double tol, int max_iter) {
     const CCSDResult r =
         ccsd_solve(ints, det, e_scf_ha, tol, max_iter, /*cc2=*/true).result;
@@ -1007,7 +1007,7 @@ xt::xtensor<double, 4> ao2mo_uhf_block(const xt::xtensor<double, 4>& eri_ao,
 
 } // namespace
 
-CCSDSolution uccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
+CCSDSolution uccsd_solve(const internal::IntegralView& ints, const SlaterDeterminant& det,
                          double e_scf_ha, double tol, int max_iter) {
     using Spin = SlaterDeterminant::Spin;
     if (ints.ERI.size() == 0) {
@@ -1287,7 +1287,7 @@ double triples_energy(const CCSDSolution& amps) {
 
 } // namespace
 
-CCSDTResult ccsd_t_energy(const IntegralPack& ints,
+CCSDTResult ccsd_t_energy(const internal::IntegralView& ints,
                           const SlaterDeterminant& det, double e_scf_ha,
                           double tol, int max_iter) {
     CCSDSolution sol =
