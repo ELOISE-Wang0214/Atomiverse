@@ -131,7 +131,10 @@ TEST(Dftb3Scc, GammaDistanceDerivativeMatchesFiniteDifference) {
 TEST(Dftb3Scc, GammaChargeDistanceDerivativeMatchesFiniteDifference) {
     // ∂Γ_AB/∂R is the term the third-order gradient adds over DFTB2, and Γ is
     // NOT symmetric — both orderings are checked.
-    constexpr double h = 1e-6; // Å
+    // h = 1e-4, not 1e-6: at 1e-6 the central difference is round-off
+    // dominated for the Elstner kernel (~4e-8 noise, shrinking as h grows),
+    // which drowns the 1e-9 agreement the analytic derivative actually has.
+    constexpr double h = 1e-4; // Å
     const double r0 = 1.3;
     auto kernel_at = [](double r) {
         return Dftb3Scc({13.4, 10.591}, {-3.81, -1.36}, {0.0, r, r, 0.0});

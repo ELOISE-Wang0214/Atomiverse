@@ -60,7 +60,7 @@ struct H2Reference {
 
 H2Reference make_h2_reference(double r_angstrom) {
     auto frame = make_h2(r_angstrom);
-    internal::IntegralWorkspace pack{frame, cpu::scf::BasisSet::STO3G, 0,
+    cpu::scf::internal::IntegralWorkspace pack{frame, cpu::scf::BasisSet::STO3G, 0,
                       /*compute_eri=*/true};
     const double s12 = pack.S(0, 1);
     const double cg = 1.0 / std::sqrt(2.0 * (1.0 + s12));

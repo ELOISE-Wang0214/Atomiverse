@@ -143,7 +143,7 @@ TEST(RhfTdhfMethod, EnergyEvConversionMatchesKernelRoot) {
     RHF rhf = converged_rhf(frame);
     const ExcitedStatesResult r = rhf.tda(1, ExcitationChannel::singlet);
 
-    internal::IntegralWorkspace pack{frame, cpu::scf::BasisSet::STO3G, 0,
+    cpu::scf::internal::IntegralWorkspace pack{frame, cpu::scf::BasisSet::STO3G, 0,
                       /*compute_eri=*/true};
     const cpu::scf::internal::OrbitalHessian h{rhf.determinant(), pack.ERI};
     const cpu::scf::internal::TDHFPack tp{h,

@@ -26,11 +26,11 @@ using cpu::scf::internal::IntegralWorkspace;
 namespace {
 
 /// A single iodine atom with def2-SVP + def2-ECP (Z_val = 25).
-internal::IntegralWorkspace iodine_pack() {
+cpu::scf::internal::IntegralWorkspace iodine_pack() {
     cpu::Frame f(1);
     f.span(kAtom_type)[0] = 53; // I
     f.box = cpu::Box::cubic(50.0);
-    return internal::IntegralWorkspace{f, BasisSet::Def2SVP, 0, false, "def2-ECP"};
+    return cpu::scf::internal::IntegralWorkspace{f, BasisSet::Def2SVP, 0, false, "def2-ECP"};
 }
 
 cpu::scf::internal::ScfGradient make_grad(cpu::scf::SpinType spin) {
@@ -53,7 +53,7 @@ TEST(EcpGradient, RhfEcpRunsSiblingsThrowSingleAtomZeroForce) {
     cpu::Frame f(1);
     f.span(kAtom_type)[0] = 53; // I
     f.box = cpu::Box::cubic(50.0);
-    const internal::IntegralWorkspace p{f, BasisSet::Def2SVP, 0, false, "def2-ECP"};
+    const cpu::scf::internal::IntegralWorkspace p{f, BasisSet::Def2SVP, 0, false, "def2-ECP"};
     ASSERT_TRUE(p.has_ecp);
 
     const int n = p.n_basis;
@@ -83,7 +83,7 @@ TEST(EcpGradient, RhfEcpRunsSiblingsThrowSingleAtomZeroForce) {
 
 /// The pack retains the ECP centers so the gradient can rebuild dU/dR.
 TEST(EcpGradient, PackRetainsEcpCenters) {
-    const internal::IntegralWorkspace p = iodine_pack();
+    const cpu::scf::internal::IntegralWorkspace p = iodine_pack();
     EXPECT_TRUE(p.has_ecp);
     EXPECT_EQ(p.ecp_centers.size(), 1u);
 }

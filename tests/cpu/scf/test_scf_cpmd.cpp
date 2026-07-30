@@ -685,7 +685,7 @@ TEST(ScfGradientAtDensity, RestrictedMatchesComputeAtConvergedDeterminant) {
     rhf.run(f);
     ASSERT_TRUE(rhf.converged());
 
-    const internal::IntegralWorkspace ints{f, BasisSet::STO3G, /*charge=*/0,
+    const cpu::scf::internal::IntegralWorkspace ints{f, BasisSet::STO3G, /*charge=*/0,
                             /*compute_eri=*/false};
     const SlaterDeterminant& det = rhf.determinant();
     ASSERT_TRUE(det.restricted());
@@ -717,7 +717,7 @@ TEST(ScfGradientAtDensity, UnrestrictedMatchesComputeAtConvergedDeterminant) {
     uhf.run(f);
     ASSERT_TRUE(uhf.converged());
 
-    const internal::IntegralWorkspace ints{f, BasisSet::STO3G, /*charge=*/0,
+    const cpu::scf::internal::IntegralWorkspace ints{f, BasisSet::STO3G, /*charge=*/0,
                             /*compute_eri=*/false};
     const SlaterDeterminant& det = uhf.determinant();
     ASSERT_FALSE(det.restricted());

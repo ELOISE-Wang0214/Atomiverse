@@ -25,8 +25,9 @@ using ATV::cpu::semiempirical::am1_parameter;
 using ATV::cpu::semiempirical::kAm1EvToKcalMol;
 
 TEST(TestAm1Thermochemistry, EvToKcalMolMatchesMopacFactor) {
-    // MOPAC's `fpc_10` / A_EV in kcal·mol⁻¹·eV⁻¹.
-    EXPECT_DOUBLE_EQ(kAm1EvToKcalMol, 23.061);
+    // MOPAC's default eV→kcal/mol factor is 2018 CODATA e·N_A·10⁻³/4.184
+    // (`conref_C.F90` `fpcref(1,9)`); the legacy 23.061 needs `OLDCON`.
+    EXPECT_DOUBLE_EQ(kAm1EvToKcalMol, 23.060547830619029);
 }
 
 TEST(TestAm1Thermochemistry, HydrogenAtomicHeatMatchesMopac) {
