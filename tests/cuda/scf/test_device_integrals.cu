@@ -15,6 +15,7 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/scf/basis_data/accessors.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cuda/scf/device_integrals.cuh"
@@ -22,8 +23,6 @@
 using namespace ATV;
 
 static constexpr double kA2B = ATV::units::kAngstromInBohr;
-static constexpr double sto3g_exp[3] = {3.42525091, 0.62391373, 0.16885540};
-static constexpr double sto3g_coeff[3] = {0.15432897, 0.53532814, 0.44463454};
 
 // ── Boys function ─────────────────────────────────────────────────────
 
@@ -67,9 +66,13 @@ struct DeviceBasis {
     int n_shells, n_prim, natm;
 
     // Host-side CPU reference
-    cpu::scf::IntegralPack ref;
+    cpu::scf::internal::IntegralWorkspace ref;
 
-    DeviceBasis() : n_shells(2), n_prim(3), natm(2) {
+    DeviceBasis() : n_shells(2), natm(2) {
+        // Contraction from basis_data::sto3g() — do not retype exponents.
+        const auto& h1s = cpu::scf::basis_data::pure_s_sto3g_shell(/*Z=*/1);
+        n_prim = static_cast<int>(h1s.alpha.size());
+
         // Compute CPU reference
         cpu::Frame frame(2);
         frame.span(kAtom_x)[0] = double(0);
@@ -84,19 +87,24 @@ struct DeviceBasis {
         frame.span(kAtom_type)[1] = 1;
         frame.box = cpu::Box::cubic(100.0);
         // compute_eri=true: the ERI test reads ref.ERI directly.
-        ref = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0, true};
+        ref = cpu::scf::internal::IntegralWorkspace{frame, cpu::scf::BasisSet::STO3G, 0, true};
 
-        // Build host arrays with PHYSICAL normalization (for GPU kernels)
-        double h_alpha[6], h_coeff[6], h_centers[6];
+        // Build host arrays with PHYSICAL normalization (for GPU kernels).
+        std::vector<double> h_alpha(static_cast<std::size_t>(n_shells * n_prim));
+        std::vector<double> h_coeff(static_cast<std::size_t>(n_shells * n_prim));
+        double h_centers[6];
         int h_Z[2] = {1, 1};
         double h_pos[6];
 
         double cx[2] = {0, 0.74 * kA2B};
         for (int s = 0; s < 2; ++s) {
-            for (int p = 0; p < 3; ++p) {
-                h_alpha[s * 3 + p] = double(sto3g_exp[p]);
-                h_coeff[s * 3 + p] = double(
-                    sto3g_coeff[p] * cpu::scf::native::phys_norm(sto3g_exp[p]));
+            for (int p = 0; p < n_prim; ++p) {
+                h_alpha[static_cast<std::size_t>(s * n_prim + p)] =
+                    h1s.alpha[static_cast<std::size_t>(p)];
+                h_coeff[static_cast<std::size_t>(s * n_prim + p)] =
+                    h1s.coeff[static_cast<std::size_t>(p)]
+                    * cpu::scf::native::phys_norm(
+                          h1s.alpha[static_cast<std::size_t>(p)]);
             }
             h_centers[s * 3 + 0] = double(cx[s]);
             h_centers[s * 3 + 1] = double(0);
@@ -106,15 +114,17 @@ struct DeviceBasis {
             h_pos[s * 3 + 2] = double(0);
         }
 
-        cudaMalloc(&d_alpha, 6 * sizeof(double));
-        cudaMalloc(&d_coeff, 6 * sizeof(double));
+        const std::size_t n_ac =
+            static_cast<std::size_t>(n_shells) * static_cast<std::size_t>(n_prim);
+        cudaMalloc(&d_alpha, n_ac * sizeof(double));
+        cudaMalloc(&d_coeff, n_ac * sizeof(double));
         cudaMalloc(&d_centers, 6 * sizeof(double));
         cudaMalloc(&d_Z, 2 * sizeof(int));
         cudaMalloc(&d_pos, 6 * sizeof(double));
 
-        cudaMemcpy(d_alpha, h_alpha, 6 * sizeof(double),
+        cudaMemcpy(d_alpha, h_alpha.data(), n_ac * sizeof(double),
                    cudaMemcpyHostToDevice);
-        cudaMemcpy(d_coeff, h_coeff, 6 * sizeof(double),
+        cudaMemcpy(d_coeff, h_coeff.data(), n_ac * sizeof(double),
                    cudaMemcpyHostToDevice);
         cudaMemcpy(d_centers, h_centers, 6 * sizeof(double),
                    cudaMemcpyHostToDevice);

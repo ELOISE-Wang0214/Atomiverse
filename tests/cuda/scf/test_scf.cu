@@ -23,8 +23,9 @@
 #include "atomiverse/cuda/scf/internal/density_builder.cuh"
 #include "atomiverse/cuda/scf/internal/eigen_solver.cuh"
 #include "atomiverse/cuda/scf/internal/hamiltonian.cuh"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cuda/scf/internal/scf_solver.cuh"
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
-#include "atomiverse/cuda/scf/scf_solver.cuh"
 
 using namespace ATV;
 
@@ -119,6 +120,7 @@ TEST(SCF, CUDAConvergence) {
     eval.build();
     eval.run(frame);
 
+    // Public meta energy is eV (synthetic scaled by kHartreeInEv).
     EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kEnergy))));
     EXPECT_GT(frame.meta.get(kEnergy), double(0));
 }
@@ -268,13 +270,14 @@ TEST(SCF, CPUCUDAParity) {
         eval.run(frame);
     }
 
-    // Energy must agree within float tolerance
+    // CUDA meta kEnergy is eV; toy CPU energy is the raw synthetic scale.
     double cpu_e = static_cast<double>(cpu_result.energy);
-    double cuda_e = static_cast<double>(frame.meta.get(kEnergy));
+    double cuda_e_ha =
+        static_cast<double>(frame.meta.get(kEnergy)) / units::kHartreeInEv;
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-4 : 1e-8;
 
-    EXPECT_NEAR(cpu_e, cuda_e, std::abs(cpu_e) * rel_tol + 1e-6)
-        << "CPU energy: " << cpu_e << ", CUDA energy: " << cuda_e;
+    EXPECT_NEAR(cpu_e, cuda_e_ha, std::abs(cpu_e) * rel_tol + 1e-6)
+        << "CPU energy: " << cpu_e << ", CUDA energy (Ha scale): " << cuda_e_ha;
 }
 
 TEST(SCF, CPUCUDAParityN16) {
@@ -295,9 +298,10 @@ TEST(SCF, CPUCUDAParityN16) {
     }
 
     double cpu_e = static_cast<double>(cpu_result.energy);
-    double cuda_e = static_cast<double>(frame.meta.get(kEnergy));
+    double cuda_e_ha =
+        static_cast<double>(frame.meta.get(kEnergy)) / units::kHartreeInEv;
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-4 : 1e-8;
 
-    EXPECT_NEAR(cpu_e, cuda_e, std::abs(cpu_e) * rel_tol + 1e-6)
-        << "CPU energy: " << cpu_e << ", CUDA energy: " << cuda_e;
+    EXPECT_NEAR(cpu_e, cuda_e_ha, std::abs(cpu_e) * rel_tol + 1e-6)
+        << "CPU energy: " << cpu_e << ", CUDA energy (Ha scale): " << cuda_e_ha;
 }

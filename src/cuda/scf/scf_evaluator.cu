@@ -1,12 +1,5 @@
 /// @file cuda/scf/scf_evaluator.cu
-/// @brief cuda::scf::SCF implementation — Evaluator component
-///        wrapping the inner `SCFSolver`.
-///
-/// `SCF` is a thin `cuda::Component`: its lifecycle methods
-/// forward to the owned `SCFSolver`. `build()` performs the one-time
-/// device-workspace allocation; `launch()` runs the entire SCF
-/// self-consistency cycle (the `cuda::Evaluate` outer driver makes exactly
-/// one pass, so one `launch()` == one full SCF solve).
+/// @brief Synthetic-path cuda::scf::SCF only (no integral-pack ctors).
 
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
 
@@ -16,20 +9,6 @@ namespace scf {
 
 SCF::SCF(int n_occ, double alpha, double tol, int max_iter)
     : solver_(std::make_unique<SCFSolver>(n_occ, alpha, tol, max_iter)) {}
-
-#ifdef ATV_HAS_HF
-
-SCF::SCF(const cpu::scf::IntegralPack& integrals, double tol, int max_iter,
-         double level_shift)
-    : solver_(
-          std::make_unique<SCFSolver>(integrals, tol, max_iter, level_shift)) {}
-
-SCF::SCF(int n_prim, const double* exponents, const double* coefficients,
-         int n_occ, double tol, int max_iter)
-    : solver_(std::make_unique<SCFSolver>(n_prim, exponents, coefficients,
-                                          n_occ, tol, max_iter)) {}
-
-#endif // ATV_HAS_HF
 
 void SCF::build(const BuildContext& ctx) {
     solver_->build(ctx.runtime.stream, ctx.frame);

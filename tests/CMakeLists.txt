@@ -727,7 +727,7 @@ if(ATV_BUILD_HF)
     # (hf-capability-gaps-05-basis) — table pins vs PySCF, no SCF solve.
     atv_add_cpp_test(test_basis_tables         cpu/scf/test_basis_tables.cpp)
     # Semi-local def2-ECP: static table pins, EcpPotential lookup,
-    # EcpIntegrals U-matrix vs external PySCF ECPscalar pins, IntegralPack
+    # EcpIntegrals U-matrix vs external PySCF ECPscalar pins, IntegralWorkspace
     # valence wiring, x2c double-counting gate (hf-capability-gaps-06-ecp).
     atv_add_cpp_test(test_ecp                  cpu/scf/test_ecp.cpp)
     # hf-capability-gaps-18-x2c: spin-free pVp kernel pins, X2cWorkspace
@@ -814,7 +814,7 @@ if(ATV_BUILD_HF)
     # hf-capability-gaps-16-solvent: C-PCM cavity/Born oracle, f(ε), H2O
     # solvent vs gas, solvent_eps=0 vacuum identity, forces throw.
     atv_add_cpp_test(test_cpu_scf_pcm             cpu/scf/test_pcm.cpp)
-    # hf-capability-gaps-17-bsse: ghost AtomList/ShellList/IntegralPack
+    # hf-capability-gaps-17-bsse: ghost AtomList/ShellList/IntegralWorkspace
     # workspace semantics + Boys–Bernardi Counterpoise 5-SCF identities
     # (He–He/STO-3G; locked bsse ≤ 0). Water-dimer e2e lives in
     # regressions/scf/h2o_dimer_cp_hf631gs.
@@ -863,7 +863,7 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_delta_scf     cpu/scf/test_delta_scf.cpp)
     atv_add_cpp_test(test_cpu_scf_integrals     cpu/scf/test_integrals.cpp)
     # scf-review-07-posthf-perf: block-assembled dense ERI (item 17) equivalence
-    # guard — IntegralPack::eri_dense vs per-AO native::eri reference (≤1e-12) +
+    # guard — IntegralWorkspace::eri_dense vs per-AO native::eri reference (≤1e-12) +
     # hard-coded anchors. Mirrors src/cpu/scf/two_electron.cpp.
     atv_add_cpp_test(test_cpu_scf_two_electron  cpu/scf/test_two_electron.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_roots     cpu/scf/test_rys_roots.cpp)
@@ -1021,6 +1021,21 @@ if(ATV_BUILD_CUDA)
     target_link_libraries(cuda_nonbonded_style_bench PRIVATE atomiverse)
     set_target_properties(cuda_nonbonded_style_bench PROPERTIES
                           RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    # Manual (not ctest): CPU vs CUDA RHF wall + AO scaling.
+    # Run: OMP_NUM_THREADS=8 ./bin/bench_cpu_cuda_rhf [n_rep_e] [n_rep_f]
+    if(ATV_BUILD_HF)
+        add_executable(bench_cpu_cuda_rhf
+                       ${CMAKE_SOURCE_DIR}/tools/bench_cpu_cuda_rhf.cu)
+        target_link_libraries(bench_cpu_cuda_rhf PRIVATE atomiverse)
+        set_target_properties(bench_cpu_cuda_rhf PROPERTIES
+                              CUDA_SEPARABLE_COMPILATION ON
+                              RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        # OpenMP for fair multi-thread CPU leg on the GPU node.
+        find_package(OpenMP)
+        if(OpenMP_CXX_FOUND)
+            target_link_libraries(bench_cpu_cuda_rhf PRIVATE OpenMP::OpenMP_CXX)
+        endif()
+    endif()
     if(ATV_BUILD_PW)
         atv_add_test(test_cuda_pw_fft cuda/planewave/test_fft.cu)
         target_link_libraries(test_cuda_pw_fft PRIVATE CUDA::cufft)
@@ -1185,9 +1200,18 @@ set_tests_properties(test_module_off_excludes_sources PROPERTIES
     TIMEOUT ${ATV_TEST_TIMEOUT_SECONDS})
 endif()
 
+
 add_test(
     NAME test_no_factory_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_factory_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
+# Grep gate (frame-only-token): out-of-library consumers never construct
+# cpu::Context / LaunchContext — Frame + preset run only. Unit tests may still
+# hand-drive Component lifecycle. Pure grep — every build config.
+add_test(
+    NAME test_no_user_context_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_user_context_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
 # Grep gate (scf-review-02-eri-hoists): the AO→MO transforms live in the

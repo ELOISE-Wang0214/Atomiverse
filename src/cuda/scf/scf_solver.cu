@@ -13,7 +13,7 @@
 /// promise is now enforced by the type system. Convergence is managed
 /// internally via the workspace's `converged` flag.
 
-#include "atomiverse/cuda/scf/scf_solver.cuh"
+#include "atomiverse/cuda/scf/internal/scf_solver.cuh"
 
 #include <cmath>
 #include <cuda_runtime.h>
@@ -50,51 +50,74 @@ SCFSolver::SCFSolver(int n_occ, double alpha, double tol, int max_iter)
 
 #ifdef ATV_HAS_HF
 
-SCFSolver::SCFSolver(const cpu::scf::IntegralPack& integrals, double tol,
-                     int max_iter, double level_shift)
+SCFSolver::SCFSolver(xt::xtensor<double, 2> S, xt::xtensor<double, 2> Hcore,
+                     xt::xtensor<double, 4> ERI, double V_nuc, int n_electrons,
+                     double tol, int max_iter, double level_shift)
     : path_(Path::RHFHostIntegrals), tol_(tol), max_iter_(max_iter),
       level_shift_(level_shift) {
-    // Closed-shell validity guard (mirrors the CPU cpu::scf::SCFSolver::run
-    // occupation guard, hf-robust-01). The CUDA solver is RHF closed-shell
-    // only — n_occ = integrals.n_occ() = n_electrons / 2. An odd electron
-    // count silently truncates (2 * n_occ = n_electrons - 1), describing one
-    // fewer electron; reject it at construction rather than converge to a
-    // physically wrong state. One descriptive throw per the repo
-    // "no fallback values" rule.
-    if (integrals.n_electrons < 0 || integrals.n_electrons % 2 != 0) {
+    // Closed-shell RHF only: even non-negative electron count.
+    if (n_electrons < 0 || n_electrons % 2 != 0) {
         throw std::invalid_argument(
             "cuda::scf::SCFSolver: closed-shell RHF requires an even, "
             "non-negative electron count (n_electrons="
-            + std::to_string(integrals.n_electrons)
-            + "); an odd count would truncate to "
-            + std::to_string(integrals.n_occ())
-            + " doubly-occupied orbitals and drop an electron. Check the "
-              "molecular charge, or use the CPU unrestricted path for "
-              "open-shell systems.");
+            + std::to_string(n_electrons)
+            + "). Check the molecular charge, or use the CPU unrestricted "
+              "path for open-shell systems.");
     }
+    const int n_occ = n_electrons / 2;
     eigen_ = std::make_unique<internal::EigenSolver>();
-    // RHF path: RHFDensity owns the energy; the checker is residual-only.
     convergence_ = std::make_unique<internal::ConvergenceCheck>(tol, false);
-    rhf_fock_ = std::make_unique<internal::RHFFock>(integrals, level_shift_);
-    rhf_density_ = std::make_unique<internal::RHFDensity>(integrals.n_occ());
+    rhf_fock_ = std::make_unique<internal::RHFFock>(
+        std::move(S), std::move(Hcore), std::move(ERI), V_nuc, n_occ,
+        level_shift_);
+    rhf_density_ = std::make_unique<internal::RHFDensity>(n_occ);
 }
 
 SCFSolver::SCFSolver(int n_prim, const double* exponents,
                      const double* coefficients, int n_occ, double tol,
                      int max_iter)
+    : SCFSolver(/*n_shells_per_atom=*/1, n_prim, exponents, coefficients, n_occ,
+                tol, max_iter) {}
+
+SCFSolver::SCFSolver(int n_shells_per_atom, int n_prim,
+                     const double* alpha_atom, const double* coeff_atom,
+                     int n_occ, double tol, int max_iter)
     : path_(Path::RHFDeviceIntegrals), tol_(tol), max_iter_(max_iter) {
-    // Device-integrals path takes n_occ directly (no electron count to
-    // cross-check), so the only meaningful guard is non-negativity — a
-    // negative occupied count is nonsense (mirrors the CPU n_occ >= 0 arm).
     if (n_occ < 0) {
         throw std::invalid_argument(
             "cuda::scf::SCFSolver: n_occ must be non-negative (got "
             + std::to_string(n_occ) + ").");
     }
+    if (n_shells_per_atom < 1 || n_prim < 1) {
+        throw std::invalid_argument(
+            "cuda::scf::SCFSolver: n_shells_per_atom and n_prim must be ≥ 1");
+    }
     eigen_ = std::make_unique<internal::EigenSolver>();
     convergence_ = std::make_unique<internal::ConvergenceCheck>(tol, false);
     rhf_fock_device_ = std::make_unique<internal::RHFFockDevice>(
-        n_prim, exponents, coefficients, n_occ);
+        n_shells_per_atom, n_prim, alpha_atom, coeff_atom, n_occ);
+    rhf_density_ = std::make_unique<internal::RHFDensity>(n_occ);
+}
+
+SCFSolver::SCFSolver(int n_shells, int n_ao, int n_prim, const double* alpha_mol,
+                     const double* coeff_mol, const int* L_mol,
+                     const int* atom_of_mol, int n_occ, double tol,
+                     int max_iter)
+    : path_(Path::RHFDeviceIntegrals), tol_(tol), max_iter_(max_iter) {
+    if (n_occ < 0) {
+        throw std::invalid_argument(
+            "cuda::scf::SCFSolver: n_occ must be non-negative (got "
+            + std::to_string(n_occ) + ").");
+    }
+    if (n_shells < 1 || n_ao < 1 || n_prim < 1) {
+        throw std::invalid_argument(
+            "cuda::scf::SCFSolver: n_shells, n_ao, n_prim must be ≥ 1");
+    }
+    eigen_ = std::make_unique<internal::EigenSolver>();
+    convergence_ = std::make_unique<internal::ConvergenceCheck>(tol, false);
+    rhf_fock_device_ = std::make_unique<internal::RHFFockDevice>(
+        n_shells, n_ao, n_prim, alpha_mol, coeff_mol, L_mol, atom_of_mol,
+        n_occ);
     rhf_density_ = std::make_unique<internal::RHFDensity>(n_occ);
 }
 
@@ -145,10 +168,19 @@ void SCFSolver::run(void* stream, cuda::Frame& frame) {
                         cu_stream);
 
     // ── Internal SCF self-consistency loop ────────────────────────────
-    // Fixed-order cycle: build Fock/Hamiltonian → diagonalize →
-    // build density → convergence check. Helpers no-op once
-    // workspace_.converged is set; the loop also breaks early on it.
+    // Fixed-order cycle: Fock → diagonalize → density → convergence.
+    //
+    // Device-integral path: residual / energy / V_nuc stay on device —
+    // **no D2H during the loop**. Host `scf.converged` is filled once after
+    // the last iteration (post-pass). Host-integral / synthetic paths still
+    // early-exit via host residual (legacy).
     iterations_ = 0;
+    const bool device_no_d2h =
+#ifdef ATV_HAS_HF
+        (path_ == Path::RHFDeviceIntegrals);
+#else
+        false;
+#endif
     for (int iter = 0; iter < max_iter_; ++iter) {
         internal::SolverContext ctx{stream, frame, /*step=*/iter};
 
@@ -176,9 +208,42 @@ void SCFSolver::run(void* stream, cuda::Frame& frame) {
         }
 
         ++iterations_;
-        if (scf.converged)
+        if (device_no_d2h) {
+            // Mapped d_converged is written on-device by ConvergenceCheck.
+            // Must poll every iteration: a coarser stride left the loop running
+            // after residual passed, and build_G's sticky early-out then rebuilt
+            // F = Hcore (G zeroed), overwriting the correct energy with the core
+            // Hamiltonian energy (H₂: −1.12 Ha → −1.79 Ha oscillation).
+            // One stream fence per iter is noise vs Fock/ERI for real molecules.
+            cudaStreamSynchronize(cu_stream);
+            if (scf.h_converged_mapped && *scf.h_converged_mapped) {
+                scf.converged = true;
+                scf.iteration = iter;
+                break;
+            }
+        } else if (scf.converged) {
             break;
+        }
     }
+
+#ifdef ATV_HAS_HF
+    // Post-calculation: one stream fence + host mirrors (not mid-SCF).
+    if (device_no_d2h) {
+        cudaStreamSynchronize(cu_stream);
+        if (scf.h_converged_mapped)
+            scf.converged = (*scf.h_converged_mapped != 0);
+        if (scf.d_residual) {
+            cuda::prec_t h_res = 0;
+            cudaMemcpy(&h_res, scf.d_residual, sizeof(cuda::prec_t),
+                       cudaMemcpyDeviceToHost);
+            scf.residual = static_cast<double>(h_res);
+        }
+        if (scf.d_V_nuc) {
+            cudaMemcpy(&scf.V_nuc, scf.d_V_nuc, sizeof(double),
+                       cudaMemcpyDeviceToHost);
+        }
+    }
+#endif
 
     // ── Post-convergence de-shift (hf-robust-03) ──────────────────────
     // Reported orbital energies must not carry the +λ virtual pollution.
@@ -236,8 +301,19 @@ void SCFSolver::destroy(void* stream, cuda::Frame& frame) {
     cudaFree(workspace_.d_shell_alpha);
     cudaFree(workspace_.d_shell_coeff);
     cudaFree(workspace_.d_shell_center);
+    cudaFree(workspace_.d_shell_atom);
     cudaFree(workspace_.d_atom_Z);
     cudaFree(workspace_.d_atom_pos);
+    cudaFree(workspace_.d_V_nuc);
+    cudaFree(workspace_.d_residual);
+    if (workspace_.h_converged_mapped) {
+        cudaFreeHost(workspace_.h_converged_mapped);
+        workspace_.h_converged_mapped = nullptr;
+        workspace_.d_converged = nullptr; // alias of mapped host
+    }
+    cudaFree(workspace_.d_scalar_scratch);
+    cudaFree(workspace_.d_W);
+    cudaFree(workspace_.C_prime);
     workspace_ = {};
 
     built_ = false;

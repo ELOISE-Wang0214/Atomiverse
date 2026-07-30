@@ -52,7 +52,21 @@ struct SCFWorkspace {
     prec_t* X = nullptr; ///< Orthogonalization matrix S^{-1/2} [device, n*n].
     prec_t* F_prime = nullptr; ///< Transformed Fock X^T*F*X [device, n*n].
     prec_t* ERI = nullptr;     ///< Two-electron integrals [device, n^4].
-    double V_nuc = 0;          ///< Nuclear repulsion energy (host-cached).
+    /// Nuclear repulsion [Hartree] — host mirror of `d_V_nuc` (filled only
+    /// after the calculation, never mid-SCF). Prefer `d_V_nuc` on the
+    /// device energy path.
+    double V_nuc = 0;
+    double* d_V_nuc = nullptr; ///< Nuclear repulsion [Hartree], device scalar.
+
+    // -- Device SCF control (no scientific D2H during the SCF loop) --
+    prec_t* d_residual = nullptr;  ///< ||P−P_old||_F, device scalar.
+    int* d_converged = nullptr;    ///< Device view of mapped convergence flag.
+    /// Host-mapped write target for `d_converged` (cudaHostAllocMapped).
+    /// Device kernels write; host reads after stream order — no
+    /// cudaMemcpy DeviceToHost of residual matrices or energy mid-loop.
+    int* h_converged_mapped = nullptr;
+    prec_t* d_scalar_scratch = nullptr; ///< cuBLAS device-pointer results.
+    prec_t* d_W = nullptr; ///< Energy-weighted density for pure-s forces [n×n].
 
     // -- Basis data for GPU-native integral kernels --
     prec_t* d_shell_alpha = nullptr; ///< Exponents [device, n_shells * n_prim].
@@ -60,11 +74,14 @@ struct SCFWorkspace {
         nullptr; ///< Normalized coefficients [device, n_shells * n_prim].
     prec_t* d_shell_center =
         nullptr;             ///< Shell centers [device, n_shells * 3] (Bohr).
+    int* d_shell_atom = nullptr; ///< Atom owning each shell [device, n_shells].
     int* d_atom_Z = nullptr; ///< Nuclear charges [device, natm].
     prec_t* d_atom_pos = nullptr; ///< Atom positions [device, natm * 3] (Bohr).
     int n_prim = 0;               ///< Primitives per shell (host-cached).
     int n_shells = 0;             ///< Number of shells (host-cached).
     int natm = 0;                 ///< Number of atoms (host-cached).
+    /// True when every shell is s (l=0) so Wave-5 device forces apply.
+    bool pure_s_shells = false;
 };
 
 } // namespace scf
