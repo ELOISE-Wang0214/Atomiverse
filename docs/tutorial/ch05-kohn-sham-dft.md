@@ -164,7 +164,7 @@ In the scan, the
 basic call looks like this:
 
 ```cpp
-auto ints = /* IntegralPack is private — use RHF */;
+auto ints = /* use RHF{basis}.run(frame) */;
 cpu::scf::UKS uks(n_alpha, n_beta, XCType::LSDA);
 config.n_radial = 50;
 config.n_angular = 110;
@@ -176,7 +176,7 @@ const auto& uks = solver.run(ints);
 
 > **Element coverage:** like the other Gaussian-basis tutorials, STO-3G here
 > supports elements **H through O (Z = 1–8)**; heavier atoms throw at
-> `IntegralPack constructor (private)` by design rather than returning a wrong number.
+> the method constructor path by design rather than returning a wrong number.
 
 The spin counts play the same role they did in UHF. The new ingredient is the
 choice of exchange-correlation functional and the numerical grid used to

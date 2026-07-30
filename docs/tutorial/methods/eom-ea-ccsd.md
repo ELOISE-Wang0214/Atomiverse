@@ -94,7 +94,7 @@ const cpu::scf::EOMEACCSDResult eom = rhf.eom_ea_ccsd(frame, /*n_states=*/1);
 `EOMEACCSDResult` (`include/atomiverse/cpu/scf/eom_ea_ccsd.h`): `energy_ev`
 (ascending unique attachment roots [eV]), `e_corr_ha`, `e_ccsd_ha` [Hartree],
 `ccsd_iterations`, `converged`. Pack-level
-`eom_ea_ccsd_energies(IntegralPack, …)` is private
+`eom_ea_ccsd_energies` is private engine code.
 (`internal/eom_ea_ccsd_pack.h`). `RHF::eom_ea_ccsd` forces `compute_eri`, runs
 SCF, then refuses a non-converged reference (no silent fallback).
 

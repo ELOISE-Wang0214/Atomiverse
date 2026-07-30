@@ -98,7 +98,7 @@ using namespace ATV;
 auto make_classical = []{ return cpu::PairLJCut{0.0104, 3.4, 6.8}; };
 
 // Quantum force provider: RHF/STO-3G, forces on by default
-auto make_quantum = [](const cpu::scf::IntegralPack& ints){
+auto make_quantum = [](cpu::scf::RHF& rhf){
     return cpu::scf::SCF{/* use cpu::scf::RHF */};
 };
 ```
@@ -111,7 +111,7 @@ gradient off so the evaluator drops `Capability::Force` and skips the gradient
 work:
 
 ```cpp
-auto ints = /* IntegralPack is private — use RHF */;
+auto ints = /* use RHF{basis}.run(frame) */;
 auto scf  = cpu::scf::SCF{/* use cpu::scf::RHF */};
 scf.with_gradient(false);                 // energy only
 

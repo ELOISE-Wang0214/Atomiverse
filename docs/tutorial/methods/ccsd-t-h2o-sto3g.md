@@ -77,7 +77,7 @@ const cpu::scf::CCSDTResult ct = rhf.ccsd_t(frame);
 
 `CCSDTResult` fields (`include/atomiverse/cpu/scf/ccsd.h`): `e_corr`, `e_tot`,
 `e_corr_ccsd`, `e_t` [Hartree], `iterations`, `converged`. Pack-level
-`ccsd_t_energy(IntegralPack, …)` is private (`internal/ccsd_pack.h`).
+`ccsd_t_energy` is private engine code.
 
 **Build / run regression** (CPU login; modules as in AGENTS.md):
 

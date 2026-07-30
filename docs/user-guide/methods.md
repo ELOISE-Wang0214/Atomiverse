@@ -84,7 +84,7 @@ RHF, UHF, and Kohn-Sham DFT (LSDA, PBE, B3LYP, PBE0) for molecules, with
 analytic gradients. Basis sets: `STO3G`, `Pople631G`, `Pople631Gs`, `Def2SVP`,
 `Def2TZVP`.
 
-There is **no** public `IntegralPack` / `SCFConfig` / `SCFSolver`. Construct a
+There is **no** public freestanding integral bag / `SCFConfig` / `SCFSolver`. Construct a
 **concrete method**, set members, pass a `Frame`:
 
 ```cpp

@@ -131,8 +131,8 @@ bag). Minimal standalone conq solve matching the regression:
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -155,29 +155,11 @@ cpu::Frame madelung_frame() {
     return f;
 }
 
-auto f = madelung_frame();
+auto frame = madelung_frame();
+// Defaults to pre_force order −50.
 cpu::md::ConstPotBO conq(/*eta [1/Å]=*/2.0);
 conq.add_electrode_charge(/*type=*/1, /*Q [e]=*/-0.279214485147238);
 conq.add_electrode_charge(/*type=*/2, /*Q [e]=*/+0.279214485147238);
-conq.xy_image_range = 250;
-
-cpu::Context ctx;
-conq.build({ctx, f});
-conq.launch({ctx, f, /*stage=*/0, /*step=*/0});
-
-const double q_top = conq.total_charge(1);   // [e] — exactly the target
-const double dv = conq.delta_psi();          // [V] — LAMMPS v_dv response
-const double psi_bot = conq.electrode_potential(0);  // [V] — f_conq[1]
-// frame.span(kAtom_charge)[0..1] hold the solved per-site distribution;
-// electrolyte rows are untouched.
-```
-
-MD binding (defaults to `pre_force` order −50):
-
-```cpp
-cpu::md::ConstPotBO conq(/*eta=*/2.0);
-conq.add_electrode_charge(1, -0.279214485147238);
-conq.add_electrode_charge(2, +0.279214485147238);
 conq.xy_image_range = 250;
 conq.rebuild_matrix_every_step = true;   // electrodes move / small twin
 
@@ -188,8 +170,12 @@ sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.1});
 sim.add_ref(conq);   // or add(std::move(conq)) to own; pre_force @ -50
 sim.build();
 sim.run(frame, /*nsteps=*/1);
-// after the run: conq.total_charge(e) stays exactly the target ("Q fixed"),
-// conq.electrode_potential(e) / conq.delta_psi() are the V response.
+
+const double q_top = conq.total_charge(1);   // [e] — exactly the target
+const double dv = conq.delta_psi();          // [V] — LAMMPS v_dv response
+const double psi_bot = conq.electrode_potential(0);  // [V] — f_conq[1]
+// frame.span(kAtom_charge)[0..1] hold the solved per-site distribution;
+// electrolyte rows are untouched.
 ```
 
 Architecture rules:

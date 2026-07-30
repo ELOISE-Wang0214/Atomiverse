@@ -109,7 +109,7 @@ const cpu::scf::NEVPT2Result nev =
 
 `NEVPT2Result` fields (`include/atomiverse/cpu/scf/nevpt2.h`): `e_nevpt2`,
 `e_corr`, `e_casscf` [Hartree], `ncas`, `nelecas`, `ncore`, `nvirt`,
-`converged`. Pack-level `nevpt2_energy(IntegralPack, …)` is private
+`converged`. `nevpt2_energy` is private engine code.
 (`internal/nevpt2_pack.h`).
 
 **Build / run regression** (CPU login; modules as in AGENTS.md):

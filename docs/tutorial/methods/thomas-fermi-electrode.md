@@ -149,8 +149,8 @@ bag). Minimal standalone dual-gate matching the regression:
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -182,9 +182,10 @@ cpu::Frame gold_capacitor() {
     return f;
 }
 
-// Perfect metal (l_tf = 0) and finite metallicity (l_tf = 2 Å)
+// Perfect metal (l_tf = 0) and finite metallicity (l_tf = 2 Å).
+// Defaults to pre_force order −50; Frame is the only I/O token.
 for (double l_tf : {0.0, 2.0}) {
-    auto f = gold_capacitor();
+    auto frame = gold_capacitor();
     cpu::md::ConstPotBO conp(kEta);
     conp.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);
     conp.add_electrode(/*type=*/2, /*Psi [V]=*/1.0);
@@ -193,31 +194,16 @@ for (double l_tf : {0.0, 2.0}) {
     conp.l_tf = l_tf;            // [Å]; 0 = perfect metal
     conp.site_density = kD;      // [1/Å³]; required when l_tf > 0
 
-    cpu::Context ctx;
-    conp.build({ctx, f});
-    conp.launch({ctx, f, /*stage=*/0, /*step=*/0});
+    cpu::md::MD sim;
+    // ... neighbor / coulomb / integrator as needed ...
+    sim.add_ref(conp);   // or add(std::move(conp)) to own
+    sim.build();
+    sim.run(frame, /*nsteps=*/1);
 
     const double q_top = conp.total_charge(1);  // [e]
     const double c = conp.capacitance();        // [e/V]
     // frame.span(kAtom_charge)[0..5] updated for electrode rows
 }
-```
-
-MD binding (defaults to `pre_force` order −50):
-
-```cpp
-cpu::md::ConstPotBO conp(/*eta=*/1.0 / 0.56);
-conp.add_electrode(1, 0.0).add_electrode(2, 1.0);
-conp.electroneutrality = true;
-conp.xy_image_range = 1280;   // O(1/R) convergence knob - see above
-conp.l_tf = 2.0;
-conp.site_density = 4.0 / (4.07 * 4.07 * 4.07);
-
-cpu::md::MD sim;
-// ... neighbor / coulomb / integrator as needed ...
-sim.add_ref(conp);   // or add(std::move(conp)) to own
-sim.build();
-sim.run(frame, /*nsteps=*/1);
 ```
 
 Architecture rules:

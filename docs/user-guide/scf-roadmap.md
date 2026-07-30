@@ -71,7 +71,7 @@ by one or more components.
 Pair each tutorial with one code-reading target:
 
 - after Chapter 2, read [`cpu::scf::solve`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/solve.h)
-- after Chapter 2, read [`IntegralPack`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/integrals.h), [`SCFSolver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_solver.h), and [`scf_types.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_types.h)
+- after Chapter 2, read [`IntegralWorkspace`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/integrals.h), [`SCFSolver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_solver.h), and [`scf_types.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_types.h)
 - after Chapter 3, revisit `SCFSolver` with `uhf_config`
 - after Chapter 5, revisit `SCFSolver` with `uks_config` and read [`xc_functional.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/xc_functional.h)
 - after Chapter 8, read [`pw_solver.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/planewave/pw_solver.h) and [`internal/pw_workspace.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/planewave/internal/pw_workspace.h)

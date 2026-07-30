@@ -317,7 +317,7 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     std::unique_ptr<DensityStage>     density_stage_;
     std::unique_ptr<ScfConverged>     converged_stage_;   // a Criterion
 
-    std::shared_ptr<IntegralPack>      integrals_sp_;  // private workspace
+    // private integral fields (ints_S_, ints_Hcore_, shells, …) — not a bag
     std::shared_ptr<SlaterDeterminant> det_sp_;        // the wavefunction
 };
 ```
@@ -360,7 +360,7 @@ plane-wave SCF (`cpu::pw::PW` + `PWEvaluator`).
 
 ## Hot-Path Data Hygiene
 
-`cpu::Frame`, `cpu::scf::IntegralPack`, and `cpu::scf::ShellList` carry
+`cpu::Frame`, method-owned integral members, and `cpu::scf::ShellList` carry
 *only fundamental physical quantities*. Positions, velocities, forces,
 masses, atom tags, image flags, integral tensors, shell descriptors —
 those are fundamentals. Anything derivable — neighbor maps, atom-to-shell

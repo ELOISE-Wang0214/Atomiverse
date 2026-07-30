@@ -95,11 +95,11 @@ xl.last_aux_error();     // max|μ_aux − μ_scc| [e·Å] — distance to BO su
 xl.last_mu();            // converged dipoles, packed xyz [e·Å]
 ```
 
-The regression itself drives the component with an explicit velocity-Verlet
-loop over public headers (direct `Context` + `build`/`launch`;
-maze-charge-dynamics precedent) so it can run the XL twin and the cold-SCF
+The regression itself uses a specialized out-of-library NVE harness (not the
+product `MD` driver) so it can run the XL twin and the cold-SCF
 Born–Oppenheimer twin (`PimInducedDipole`) on bitwise-identical
-trajectories and difference them step by step.
+trajectories and difference them step by step. User code still binds
+`PimXlDipole` on `cpu::md::MD`; Frame remains the only I/O token.
 
 Build and run the regression (MD-only configure; CPU login pattern from
 `AGENTS.md` / metalwalls loop):

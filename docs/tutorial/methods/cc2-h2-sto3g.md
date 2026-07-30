@@ -85,7 +85,7 @@ const cpu::scf::CC2Result cc2 = rhf.cc2(frame);
 ```
 
 `CC2Result` fields (`include/atomiverse/cpu/scf/cc2.h`): `e_corr`, `e_tot`
-[Hartree], `iterations`, `converged`. Pack-level `cc2_energy(IntegralPack, …)`
+[Hartree], `iterations`, `converged`. `cc2_energy` is private.
 is private (`internal/ccsd_pack.h`); the same `ccsd_solve` path with
 `cc2=true` lives in `src/cpu/scf/ccsd.cpp`.
 

@@ -96,7 +96,7 @@ const cpu::scf::EOMCC2Result eom = rhf.eom_cc2(frame, /*n_states=*/1);
 `EOMCC2Result` (`include/atomiverse/cpu/scf/eom_cc2.h`): `energy_ev`
 (ascending singlets [eV]), `e_corr_ha`, `e_cc2_ha` [Hartree],
 `cc2_iterations`, `converged`. Pack-level
-`eom_cc2_energies(IntegralPack, …)` is private
+`eom_cc2_energies` is private engine code.
 (`internal/eom_cc2_pack.h`). `RHF::eom_cc2` forces ERI, runs SCF + CC2, then
 refuses a non-converged reference (no silent fallback). Implementation reuses
 the EOM-EE Jacobian path in `src/cpu/scf/eom_ee_ccsd.cpp` with CC2 amplitudes

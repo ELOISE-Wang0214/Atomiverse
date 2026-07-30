@@ -109,45 +109,34 @@ Minimal standalone equilibration matching the regression:
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/qeq.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
 
-cpu::Frame f(4);                       // H2CO toy: fill x/y/z, type, charge=0
+cpu::Frame frame(4);                   // H2CO toy: fill x/y/z, type, charge=0
 // ... positions / types / masses / tags as in the System table ...
-f.box = cpu::Box::cubic(40.0);
+frame.box = cpu::Box::cubic(40.0);
 
+// Default binding is pre_force order −50, before every pair / k-space force.
 cpu::md::QEq qeq(/*cutoff [Å]=*/10.0);
 qeq.set_type(/*type=*/1, /*chi [eV]=*/5.343, /*eta [eV/e²]=*/10.126); // C
 qeq.set_type(2, 8.741, 13.364);                                      // O
 qeq.set_type(3, 4.528, 13.8904);                                     // H
 // qeq.qtot = 0.0;  // constrained total charge [e] (default 0, LAMMPS behavior)
 
-cpu::Context ctx;
-qeq.build({ctx, f});
-qeq.launch({ctx, f, /*stage=*/0, /*step=*/0});
-
-const auto& q = qeq.charges();   // [e], frame-row order (also on kAtom_charge)
-const double e_qeq = qeq.qeq_energy();   // [eV], bare-1/r kernel objective
-const double net = qeq.net_charge();     // [e], equals qtot exactly
-```
-
-MD binding (default binding is `pre_force` order −50, before every pair /
-k-space force component):
-
-```cpp
 cpu::md::MD sim;
-sim.on(md::Phase::pre_force).add(cpu::md::QEq(10.0)
-                                     .set_type(1, 5.343, 10.126)
-                                     .set_type(2, 8.741, 13.364)
-                                     .set_type(3, 4.528, 13.8904));
+sim.add_ref(qeq);  // or .on(md::Phase::pre_force).add(std::move(...))
 sim.set_evaluator(cpu::PairCoulCut{/*cutoff [Å]=*/10.0});  // sees equilibrated q
 sim.set_neighbor(cpu::md::NeighborList<>{10.0, 0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{0.5});
 sim.build();
-sim.run(frame, /*nsteps=*/100);   // charges re-equilibrated every step
+sim.run(frame, /*nsteps=*/1);   // charges re-equilibrated every step
+
+const auto& q = qeq.charges();   // [e], frame-row order (also on kAtom_charge)
+const double e_qeq = qeq.qeq_energy();   // [eV], bare-1/r kernel objective
+const double net = qeq.net_charge();     // [e], equals qtot exactly
 ```
 
 Architecture rules:

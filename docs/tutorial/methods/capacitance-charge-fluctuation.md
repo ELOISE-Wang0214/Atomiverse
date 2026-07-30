@@ -119,7 +119,8 @@ matching the regression:
 ```cpp
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/observe/capacitance_charge_fluctuation.h"
 
@@ -129,42 +130,28 @@ using namespace ATV;
 cpu::Frame frame(8);
 // … positions, types, masses, tags; frame.box = cpu::Box::cubic(20.0);
 
-cpu::CapacitanceChargeFluctuation obs(
+// After charge solve so samples see updated Q (default end_of_step @ +50).
+cpu::md::ConstPotBO conp(/*eta [1/Å]=*//*…*/);
+// … electrodes, electroneutrality, …
+
+cpu::CapacitanceChargeFluctuation cap(
     /*electrode_types=*/{1, 2},  // index 0 = primary Q
     /*temperature_K=*/300.0,
     /*delta_psi_V=*/1.0);
 
-cpu::Context ctx;
-const double QL[] = {0.4, 0.6, 0.4, 0.6};
-for (int s = 0; s < 4; ++s) {
-    // equal share: each left atom QL[s]/4, each right −QL[s]/4
-    // … write kAtom_charge …
-    obs.launch({ctx, frame, /*stage=*/0, /*step=*/s});
-}
+cpu::md::MD sim;
+// … neighbor, potentials, integrator …
+sim.add_ref(conp);
+sim.add_ref(cap);   // or add(std::move(cap))
+sim.build();
+sim.run(frame, /*nsteps=*//*…*/);
 
 // Members [e], [e²], [e/V]
-const double mean_Q = obs.mean_charge();                 // 0.5
-const double var_Q  = obs.charge_variance();             // 0.01
-const double C_diff = obs.differential_capacitance();    // Var/(kB T)
-const double C_int  = obs.integral_capacitance();        // mean_Q / ΔΨ
+const double mean_Q = cap.mean_charge();
+const double var_Q  = cap.charge_variance();
+const double C_diff = cap.differential_capacitance();    // Var/(kB T)
+const double C_int  = cap.integral_capacitance();        // mean_Q / ΔΨ
 // Frame meta: kCapacitanceDiff, kCapacitanceIntegral, kElectrodeCharge
-```
-
-MD binding (after charge solve so samples see updated \(Q\)):
-
-```cpp
-cpu::md::ConstPotBO conp(/*eta [1/Å]=*/…);
-// … electrodes, electroneutrality, …
-
-cpu::CapacitanceChargeFluctuation cap({/*types*/}, /*T [K]=*/300.0,
-                                      /*ΔΨ [V]=*/1.0);
-
-cpu::md::MD sim;
-// … neighbor, potentials, integrator, conp …
-sim.add_ref(cap);   // default end_of_step @ +50; or add(std::move(cap))
-sim.build();
-sim.run(frame, nsteps);
-// cap.differential_capacitance(); frame.meta.get(kCapacitanceDiff)
 ```
 
 Architecture rules:

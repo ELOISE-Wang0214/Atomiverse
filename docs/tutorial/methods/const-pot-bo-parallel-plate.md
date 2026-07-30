@@ -99,8 +99,8 @@ bag). Minimal standalone solve matching the regression:
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -119,27 +119,10 @@ for (int i = 0; i < 4; ++i) {
 }
 frame.box = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
 
+// Component defaults to pre_force order −50 so pair/kspace see updated charges.
 cpu::md::ConstPotBO conp(/*eta [1/Å]=*/2.0);
 conp.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);
 conp.add_electrode(/*type=*/2, /*Psi [V]=*/1.0);
-conp.electroneutrality = true;
-conp.xy_image_range = 250;
-
-cpu::Context ctx;
-conp.build({ctx, frame});
-conp.launch({ctx, frame, /*stage=*/0, /*step=*/0});
-
-const double q_bot = conp.total_charge(0);  // [e]
-const double q_top = conp.total_charge(1);  // [e]
-// frame.span(kAtom_charge)[0..1] updated; electrolyte charges unchanged
-```
-
-MD binding (component defaults to `pre_force` order −50 so pair/kspace see
-updated charges):
-
-```cpp
-cpu::md::ConstPotBO conp(/*eta=*/2.0);
-conp.add_electrode(1, 0.0).add_electrode(2, 1.0);
 conp.electroneutrality = true;
 conp.xy_image_range = 250;
 conp.rebuild_matrix_every_step = true;  // optional if geometry moves
@@ -151,6 +134,10 @@ sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.1});
 sim.add_ref(conp);   // or add(std::move(conp)) to own
 sim.build();
 sim.run(frame, /*nsteps=*/1);
+
+const double q_bot = conp.total_charge(0);  // [e]
+const double q_top = conp.total_charge(1);  // [e]
+// frame.span(kAtom_charge)[0..1] updated; electrolyte charges unchanged
 ```
 
 Architecture rules:

@@ -22,7 +22,7 @@ starts from the same `cpu::Frame`; only the evaluator and solver backend change.
 The CPU path exposes the solver lifecycle directly:
 
 ```cpp
-auto integrals = /* IntegralPack is private — use RHF */;
+auto integrals = /* use RHF{basis}.run(frame) */;
 auto config = /* use cpu::scf::RHF; rhf.tol = tol */;
 config.max_iter = 100;
 cpu::scf::RHF rhf /* was SCFSolver */;
@@ -40,7 +40,7 @@ inside `cuda::scf::SCFSolver`, wrapped by the `cuda::scf::SCF`
 component:
 
 ```cpp
-auto integrals = /* IntegralPack is private — use RHF */;
+auto integrals = /* use RHF{basis}.run(frame) */;
 
 cuda::scf::SCF scf{integrals, tol, /*max_iter=*/100};
 

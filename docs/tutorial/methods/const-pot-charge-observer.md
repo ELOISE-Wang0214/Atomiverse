@@ -80,11 +80,13 @@ Public surface only (`cpu::Frame` + ctor args / members; no `*Config` bag, no
 `include/atomiverse/cpu/observe/electrode_charge.h`; implementation
 `src/cpu/observe/electrode_charge.cpp`.
 
-Minimal sequence (matches `reg_const-pot-charge-observer.cpp`):
+Minimal sequence (matches `reg_const-pot-charge-observer.cpp`). Frame is the
+only I/O token; the observer is bound on a driver — never constructed with a
+user Context:
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/observe/electrode_charge.h"
 
@@ -98,27 +100,20 @@ frame.box = cpu::Box::orthorhombic(20.0, 10.0, 10.0);
 
 cpu::ElectrodeChargeObserver obs({1, 2}); // left type, right type
 
-cpu::Context ctx;
-cpu::LaunchContext lc{ctx, frame, /*stage=*/0, /*step=*/0};
-obs.launch(lc);
+// Deferred observer (default md::Phase::end_of_step, order +40) — after any
+// charge-updating Component has written kAtom_charge:
+cpu::md::MD sim;
+// … potentials, neighbor, integrator, const-pot / freeze as needed …
+sim.set_observer_ref(obs);
+// or: sim.set_observer(cpu::ElectrodeChargeObserver{{1, 2}});
+// or: sim.on(md::Phase::end_of_step).add_ref(obs);
+sim.build();
+sim.run(frame, /*nsteps=*/1);
 
 const double Q_L = obs.total_charge(0);                 // [e]
 const double Q_R = obs.total_charge(1);                 // [e]
 const double meta_L = frame.meta.get(kElectrodeCharge)[0];
 const double meta_R = frame.meta.get(kElectrodeCharge)[1];
-```
-
-In a full MD run, register as a deferred observer (default
-`md::Phase::end_of_step`, order +40) after any charge-updating Component has
-written `kAtom_charge`:
-
-```cpp
-cpu::md::MD sim;
-// … potentials, neighbor, integrator, const-pot / freeze as needed …
-sim.set_observer(cpu::ElectrodeChargeObserver{{1, 2}});
-// or: sim.on(md::Phase::end_of_step).add(cpu::ElectrodeChargeObserver{{1, 2}});
-sim.build();
-sim.run(frame, nsteps);
 ```
 
 Build and run the regression (MD-only flags; never enable HF/PW/GPW/CUDA/Torch

@@ -157,13 +157,14 @@ const bool ok = aspc.predict(pred);  // needs K+1 history points
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
 
 // frame: multi-site parallel plate (see regression make_multi)
+// Component defaults to pre_force order −50.
 cpu::md::ConstPotBO conp(/*eta [1/Å]=*/2.0);
 conp.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);
 conp.add_electrode(/*type=*/2, /*Psi [V]=*/1.0);
@@ -174,34 +175,17 @@ conp.cg_tol = 1e-10;
 conp.max_cg_iters = 500;
 conp.predictor_order = 2;      // K=2; 0 = cold start every step
 
-cpu::Context ctx;
-conp.build({ctx, frame});
-for (int s = 0; s < 16; ++s) {
-    // … move electrolyte slightly so b changes …
-    conp.launch({ctx, frame, /*stage=*/0, /*step=*/s});
-    // after history fill (K+1 successful records):
-    //   conp.last_used_predictor() == true
-    //   conp.last_iters()  — CG iterations of last A Q = rhs solve
-    //   conp.neutrality_residual() <= 1e-8
-}
-```
-
-MD binding (component defaults to `pre_force` order −50):
-
-```cpp
-cpu::md::ConstPotBO conp(/*eta=*/2.0);
-conp.add_electrode(1, 0.0).add_electrode(2, 1.0);
-conp.electroneutrality = true;
-conp.use_cg = true;
-conp.predictor_order = 2;
-
 cpu::md::MD sim;
 sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/12.0, /*skin=*/0.5});
 sim.set_evaluator(cpu::PairCoulCut{/*cutoff=*/12.0});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.5});
 sim.add_ref(conp);   // or add(std::move(conp)) to own
 sim.build();
-sim.run(frame, /*nsteps=*/1000);
+sim.run(frame, /*nsteps=*/16);   // ASPC history fills after K+1 steps
+// after history fill (K+1 successful records):
+//   conp.last_used_predictor() == true
+//   conp.last_iters()  — CG iterations of last A Q = rhs solve
+//   conp.neutrality_residual() <= 1e-8
 ```
 
 Architecture rules:

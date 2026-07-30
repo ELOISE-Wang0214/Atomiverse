@@ -149,17 +149,17 @@ cell 协议；禁止 raw-memory 发送 C++ Frame、Block、Box 或 variant 对�
 
 ## 7. molrs 边界
 
-`materialize()` 是 `molrs::Frame -> cpu::Frame` 的唯一入口，`write_back()` 是
+`from_molrs()` 是 `molrs::Frame -> cpu::Frame` 的唯一入口，`to_molrs()` 是
 反向边界。两边都直接读写 Block 列和 exact typed meta；不存在临时
 SystemScalars Block、string key/value metadata 或旧 decoder。
 
 边界职责保持清楚：
 
-- molrs flat bonds/angles/dihedrals 在 materialize 时转换成 CPU per-row
+- molrs flat bonds/angles/dihedrals 在 from_molrs 时转换成 CPU per-row
   global-tag topology；
 - 元素身份只有 `molrs::Element` 一个公开 owner。Atomiverse 不声明别名、第二个
   enum 或隐式转换；ExtXYZ 专用入口消费格式规定的 `species`，用 canonical
-  `molrs::Element` 生成 `atoms.type` 后删除格式列，再进入严格 materialize；
+  `molrs::Element` 生成 `atoms.type` 后删除格式列，再进入严格 from_molrs；
   通用边界不做 `type`/`element`/`species` fallback；
 - write-back 写当前边界契约中的结果列和 serializable meta，tag narrowing
   做显式范围检查；
@@ -177,7 +177,7 @@ Block 化不改变 kernel 的计算布局：CPU 仍是连续 SoA，xsimd/OpenMP 
 - launch 解析次数对 N 和 pair 数为 O(1)；
 - 稳态 MD/neighbor/comm 不因 Frame 表示引入分配；
 - LJ neighbor reuse 与 forced-renighbor 分别对比 cutover 基线；
-- materialize、write-back、pack/unpack、broadcast、halo、migration 和 gather
+- from_molrs、write-back、pack/unpack、broadcast、halo、migration 和 gather
   分项测量；
 - `StorageReal`、`WorkReal` 和 `TagInt` 配置矩阵做位精确 round trip。
 

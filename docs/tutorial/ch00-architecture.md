@@ -72,9 +72,9 @@ phase of one step of one driver. The base class
 defines exactly three lifecycle hooks:
 
 ```cpp
-void build  (const BuildContext&);   // one-time setup
-void launch (const LaunchContext&);  // per-step compute
-void destroy(const DestroyContext&); // teardown
+void build  (...);   // one-time setup (allocate scratch)
+void launch (...);   // per-step compute (no allocation)
+void destroy(...);   // teardown
 ```
 
 Every concrete piece of physics — Lennard-Jones forces, harmonic bonds,
@@ -336,7 +336,7 @@ class StopWhenTooHot : public cpu::Criterion {
   public:
     explicit StopWhenTooHot(double t_max) : t_max_(t_max) {}
     std::string name() const override { return "stop_when_too_hot"; }
-    void launch(const cpu::LaunchContext&) override {}  // verdict-only
+    void launch(...) override {}  // verdict-only — no per-step work
     ATV::Verdict verdict(const cpu::LoopState& s) override {
         return (temperature(s.frame) > t_max_) ? ATV::Verdict::Stop
                                                       : ATV::Verdict::Continue;

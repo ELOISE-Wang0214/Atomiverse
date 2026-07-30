@@ -135,7 +135,8 @@ matching the regression:
 ```cpp
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/observe/potential_profile.h"
 
@@ -145,33 +146,26 @@ cpu::Frame frame(2);
 // atom 0: z=5.5 Å, q=+1 e; atom 1: z=14.5 Å, q=-1 e
 // frame.box = cpu::Box::orthorhombic(10.0, 10.0, 20.0);
 
-cpu::PotentialProfile obs(/*n_bins=*/20, /*z_min=*/0.0, /*z_max=*/20.0);
-cpu::Context ctx;
-obs.launch({ctx, frame, /*stage=*/0, /*step=*/0});
-
-// Members [e/Å³], [V/Å], [V]
-const auto& rho = obs.rho();              // bin 5 → +0.01; bin 14 → −0.01
-const auto& Ez  = obs.field();            // mid-gap bin 9 → E_gap
-const auto& Psi = obs.psi();              // bin 0 → 0; bin 19 → ΔΨ
-const double drop = obs.potential_drop(); // Ψ(z_max) − Ψ(z_min)
-// Frame meta: kPotentialDrop
-const double drop_meta = frame.meta.get(kPotentialDrop);
-```
-
-MD binding (after charge update so profiles see electrode \(q\)):
-
-```cpp
-cpu::md::ConstPotBO conp(/*eta [1/Å]=*/…);
+// After charge update so profiles see electrode q (default end_of_step @ +45).
+cpu::md::ConstPotBO conp(/*eta [1/Å]=*//*…*/);
 // … electrodes, electroneutrality, …
 
-cpu::PotentialProfile psi_z(/*n_bins=*/100, /*z_min=*/0.0, /*z_max=*/Lz);
+cpu::PotentialProfile psi_z(/*n_bins=*/20, /*z_min=*/0.0, /*z_max=*/20.0);
 
 cpu::md::MD sim;
-// … neighbor, potentials, integrator, conp …
-sim.add_ref(psi_z);   // default end_of_step @ +45; or add(std::move(psi_z))
+// … neighbor, potentials, integrator …
+sim.add_ref(conp);
+sim.add_ref(psi_z);   // or add(std::move(psi_z))
 sim.build();
-sim.run(frame, nsteps);
-// psi_z.psi(); psi_z.field(); frame.meta.get(kPotentialDrop)
+sim.run(frame, /*nsteps=*/1);
+
+// Members [e/Å³], [V/Å], [V]
+const auto& rho = psi_z.rho();              // bin 5 → +0.01; bin 14 → −0.01
+const auto& Ez  = psi_z.field();            // mid-gap bin 9 → E_gap
+const auto& Psi = psi_z.psi();              // bin 0 → 0; bin 19 → ΔΨ
+const double drop = psi_z.potential_drop(); // Ψ(z_max) − Ψ(z_min)
+// Frame meta: kPotentialDrop
+const double drop_meta = frame.meta.get(kPotentialDrop);
 ```
 
 Architecture rules:

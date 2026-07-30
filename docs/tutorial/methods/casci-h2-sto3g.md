@@ -82,7 +82,7 @@ const cpu::scf::CASCIResult cas = rhf.casci(frame, /*ncas=*/2, /*nelecas=*/2);
 
 `CASCIResult` fields (`include/atomiverse/cpu/scf/casci.h`): `e_casci`,
 `e_corr` [Hartree], `ncas`, `nelecas`, `ncore`. Pack-level
-`casci_energy(IntegralPack, …)` is private (`internal/casci_pack.h`).
+`casci_energy` is private engine code.
 
 **Build / run regression** (CPU login; modules as in AGENTS.md):
 

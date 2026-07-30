@@ -417,7 +417,7 @@ dominates and the cancellation argument no longer holds.
 the sorted orbital energies; the HOMO is the last occupied one:
 
 ```cpp
-auto ints   = /* IntegralPack is private — use RHF */;
+auto ints   = /* use RHF{basis}.run(frame) */;
 cpu::scf::RHF rhf;  // set members (tol, max_iter, …)
 config.max_iter = 100;
 cpu::scf::RHF rhf;

@@ -115,47 +115,30 @@ bag). Minimal standalone Case-1 pin matching the regression:
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
 
 // Two-site vacuum capacitor: sites at z = 18 and 22 Å (d = 4 Å).
-cpu::Frame f(2);
+cpu::Frame frame(2);
 const double z[2] = {18.0, 22.0};
 for (int i = 0; i < 2; ++i) {
-    f.span(kAtom_x)[i] = f.span(kAtom_y)[i] = 0.0;
-    f.span(kAtom_z)[i] = z[i];
-    f.span(kAtom_charge)[i] = 0.0;
-    f.span(kAtom_type)[i] = i + 1;
-    f.span(kAtom_mass)[i] = 196.97;
-    f.span(kAtom_tag)[i] = i + 1;
+    frame.span(kAtom_x)[i] = frame.span(kAtom_y)[i] = 0.0;
+    frame.span(kAtom_z)[i] = z[i];
+    frame.span(kAtom_charge)[i] = 0.0;
+    frame.span(kAtom_type)[i] = i + 1;
+    frame.span(kAtom_mass)[i] = 196.97;
+    frame.span(kAtom_tag)[i] = i + 1;
 }
-f.box = cpu::Box::cubic(40.0);
+frame.box = cpu::Box::cubic(40.0);
 
-cpu::md::ConstPotBO conp(/*shared eta [1/Å]=*/2.0);
+// Defaults to pre_force order −50.
 // 3-arg overload: per-electrode Gaussian width overrides the shared eta.
+cpu::md::ConstPotBO conp(/*shared eta [1/Å]=*/2.0);
 conp.add_electrode(/*type=*/1, /*Psi [V]=*/0.0, /*eta [1/Å]=*/1.979);
 conp.add_electrode(/*type=*/2, /*Psi [V]=*/1.0, /*eta [1/Å]=*/0.955);
-conp.electroneutrality = true;
-
-cpu::Context ctx;
-conp.build({ctx, f});
-conp.launch({ctx, f, /*stage=*/0, /*step=*/0});
-
-const double q_top = conp.total_charge(1);        // [e] → 0.037722100829787
-const double resid = conp.neutrality_residual();  // ≤ 1e-12
-// frame.span(kAtom_charge) updated on the electrode rows
-```
-
-The 2-arg `add_electrode(type, Psi)` keeps the shared ctor `eta` (a group
-`eta` of 0 means "inherit"); at equal widths the two paths are identical to
-≤ 1e-14 e/site. MD binding (defaults to `pre_force` order −50):
-
-```cpp
-cpu::md::ConstPotBO conp(/*eta=*/1.979);
-conp.add_electrode(1, 0.0, 1.979).add_electrode(2, 1.0, 0.955);
 conp.electroneutrality = true;
 conp.xy_image_range = 100;
 
@@ -164,7 +147,15 @@ cpu::md::MD sim;
 sim.add_ref(conp);   // or add(std::move(conp)) to own
 sim.build();
 sim.run(frame, /*nsteps=*/1);
+
+const double q_top = conp.total_charge(1);        // [e] → 0.037722100829787
+const double resid = conp.neutrality_residual();  // ≤ 1e-12
+// frame.span(kAtom_charge) updated on the electrode rows
 ```
+
+The 2-arg `add_electrode(type, Psi)` keeps the shared ctor `eta` (a group
+`eta` of 0 means "inherit"); at equal widths the two paths are identical to
+≤ 1e-14 e/site.
 
 Architecture rules:
 

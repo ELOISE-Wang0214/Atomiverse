@@ -93,7 +93,7 @@ const cpu::scf::CASSCFResult cas =
 
 `CASSCFResult` fields (`include/atomiverse/cpu/scf/casscf.h`): `e_casscf`,
 `e_corr` [Hartree], `ncas`, `nelecas`, `ncore`, `iterations`, `converged`.
-Pack-level `casscf_energy(IntegralPack, …)` is private
+`casscf_energy` is private engine code.
 (`internal/casscf_pack.h`).
 
 **Build / run regression** (CPU login; modules as in AGENTS.md):

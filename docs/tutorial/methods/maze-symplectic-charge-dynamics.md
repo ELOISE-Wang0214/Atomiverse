@@ -130,29 +130,12 @@ maze.last_maze_iters();         // 0 when the Verlet guess already satisfies σ
 maze.max_dQ();                  // max |Q_i(t) − Q_i(t−1)| [e]
 ```
 
-The regression itself drives the components with an explicit velocity-Verlet
-loop instead of the `MD` driver: its conservation twin needs the pair energy
-to see **every** min-image pair (the elastance/RHS build has no cutoff),
-which a production NeighborList (cutoff < L/2) cannot cover in a small cell —
-and the explicit loop makes the velocity-flip palindrome exact:
-
-```cpp
-cpu::md::ConstPotMaZe maze(/*eta=*/2.0);
-maze.add_electrode(1, 0.0).add_electrode(2, 1.0);
-maze.symplectic = true;                        // the MaZe path (default)
-
-// Walls Gaussian (η = 2), ions point charges — same kernels as the elastance.
-cpu::PairGaussianCoul pg(/*cutoff=*/12.0, {0.0, 2.0, 2.0, 0.0},
-                         /*include_self=*/true);
-
-cpu::Context ctx;
-maze.build({ctx, f});
-pg.build({ctx, f});
-// per NVE step: zero forces + kEnergy, then
-maze.launch({ctx, f, /*stage=*/0, step});      // charge solve (pre_force role)
-pg.launch({ctx, f, /*stage=*/0, step});        // pair energy + forces
-// grand energy: KE + f.meta.get(kEnergy) − Σ_i Ψ_i Q_i
-```
+The regression itself uses a specialized out-of-library NVE harness (not the
+product `MD` driver) so the pair energy can see **every** min-image pair (the
+elastance/RHS build has no cutoff) and so the velocity-flip palindrome is
+exact — a production `NeighborList` (cutoff < L/2) cannot cover that in a
+small cell. User code still binds MaZe on `cpu::md::MD` as above; Frame remains
+the only I/O token.
 
 Architecture rules:
 

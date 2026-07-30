@@ -110,7 +110,7 @@ const cpu::scf::EOMSFCCSDResult eom =
 
 `EOMSFCCSDResult` (`include/atomiverse/cpu/scf/eom_sf_ccsd.h`): `energy_ev`
 (ascending SF roots [eV]), `e_corr_ha`, `e_ccsd_ha` [Hartree],
-`ccsd_iterations`, `converged`. Pack-level `eom_sf_ccsd_energies(IntegralPack, …)`
+`ccsd_iterations`, `converged`. `eom_sf_ccsd_energies` is private.
 is private (`internal/eom_sf_ccsd_pack.h`). `UHF::eom_sf_ccsd` forces ERI/SCF as
 needed and refuses a non-converged reference (no silent fallback).
 

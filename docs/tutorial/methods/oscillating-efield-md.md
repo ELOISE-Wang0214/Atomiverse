@@ -110,8 +110,8 @@ no Config bag). Multi-step pin matching the regression:
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/fix_oscillating_efield.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -126,30 +126,22 @@ frame.span(kAtom_z)[0] = 10.0;
 // … fill atoms 1–2; tags/types/mass as needed
 frame.box = cpu::Box::cubic(20.0);
 
-// Amplitudes [V/Å], period and dt [fs], phase default 0
+// Amplitudes [V/Å], period and dt [fs], phase default 0.
+// Component default binding is post_force +100; time is t = n·dt from the step.
 cpu::md::FixOscillatingEfield osc(
     /*Ex0=*/0.0, /*Ey0=*/0.0, /*Ez0=*/0.2,
     /*period [fs]=*/1000.0, /*dt [fs]=*/1.0);
 
-cpu::Context ctx;
-// Launch at MD step n (t = n·dt); pin checks at n ∈ {0, 125, 500}
-osc.launch({ctx, frame, /*stage=*/0, /*step=*/0});
-// osc.last_Ez() → 0.2 [V/Å]
-// frame.meta.get(kEnergy) → −0.8 [eV]
-// Fz[i] → q[i] * Ez
-```
-
-MD composition (optional product use; Component default binding is
-`post_force` +100):
-
-```cpp
 cpu::md::MD sim;
 sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/2.0, /*skin=*/0.3});
 sim.set_evaluator(cpu::PairLJCut{/*eps=*/0.0, /*sigma=*/1.0, /*cutoff=*/2.0});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/1.0});
-sim.add(cpu::md::FixOscillatingEfield{0.0, 0.0, 0.2, 1000.0, 1.0});
+sim.add_ref(osc);  // or add(cpu::md::FixOscillatingEfield{…})
 sim.build();
-sim.run(frame, /*nsteps=*/1000);
+sim.run(frame, /*nsteps=*/1);   // pin checks also at n ∈ {125, 500, …}
+// osc.last_Ez() → 0.2 [V/Å] at step 0
+// frame.meta.get(kEnergy) → −0.8 [eV]
+// Fz[i] → q[i] * Ez
 ```
 
 Architecture rules:

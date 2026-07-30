@@ -113,19 +113,12 @@ const double U = f.meta.get(kEnergy);   // [eV]  bias only → −0.25
 const double fz = f.span(kAtom_fz)[0];  // [eV/Å] → 0.05 on type 1
 ```
 
-Short NVE MD (Gate B shape — component defaults to `post_force` order +100):
+Short NVE MD (Gate B shape — component defaults to `post_force` order +100).
+Frame is the only I/O token; `FixAddForce` is bound on the driver:
 
 ```cpp
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
-#include "atomiverse/cpu/component/context.h"
-
-// Optional: seed F before first VV half-step (LAMMPS setup / run-0 role)
-{
-    cpu::Context ctx;
-    cpu::md::FixAddForce seed{0.0, 0.0, Fz, /*type=*/1};
-    seed.launch({ctx, frame, /*stage=*/0, /*step=*/0});
-}
 
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/1.0});

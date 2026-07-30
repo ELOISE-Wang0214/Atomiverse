@@ -118,8 +118,9 @@ Config bag). Standalone BO + polarization matching the regression:
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/observe/classical_polarization.h"
 
@@ -135,40 +136,11 @@ frame.span(kAtom_mass)[0] = 196.966553;
 frame.span(kAtom_tag)[0] = 1;
 frame.box = cpu::Box::cubic(20.0);
 
+// BO + polarization + optional field force on one MD step (Frame only).
 cpu::md::ConstPotBO conp(/*eta [1/Å]=*/2.0);
 conp.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);
 conp.Ez = 0.1;                   // [V/Å] — BO RHS only
 conp.electroneutrality = false;  // free total Q (single wall)
-
-cpu::Context ctx;
-conp.build({ctx, frame});
-conp.launch({ctx, frame, /*stage=*/0, /*step=*/0});
-
-const double Q = conp.total_charge(0);  // [e] → pin 0.04351892485250505
-
-cpu::md::ClassicalPolarization pol;
-pol.launch({ctx, frame, 0, 0});
-// pol.Pz() → pin 5.439865606563132e-5 [e/Å²]
-```
-
-Dual-gate field force (separate from charge solve):
-
-```cpp
-cpu::Evaluate eval;
-eval.on(evaluate::Phase::evaluate)
-    .add(cpu::md::FixEfield{/*Ex=*/0.0, /*Ey=*/0.0, /*Ez=*/0.1});
-eval.build();
-eval.run(frame_ion);   // q = +1 → Fz = 0.1 eV/Å
-```
-
-MD composition (one VelocityVerlet step; inert LJ so the force pipeline is
-valid):
-
-```cpp
-cpu::md::ConstPotBO conp(/*eta=*/2.0);
-conp.add_electrode(1, 0.0);
-conp.Ez = 0.1;
-conp.electroneutrality = false;
 conp.rebuild_matrix_every_step = true;
 
 cpu::md::ClassicalPolarization pol;
@@ -183,6 +155,19 @@ sim.add_ref(field);   // post_force +100
 sim.add_ref(pol);     // end_of_step +50
 sim.build();
 sim.run(frame, /*nsteps=*/1);
+
+const double Q = conp.total_charge(0);  // [e] → pin 0.04351892485250505
+// pol.Pz() → pin 5.439865606563132e-5 [e/Å²]
+```
+
+Dual-gate field force alone (separate from charge solve):
+
+```cpp
+cpu::Evaluate eval;
+eval.on(evaluate::Phase::evaluate)
+    .add(cpu::md::FixEfield{/*Ex=*/0.0, /*Ey=*/0.0, /*Ez=*/0.1});
+eval.build();
+eval.run(frame_ion);   // q = +1 → Fz = 0.1 eV/Å
 ```
 
 Architecture rules:

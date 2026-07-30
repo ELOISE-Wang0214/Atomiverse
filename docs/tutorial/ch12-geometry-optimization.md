@@ -259,7 +259,7 @@ The setup, in full:
 ```cpp
 auto frame = make_aspirin();              // aspirin geometry
 
-auto integrals = /* IntegralPack is private — use RHF */;
+auto integrals = /* use RHF{basis}.run(frame) */;
 auto config    = /* use cpu::scf::RHF */;   // RHF: no XC grid, fast
                                                     // (default_config => KS/PBE)
 config.tol     = 1e-6;                    // Hartree

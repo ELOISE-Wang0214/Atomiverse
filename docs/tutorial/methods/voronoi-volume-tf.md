@@ -130,19 +130,15 @@ conp.xy_image_range = 40;
 conp.l_tf = 2.0;                                  // [Å]; 0 = perfect metal
 conp.site_volume.assign(frame_rows, v[0]);        // per-row v_i [Å³]
 
-// Standalone solve (as in the regression) …
-cpu::Context ctx;
-conp.build({ctx, frame});
-conp.launch({ctx, frame, /*stage=*/0, /*step=*/0});
-double q_top = conp.total_charge(1);              // [e]
-double c = conp.capacitance();                    // [e/V]
-
-// … or bound on the MD driver (defaults to pre_force order −50):
+// Bound on the MD driver (defaults to pre_force order −50):
 cpu::md::MD sim;
 // ... neighbor / coulomb / integrator as needed ...
 sim.add_ref(conp);   // or add(std::move(conp)) to own
 sim.build();
 sim.run(frame, /*nsteps=*/1);
+
+double q_top = conp.total_charge(1);              // [e]
+double c = conp.capacitance();                    // [e/V]
 ```
 
 Exactly one of `site_density` / `site_volume` may be set when `l_tf > 0`

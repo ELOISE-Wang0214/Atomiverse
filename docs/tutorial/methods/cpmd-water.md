@@ -97,7 +97,7 @@ class StopWhenDrift : public cpu::Criterion {
   public:
     explicit StopWhenDrift(double max_rel) : max_rel_(max_rel) {}
     std::string name() const override { return "stop_when_drift"; }
-    void launch(const cpu::LaunchContext&) override {}  // verdict-only
+    void launch(...) override {}  // verdict-only — no per-step work
     ATV::Verdict verdict(const cpu::LoopState& s) override {
         const double e = s.frame.meta.get(ATV::kConserved);
         if (!seeded_) { e0_ = e; seeded_ = true; return ATV::Verdict::Continue; }

@@ -128,8 +128,8 @@ bag). Static single evaluation matching Gate A:
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/fix_dfield.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -143,8 +143,11 @@ f.box = cpu::Box::cubic(10.0);
 cpu::md::FixDfield d(/*Dx=*/0.0, /*Dy=*/0.0, /*Dz [V/Å]=*/0.5);
 d.polarization_feedback = true;        // constant-D ensemble (default: foothold)
 
-cpu::Context ctx;
-d.launch({ctx, f, /*stage=*/0, /*step=*/0});
+// Static single evaluation (Gate A) — Bias on Evaluate; Frame is the only token.
+cpu::Evaluate eval;
+eval.on(evaluate::Phase::evaluate).add_ref(d);
+eval.build();
+eval.run(f);
 
 double Pz = d.last_Pz();       // [e/Å²]  itinerant polarization
 double Ez = d.last_Ez();       // [V/Å]   D_z − 4π k_e P_z

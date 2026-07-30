@@ -89,8 +89,8 @@ no Config bag). Minimal standalone solve matching the regression:
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/dipole_electrode_joint.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -109,6 +109,7 @@ for (int i = 0; i < 4; ++i) {
 }
 frame.box = cpu::Box::orthorhombic(10.0, 10.0, 20.0);
 
+// Component defaults to pre_force order −50 so pair/kspace see updated charges.
 cpu::md::DipoleElectrodeJoint joint(
     /*eta [1/Å]=*/2.0, /*alpha_by_type=*/{0.0, 0.0, 0.0, 1.0, 1.5});
 joint.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);
@@ -120,28 +121,6 @@ joint.joint_tol = 1e-12;
 joint.pol_tol = 1e-12;
 joint.joint_max_iter = 100;
 joint.pol_max_iter = 200;
-
-cpu::Context ctx;
-joint.build({ctx, frame});
-joint.launch({ctx, frame, /*stage=*/0, /*step=*/0});
-
-const double q_bot = joint.total_charge(0);  // [e]
-const double q_top = joint.total_charge(1);  // [e]
-const auto& mu = joint.last_mu();            // packed xyz [e·Å]
-// mu[6..8] = cation; mu[9..11] = anion
-```
-
-MD binding (component defaults to `pre_force` order −50 so pair/kspace see
-updated electrode charges):
-
-```cpp
-cpu::md::DipoleElectrodeJoint joint(2.0, {0.0, 0.0, 0.0, 1.0, 1.5});
-joint.add_electrode(1, 0.0).add_electrode(2, 1.0);
-joint.thole_a = 0.39;
-joint.electroneutrality = true;
-joint.xy_image_range = 0;
-joint.joint_tol = 1e-12;
-joint.pol_tol = 1e-12;
 joint.rebuild_matrix_every_step = true;  // optional if geometry moves
 
 cpu::md::MD sim;
@@ -151,6 +130,11 @@ sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.1});
 sim.add_ref(joint);   // or add(std::move(joint)) to own
 sim.build();
 sim.run(frame, /*nsteps=*/1);
+
+const double q_bot = joint.total_charge(0);  // [e]
+const double q_top = joint.total_charge(1);  // [e]
+const auto& mu = joint.last_mu();            // packed xyz [e·Å]
+// mu[6..8] = cation; mu[9..11] = anion
 ```
 
 Architecture rules:

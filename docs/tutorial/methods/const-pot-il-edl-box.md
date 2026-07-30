@@ -118,23 +118,12 @@ in / Frame out. Condensed from
 
 using namespace ATV;
 
-// Standalone step-0 BO solve (the pinned quantity): types 2/3 are the walls.
-cpu::md::ConstPotBO bo(/*eta [1/Å]=*/1.805132);
-bo.add_electrode(/*type=*/2, /*Psi [V]=*/-1.0);
-bo.add_electrode(/*type=*/3, /*Psi [V]=*/+1.0);
-bo.use_cg = true;          // large-electrode CG route
-bo.cg_tol = 1e-12;
-cpu::Context ctx;
-bo.build({ctx, frame});
-bo.launch({ctx, frame, /*stage=*/0, /*step=*/0});
-double q_left = bo.total_charge(0);   // [e] — electrode 0 (type 2)
-double q_right = bo.total_charge(1);  // [e] — electrode 1 (type 3)
-
-// Production NVT: constant-potential walls + CG IL + observers.
-cpu::md::ConstPotBO cpot(1.805132);
-cpot.add_electrode(2, -1.0);
-cpot.add_electrode(3, +1.0);
-cpot.use_cg = true;
+// Production NVT: constant-potential walls + CG IL + observers (Frame only).
+// Types 2/3 are the walls; step-0 BO charge is the pinned quantity after run.
+cpu::md::ConstPotBO cpot(/*eta [1/Å]=*/1.805132);
+cpot.add_electrode(/*type=*/2, /*Psi [V]=*/-1.0);
+cpot.add_electrode(/*type=*/3, /*Psi [V]=*/+1.0);
+cpot.use_cg = true;                   // large-electrode CG route
 cpot.cg_tol = 1e-10;
 cpot.max_cg_iters = 5000;
 cpot.predictor_order = 2;             // ASPC warm start (MW production path)

@@ -96,15 +96,16 @@ bag). Minimal multi-site solve matching the regression twin:
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/context.h"
-#include "atomiverse/cpu/dynamics/const_pot_cg.h"
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
+#include "atomiverse/cpu/dynamics/const_pot_cg.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
 
 // frame: 32 electrode sites (types 1,2) + 2 electrolyte ions (type 3);
 // box orthorhombic(4, 4, 20); see reg_const-pot-cg-large-electrode.cpp
+// Component defaults to pre_force order −50.
 
 cpu::md::ConstPotCG cg(/*eta [1/Å]=*/2.0);
 cg.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);
@@ -113,10 +114,15 @@ cg.electroneutrality = true;
 cg.xy_image_range = 0;
 cg.cg_tol = 1e-14;
 cg.max_cg_iter = 2000;
+cg.rebuild_matrix_every_step = true;  // optional if geometry moves
 
-cpu::Context ctx;
-cg.build({ctx, frame});
-cg.launch({ctx, frame, /*stage=*/0, /*step=*/0});
+cpu::md::MD sim;
+sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/12.0, /*skin=*/0.5});
+sim.set_evaluator(cpu::PairCoulCut{/*cutoff=*/12.0});
+sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.1});
+sim.add_ref(cg);   // or add(std::move(cg)) to own
+sim.build();
+sim.run(frame, /*nsteps=*/1);
 
 const double q_bot = cg.total_charge(0);  // [e]
 const double q_top = cg.total_charge(1);  // [e]
@@ -124,35 +130,21 @@ const int iters = cg.cg_iterations();
 // frame.span(kAtom_charge)[0..N_elec-1] updated; electrolyte unchanged
 ```
 
-Dual-twin check (binding accuracy gate — same \(A\)):
+Dual-twin check (binding accuracy gate — same \(A\)): run the dense BO path
+on a second Frame with the same MD composition:
 
 ```cpp
 cpu::md::ConstPotBO bo(/*eta=*/2.0);
 bo.add_electrode(1, 0.0).add_electrode(2, 1.0);
 bo.electroneutrality = true;
 bo.xy_image_range = 0;
-bo.build({ctx, frame_bo});
-bo.launch({ctx, frame_bo, 0, 0});
+
+cpu::md::MD sim_bo;
+// ... same neighbor / coulomb / integrator as above ...
+sim_bo.add_ref(bo);
+sim_bo.build();
+sim_bo.run(frame_bo, /*nsteps=*/1);
 // assert max_i |Q_i^CG - Q_i^BO| <= 1e-8 e; group totals match
-```
-
-MD binding (component defaults to `pre_force` order −50):
-
-```cpp
-cpu::md::ConstPotCG conp(/*eta=*/2.0);
-conp.add_electrode(1, 0.0).add_electrode(2, 1.0);
-conp.electroneutrality = true;
-conp.xy_image_range = 0;
-conp.cg_tol = 1e-12;
-conp.rebuild_matrix_every_step = true;  // optional if geometry moves
-
-cpu::md::MD sim;
-sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/12.0, /*skin=*/0.5});
-sim.set_evaluator(cpu::PairCoulCut{/*cutoff=*/12.0});
-sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.1});
-sim.add_ref(conp);   // or add(std::move(conp)) to own
-sim.build();
-sim.run(frame, /*nsteps=*/1);
 ```
 
 Architecture rules:
