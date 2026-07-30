@@ -42,7 +42,7 @@ FACTORY_PATS=(
 )
 
 INTERMEDIATE_PATS=(
-    'IntegralPack[[:space:]]*\{'
+    'IntegralWorkspace[[:space:]]*\{'
     'AtomList[[:space:]]*\{'
     'ShellList[[:space:]]*\{'
     'IntegralDerivPack[[:space:]]*\{'
@@ -99,9 +99,9 @@ done
 #
 # Exemption whitelist (each with its owning round; delete the line when the
 # owning round memberizes it):
-#   build_minao_density           — MINAO initial-guess machinery; IntegralPack-deletion round
-#   build_minao_ao_list           — MINAO initial-guess machinery; IntegralPack-deletion round
-#   build_shell_list_from_table   — basis_set.cpp file-local helper; IntegralPack-deletion round
+#   build_minao_density           — MINAO initial-guess machinery; IntegralWorkspace-deletion round
+#   build_minao_ao_list           — MINAO initial-guess machinery; IntegralWorkspace-deletion round
+#   build_shell_list_from_table   — basis_set.cpp file-local helper; IntegralWorkspace-deletion round
 #   build_shell_to_atom_from_integrals — integral_derivatives.cpp internal; gradient round
 #
 # The identifier must START at `build_` — the leading `(^|[^a-zA-Z0-9_])` is a
