@@ -39,7 +39,7 @@ closed-form virial.
 and omits `units::coulomb`; γ_AA = U_A is accidentally correct, γ_AB(R→∞) is
 **14.4× low**. Every polar MioSketch pin in the tree is provisional until this
 lands. Full analysis + blast radius:
-`.claude/notes/dftb-gamma-units-defect.md`.
+`.claude/notes/dftb-vs-dftbplus-cleanup.md`.
 
 Then: `dftb3-periodic-forces` (DFTB3 is still molecular min-image while DFTB2
 has PBC / k-mesh / stress), `nddo-sharp-discriminator` (CO₂ or CO instead of

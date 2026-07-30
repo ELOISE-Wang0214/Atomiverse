@@ -54,7 +54,7 @@ the **textbook**?"* — it needs nothing, so it can run every cycle.
    escape hatch, and **no substituting a different model when an input is
    missing** — `reg_pw-smearing-al` used to fall back to a toy `V_loc` and print
    `PASS` against a pin recorded for the real pseudopotential. A missing input
-   is a failure. Grep-gated by `tests/architecture/regression_harness_scrub.sh`.
+   is a failure. Enforced by review (CLAUDE.md test iron law), not by a gate.
 
 5. **Not in the default `ctest`.** Built behind `ATV_BUILD_REGRESSIONS=ON`, run
    through the `regressions` target.

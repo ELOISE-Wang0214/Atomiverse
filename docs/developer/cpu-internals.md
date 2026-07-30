@@ -295,9 +295,10 @@ minimization is only which criteria happen to be attached.
 ## SCF Is a Driver; the Method Owns the Loop
 
 CPU Gaussian SCF used to be an *inner solver* (`cpu::scf::SCFSolver`)
-hidden behind an `SCF` component. That shape is gone: `scf_solver.h` is
-an `#error` tombstone, and so is the `SCFResult` bag (`scf_result.h` is
-deleted). The concrete methods `RHF` / `UHF` / `RKS` / `UKS` share the
+hidden behind an `SCF` component. That shape is gone — the solver, the
+`SCFConfig` bag, the `SCFResult` bag and the `#error` tombstones that
+briefly marked their graves have all been deleted, so the names simply
+do not resolve. The concrete methods `RHF` / `UHF` / `RKS` / `UKS` share the
 CRTP base `cpu::scf::MeanFieldMethod<D>`, and that base **is** a
 `cpu::Driver<scf::Phase>` — the same loop-node shape as MD and
 Minimize, with the typed stage enum

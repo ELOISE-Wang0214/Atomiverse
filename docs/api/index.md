@@ -77,11 +77,12 @@ Start with these CPU headers:
 
 ### Run SCF workflows on the CUDA backend
 
-CUDA SCF evaluator (device path; host public API is still `cpu::scf::RHF` etc.)
-component, not a staged driver. Start with these headers:
+CUDA SCF presents the same public shape as CPU —
+`cuda::scf::RHF{basis}.run(frame)` / `.forces(frame)`, `Frame` in and out.
+Start with these headers:
 
+- [`cuda::scf::RHF`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/scf/rhf.cuh)
 - [`cuda::scf::SCFEvaluator`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/scf/scf_evaluator.cuh)
-- [`cuda::scf::SCFSolver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/scf/scf_solver.cuh)
 - [`cuda::Evaluate`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/driver/evaluate.cuh)
 - [`cuda::single_point`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/driver/single_point.cuh)
 

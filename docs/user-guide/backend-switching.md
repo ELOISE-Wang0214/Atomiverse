@@ -17,42 +17,42 @@ This is easiest to see for RHF. The [tutorial Practice block](../tutorial/ch02-r
 builds the molecule in `cpu::Frame` and calls `cpu::scf::RHF`. The CUDA path
 starts from the same `cpu::Frame`; only the evaluator and solver backend change.
 
-## CPU Solver Versus CUDA Driver
+## Same Shape On Both Devices
 
-The CPU path exposes the solver lifecycle directly:
+The switch is one type name. Parameters are constructor arguments or members
+on the concrete method, and `Frame` is the only token that crosses:
 
 ```cpp
-auto integrals = /* use RHF{basis}.run(frame) */;
-auto config = /* use cpu::scf::RHF; rhf.tol = tol */;
-config.max_iter = 100;
-cpu::scf::RHF rhf /* was SCFSolver */;
-
-const auto& result = rhf.run(frame);
+cpu::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-10};
+rhf.run(frame);                       // frame.meta.get(kEnergy) [eV]
 ```
 
-This is the best path for learning, debugging, and validating the mathematics.
-The code is compact and the linear algebra stays close to the physics.
+```cpp
+cuda::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-10};
+rhf.run(frame);                       // same Frame, same key, same units
+```
 
-The CUDA path keeps the same `cpu::Frame` and the same integral data, but hands
-the iterative work to a device-resident evaluator driven by `cuda::Evaluate`.
-The inner SCF cycle (Fock build, diagonalize, density, convergence) lives
-inside `cuda::scf::SCFSolver`, wrapped by the `cuda::scf::SCF`
-component:
+Integrals, the SCF iteration, and the density are private workspace inside the
+method on either device — there is no integral bag to hand around and no
+`*Config` to fill in. Forces are `rhf.forces(frame)` on both.
+
+The CPU path is the best one for learning, debugging, and validating the
+mathematics: the code is compact and the linear algebra stays close to the
+physics. The CUDA path keeps the calculation device-resident; for the shells
+its kernels cover, no scientific data returns to the host mid-SCF.
+
+Either method also binds as an evaluator inside an outer driver, again with the
+same shape on both devices:
 
 ```cpp
-auto integrals = /* use RHF{basis}.run(frame) */;
-
-cuda::scf::SCF scf{integrals, tol, /*max_iter=*/100};
-
 cuda::Evaluate eval;
-eval.on(ATV::evaluate::Phase::evaluate).add(std::move(scf));
+eval.set_evaluator(cuda::scf::RHF{cpu::scf::BasisSet::STO3G});
 eval.build();
-eval.run(frame);              // frame.meta.get(kEnergy) populated
+eval.run(frame);
 ```
 
-That is the main backend switch in Atomiverse. The physical problem is the
-same. The execution style changes from a direct CPU solver call to a staged
-CUDA evaluator.
+That is the main backend switch in Atomiverse. The physical problem is
+described once; only the device that executes it changes.
 
 ## A Good Progression
 

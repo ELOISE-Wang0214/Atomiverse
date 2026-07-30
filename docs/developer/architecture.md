@@ -240,38 +240,47 @@ only the orchestration logic.
 `cpu::Evaluate` runs a `prepare -> evaluate -> finalize` pass exactly once — the
 home of single-point energy and force calculations.
 
-**SCF is not a driver family.** Both Gaussian-basis SCF and plane-wave DFT are
-*inner solvers* — plain low-level classes, not `Driver` subclasses. Gaussian SCF
-is a concrete method (`cpu::scf::RHF` / `UHF` / `RKS` / `UKS`; private loop engine under `scf/internal/`), used by the
-`cpu::scf::SCF` (`cpu::HF`) / the CUDA SCF evaluator; plane-wave DFT is
-`cpu::pw::PW` behind `cpu::pw::PWEvaluator` (`PlaneWave`). There is no
-`Capability` write-set — components write Frame keys and plug into the *same*
-Evaluate, MD, and Minimize drivers ("swap the energy source, keep the driver").
+**SCF is not a driver *family* — it is a driver *node*.** There is no
+"electronic structure" category beside MD and Minimize. Gaussian SCF is a
+concrete method (`cpu::scf::RHF` / `UHF` / `RKS` / `UKS`), and the CRTP base
+they share, `cpu::scf::MeanFieldMethod<D>`, **is** a `cpu::Driver<scf::Phase>`
+— the same loop-node shape as MD and Minimize. Plane-wave DFT has not been
+re-hosted yet: `cpu::pw::PW` behind `cpu::pw::PWEvaluator` (`PlaneWave`) is
+still a plain class with its own loop, which is scheduled debt rather than a
+pattern to copy. There is no `Capability` write-set — components write Frame
+keys and plug into the *same* Evaluate, MD, and Minimize drivers ("swap the
+energy source, keep the driver").
 
-The SCF cycle (Hamiltonian build → diagonalize → density → DIIS → convergence)
-is decomposed into `internal::` helpers — `HamiltonianBuilder`, `EigenSolver`,
-`DensityBuilder`, `DIISMixer`, `DualConvergenceCheck` — owned as direct members
-of the method. Private helpers do not inherit from `Component`, none are registered into a
-Plan, and there is deliberately **no `scf::Phase` enum**. That is why the SCF
-loop is neither a monolithic function nor a user-pluggable phase order.
+The SCF cycle is a typed stage sequence, `fock → mix → diagonalize → density
+→ check`. Each stage under
+[`cpu/scf/stages/`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/stages/)
+derives `cpu::Component` and is owned by the method as a direct member; the
+algorithms they call (`DIISMixer`, `EigenSolver`, density and Hamiltonian
+builders) stay `internal::` helpers that never register into a foreign Plan.
+`ATV::scf::Phase` exists **because** there is a Driver node to carry it — the
+banned shape is a free-floating phase enum with no node.
 
-## Why the CPU SCF Solver Still Exists
+So the SCF loop is neither a monolithic function nor a user-pluggable phase
+order: the method fixes the stage sequence, and members on the method
+(`mixer`, `tol`, `max_iter`, guess) select the algorithm inside each stage.
 
-A common question is why the repository has both a CPU `SCFSolver` and staged
-CUDA SCF components.
+## Why CPU And CUDA SCF Both Exist
 
-The short answer is that they solve different engineering problems.
+A common question is why the repository has both a CPU and a CUDA SCF stack
+when they now present the same public shape (`cpu::scf::RHF{basis}.run(frame)`
+vs `cuda::scf::RHF{basis}.run(frame)`).
 
-The CPU solvers are the clearest place to express reference algorithms with
-xtensor and dense linear algebra. They are good for validation, deep-dive
-tutorials, result structs, and testing physical correctness.
+They solve different engineering problems. The CPU stack is the clearest place
+to express reference algorithms with xtensor and dense linear algebra: it is
+where validation, deep-dive tutorials, and physical-correctness tests live, and
+it covers every method and basis. The CUDA stack is organized around device
+residency — for the shells its kernels cover it keeps integrals, the SCF
+iteration, and forces on the GPU with no scientific data returning to the host
+mid-solve — and falls back to the host path outside that coverage.
 
-The CUDA SCF stack is organized around staged execution, device residency, and
-backend timing. It is good for expressing workflows that stay on the GPU and
-compose with the rest of the driver system.
-
-So the duplication is not accidental. One layer emphasizes clarity and
-reference-quality implementation. The other emphasizes staged GPU execution.
+So the duplication is not accidental: one emphasizes breadth and
+reference-quality clarity, the other device-resident execution. Their
+agreement is what the dual-device regressions in `regressions/scf/` pin.
 
 ## Where To Make Changes
 

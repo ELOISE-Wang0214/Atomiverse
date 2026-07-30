@@ -410,7 +410,7 @@ Three real ones, all surfaced by writing the gate *before* trusting the code:
    Coulomb constant missing. γ_AA = U_A is accidentally right, which is why it
    survived; γ_AB(R→∞) → 1/R instead of k_e/R, **14.4× low**. Invisible because
    the only real-mio-1-1 system in tree is H₂ (Δq ≡ 0). **Not fixed** — it
-   re-pins every polar MioSketch case. `.claude/notes/dftb-gamma-units-defect.md`,
+   re-pins every polar MioSketch case. `.claude/notes/dftb-vs-dftbplus-cleanup.md`,
    new slug `dftb-gamma-units-fix` (Phase A head).
 2. **Self-image virial dropped** — the Γ pair virial walked `a<b` only, so
    A–(A+T) image bonds (zero force, nonzero virial) were missing: **14% σ_xx
