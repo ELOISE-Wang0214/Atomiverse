@@ -666,7 +666,11 @@ if(ATV_BUILD_PATH)
     atv_add_regression(sampling fep_soft_dimer)
     atv_add_regression(sampling metad_double_well)
     atv_add_regression(sampling metad_2d)
-    atv_add_regression(sampling wham_double_well)
+    # WHAM needs a molrs pin that ships WhamCompute; the library gates
+    # src/cpu/observe/wham.cpp on the same condition, so the case must too.
+    if(ATV_MOLRS_HAS_WHAM)
+        atv_add_regression(sampling wham_double_well)
+    endif()
     atv_add_regression(path hremd_soft_lambda)
 endif()
 if(ATV_BUILD_MD)

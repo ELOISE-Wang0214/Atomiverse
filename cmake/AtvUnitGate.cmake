@@ -327,8 +327,8 @@ if(_want_kspace)
 endif()
 # _want_core alone keeps _R_core only (already set).
 
-# Always exclude heavy / architecture greps / MPI multi-rank.
-set(_E "no_alloc|^test_mpi_|scrub|module_dag|module_off|compatibility_surface|molrs_source_contract")
+# Always exclude heavy / MPI multi-rank.
+set(_E "no_alloc|^test_mpi_")
 
 message(STATUS "AtvUnitGate: root=${_ATV_ROOT}")
 message(STATUS "AtvUnitGate: build=${_BUILD_DIR}")

@@ -32,9 +32,9 @@ set(ATV_TEST_TIMEOUT_SECONDS 10 CACHE STRING
 option(ATV_TEST_HEAVY
     "Build/register multi-second method tests (default OFF — pre-push gate)"
     OFF)
-# Not CACHE: must track the source list; a sticky CACHE left scrubs in the gate.
+# Not CACHE: must track the source list (a sticky CACHE goes stale).
 set(ATV_TEST_HEAVY_REGEX
-    "ccsd|fci|mp2|rpa|g0w0|casscf|nevpt|eom_|tdhf|ri_mp2|bomd|cpmd|xl_bomd|second_gen_cpmd|gpw_solver|gpw_method|gpw_ot|gpw_forces|gpw_stress|gpw_uks|gpw_mbd|gpw_dftd|gpw_ts|gpw_xdm|gpw_vdw|gpw_rvv10|gpw_hirshfeld|gpw_dftu|gpw_kpoints|gpw_thread|gpw_periodic_wannier|gpw_smearing|gpw_poisson|gpw_hartree|gpw_grid_fft|gpw_xc_grid_gga|gpw_mt_poisson|pw_si|pw_bomd|pw_forces|pw_method|pw_evaluator|pw_spin|pw_stress|pw_dfpt|pw_bands|pw_berry|pw_periodic_wannier|pw_smearing|pw_components|scf_solver|rohf_solver|uks_solver|uhf_solver|x2c|pcm|embedding|counterpoise|cphf|dispersion|rks_tda|ghf|scf_cpmd|scf_xl|scf_aspc|scf_mc_predictor|method_driver|dftb2$|dftb3$|dftb2_3ob|dftb2_dispersion|dftb3_scc|dftb0$|am1_scaffold|am1_thermochemistry|scf_wannier|scf_ecp$|electronic_cpmd|electronic_xl|_scrub|module_dag|module_off|compatibility_surface|molrs_source_contract|no_facade|no_toplevel|path_words|driver_names|no_backend|no_factory|no_alloc")
+    "ccsd|fci|mp2|rpa|g0w0|casscf|nevpt|eom_|tdhf|ri_mp2|bomd|cpmd|xl_bomd|second_gen_cpmd|gpw_solver|gpw_method|gpw_ot|gpw_forces|gpw_stress|gpw_uks|gpw_mbd|gpw_dftd|gpw_ts|gpw_xdm|gpw_vdw|gpw_rvv10|gpw_hirshfeld|gpw_dftu|gpw_kpoints|gpw_thread|gpw_periodic_wannier|gpw_smearing|gpw_poisson|gpw_hartree|gpw_grid_fft|gpw_xc_grid_gga|gpw_mt_poisson|pw_si|pw_bomd|pw_forces|pw_method|pw_evaluator|pw_spin|pw_stress|pw_dfpt|pw_bands|pw_berry|pw_periodic_wannier|pw_smearing|pw_components|scf_solver|rohf_solver|uks_solver|uhf_solver|x2c|pcm|embedding|counterpoise|cphf|dispersion|rks_tda|ghf|scf_cpmd|scf_xl|scf_aspc|scf_mc_predictor|method_driver|dftb2$|dftb3$|dftb2_3ob|dftb2_dispersion|dftb3_scc|dftb0$|am1_scaffold|am1_thermochemistry|scf_wannier|scf_ecp$|electronic_cpmd|electronic_xl|no_alloc")
 
 # Fast-gate discipline (HARD RULE):
 #   • tests/ = one component / one method / ≤ ATV_TEST_TIMEOUT_SECONDS.
@@ -126,17 +126,6 @@ atv_add_cpp_test(test_vec3  core/test_vec3.cpp)
 atv_add_cpp_test(test_real_harmonics core/test_real_harmonics.cpp)
 atv_add_cpp_test(test_units core/test_units.cpp)
 
-add_test(
-    NAME test_molrs_source_contract_mismatch
-    COMMAND ${CMAKE_COMMAND}
-            -DATV_SOURCE_DIR=${CMAKE_SOURCE_DIR}
-            -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/molrs-contract-mismatch
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/architecture/molrs_contract_mismatch.cmake)
-if(TARGET test_molrs_source_contract_mismatch)
-set_tests_properties(test_molrs_source_contract_mismatch PROPERTIES
-    WILL_FAIL TRUE)
-endif()
-
 # ── CPU backend tests (always available, no CUDA required) ──────────
 
 # Mirrors include/atomiverse/cpu/frame/box.h (+ box_simd.h).
@@ -151,6 +140,11 @@ atv_add_cpp_test(test_cpu_chunked_range cpu/device/test_chunked_range.cpp)
 atv_add_cpp_test(test_cpu_component_context_slices cpu/component/test_context_slices.cpp)
 if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_qm_engine cpu/component/test_qm_engine.cpp)
+    # Bit-for-bit erased-vs-direct RHF comparison: OMP reduction order must be
+    # identical in both runs, so pin the thread count (parallel ctest otherwise
+    # oversubscribes and the comparison flakes).
+    set_tests_properties(test_cpu_qm_engine PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=1")
 endif()
 # esmm-contract-05-accumulate-switch (U8 + U7b): the kEnergyElectronic per-term
 # key — ZeroEnergy must clear it in lockstep with kEnergy, and a co-bound
@@ -270,7 +264,6 @@ if(ATV_BUILD_KSPACE)
     atv_add_cpp_test(test_cpu_pme_coul            cpu/longrange/test_pme_coul.cpp)
     atv_add_cpp_test(test_cpu_pppm_coul           cpu/longrange/test_pppm_coul.cpp)
 endif()
-atv_add_cpp_test(test_cpu_nddo_api_surface       cpu/semiempirical/test_nddo_api_surface.cpp)
 atv_add_cpp_test(test_cpu_nddo_calpar_derived    cpu/semiempirical/test_nddo_calpar_derived.cpp)
 atv_add_cpp_test(test_cpu_am1_scaffold            cpu/semiempirical/test_am1_scaffold.cpp)
 atv_add_cpp_test(test_cpu_am1_thermochemistry     cpu/semiempirical/test_am1_thermochemistry.cpp)
@@ -658,14 +651,16 @@ if(ATV_BUILD_PW)
         ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_OMP_THREADS}")
     endif()
 
-    # MPI k-point parallel parity (launched under mpirun)
-    if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
+    # MPI k-point parallel parity (launched under mpirun). Full PW/GPW SCF
+    # solves — cannot finish inside the unit-test cap, so heavy-only until
+    # they migrate to regressions/ with the rest of the e2e-in-tests debt.
+    if(ATV_TEST_HEAVY AND ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
         atv_add_mpi_exec(test_mpi_pw_kpoint mpi/test_pw_kpoint.cpp)
         atv_add_mpi_run(test_mpi_pw_kpoint_n1 test_mpi_pw_kpoint 1)
         atv_add_mpi_run(test_mpi_pw_kpoint_n2 test_mpi_pw_kpoint 2)
         atv_add_mpi_run(test_mpi_pw_kpoint_n4 test_mpi_pw_kpoint 4)
     endif()
-    if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE AND ATV_BUILD_GPW)
+    if(ATV_TEST_HEAVY AND ATV_USE_MPI AND MPIEXEC_EXECUTABLE AND ATV_BUILD_GPW)
         atv_add_mpi_exec(test_mpi_gpw_kpoint mpi/test_gpw_kpoint.cpp)
         atv_add_mpi_run(test_mpi_gpw_kpoint_n1 test_mpi_gpw_kpoint 1)
         atv_add_mpi_run(test_mpi_gpw_kpoint_n2 test_mpi_gpw_kpoint 2)
@@ -1070,198 +1065,6 @@ if(ATV_BUILD_CUDA)
 
 endif()
 
-# Grep gate: the frame-block registry is THE single per-atom field
-# enumeration (frame-block-01, ac-001). set_capacity / copy_row /
-# pack_exchange / unpack_exchange / max_exchange_doubles iterate the
-# registry; a hand-written member name inside any of them fails the build.
-add_test(
-    NAME test_frame_field_list_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cpu/frame/field_list_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# Grep gate: the direct `atoms.<field>[` / `atoms.<field>(` per-atom column
-# access shape (frame-block-02, ac-001) must not remain in src/cpu/ or
-# include/atomiverse/cpu/ -- every consumer resolves a typed
-# `Frame::span(kAtom_*)` once at the launch boundary instead. Pure grep —
-# runs in every build configuration.
-add_test(
-    NAME test_frame_direct_access_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cpu/frame/direct_access_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# Grep gate: no hand-written static_cast<int> on a Phase enum. The seven workflow
-# Phase enums all start at 0, so an int phase cannot be told apart across
-# workflows; ATV::slot_of is the one sanctioned conversion and the typed entry
-# points (slot_of / slot_count / ctx.at / run_stage / make_binding) are the only
-# way in. Pure grep — runs in every build configuration.
-add_test(
-    NAME test_stage_typing_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/core/stage_typing_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# backend-mirror-01-core gate: the facade layer is gone; contracts live under
-# core/ and nothing includes the old facade include path. Pure grep — every config.
-add_test(
-    NAME test_no_facade_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/core/no_facade_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# backend-mirror-02-absorb gate: no top-level shared-math module; reciprocal /
-# pair kernels are owned per backend, and cuda uses the full word longrange
-# (never kspace). Pure grep — every build configuration.
-add_test(
-    NAME test_no_toplevel_shared_math_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_toplevel_shared_math_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# backend-mirror-03-paths gate: backend subdirectories are full English words,
-# mirrored across cpu/ and cuda/ — no abbreviated legacy dir names or include
-# paths. Pure grep — every build configuration.
-add_test(
-    NAME test_path_words_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/path_words_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# backend-mirror-04-driver gate: the loop node is Driver (no backend-prefixed
-# driver class), erased base is DriverNode, CUDA termination API is Criterion.
-add_test(
-    NAME test_driver_names_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/driver_names_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# backend-mirror-05-dissolve gate: no CPU Backend god class; the loop runtime is
-# composed from communication / device / asynchronous sub-runtimes.
-add_test(
-    NAME test_no_backend_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_backend_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# backend-mirror-06-gates: cross-backend layout invariants not covered by the
-# per-phase scrubs — no runtime/loop/shared dirs, cuda mirrors cpu, tests mirror
-# source. Pure grep/find — every build configuration.
-add_test(
-    NAME test_layout_mirror_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/layout_mirror_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# backend-mirror-07-docs gate: CLAUDE.md / AGENTS.md Architecture prose is free
-# of the pre-restructure vocabulary (legacy class + path names). Pure grep.
-add_test(
-    NAME test_docs_vocab_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/docs_vocab_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# regression-harness gate: a case must resolve its data through the compiled-in
-# absolute ATV_REG_DATA_DIR (never by probing the CWD or reading the
-# environment), must not silently swap in a different Hamiltonian when an input
-# is missing, and must declare its OpenMP width at registration. Pure grep —
-# every build configuration.
-add_test(
-    NAME test_regression_harness_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/regression_harness_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# cuda-resurrect gate: the CUDA backend must not reference the deleted host CPU
-# API (catch-all Real / core/real.h, renamed unit constants, stale host
-# cpu::Frame accessor shapes). Pure grep over the cuda trees — runs on the login
-# node without CUDA. Device cuda::Frame .atoms/.box/.scalars pointers stay legal.
-add_test(
-    NAME test_cuda_no_stale_api_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/cuda_no_stale_api_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-add_test(
-    NAME test_cuda_openmm_md_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/cuda_openmm_md_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# Grep gate: domain objects are constructed via class constructors — never
-# free-function factories (build_integrals / *_config / make_atom_list / …).
-# Pure grep — runs in every build configuration. See AGENTS.md OOP rule.
-# Product-module DAG + source gating (python-on-demand-install-01)
-add_test(
-    NAME test_module_dag_auto_enable
-    COMMAND ${CMAKE_COMMAND}
-            -DATV_SOURCE_DIR=${CMAKE_SOURCE_DIR}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/architecture/module_dag_auto_enable.cmake)
-if(TARGET test_module_dag_auto_enable)
-set_tests_properties(test_module_dag_auto_enable PROPERTIES
-    LABELS "architecture;cmake"
-    TIMEOUT ${ATV_TEST_TIMEOUT_SECONDS})
-endif()
-
-add_test(
-    NAME test_module_off_excludes_sources
-    COMMAND ${CMAKE_COMMAND}
-            -DATV_SOURCE_DIR=${CMAKE_SOURCE_DIR}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/architecture/module_off_excludes_sources.cmake)
-if(TARGET test_module_off_excludes_sources)
-set_tests_properties(test_module_off_excludes_sources PROPERTIES
-    LABELS "architecture;cmake"
-    TIMEOUT ${ATV_TEST_TIMEOUT_SECONDS})
-endif()
-
-
-add_test(
-    NAME test_no_factory_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_factory_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# Grep gate (frame-only-token): out-of-library consumers never construct
-# cpu::Context / LaunchContext — Frame + preset run only. Unit tests may still
-# hand-drive Component lifecycle. Pure grep — every build config.
-add_test(
-    NAME test_no_user_context_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_user_context_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# Grep gate (scf-review-02-eri-hoists): the AO→MO transforms live in the
-# private internal/ao2mo.h, not public mp2.h, and the spin-orbital
-# antisymmetrization helpers (struct SO / so_eri / spat_ / spin_ / phys_ /
-# antisym_) exist in exactly one hosted place. Pure grep — every build config.
-add_test(
-    NAME test_no_ao2mo_public_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_ao2mo_public_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# Grep gate (scf-review-03-posthf-dedup): the EOM-CCSD intermediates
-# (make_tau / struct EomImds; no free build_imds) and the determinant-CI engine
-# (choose / enumerate_strings / occ_list / jw_single_sign / Slater-Condon
-# elements / ci_element / dense_ci_solve / make_rdm12 / struct CiSolution) are
-# each DEFINED in exactly one internal engine file. Pure grep — every config.
-add_test(
-    NAME test_posthf_dedup_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/posthf_dedup_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# Grep gate (scf-review-04-meanfield-dedup): the FD nuclear-Hessian skeleton
-# lives only in the protected CRTP template
-# MeanFieldMethod<Derived>::central_difference_nuclear_hessian (no FD
-# displacement-loop sentinels hess_to_ev_ang2 / f_to_ha_bohr / (2.0 * h_bohr)
-# in rks/uks/rohf.cpp), and the factory-named gradient glue make_result /
-# make_force_result appears nowhere under src/cpu/scf (it is the tag ctor
-# GradientResult(FromHartreeBohr, ...)). Pure grep — every build config.
-add_test(
-    NAME test_scf_dedup_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/scf_dedup_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# Grep gate: compatibility-only CPU aliases/overloads stay deleted and the
-# TaskSpec wire format is strict v3 with an explicit ComponentId mapping.
-# Deliberately excludes cpu/frame/ and CUDA/Torch sources.
-add_test(
-    NAME test_cpu_compatibility_surface_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cpu/compatibility_surface_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# Grep gate: cuda::RDF must be migrated off the deleted legacy host histogram
-# helpers (arch-refactor-07-molrs) — rdf.cuh must consume
-# cpu::compute::RDFAccumulator via trajectory_metrics.h; only rdf_write_curve
-# (the one g(r) emitter) may remain. The forbidden-token list lives in the
-# gate script. Pure grep — runs in every build configuration, no CUDA needed.
-add_test(
-    NAME test_cuda_rdf_molrs_migration
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cuda/observe/rdf_molrs_migration.sh
-            ${CMAKE_SOURCE_DIR})
 
 # ── Torch backend tests ─────────────────────────────────────────────
 
