@@ -31,6 +31,8 @@
 #include <memory>
 #include <string>
 
+#include <xtensor/containers/xtensor.hpp>
+
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/bias.h"
@@ -129,8 +131,27 @@ class Hessian : public Driver<ATV::vib::Phase> {
     /// @return `HessianResult` with the `[3N,3N]` Hessian in eV/Angstrom^2.
     HessianResult run(cpu::Frame& frame);
 
-    /// @brief Most recent `HessianResult` produced by `run()`.
-    /// @pre `run()` has completed at least once.
+    /// @brief Frequencies / modes from a **precomputed** Cartesian Hessian.
+    ///
+    /// Same mass-weight + TR-project + diagonalize finalize as after a FD
+    /// `run()`, without the 6N force loop. Use when the matrix already exists
+    /// (e.g. `cpu::scf::RHF::hessian`). Frame supplies masses (`kAtom_type`)
+    /// and equilibrium geometry for the TR projector.
+    ///
+    /// Does not require a force evaluator on this driver. Result is cached in
+    /// `last_result()` like `run()`.
+    ///
+    /// @param frame Equilibrium geometry [Å].
+    /// @param hessian_ev_ang2 Dense symmetric `[3N,3N]` Hessian [eV/Å²].
+    /// @return Frequencies [cm⁻¹], normal modes, etc. on `HessianResult`
+    ///         (Cartesian `hessian` field copies the input).
+    /// @throws std::invalid_argument on empty frame or shape mismatch.
+    HessianResult run_from_cartesian(cpu::Frame& frame,
+                                     xt::xtensor<double, 2> hessian_ev_ang2);
+
+    /// @brief Most recent `HessianResult` produced by `run()` /
+    ///        `run_from_cartesian()`.
+    /// @pre A run method has completed at least once.
     /// @return The cached Hessian result.
     const HessianResult& last_result() const { return last_result_; }
 

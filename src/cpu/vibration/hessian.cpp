@@ -3,7 +3,12 @@
 
 #include "atomiverse/cpu/vibration/hessian.h"
 
+#include <stdexcept>
+#include <string>
+
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/component/zero.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/vibration/frequency_report.h"
 #include "atomiverse/cpu/vibration/hessian_diagonalizer.h"
 #include "atomiverse/cpu/vibration/mass_weighting.h"
@@ -134,6 +139,88 @@ HessianResult Hessian::run(cpu::Frame& frame) {
     last_result_.s_vib = workspace_->s_vib;
     last_result_.g_tot = workspace_->g_tot;
     last_result_.g_thermal = workspace_->g_thermal;
+    return last_result_;
+}
+
+namespace {
+
+/// Hosts MassWeighting + HessianDiagonalizer for one finalize pass when the
+/// Cartesian Hessian is already known (no FD loop). Library-internal only.
+class CartesianFinalize : public Driver<ATV::vib::Phase> {
+  public:
+    explicit CartesianFinalize(HessianWorkspace* ws) : mw_(ws), diag_(ws) {
+        this->on(ATV::vib::Phase::diagonalize).add_ref(mw_, /*order=*/0);
+        this->on(ATV::vib::Phase::diagonalize).add_ref(diag_, /*order=*/+1);
+    }
+
+    void run_finalize(cpu::Frame& frame, int n_atoms) {
+        this->build();
+        setup_pass(frame);
+        step_once(6 * n_atoms); // components gate on step >= 6N
+        teardown_pass();
+    }
+
+  protected:
+    void validate_components() const override {}
+
+  private:
+    MassWeighting mw_;
+    HessianDiagonalizer diag_;
+};
+
+} // namespace
+
+HessianResult Hessian::run_from_cartesian(
+    cpu::Frame& frame, xt::xtensor<double, 2> hessian_ev_ang2) {
+    const int n = static_cast<int>(frame.nlocal());
+    if (n < 1)
+        throw std::invalid_argument("Hessian::run_from_cartesian: empty frame");
+    const int dim = 3 * n;
+    if (static_cast<int>(hessian_ev_ang2.shape(0)) != dim
+        || static_cast<int>(hessian_ev_ang2.shape(1)) != dim) {
+        throw std::invalid_argument(
+            "Hessian::run_from_cartesian: hessian shape must be [3N,3N] with N="
+            + std::to_string(n));
+    }
+
+    // Dedicated workspace so a prior / later FD run() is not disturbed.
+    HessianWorkspace ws;
+    ws.allocate(n);
+    ws.hessian = std::move(hessian_ev_ang2);
+    auto x = frame.span(kAtom_x);
+    auto y = frame.span(kAtom_y);
+    auto z = frame.span(kAtom_z);
+    for (int i = 0; i < n; ++i) {
+        ws.r0[static_cast<std::size_t>(3 * i + 0)] =
+            static_cast<double>(x[i]);
+        ws.r0[static_cast<std::size_t>(3 * i + 1)] =
+            static_cast<double>(y[i]);
+        ws.r0[static_cast<std::size_t>(3 * i + 2)] =
+            static_cast<double>(z[i]);
+    }
+    ws.r0_ready = true;
+
+    CartesianFinalize host{&ws};
+    host.run_finalize(frame, n);
+
+    last_result_.n_atoms = n;
+    last_result_.units = "eV/Angstrom^2";
+    last_result_.hessian = ws.hessian;
+    last_result_.frequencies = ws.frequencies;
+    last_result_.normal_modes = ws.normal_modes;
+    last_result_.n_imaginary = ws.n_imaginary;
+    last_result_.is_linear = ws.is_linear;
+    // Thermo not run on this path.
+    last_result_.zpe = 0.0;
+    last_result_.u_tot = 0.0;
+    last_result_.h_tot = 0.0;
+    last_result_.s_tot = 0.0;
+    last_result_.s_elec = 0.0;
+    last_result_.s_trans = 0.0;
+    last_result_.s_rot = 0.0;
+    last_result_.s_vib = 0.0;
+    last_result_.g_tot = 0.0;
+    last_result_.g_thermal = 0.0;
     return last_result_;
 }
 
