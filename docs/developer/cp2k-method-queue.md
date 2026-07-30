@@ -790,20 +790,73 @@ path**, OT gtol retune + thread-deterministic GPW grid kernels
 Assign. **Pending = 12**; **in_progress = 0**; **blocked = 6**. Do **not**
 invent methods — next is GapCensus/Assign from **pending**.
 
+**GapCensus wave 15 2026-07-31 (shift wave 1; parent `dev` @ `e5f55189`):**
+recover already clean per Recover 2026-07-31 (incomplete=**0**;
+`## in_progress` empty; open CP2K/GPW/PW specs=**0** — PySCF deferred only:
+`periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`; unmerged `wf/*`=**0**; isolation
+worktrees=**0**; no regression dir for any pending slug). Tree re-diff vs
+`docs/roadmap/dft.md` §3/§8/§10–12 + MD AIMD + `tools/cp2k_oracle` +
+`include/atomiverse/cpu/{gpw,planewave}` on post-esmm `dev`: **all 12 prior
+pending re-verified as true gaps** — `gpw_stress.cpp:351` still refuses MBD
+on the multi-k path; `gpw_evaluator.cpp:181/185` still throw UKS / multi-k
+linearized XL; `gpw_solver.cpp:5077` k-path still `reject("multigrid
+(ngrids > 1)")`; `gpw_forces.cpp` still only copies `plus_u` into cfg (no U
+force fold, Γ or k); no dedicated D3/D3BJ/TS/XDM stress or D3/D4 ATM force
+pins; DFPT GGA×spin / GGA×finite-q joint pins absent; no `gpw-bomd-kpoints`
+reg. Overlap check vs the science-fix commits: `3ee28243` landed **molecular**
+scf/dftd4 analytic two-body D4 (EEQ adjoint) + ATM F2+FD and **DFTB2** D3
+stress — the GPW dedicated-pin rows stay open (ATM-force workers should
+reuse that machinery); `0f78ff6d` (thread-deterministic grid kernels) and
+`e7b7b534` (PW spin V_eff fix) change no capability row. `e7b7b534` also
+**voided two fossil self-golden pins** (`pw-uks-kmesh-fe` /
+`pw-uks-fe-smearing`, ATV self-freezes from the pre-spin-GGA solver) and
+replaced them with exact invariants — correct per pin provenance; no re-pin
+row queued (no citable NC-UPF PW twin; both regs now gate identities, not
+frozen ATV output). **Added 5** tree-declared residuals with offline CP2K /
+literature twins: `gpw-vdw-multigrid` (vdW-DF/DF2/rVV10 × `ngrids>1` throws
+"multigrid not supported" at `gpw_solver.cpp:4942`; CP2K default NGRIDS 4
+twin), `gpw-ts-stress` / `gpw-xdm-stress` (Γ stress folds ts/xdm energy;
+dedicated pins missing — the wave-13/14 hold "thin after MBD stress + TS/XDM
+force pins" cleared when both shipped), `cpmd-uks-kpoints` (evaluator throws
+"multi-k UKS + cpmd is not productized"; MD-roadmap ○ residual),
+`second-gen-cpmd-ot-kpoints` (multi-k SGCP throws "use_ot + P_k density
+guess is not productized" after Γ RKS/UKS OT correctors ✓). **Not added:**
+CPMD stress / variable-cell CP (deliberate refusal, esmm-cpmd-02 gate — no
+classic-CP CP2K twin); PW Mermin fractional spin GS loop (prose depth, no
+throw); ATM stress (hold behind pending ATM force pins); SCS-MP2 periodic
+(members product-shaped; hold behind dispersion stress depth); multi-k UMP2
+`mp2.h` "follow-on" comment is **stale doc**, capability is product
+(`reg_periodic-ump2-kpoints`); BP86/B97/OLYP/HCTH (molecular PySCF path);
+stock VV10 (**blocked** — no CP2K twin); shear/off-diagonal stress
+(orthorhombic design); GAPW/PAW/periodic hybrid/meta-GGA (blocked);
+molecular post-HF / classical MW / CUDA ports (other loops). Roadmap: **no
+○/✓ table flips** (nothing capability-shaped merged since harness wave 14 —
+esmm campaign is molecular/multiscale); fixed stale §8 prose (D3/D3BJ
+forces + Γ MBD stress still listed "queued" though shipped), §10 open-
+residual line (wave-12 incompletes closed), §11 "GPW-grid MLWF queued" →
+product, §11 GPW FD phonon mention; index GPW residual line refreshed to
+wave 15; MD roadmap CPMD/SGCP residual prose annotated with the two new
+queue slugs. **Pending = 17**; **in_progress = 0**; **blocked = 6**.
+
 ## pending
 
-- [ ] `gpw-d3bj-stress` | Analytic fixed-P cell stress with DFT-D3(BJ) | gpw | twin: CP2K D3(BJ) + NUMERICAL stress / extend d3bj ice | GapCensus wave 13
-- [ ] `gpw-mbd-kpoint-stress` | Multi-k analytic stress folds MBD (k-path currently skips MBD) | gpw | twin: extend `gpw-mbd-periodic` + multi-k stress | GapCensus wave 13
-- [ ] `dfpt-gga-finite-q-si` | Finite-q DFPT with pure GGA kernel (PW) | response | twin: extend `dfpt-finite-q-si` (LSDA) to PBE | GapCensus wave 13
-- [ ] `xl-bomd-linearized-uks` | Zero-SCF linearized-functional XL-BOMD forces on Γ-UKS | dynamics | twin: extend `xl-bomd-linearized-forces` × UKS | GapCensus wave 14
-- [ ] `xl-bomd-linearized-kpoints` | Zero-SCF linearized XL-BOMD forces on multi-k RKS | dynamics | twin: extend linearized XL × k-mesh | GapCensus wave 14
-- [ ] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14
-- [ ] `gpw-d3-atm-forces` | Analytic ionic forces with DFT-D3 three-body ATM (C9) | gpw | twin: CP2K D3 ATM force / FD on water dimer | GapCensus wave 14
-- [ ] `gpw-d4-atm-forces` | Analytic ionic forces with DFT-D4 three-body ATM (\(s_9\)) | gpw | twin: dftd4 ATM gradient / extend `gpw-d4-atm` | GapCensus wave 14
-- [ ] `gpw-dftu-kpoint-forces` | Multi-k analytic ionic forces with Dudarev DFT+U | gpw | twin: CP2K PLUS_U + FORCES on NiO / small cell | GapCensus wave 13; staffed wave 14, **not started** (worktree created, no implementation)
-- [ ] `dfpt-gga-spin-si` | DFPT phonons with collinear spin **and** pure GGA kernel (PW) | response | twin: extend `dfpt-gga-si` x `dfpt-spin-si` | GapCensus wave 13; staffed wave 14, **not started**
-- [ ] `gpw-bomd-kpoints` | Multi-k Born-Oppenheimer MD on GPW | dynamics | twin: CP2K Quickstep AIMD with k-mesh | GapCensus wave 13; staffed wave 14, **not started**
-- [ ] `gpw-multigrid-kpoints` | Multi-k GPW with REL_CUTOFF multigrid (`ngrids>1`) | gpw | twin: CP2K NGRIDS + k-mesh water/Si | GapCensus wave 14; staffed wave 14, **not started**
+- [ ] `gpw-d3bj-stress` | Analytic fixed-P cell stress with DFT-D3(BJ) | gpw | twin: CP2K D3(BJ) + NUMERICAL stress / extend d3bj ice | GapCensus wave 13; re-verified wave 15
+- [ ] `gpw-mbd-kpoint-stress` | Multi-k analytic stress folds MBD (k-path throws; Γ product `reg_gpw-mbd-stress`) | gpw | twin: extend `gpw-mbd-periodic` + multi-k stress | GapCensus wave 13; re-verified wave 15
+- [ ] `dfpt-gga-finite-q-si` | Finite-q DFPT with pure GGA kernel (PW) | response | twin: extend `dfpt-finite-q-si` (LSDA) to PBE | GapCensus wave 13; re-verified wave 15
+- [ ] `xl-bomd-linearized-uks` | Zero-SCF linearized-functional XL-BOMD forces on Γ-UKS | dynamics | twin: extend `xl-bomd-linearized-forces` × UKS | GapCensus wave 14; re-verified wave 15
+- [ ] `xl-bomd-linearized-kpoints` | Zero-SCF linearized XL-BOMD forces on multi-k RKS | dynamics | twin: extend linearized XL × k-mesh | GapCensus wave 14; re-verified wave 15
+- [ ] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14; re-verified wave 15 (`3ee28243` D3 stress is DFTB2, not GPW)
+- [ ] `gpw-d3-atm-forces` | Analytic ionic forces with DFT-D3 three-body ATM (C9) | gpw | twin: CP2K D3 ATM force / FD on water dimer | GapCensus wave 14; re-verified wave 15 (reuse `3ee28243` ATM F2+FD machinery)
+- [ ] `gpw-d4-atm-forces` | Analytic ionic forces with DFT-D4 three-body ATM (\(s_9\)) | gpw | twin: dftd4 ATM gradient / extend `gpw-d4-atm` | GapCensus wave 14; re-verified wave 15 (reuse `3ee28243` scf/dftd4 EEQ-adjoint gradients)
+- [ ] `gpw-dftu-kpoint-forces` | Multi-k analytic ionic forces with Dudarev DFT+U | gpw | twin: CP2K PLUS_U + FORCES on NiO / small cell | GapCensus wave 13; re-verified wave 15 (`gpw_forces` still only copies `plus_u` into cfg)
+- [ ] `dfpt-gga-spin-si` | DFPT phonons with collinear spin **and** pure GGA kernel (PW) | response | twin: extend `dfpt-gga-si` x `dfpt-spin-si` | GapCensus wave 13; re-verified wave 15
+- [ ] `gpw-bomd-kpoints` | Multi-k Born-Oppenheimer MD on GPW | dynamics | twin: CP2K Quickstep AIMD with k-mesh | GapCensus wave 13; re-verified wave 15
+- [ ] `gpw-multigrid-kpoints` | Multi-k GPW with REL_CUTOFF multigrid (`ngrids>1`) | gpw | twin: CP2K NGRIDS + k-mesh water/Si | GapCensus wave 14; re-verified wave 15 (k-path `reject`)
+- [ ] `gpw-vdw-multigrid` | Nonlocal vdW-DF/DF2/rVV10 with REL_CUTOFF multigrid (`ngrids>1` throws "multigrid not supported") | gpw | twin: CP2K NGRIDS 4 (its default) + vdW-DF ice | GapCensus wave 15
+- [ ] `gpw-ts-stress` | Analytic fixed-P cell stress with free-atom TS (energy folds; dedicated pin missing) | gpw | twin: libMBD E_disp under strain + `gpw_stress_fd` dual-gate (extend `gpw-ts-forces`) | GapCensus wave 15
+- [ ] `gpw-xdm-stress` | Analytic fixed-P cell stress with XDM (energy folds; dedicated pin missing) | gpw | twin: extend `gpw-xdm-forces` pin + `gpw_stress_fd` dual-gate | GapCensus wave 15
+- [ ] `cpmd-uks-kpoints` | Multi-k UKS Car–Parrinello MD (dual-spin Bloch \(C_k^\sigma\); evaluator throws) | dynamics | twin: extend `cpmd-kpoints` × `cpmd-uks`; NVE drift envelope | GapCensus wave 15
+- [ ] `second-gen-cpmd-ot-kpoints` | Multi-k SGCP with OT corrector (`use_ot` + \(P_k\) throws) | dynamics | twin: extend `second-gen-cpmd-kpoints` × OT corrector; NVE drift | GapCensus wave 15
 
 ## in_progress
 

@@ -18,11 +18,14 @@ plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
 remaining periodic-only gaps (hybrids, meta-GGA, stock VV10 **blocked** —
 no CP2K twin, GAPW/PAW; **harness wave 12–14** closed zero-SCF linearized
 XL (Γ RKS), multi-k **SGCP**, D3/D4 **ATM** energy, collinear
-spin+metallic **bands/DOS**, multi-k **CPMD**, **GPW MLWF**, and
-**GPW FD phonons** (`reg_gpw-fd-phonon-si`); **GapCensus wave 14** pending
-residuals (D3/D3BJ **stress**, MBD multi-k **stress**, multi-k DFT+U
-**forces**, DFPT **GGA×spin** / **GGA×finite-q**, multi-k **BOMD**,
-multi-k **multigrid**, linearized XL **UKS**/multi-k, D3/D4 **ATM forces**);
+spin+metallic **bands/DOS**, multi-k **CPMD**, **GPW MLWF**,
+**GPW FD phonons** (`reg_gpw-fd-phonon-si`), D3/D3(BJ) **forces**
+(`reg_gpw-d3-forces` / `reg_gpw-d3bj-forces`), and Γ MBD **stress**
+(`reg_gpw-mbd-stress`); **GapCensus wave 15** pending
+residuals (D3/D3BJ **stress**, MBD multi-k **stress**, **TS/XDM stress**,
+multi-k DFT+U **forces**, DFPT **GGA×spin** / **GGA×finite-q**, multi-k
+**BOMD**, multi-k / vdW **multigrid**, linearized XL **UKS**/multi-k,
+D3/D4 **ATM forces**, multi-k UKS **CPMD**, multi-k SGCP **OT**);
 product after
 harness wave 11 also ships UGW@UKS-RPBE,
 dedicated TS/XDM force pins, multi-k UKS stress GGA expand, CPMD
@@ -257,14 +260,17 @@ Force assembly folds free-atom **TS** / **XDM** on Γ + multi-k with
 dedicated offline force pins (`reg_gpw-ts-forces` / `reg_gpw-xdm-forces`).
 **Three-body ATM** energy productizes on GPW: D3 C9 (`GpwDft::d3_atm`;
 `reg_gpw-d3-atm`) and D4 \(s_9=1\) (`GpwDft::d4_atm`; `reg_gpw-d4-atm`).
-Two-body D3/D3(BJ) **energy** is product; dedicated **force** pins and
-D3 / D3(BJ) **stress** remain open (queued `gpw-d3-forces` /
-`gpw-d3bj-forces` / `gpw-d3-stress` / `gpw-d3bj-stress` — same
-dedicated-pin pattern as TS/XDM forces / D4 stress). **ATM force** pins
-are queued after energy footholds (`gpw-d3-atm-forces` /
-`gpw-d4-atm-forces`). **MBD stress** (Γ dedicated pin + multi-k path that
-currently skips MBD) is queued (`gpw-mbd-stress` /
-`gpw-mbd-kpoint-stress`).
+Two-body D3/D3(BJ) **energy and analytic ionic forces** are product
+(`reg_gpw-d3-forces` / `reg_gpw-d3bj-forces`; CP2K-gated, unified
+`2 × R_CUTOFF` pair cutoff); dedicated D3 / D3(BJ) **stress** pins remain
+open (queued `gpw-d3-stress` / `gpw-d3bj-stress` — same dedicated-pin
+pattern as D4 stress). **ATM force** pins are queued after energy
+footholds (`gpw-d3-atm-forces` / `gpw-d4-atm-forces`). **MBD stress**
+ships at **Γ** (`reg_gpw-mbd-stress`); the multi-k stress path refuses
+MBD (fold queued `gpw-mbd-kpoint-stress`). Dedicated **TS / XDM stress**
+pins are queued (`gpw-ts-stress` / `gpw-xdm-stress`; energy folds are
+product). Nonlocal vdW × REL_CUTOFF multigrid (`ngrids>1`) throws
+(queued `gpw-vdw-multigrid`).
 
 ## 9. Composite DFT Methods
 
@@ -337,11 +343,11 @@ Two periodic DFT engines exist, with disjoint strengths:
   dedicated **TS/XDM** force pins (`reg_gpw-ts-forces` /
   `reg_gpw-xdm-forces`), **UGW@UKS-RPBE** (`reg_ugw-uks-rpbe`), **D3/D4
   ATM** energy (`reg_gpw-d3-atm` / `reg_gpw-d4-atm`). Stock VV10 is
-  **blocked** (no CP2K twin). Open residuals: wave-12 incomplete (multi-k
-  CPMD, GPW MLWF, GPW FD phonon) **plus** wave-14 pending (D3/D3BJ
-  forces + D3/D3BJ stress, MBD Γ/multi-k stress, multi-k DFT+U forces,
-  DFPT GGA×spin / GGA×finite-q, multi-k BOMD, multi-k multigrid,
-  linearized XL UKS/multi-k, D3/D4 ATM forces). Hybrids / meta-GGA /
+  **blocked** (no CP2K twin). Open residuals (GapCensus wave 15):
+  D3/D3BJ stress, MBD multi-k stress, TS/XDM stress, multi-k DFT+U
+  forces, DFPT GGA×spin / GGA×finite-q, multi-k BOMD, multi-k / vdW
+  multigrid, linearized XL UKS/multi-k, D3/D4 ATM forces, multi-k UKS
+  CPMD, multi-k SGCP OT. Hybrids / meta-GGA /
   GAPW / PAW remain blocked (queue not exhausted — see
   `cp2k-method-queue.md`). CPU only.
 
@@ -459,7 +465,8 @@ Which engine backs which ✓:
   **PW variable-cell relax** ships (`reg_pw-variable-cell-si`).
 - **Finite-displacement phonons** at Γ: `cpu::vib::Phonon` expands a supercell,
   runs 6N force evaluations, and diagonalizes the mass-weighted Hessian
-  (`reg_fd-phonon-supercell`; SW 64-atom Si twin). Molecular
+  (`reg_fd-phonon-supercell`; SW 64-atom Si twin) **and on GPW analytic
+  forces** (`reg_gpw-fd-phonon-si`; Si₂ UKS triplet dual-gate). Molecular
   `cpu::vib::Hessian` remains the non-periodic path. **Phonon dispersions
   ω(q)** productize supercell IFC Fourier on the same SW twin
   (`cpu::vib::PhononDispersion`; `reg_phonon-dispersion-si` Γ/X/L windows).
@@ -491,8 +498,9 @@ Which engine backs which ✓:
   `regressions/scf/wannier-centers`) **and** periodic multi-k
   **Marzari–Vanderbilt** on PW (`cpu::pw::PeriodicWannier`; bond-midpoint Si
   pin; `reg_periodic-wannier-si`) **and collinear-spin**
-  (`reg_periodic-wannier-uks`). **GPW-grid MLWF** residual is queued
-  (`periodic-wannier-gpw`).
+  (`reg_periodic-wannier-uks`) **and GPW-grid MLWF** (multi-k
+  Marzari–Vanderbilt on the Gaussian-basis path;
+  `reg_periodic-wannier-gpw`).
 
 ## 12. Periodic infrastructure
 

@@ -261,13 +261,16 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   (fixed-\(P\)+Pulay product; multi-SCF FD oracle; `reg_gpw-analytic-stress` /
   `reg_gpw-uks-stress` / `reg_gpw-kpoint-stress` / `reg_gpw-stress-water`)
   and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice` + MOLOPT
-  `reg_gpw-variable-cell-molopt`). After harness wave 12 residual prose
+  `reg_gpw-variable-cell-molopt`). After harness wave 12–14 residual prose
   closes zero-SCF linearized XL (Γ RKS), multi-k SGCP, D3/D4 ATM energy,
-  and collinear spin+metallic bands/DOS; multi-k CPMD, GPW MLWF, and
-  **GPW FD phonons** (`reg_gpw-fd-phonon-si`) product; **GapCensus wave 14**
-  residual pending (D3/D3BJ stress, MBD multi-k stress, multi-k DFT+U
-  forces, DFPT GGA combos, multi-k BOMD/multigrid, linearized XL UKS/k,
-  D3/D4 ATM forces); stock VV10 remains **blocked** (no CP2K twin);
+  collinear spin+metallic bands/DOS, multi-k CPMD, GPW MLWF,
+  **GPW FD phonons** (`reg_gpw-fd-phonon-si`), D3/D3(BJ) **forces**
+  (`reg_gpw-d3-forces` / `reg_gpw-d3bj-forces`), and Γ MBD **stress**
+  (`reg_gpw-mbd-stress`); **GapCensus wave 15**
+  residual pending (D3/D3BJ stress, MBD multi-k + TS/XDM stress, multi-k
+  DFT+U forces, DFPT GGA combos, multi-k BOMD, multi-k / vdW multigrid,
+  linearized XL UKS/k, D3/D4 ATM forces, multi-k UKS CPMD, multi-k SGCP
+  OT); stock VV10 remains **blocked** (no CP2K twin);
   hybrids / meta-GGA / GAPW blocked — see `cp2k-method-queue.md` (queue
   not exhausted — GapCensus owns next discovery).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).

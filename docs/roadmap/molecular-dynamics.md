@@ -267,7 +267,7 @@ on the closed-shell path. **Electronic thermostat** (Nosé–Hoover on fictitiou
 electronic DOF) productizes (`reg_cpmd-electronic-thermostat`). **Multi-k
 CPMD** (Bloch \(C_k\), one `cpu::electronic::CpmdCplx` per sampled k) ships
 for RKS (`reg_cpmd-kpoints`); multi-k **UKS** CPMD remains ○ (build-time
-throw).
+throw; queued `cpmd-uks-kpoints`).
 
 **Second-generation Car–Parrinello MD** (Kühne et al. 2007; ASPC predictor +
 partial-SCF corrector, no fictitious electronic mass) ships on closed-shell Γ
@@ -276,7 +276,9 @@ GPW via `GPWEvaluator::{second_gen_cp, second_gen_cp_k, second_gen_cp_max_iter}`
 **RKS OT corrector** is product (`use_ot=true` with ASPC natural-orbital
 warm-start; `reg_second-gen-cpmd-ot`) **and Γ-UKS OT + SGCP**
 (`reg_second-gen-cpmd-uks-ot`) **and multi-k SGCP** (ASPC on complex
-\(P_k\); `reg_second-gen-cpmd-kpoints`).
+\(P_k\); `reg_second-gen-cpmd-kpoints`). Multi-k SGCP with the **OT
+corrector** remains ○ (evaluator throws; queued
+`second-gen-cpmd-ot-kpoints`).
 
 ## 8. Nuclear Quantum Dynamics
 
