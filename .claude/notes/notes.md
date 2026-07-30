@@ -108,13 +108,13 @@ is the OpenMM tile path (not style A/B).
    (Fock → diagonalize → density → mix → residual). A loop is a **Driver**
    (stages + iteration + Handler termination) — same shape as MD / Minimize.
 3. **No parallel world models.** Frame is the only system. Public
-   `AtomList` / `IntegralPack` / `*Config` / `*System` / free-function
+   `AtomList` / `*Config` / `*System` / free-function
    factories are debt. Parameters are **members of the concrete method**.
    Integrals and AO maps are **private workspace**.
 
 **Wrong (including the transitional "constructor rewrite"):**
 ```cpp
-IntegralPack ints{frame, basis};
+integral bag ints{frame, basis};
 SCFConfig cfg{SCFConfig::RHF{}, ints, tol};
 SCFSolver{cfg}.build(ints); SCFSolver::run(ints);
 ```
@@ -128,9 +128,9 @@ rhf.run(frame);   // Frame in/out; SCF loop is the Driver inside/as RHF
 ```
 
 **Supersedes** the same-day note that stopped at "free functions →
-constructors". Turning `build_integrals` into `IntegralPack{…}` was
+constructors". Turning `build_integrals` into `integral bag{…}` was
 necessary cleanup of factories, **not** the end state. New work must not
-extend `SCFSolver` / `SCFConfig` / public `IntegralPack` / `NDDOSystem`.
+extend `SCFSolver` / `SCFConfig` / public `NDDOSystem`.
 
 **Progress (2026-07-17 cleanup, continued):**
 
@@ -139,7 +139,6 @@ extend `SCFSolver` / `SCFConfig` / public `IntegralPack` / `NDDOSystem`.
 | Concrete methods `RHF`/`UHF`/`RKS`/`UKS` | **done** — Frame API; `mp2()` / `fci()` / `forces()` |
 | Intermediate types off public path | **done** — live under `cpu/scf/internal/`; public tombstones `#error` |
 | `AtomList` / `ShellList` | **private** — `internal/basis_workspace.h` only |
-| `IntegralPack` / `SCFConfig` / `SCFSolver` / deriv pack | **private** — `scf/internal/*` |
 | Public `basis_set.h` | **enum + name only** |
 | Examples | **Frame + methods only**; scrub-gated |
 | Grep gate | factories + examples intermediate types |
@@ -286,7 +285,7 @@ wobble persists even single-threaded (409/413). The gate now asserts
 what ac-014 actually guards: bounded spread (≤5%) + no upward trend
 over a 12-launch window.
 
-**Deferred:** Phase 5b IntegralPack/ShellList hot-path split, PW
+**Deferred:** Phase 5b integral bag/ShellList hot-path split, PW
 augmentation charges (E_aug = 0 for the norm-conserving UPF v1 path),
 PW forces (PWEvaluator is Energy-only).
 

@@ -96,10 +96,10 @@ leaving rot you already saw.
   `Foo::Config` / helper that only exists to be stuffed into `Foo(cfg)`.
   Parameters are **constructor arguments** (and public members when
   mutable). See iron law below (free-form section).
-- **God data structures.** No mega-dict / mega-struct / ambient
-  "context" blob every layer reaches into. Pass the few fields a call
-  needs, or a narrow typed view. Split types that accumulate more
-  than one coherent responsibility.
+- **God data structures / user Context bags.** No mega-dict / mega-struct /
+  ambient "context" blob. **Users never define or pass a Context** — the
+  sole public I/O token is **Frame** (iron law free-form). Engine-private
+  `LaunchContext` / `cpu::Context` are not a user type.
 - **All-in-one façade APIs.** No public `run_everything` /
   `compute_all` / `pipeline` that hides multi-step work. Composition
   is the **caller's** job (scripts, docs examples, `regressions/`).
@@ -110,8 +110,9 @@ leaving rot you already saw.
 1. Natural owning type? → method on that type, not a free function.
 2. More than one user-visible step? → split into primitives.
 3. Only one in-tree call site? → do not extract.
-4. Tempted to hang another field on a "context" bag? → new parameter
-   or smaller type instead.
+4. Tempted to hang another field on a "context" bag? → Frame field,
+   ctor/member on the owning type, or a narrow typed view — never a
+   user-facing Context.
 
 ### Tests (default)
 
@@ -130,7 +131,10 @@ For non-trivial work, prefer:
 
 ## What must never change casually
 
-- Frame as sole I/O currency (`blocks` + `meta` + `box`); no parallel `*System`
+- **Frame is the only public I/O token** (`blocks` + `meta` + `box`); no parallel
+  `*System`, no user `*Context` / ambient bag (iron law free-form)
+- **Frame columns = `span(ColKey)`; meta = `get(MetaKey)`** — do not rename C++
+  to `get_column`; pythonic names belong on the Python binding (iron law free-form)
 - **Region / selection / partition → Frame fields** (not `set_*` on methods); missing
   required field throws (iron law free-form)
 - **Prefer composition over inheritance** for workflows (iron law free-form)
@@ -139,7 +143,7 @@ For non-trivial work, prefer:
   (parameters = ctor args / members — iron law free-form section)
 - Units: eV, Å, fs, amu, eV/Å, K on the public surface
 - Precision tiers and ID sizes (`StorageReal` / `WorkReal` / `AccReal`; `TagInt` roles)
-- molrs exchange schema + materialize/write_back contracts
+- molrs exchange schema + from_molrs/to_molrs contracts
 - Three test tiers never mix (`tests/` unit / `regressions/` e2e / no e2e in ctest)
 
 <!-- mol:bootstrap:managed end -->
@@ -158,25 +162,27 @@ parameter bag whose only job is to be stuffed into a constructor.
 
 1. **Constructor arguments** assign fields immediately
    (`NoseHooverNPT(T, tau_T, P, tau_P, dt, …)`, `AM1(charge, multiplicity, …)`,
-   `Remd(temperatures, dt, steps, seed)`, `GPWEvaluator(kinds, cutoff_ry, …)`).
-2. **Public members** on the owning type when the caller mutates after
-   construction (`rhf.tol = 1e-10`) — still **no** parallel bag type.
-3. **Private** workspace / internal engine config (`semiempirical/internal/`,
-   solver private members) is fine — **never** on the public include path.
+   `RHF{BasisSet::STO3G, charge, tol}`, `GPWEvaluator(kinds, cutoff_ry, …)`).
+2. **Never** `obj.param = …` after default construction for method parameters
+   (forbidden style: `rhf.basis = STO3G`). Prefer `RHF{STO3G}` / full ctor.
+3. **Private** engine state is fine under `internal/` — **never** a parallel
+   public pack/bag type.
 
 **Wrong:**
 
 ```cpp
 struct FooConfig { double a; int b; };
 Foo f{FooConfig{.a = 1.0, .b = 2}};
-// or: auto cfg = h2_config(); f.a = cfg.a; f.b = cfg.b;
+// or:
+cpu::scf::RHF rhf;
+rhf.basis = BasisSet::STO3G;   // forbidden
 ```
 
 **Right:**
 
 ```cpp
 Foo f(/*a=*/1.0, /*b=*/2);
-// or: Foo f; f.a = 1.0; f.b = 2;  // members, not a bag type
+cpu::scf::RHF rhf{BasisSet::STO3G};
 ```
 
 **Also forbidden as public API:** `make_*` / `build_*` / `*_config()` free
@@ -192,6 +198,23 @@ Do **not** invent a new exception without `/mol:note`.
 `NoseHooverNPT::Config` / `GpwEvaluatorConfig` / `AM1Config` /
 `AM1BCCChargeConfig` / `PWConfig` as user path — deleted or privatized
 2026-07-23. Do not reintroduce.
+
+<!-- mol:note:topic:no-integral-pack -->
+## Iron law — no freestanding integral bag (2026-07-30)
+
+**Rule (binding):** integral state is **expanded private fields** on the
+concrete method (`ints_S_`, `ints_Hcore_`, shells, …), rebuilt from **Frame**.
+Engines take a non-owning `internal::IntegralView` of those fields. Public API
+is only `RHF{basis, …}.run(frame)` / `forces(frame)` (same shape on CUDA).
+
+**Forbidden:** freestanding integral bags from Frame in user code, regressions,
+examples, apps; teaching a bag as a public step; long-lived bag members on the
+method.
+
+**Harness, not unit-test gates:** CLAUDE.md + `.claude/notes/no-integral-pack.md`.
+Do **not** add ctest/unit greps as the primary gate for this style rule.
+
+Detail: `.claude/notes/no-integral-pack.md`
 
 <!-- mol:note:topic:frame-region-fields -->
 ## Iron law — region / selection on Frame fields (2026-07-29)
@@ -251,6 +274,89 @@ or “god” drivers that re-own every concern.
 md.run(frame, n);` with region on `frame`.
 
 Detail: `.claude/notes/prefer-composition.md`
+
+<!-- mol:note:topic:frame-only-token -->
+## Iron law — Frame is the only public token (no user Context) (2026-07-29)
+
+**Rule (binding):** the **only** public I/O currency is **`Frame`**
+(`blocks` + `meta` + `box`). Callers **must not** define, fill, subclass,
+or pass a user-facing **Context** (or any ambient bag with the same job:
+`SimContext`, `RunContext`, `MethodContext`, `QmmmContext`, …).
+
+| Lands where | What |
+|---|---|
+| **Frame** | System state the method reads/writes: positions, species, charges, masks/regions, topology, energies, forces, box, meta |
+| **Owning type** (ctor args / public members) | Algorithm parameters (`tol`, cutoffs, `dt`, basis, …) |
+| **Categorical slots** | Other components (`set_evaluator`, `set_engine`, `set_integrator`, …) |
+| **Engine-private only** | `cpu::Context` / `cuda::Context`, `LaunchContext` / `BuildContext` / `DestroyContext`, `SolverContext`, service slices (`ctx.md`…) — filled by Runtime/Driver, **never** constructed or required by user code |
+
+**Forbidden (public API / examples / regressions / docs/tutorial):**
+
+```cpp
+struct MyContext { Frame f; double tol; /* … */ };
+method.run(ctx);                 // wrong: bag parallel to Frame
+method.run(frame, ctx);          // wrong: second token
+method.set_context(ctx);         // wrong
+cpu::Context ctx;                // wrong: engine bus is not a user type
+comp.build({ctx, frame});        // wrong: hand-drive Component lifecycle
+comp.launch({ctx, frame, 0, 0});
+```
+
+**Right:**
+
+```cpp
+// region / charges / species live on frame; params on the method
+frame.span(kAtomQmZ)[i] = …;
+rhf.tol = 1e-10;
+md.set_evaluator(rhf);
+md.run(frame, n);                // Frame is the only token
+// or: cpu::Evaluate eval; eval.set_evaluator(...); eval.run(frame);
+```
+
+**Gate:** `tests/architecture/no_user_context_scrub.sh` (`test_no_user_context_scrub`)
+under `regressions/`, `examples/`, `app/`, `docs/tutorial/` forbids:
+
+- constructing `cpu::Context` / `LaunchContext` / `cpu::Runtime`
+- direct `#include` of `component/context.h`
+- hand-driving lifecycle: `.launch(`, brace `build({…})`, `setup_pass` /
+  `step_once` / `teardown_pass`
+
+Allowed: Component **override signatures** (`void launch(const LaunchContext&)`
+when writing a Component); CV `build(const Frame&)`; preset / method public
+`build()` / `run(frame)`. Unit tests under `tests/` may still hand-drive
+lifecycle.
+
+**Relation to sibling iron laws:**
+
+- **no-public-config-bags** — no `*Config` stuffed into ctors; same family of
+  "bag instead of Frame/members".
+- **frame-region-fields** — membership is Frame columns, not a context mask bag.
+- **Design forbid “god data structures”** — this law names the user-facing
+  cut: engine Context exists; **user Context does not**.
+
+Detail: `.claude/notes/frame-only-token.md`
+
+<!-- mol:note:topic:frame-column-access -->
+## Iron law — Frame columns are `span`, meta is `get` (2026-07-29)
+
+**Rule (binding):** on the **C++ public surface**, per-atom (and other block)
+columns are accessed with **`frame.span(ColKey)`** — a non-owning continuous
+view (`Span<T>`), not a value fetch. Typed scalars / small results use
+**`frame.meta.get(MetaKey)`**. Do **not** rename the C++ API to
+`get_column` / pythonic table-speak to “match Python”.
+
+| Surface | Access | Why |
+|---------|--------|-----|
+| `blocks` columns (`kAtom_x`, …) | `span` | Views, SoA hot path, `std::span`-shaped contract |
+| `meta` (`kEnergy`, …) | `get` | One typed scalar (or small array), dictionary-like |
+| **Python wheel** (nanobind) | may expose `get_column` / `[]` / attrs | Pythonic names belong on the **binding**, not the C++ pillar |
+
+**Wrong (C++ public / examples / regressions):** invent `get_column` aliases,
+or teach users that columns are “got” like meta values (implies copy / single
+cell). **Right:** `auto x = f.span(kAtom_x); x[i] = …;` and
+`f.meta.get(kEnergy)`.
+
+Detail: `.claude/notes/frame-column-access.md`
 
 <!-- mol:note:topic:cuda-openmm-neighbor-force -->
 ## CUDA classical MD — OpenMM **engine** architecture
@@ -699,11 +805,10 @@ throws at registration, and no caller ever types the int.
   ```
 - **Right (target shape):**
   ```cpp
-  cpu::scf::RHF rhf;          // concrete method — parameters are members
-  rhf.tol = 1e-10;
-  rhf.basis = BasisSet::STO3G;
+  // concrete method — parameters are constructor args (never rhf.basis = …)
+  cpu::scf::RHF rhf{BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-10};
   // SCF iteration is the Driver loop; RHF supplies the energy/force stages
-  rhf.run(frame);             // Frame in / Frame out — no IntegralPack, no Config
+  rhf.run(frame);             // Frame in / Frame out — no freestanding integral bag, no Config
   ```
 - When an outer MD/Minimize/Evaluate needs forces, it binds the **concrete
   method** (or a thin force-slot component that owns that method) at its
@@ -719,13 +824,12 @@ throws at registration, and no caller ever types the int.
 written to Frame** — never Driver-level categories: no "charge driver".
 
 **Frame is the only system.** There is no parallel `*System`, public
-`AtomList`, user-facing `IntegralPack`, or `*Config` bag:
+`AtomList`, `*Config` bag:
 
 | Banned as public API | Why |
 |---|---|
 | `AtomList` | Frame already is the atoms (Å, Z). Bohr conversion is private scratch. |
-| `IntegralPack` | Integrals are method/Driver **private workspace**, rebuilt from Frame. |
-| `SCFConfig` / `*Config` bags | Parameters are **members of the concrete method/Driver**. |
+| | `SCFConfig` / `*Config` bags | Parameters are **members of the concrete method/Driver**. |
 | `NDDOSystem` / any `*System` | Frame is the sole I/O currency. AO index is private scratch. |
 | `SCFSolver` as a bag | Not a thing — methods are `RHF`/`UHF`/…; the loop is a Driver. |
 | free-function factories | `build_*` / `*_config` / `make_*` — constructors or members only. |
@@ -737,7 +841,7 @@ step helpers stay owned by the concrete method/Driver, never inherit
 not include them (tests may).
 
 > **Debt (current tree):** still ships `cpu::scf::SCFSolver` + `SCFConfig` +
-> public `IntegralPack` / `AtomList` / `NDDOSystem`. That surface is
+> public `AtomList` / `NDDOSystem`. That surface is
 > **transitional and scheduled for deletion** toward the table above. New
 > code and new APIs must not extend the debt. See `.claude/notes/notes.md`
 > `[2026-07-17] SCF is a Driver; methods are concrete`.
@@ -885,16 +989,16 @@ and their current layouts are not compatibility surfaces for CPU code.
 
 Conversion points, each owning exactly one boundary:
 
-- `materialize()` / `write_back()` (`cpu/frame/materialize.h`) — strict schema-v2
+- `from_molrs()` / `to_molrs()` (`cpu/frame/molrs_exchange.h`) — strict schema-v2
   molrs.Frame ⇄ cpu::Frame boundary, run once per `run()`, never in a step loop.
   Unknown/synthetic blocks, unknown columns, wrong dtypes, and wrong row counts
-  fail immediately; there is no old decoder. `write_back` follows a pinned contract
+  fail immediately; there is no old decoder. `to_molrs` follows a pinned contract
   (golden-tested in
   `tests/cpu/test_materialize.cpp`): x/v/f, charge, image, and tag are
   written back (tag with checked i32 narrowing — overflow throws, no silent
   truncation); type, mass, topology, and box are per-run static inputs and
   **not** written; every serializable typed-meta value is written back exactly.
-- `cpu::to_cuda()` / `cuda::to_cpu()` — host ⇄ device; `cuda::write_back`
+- `cpu::to_cuda()` / `cuda::to_cpu()` — host ⇄ device; `cuda::to_molrs`
   inherits the cpu contract via `to_cpu`.
 - `torch::transfer` — cpu ⇄ torch tensors.
 
@@ -952,7 +1056,7 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
     return a constructed object. Grep-gated by
     `tests/architecture/no_factory_scrub.sh`.
   - **No public intermediate types for "building" a calculation.** Do **not**
-    invent `AtomList` / `IntegralPack` / `*Config` / `*System` as user-facing
+    invent `AtomList` / `*Config` / `*System` as user-facing
     steps. Frame is the molecule. Parameters are **members of the concrete
     method or Driver**. Integrals, AO maps, grids are **private workspace**
     inside that object — rebuilt from Frame when geometry moves.
@@ -964,8 +1068,7 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
     ```
     **Wrong (constructor lipstick on the same layering):**
     ```cpp
-    IntegralPack ints{frame, BasisSet::STO3G};
-    SCFConfig cfg{SCFConfig::UHF{}, n_alpha, n_beta, tol};
+        SCFConfig cfg{SCFConfig::UHF{}, n_alpha, n_beta, tol};
     SCFSolver{cfg}.run(ints);
     ```
     **Right:**
@@ -1038,7 +1141,7 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
 - **Electronic structure (target API):** construct a **concrete method**
   (`RHF` / `UHF` / `RKS` / `UKS` / AM1 / PW / GPW), set parameters as
   **members**, `run(frame)`. Integrals and AO workspaces are private. Do not
-  document `IntegralPack` / `SCFConfig` / `SCFSolver` as the user path (debt
+  document `SCFConfig` / `SCFSolver` as the user path (debt
   only). `BasisSet`: `STO3G, Pople631G, Pople631Gs, Def2SVP, Def2TZVP`.
   `XCType`: `LSDA, PBE, B3LYP, PBE0`.
 - **Outer drivers bind concrete methods (no categorical energy setter):**
@@ -1061,10 +1164,8 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
 
 ```cpp
 // Single-point RHF (CPU) — target shape: concrete method, Frame only
-cpu::scf::RHF rhf;
-rhf.basis = cpu::scf::BasisSet::STO3G;
-rhf.tol = 1e-10;
-rhf.max_iter = 100;
+cpu::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-10,
+                  /*max_iter=*/100};
 rhf.run(frame);                                       // energy on frame.meta
 
 // Classical MD (Dynamics) — categorical setters

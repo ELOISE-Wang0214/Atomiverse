@@ -403,11 +403,9 @@ throws at registration, and no caller ever types the int.
   ```
 - **Right (target shape):**
   ```cpp
-  cpu::scf::RHF rhf;          // concrete method — parameters are members
-  rhf.tol = 1e-10;
-  rhf.basis = BasisSet::STO3G;
+  cpu::scf::RHF rhf{BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-10};
   // SCF iteration is the Driver loop; RHF supplies the energy/force stages
-  rhf.run(frame);             // Frame in / Frame out — no IntegralPack, no Config
+  rhf.run(frame);             // Frame in / Frame out — no freestanding integral bag, no Config
   ```
 - When an outer MD/Minimize/Evaluate needs forces, it binds the **concrete
   method** (or a thin force-slot component that owns that method) at its
@@ -423,13 +421,12 @@ throws at registration, and no caller ever types the int.
 written to Frame** — never Driver-level categories: no "charge driver".
 
 **Frame is the only system.** There is no parallel `*System`, public
-`AtomList`, user-facing `IntegralPack`, or `*Config` bag:
+`AtomList`, `*Config` bag:
 
 | Banned as public API | Why |
 |---|---|
 | `AtomList` | Frame already is the atoms (Å, Z). Bohr conversion is private scratch. |
-| `IntegralPack` | Integrals are method/Driver **private workspace**, rebuilt from Frame. |
-| `SCFConfig` / `*Config` bags | Parameters are **members of the concrete method/Driver**. |
+| | `SCFConfig` / `*Config` bags | Parameters are **members of the concrete method/Driver**. |
 | `NDDOSystem` / any `*System` | Frame is the sole I/O currency. AO index is private scratch. |
 | `SCFSolver` as a bag | Not a thing — methods are `RHF`/`UHF`/…; the loop is a Driver. |
 | free-function factories | `build_*` / `*_config` / `make_*` — constructors or members only. |
@@ -441,7 +438,7 @@ step helpers stay owned by the concrete method/Driver, never inherit
 not include them (tests may).
 
 > **Debt (current tree):** still ships `cpu::scf::SCFSolver` + `SCFConfig` +
-> public `IntegralPack` / `AtomList` / `NDDOSystem`. That surface is
+> public `AtomList` / `NDDOSystem`. That surface is
 > **transitional and scheduled for deletion** toward the table above. New
 > code and new APIs must not extend the debt. See `.claude/notes/notes.md`
 > `[2026-07-17] SCF is a Driver; methods are concrete`.
@@ -589,16 +586,16 @@ and their current layouts are not compatibility surfaces for CPU code.
 
 Conversion points, each owning exactly one boundary:
 
-- `materialize()` / `write_back()` (`cpu/frame/materialize.h`) — strict schema-v2
+- `from_molrs()` / `to_molrs()` (`cpu/frame/molrs_exchange.h`) — strict schema-v2
   molrs.Frame ⇄ cpu::Frame boundary, run once per `run()`, never in a step loop.
   Unknown/synthetic blocks, unknown columns, wrong dtypes, and wrong row counts
-  fail immediately; there is no old decoder. `write_back` follows a pinned contract
+  fail immediately; there is no old decoder. `to_molrs` follows a pinned contract
   (golden-tested in
   `tests/cpu/test_materialize.cpp`): x/v/f, charge, image, and tag are
   written back (tag with checked i32 narrowing — overflow throws, no silent
   truncation); type, mass, topology, and box are per-run static inputs and
   **not** written; every serializable typed-meta value is written back exactly.
-- `cpu::to_cuda()` / `cuda::to_cpu()` — host ⇄ device; `cuda::write_back`
+- `cpu::to_cuda()` / `cuda::to_cpu()` — host ⇄ device; `cuda::to_molrs`
   inherits the cpu contract via `to_cpu`.
 - `torch::transfer` — cpu ⇄ torch tensors.
 
@@ -663,7 +660,7 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
     deleted bags (`RemdConfig`, `PimdConfig`, `NoseHooverNPT::Config`,
     `GpwEvaluatorConfig`, `AM1Config`, …).
   - **No public intermediate types for "building" a calculation.** Do **not**
-    invent `AtomList` / `IntegralPack` / `*Config` / `*System` as user-facing
+    invent `AtomList` / `*Config` / `*System` as user-facing
     steps. Frame is the molecule. Parameters are **members of the concrete
     method or Driver**. Integrals, AO maps, grids are **private workspace**
     inside that object — rebuilt from Frame when geometry moves.
@@ -675,8 +672,7 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
     ```
     **Wrong (constructor lipstick on the same layering):**
     ```cpp
-    IntegralPack ints{frame, BasisSet::STO3G};
-    SCFConfig cfg{SCFConfig::UHF{}, n_alpha, n_beta, tol};
+        SCFConfig cfg{SCFConfig::UHF{}, n_alpha, n_beta, tol};
     SCFSolver{cfg}.run(ints);
     ```
     **Right:**
@@ -749,7 +745,7 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
 - **Electronic structure (target API):** construct a **concrete method**
   (`RHF` / `UHF` / `RKS` / `UKS` / AM1 / PW / GPW), set parameters as
   **members**, `run(frame)`. Integrals and AO workspaces are private. Do not
-  document `IntegralPack` / `SCFConfig` / `SCFSolver` as the user path (debt
+  document `SCFConfig` / `SCFSolver` as the user path (debt
   only). `BasisSet`: `STO3G, Pople631G, Pople631Gs, Def2SVP, Def2TZVP`.
   `XCType`: `LSDA, PBE, B3LYP, PBE0`.
 - **Outer drivers bind concrete methods (no categorical energy setter):**
@@ -772,10 +768,8 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
 
 ```cpp
 // Single-point RHF (CPU) — target shape: concrete method, Frame only
-cpu::scf::RHF rhf;
-rhf.basis = cpu::scf::BasisSet::STO3G;
-rhf.tol = 1e-10;
-rhf.max_iter = 100;
+cpu::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-10,
+                  /*max_iter=*/100};
 rhf.run(frame);                                       // energy on frame.meta
 
 // Classical MD (Dynamics) — categorical setters
