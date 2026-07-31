@@ -8,10 +8,12 @@
 #include "atomiverse/cpu/device/chunked_range.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <unordered_map>
 
 #ifdef ATV_GPW_HAS_FFT
@@ -389,6 +391,20 @@ int level_for_exponent(const MultiGrid& mg, double rel_cutoff, double p) {
     return lev;
 }
 
+// Derived screen threshold for the PRODUCT path. The caller's eps
+// (eps_default) is a per-point VALUE threshold — the compact single-grid path
+// drops individual grid-point values below it, so its density bias stays
+// ~eps. The product path instead drops WHOLE products (build pair drop,
+// per-iteration weight drop) and truncates windows, discarding INTEGRATED
+// mass up to (π/p)^{3/2} ≈ 70× the value threshold per diffuse MOLOPT
+// product — and a periodic cell holds thousands of image pairs sitting at
+// threshold. Without the margin the collocated density loses charge:
+// periodic Si bct DZVP-MOLOPT at 95 Ry lost 0.090 of 16 e⁻ at eps 1e-7,
+// shifting the SCF energy 4.1e-2 Ha off the single-grid path; at eps·1e-4
+// the gap is 3.5e-5 Ha — the same order as the single grid's own eps
+// sensitivity (gpw-multigrid-kpoints, 2026-07-31).
+constexpr double kProductMassMargin = 1e-4;
+
 // Radius [Bohr] beyond which |gw·r^(la+lb)·exp(-p r²)| < eps for a product
 // Gaussian. Same fixed-point root as basis_function_radius, with the combined
 // polynomial order L = |la|+|lb| and prefactor magnitude |gw|.
@@ -411,6 +427,7 @@ ProductSet build_products(const MultiGrid& mg,
                           const std::vector<GridBasisFunction>& basis,
                           const double L[3], double rel_cutoff, double eps,
                           bool periodic) {
+    eps *= kProductMassMargin; // whole-product drops discard integrated mass
     const int nb = static_cast<int>(basis.size());
     const int nlev = static_cast<int>(mg.levels.size());
 
@@ -555,6 +572,9 @@ ProductSet build_products(const MultiGrid& mg,
                             prod.la[d] = A.l[d];
                             prod.lb[d] = B.l[d];
                         }
+                        prod.t[0] = tx;
+                        prod.t[1] = ty;
+                        prod.t[2] = tz;
                         prod.level = level_for_exponent(mg, rel_cutoff, p);
                         out[static_cast<std::size_t>(prod.level)].push_back(
                             prod);
@@ -568,6 +588,25 @@ ProductSet build_products(const MultiGrid& mg,
             auto& src = t[static_cast<std::size_t>(l)];
             dst.insert(dst.end(), src.begin(), src.end());
         }
+
+    // ---- 3. Index the distinct ket image shifts (Bloch phase cells) --------
+    // Serial post-pass over the canonical concatenated lists: `cells` is
+    // lexicographically sorted (deterministic at any thread count) and every
+    // product's `tcell` points at its shift. Γ consumers ignore both.
+    std::map<std::array<int, 3>, int> cell_of;
+    for (auto& lev : ps.by_level)
+        for (auto& prod : lev)
+            cell_of.emplace(std::array<int, 3>{prod.t[0], prod.t[1], prod.t[2]},
+                            0);
+    ps.cells.reserve(cell_of.size());
+    for (auto& [tvec, idx] : cell_of) {
+        idx = static_cast<int>(ps.cells.size());
+        ps.cells.push_back(tvec);
+    }
+    for (auto& lev : ps.by_level)
+        for (auto& prod : lev)
+            prod.tcell = cell_of.at(
+                std::array<int, 3>{prod.t[0], prod.t[1], prod.t[2]});
     return ps;
 }
 
@@ -728,6 +767,7 @@ std::vector<double> collocate_products(const UniformGrid& grid,
                                        const std::vector<PrimContrib>& contribs,
                                        int nb, const std::vector<double>& P,
                                        double eps) {
+    eps *= kProductMassMargin; // window/weight drops discard integrated mass
     const std::size_t npts = static_cast<std::size_t>(grid.npts());
     std::vector<double> rho(npts, 0.0);
     const long np = static_cast<long>(prods.size());
@@ -799,6 +839,7 @@ std::vector<double> integrate_products(
     const UniformGrid& grid, const std::vector<GridProduct>& prods,
     const std::vector<PrimRef>& prims, const std::vector<PrimContrib>& contribs,
     int nb, const std::vector<double>& V_level, double eps) {
+    eps *= kProductMassMargin; // window truncation discards integrated mass
     const std::size_t nn = static_cast<std::size_t>(nb) * nb;
     std::vector<double> V(nn, 0.0);
     const double w = grid.weight();
@@ -848,6 +889,126 @@ std::vector<double> integrate_products(
         for (long c = 0; c < nc; ++c)
             s += tl[static_cast<std::size_t>(c)][static_cast<std::size_t>(kk)];
         V[static_cast<std::size_t>(kk)] = s;
+    }
+    return V;
+}
+
+std::vector<double> collocate_products_cells(
+    const UniformGrid& grid, const std::vector<GridProduct>& prods,
+    const std::vector<PrimRef>& prims, const std::vector<PrimContrib>& contribs,
+    int nb, const std::vector<std::vector<double>>& D, double eps) {
+    eps *= kProductMassMargin; // window/weight drops discard integrated mass
+    // `collocate_products` with the density weight resolved per image cell:
+    // w = K · Σ_{μ∈A} Σ_{ν∈B} D[tcell][μ,ν]·coeff_μ·coeff_ν. Same fixed-chunk
+    // reproducible scatter; identical arithmetic when every D[c] is the same P.
+    const std::size_t npts = static_cast<std::size_t>(grid.npts());
+    std::vector<double> rho(npts, 0.0);
+    const long np = static_cast<long>(prods.size());
+    const device::ChunkedRange range(
+        np, std::max<long>(kMinScatterChunks,
+                           device::block_reduce_chunks(npts * sizeof(double))));
+    const long nc = range.chunks();
+    std::vector<std::vector<double>> tl(static_cast<std::size_t>(nc));
+#pragma omp parallel for schedule(dynamic, 1)
+    for (long c = 0; c < nc; ++c) {
+        std::vector<double>& loc = tl[static_cast<std::size_t>(c)];
+        loc.assign(npts, 0.0);
+        const long iplo = range.begin(c), iphi = range.end(c);
+        for (long ip = iplo; ip < iphi; ++ip) {
+            const GridProduct& prod = prods[static_cast<std::size_t>(ip)];
+            const PrimRef& A = prims[static_cast<std::size_t>(prod.ua)];
+            const PrimRef& B = prims[static_cast<std::size_t>(prod.ub)];
+            const std::vector<double>& P =
+                D[static_cast<std::size_t>(prod.tcell)];
+            double s = 0.0;
+            for (int i = 0; i < A.cn; ++i) {
+                const PrimContrib& ca =
+                    contribs[static_cast<std::size_t>(A.cbeg + i)];
+                const std::size_t row = static_cast<std::size_t>(ca.mu) * nb;
+                double rs = 0.0;
+                for (int j = 0; j < B.cn; ++j) {
+                    const PrimContrib& cb =
+                        contribs[static_cast<std::size_t>(B.cbeg + j)];
+                    rs += P[row + static_cast<std::size_t>(cb.mu)] * cb.coeff;
+                }
+                s += ca.coeff * rs;
+            }
+            const double w = s * prod.k;
+            const double aw = std::abs(w);
+            if (aw < eps)
+                continue;
+            collocate_one(grid, prod, aw, eps, [&](long g, double v) {
+                loc[static_cast<std::size_t>(g)] += w * v;
+            });
+        }
+    }
+#pragma omp parallel for schedule(static)
+    for (long g = 0; g < static_cast<long>(npts); ++g) {
+        double s = 0.0;
+        for (long c = 0; c < nc; ++c)
+            s += tl[static_cast<std::size_t>(c)][static_cast<std::size_t>(g)];
+        rho[static_cast<std::size_t>(g)] = s;
+    }
+    return rho;
+}
+
+std::vector<std::vector<double>> integrate_products_cells(
+    const UniformGrid& grid, const std::vector<GridProduct>& prods,
+    const std::vector<PrimRef>& prims, const std::vector<PrimContrib>& contribs,
+    int nb, const std::vector<double>& V_level, std::size_t ncells,
+    double eps) {
+    eps *= kProductMassMargin; // window truncation discards integrated mass
+    // `integrate_products` with the KS scatter resolved per image cell: each
+    // product's K·w·∫V·shape lands in V_t[tcell] — the real-space stack the
+    // caller phase-sums into per-k Hermitian grid KS matrices.
+    const std::size_t nn = static_cast<std::size_t>(nb) * nb;
+    const std::size_t nnall = nn * ncells;
+    std::vector<std::vector<double>> V(
+        ncells, std::vector<double>(nn, 0.0));
+    const double w = grid.weight();
+    const long np = static_cast<long>(prods.size());
+    const device::ChunkedRange range(
+        np, device::block_reduce_chunks(nnall * sizeof(double)));
+    const long nc = range.chunks();
+    std::vector<std::vector<double>> tl(static_cast<std::size_t>(nc));
+#pragma omp parallel for schedule(dynamic, 1)
+    for (long c = 0; c < nc; ++c) {
+        std::vector<double>& Vloc = tl[static_cast<std::size_t>(c)];
+        Vloc.assign(nnall, 0.0);
+        const long iplo = range.begin(c), iphi = range.end(c);
+        for (long ip = iplo; ip < iphi; ++ip) {
+            const GridProduct& prod = prods[static_cast<std::size_t>(ip)];
+            const PrimRef& A = prims[static_cast<std::size_t>(prod.ua)];
+            const PrimRef& B = prims[static_cast<std::size_t>(prod.ub)];
+            double acc = 0.0;
+            collocate_one(grid, prod, A.maxc * B.maxc * prod.k, eps,
+                          [&](long g, double v) {
+                              acc += V_level[static_cast<std::size_t>(g)] * v;
+                          });
+            const double sw = prod.k * w * acc;
+            double* Vcell =
+                Vloc.data() + static_cast<std::size_t>(prod.tcell) * nn;
+            for (int i = 0; i < A.cn; ++i) {
+                const PrimContrib& ca =
+                    contribs[static_cast<std::size_t>(A.cbeg + i)];
+                const std::size_t row = static_cast<std::size_t>(ca.mu) * nb;
+                const double cas = ca.coeff * sw;
+                for (int j = 0; j < B.cn; ++j) {
+                    const PrimContrib& cb =
+                        contribs[static_cast<std::size_t>(B.cbeg + j)];
+                    Vcell[row + static_cast<std::size_t>(cb.mu)] +=
+                        cas * cb.coeff;
+                }
+            }
+        }
+    }
+#pragma omp parallel for schedule(static)
+    for (long kk = 0; kk < static_cast<long>(nnall); ++kk) {
+        double s = 0.0;
+        for (long c = 0; c < nc; ++c)
+            s += tl[static_cast<std::size_t>(c)][static_cast<std::size_t>(kk)];
+        V[static_cast<std::size_t>(kk) / nn]
+         [static_cast<std::size_t>(kk) % nn] = s;
     }
     return V;
 }

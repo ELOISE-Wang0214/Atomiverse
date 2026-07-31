@@ -221,10 +221,11 @@ int main() {
                     dk);
         check(dk > 1e-3, "A4 k-sampling activation |Δ| > 1e-3 Ha");
 
-        // A7: frozen first-green absolute pin (REFERENCE.md; ATV-frozen band
-        // until an offline CP2K twin number replaces it).
-        constexpr double kEPin = -15.8023941333; // Ha (first green, this tree)
-        constexpr double kTolAbs = 1e-3;         // Ha
+        // A7: offline CP2K 2026.1 pin (REFERENCE.md) — the exact twin input
+        // tools/cp2k_oracle/inputs/gpw-kpoints-si.inp run 2026-07-31
+        // (replaces the interim ATV-frozen first-green band).
+        constexpr double kEPin = -15.802416412655166; // Ha (CP2K 2026.1)
+        constexpr double kTolAbs = 1e-3;              // Ha
         const double dpin = std::abs(rm.e_total - kEPin);
         std::printf("A7: |E − pin| = %.3e Ha (pin %.10f)\n", dpin, kEPin);
         check(dpin <= kTolAbs, "A7 absolute e_tot within 1e-3 Ha of pin");
