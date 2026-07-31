@@ -252,7 +252,9 @@ TS/MBD via `GpwDft::hirshfeld`) ship on GPW at **Γ RKS**
 `reg_gpw-vdw-df2-ice`) and **rVV10** (`GpwDft::rvv10`; `reg_gpw-rvv10-ice`)
 ship on GPW. **Nonlocal SCF potential + forces** (Román–Pérez–Soler
 back-propagation) productize for vdW-DF/DF2/rVV10
-(`reg_gpw-vdw-scf-potential`). **Periodic Ewald + k-mesh MBD@rsSCS**
+(`reg_gpw-vdw-scf-potential`), including on the **REL_CUTOFF multigrid**
+(`ngrids>1`, CP2K NGRIDS 4 twin; `reg_gpw-vdw-multigrid`, Γ RKS).
+**Periodic Ewald + k-mesh MBD@rsSCS**
 productizes free-atom / Hirshfeld MBD for periodic cells
 (`reg_gpw-mbd-periodic`). **XDM** free-atom pairwise dispersion ships on
 GPW (`GpwDft::xdm` / `GPWEvaluator::xdm`; `reg_gpw-xdm-ice`). **Hirshfeld**
@@ -290,9 +292,11 @@ periodic MBD, strained-cell pymbd pins). Dedicated **TS / XDM stress**
 pins are queued (`gpw-ts-stress` / `gpw-xdm-stress`; energy folds are
 product), as are dedicated **D3/D4 ATM stress** pins
 (`gpw-d3-atm-stress` / `gpw-d4-atm-stress`; ATM energy folds at the
-strained cell). Nonlocal vdW × REL_CUTOFF multigrid (`ngrids>1`) throws
-(queued `gpw-vdw-multigrid`), and nonlocal vdW on the **k-point path** is
-not wired at all (fail-fast reject; queued `gpw-vdw-kpoints`).
+strained cell). Nonlocal vdW × REL_CUTOFF multigrid (`ngrids>1`) is
+product at Γ RKS (`reg_gpw-vdw-multigrid`; SC V_nl on the finest grid
+before per-level restriction). Nonlocal vdW on the **k-point path** is
+not wired at all (fail-fast reject; queued `gpw-vdw-kpoints`), and Γ UKS
++ nonlocal vdW rejects fail-fast (was a silent E_c^nl drop).
 
 ## 9. Composite DFT Methods
 
@@ -430,9 +434,9 @@ Which engine backs which ✓:
   (`reg_gpw-dftu-kpoint-stress`) **and multi-k ionic forces**
   (`reg_gpw-dftu-kpoint-forces`; variational ½(V̂S+SV̂) +U scatter,
   full-6N FD dual gate on the k path). Multi-k **multigrid**
-  (`ngrids>1`) is product (`reg_gpw-multigrid-kpoints`; nonlocal vdW ×
-  multigrid still throws — queued `gpw-vdw-multigrid`). Molecular
-  Gaussian DFT+U remains ○.
+  (`ngrids>1`) is product (`reg_gpw-multigrid-kpoints`), and nonlocal
+  vdW × multigrid is product at Γ RKS (`reg_gpw-vdw-multigrid`).
+  Molecular Gaussian DFT+U remains ○.
 - **Periodic dispersion-corrected DFT** is GPW + DFT-D3 zero damping,
   **D3(BJ)** (§8; `reg_gpw-pbe-d3bj-ice`), **D4** energy (`reg_gpw-d4-water`)
   **+ analytic stress** (`reg_gpw-d4-stress`) **+ ionic forces**

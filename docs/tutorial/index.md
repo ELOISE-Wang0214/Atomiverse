@@ -322,6 +322,7 @@ domain, alphabetical by slug.
 | GPW PBE + vdW-DF (DRSLL) | [gpw-vdw-df-ice](methods/gpw-vdw-df-ice.md) | `regressions/gpw/gpw-vdw-df-ice` |
 | GPW PBE + vdW-DF2 (LMKLL) | [gpw-vdw-df2-ice](methods/gpw-vdw-df2-ice.md) | `regressions/gpw/gpw-vdw-df2-ice` |
 | GPW nonlocal vdW: SC \(V_{\mathrm{nl}}\) + forces | [gpw-vdw-scf-potential](methods/gpw-vdw-scf-potential.md) | `regressions/gpw/gpw-vdw-scf-potential` |
+| GPW nonlocal vdW on the REL_CUTOFF multigrid | [gpw-vdw-multigrid](methods/gpw-vdw-multigrid.md) | `regressions/gpw/gpw-vdw-multigrid` |
 | GPW free-atom XDM (periodic water dimer) | [gpw-xdm-ice](methods/gpw-xdm-ice.md) | `regressions/gpw/gpw-xdm-ice` |
 | OT + Dudarev DFT+U, Γ-UKS GPW (NiO) | [ot-dftu](methods/ot-dftu.md) | `regressions/gpw/ot-dftu` |
 | Multi-k OT + Dudarev DFT+U (H₂) | [ot-dftu-kpoints](methods/ot-dftu-kpoints.md) | `regressions/gpw/ot-dftu-kpoints` |
