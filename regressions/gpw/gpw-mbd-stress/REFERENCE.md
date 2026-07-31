@@ -110,11 +110,10 @@ Ha/Bohr³.
 
 ## Scope
 
-**Not covered — deliberately:** multi-k MBD stress. That path now **throws**
-(`gpw_stress analytic k: MBD@rsSCS stress is not implemented on the multi-k
-path`) because the k-summed Lagrangian does not fold \(E_{\mathrm{disp}}\) and
-would report a wrong tensor silently. Implementing it is the queued capability
-`gpw-mbd-kpoint-stress`.
+**Not covered here:** multi-k MBD stress — shipped separately as
+`regressions/gpw/gpw-mbd-kpoint-stress` (the k-summed fixed-\(P_k\)
+Lagrangian folds the same geometry-only \(E_{\mathrm{disp}}\), gated by
+strained-cell pymbd pins + the multi-SCF strain-FD dual gate).
 
 ## Notes
 

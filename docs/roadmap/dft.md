@@ -266,8 +266,9 @@ Two-body D3/D3(BJ) **energy and analytic ionic forces** are product
 open (queued `gpw-d3-stress` / `gpw-d3bj-stress` — same dedicated-pin
 pattern as D4 stress). **ATM force** pins are queued after energy
 footholds (`gpw-d3-atm-forces` / `gpw-d4-atm-forces`). **MBD stress**
-ships at **Γ** (`reg_gpw-mbd-stress`); the multi-k stress path refuses
-MBD (fold queued `gpw-mbd-kpoint-stress`). Dedicated **TS / XDM stress**
+ships at **Γ** (`reg_gpw-mbd-stress`) **and multi-k**
+(`reg_gpw-mbd-kpoint-stress`; k-summed fixed-\(P_k\) Lagrangian folds
+periodic MBD, strained-cell pymbd pins). Dedicated **TS / XDM stress**
 pins are queued (`gpw-ts-stress` / `gpw-xdm-stress`; energy folds are
 product). Nonlocal vdW × REL_CUTOFF multigrid (`ngrids>1`) throws
 (queued `gpw-vdw-multigrid`).
