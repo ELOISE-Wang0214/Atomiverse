@@ -949,7 +949,6 @@ in_progress on `wf/gpw-d3-stress` (do not demote). **No ○/✓ table flips.**
 
 ## pending
 
-- [ ] `dfpt-gga-finite-q-si` | Finite-q DFPT with pure GGA kernel (PW) | response | twin: extend `dfpt-finite-q-si` (LSDA) to PBE | GapCensus wave 13; re-verified wave 15 + wave 2 (shift); held wave 1 (shares DFPT GGA kernel with staffed `dfpt-gga-spin-si`; that pick merged — free now)
 - [ ] `xl-bomd-linearized-kpoints` | Zero-SCF linearized XL-BOMD forces on multi-k RKS/UKS | dynamics | twin: extend linearized XL × k-mesh | GapCensus wave 14; re-verified wave 15 + wave 2 (shift; `gpw_evaluator.cpp:182` throws); held wave 1 (Γ-UKS pick merged — free now)
 - [ ] `gpw-vdw-multigrid` | Nonlocal vdW-DF/DF2/rVV10 with REL_CUTOFF multigrid (`ngrids>1` throws "multigrid not supported" at `gpw_solver.cpp:5096`) | gpw | twin: CP2K NGRIDS 4 (its default) + vdW-DF ice | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (multigrid pick merged — free now)
 - [ ] `gpw-ts-stress` | Analytic fixed-P cell stress with free-atom TS (energy folds; dedicated pin missing) | gpw | twin: libMBD E_disp under strain + `gpw_stress_fd` dual-gate (extend `gpw-ts-forces`) | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (stress workers merged — free now; coordinate with in-flight `gpw-d3-stress` on `gpw_stress.cpp`)
@@ -965,6 +964,10 @@ in_progress on `wf/gpw-d3-stress` (do not demote). **No ○/✓ table flips.**
 ## in_progress
 
 - [~] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14; re-verified wave 15 (`3ee28243` D3 stress is DFTB2, not GPW) | assigned wave 1 2026-07-31; kept `[~]` at harness wave 1 — unmerged `wf/gpw-d3-stress` @ `3b3872eb` (wip spec + CP2K NUMERICAL-stress pins + D3 stress gates; merge-base `03c16eef`, behind the nine wave merges; do not demote)
+
+## done (shift wave 2 2026-07-31)
+
+- [x] `dfpt-gga-finite-q-si` | Finite-q DFPT phonons with the pure GGA (PBE) kernel (PW commensurate X → 2×1×1 supercell Γ-Sternheimer + IFC Fourier) | response | `regressions/response/dfpt-gga-finite-q-si` | ratio **0.17** (CP2K 2026.1 supercell RKS-PBE `VIBRATIONAL_ANALYSIS` 288.7 s / ATV DFPT 49.8 s, serial; CP2K X-branch anchor 98–459 cm⁻¹ by eigenvector phase, supercell PBE energy-FD sharp pin 21.2006 eV/Å², DFPT 21.1974) | 2026-07-31
 
 ## done (harness wave 1 (shift) 2026-07-31)
 
