@@ -164,7 +164,7 @@ int main() {
     method.nonperiodic = false;
     method.local_pp_on_grid = true;
 
-    const linalg::RealMatrix* warm =
+    const cpu::linalg::RealMatrix* warm =
         eval.last_result().C.size() > 0 ? &eval.last_result().C : nullptr;
 
     // Gate 2 — D3 dispersion stress vs the CP2K difference pin. D3 does not

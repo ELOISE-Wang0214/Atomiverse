@@ -118,18 +118,47 @@ OMP_NUM_THREADS=2 mpirun -np 2 cp2k.psmp -i water_dimer_plain_stress.inp -o plai
 
 ## Atomiverse numbers (first green, 2026-07-31)
 
-(to be filled from the first green run — never before it)
+`reg_gpw-d3-stress` (OMP 8, epyc login node), 11 SCF iters,
+\(E_{\mathrm{tot}}\) = −34.331152296855 Ha:
+
+| Gate | Tol | Measured |
+| ---- | --- | -------- |
+| \|E_disp − pin\| | 1e−8 Ha | **5.53e−11** (E_disp = −8.20894731919e−04 Ha) |
+| diag \|Δσ_atv − Δσ_cp2k\| | 2e−9 Ha/Bohr³ | **2.27e−10** (xx), 2.26e−12 (yy), 1.92e−11 (zz) |
+| dual gate max\|σ_an − σ_fd\| diag | 2e−5 Ha/Bohr³ | **7.39e−07** (xx; yy 2.46e−8, zz 1.24e−9) |
+| max\|σ_tot − σ_cp2k\| diag (sanity) | 1e−4 Ha/Bohr³ | 4.02e−05 |
+| off-diagonal product | 1e−8 | ~0 (pass) |
+| max\|σ_diag\| floor | >1e−10 | 5.83e−5 |
+| Wall (product + plain twin + all-axes FD twin) | ≤ 60 s | **18.5 + 14.9 + 14.3 = 47.7 s** |
+
+Product analytic diagonals [Ha/Bohr³]: xx −2.16997707×10⁻⁵,
+yy +2.00723305×10⁻⁵, zz +5.82684354×10⁻⁵.
+
+The Δσ residual (2.27e−10 on xx) sits at the SCF-noise floor of the
+**two-full-products** isolation — both analytic runs re-converge to the same
+density fixed point only to `tol = 1e−7`, and the residual difference enters
+the fixed-\(P\) Lagrangian FD as δE/(2hΩ). The sibling `gpw-d3bj-stress`
+reaches 3.9e−14 because its Δσ side is a strain-FD of the standalone
+(no-SCF) dispersion sum; this case deliberately pays the noise to gate the
+**product path fold** end-to-end — σ_an(d3) − σ_an(plain) runs
+`GPWEvaluator`/`gpw_stress` twice. Signal separation stays decisive:
+xx signal 1.71e−8 = 75× the measured residual, tolerance 2e−9 keeps
+8.8× headroom.
 
 ## Dual gate
 
-- **Correctness:** the six gates above, plus the unit-tier analytic-vs-FD
-  identity `GpwStress.AnalyticMatchesFdWithD3` and the
-  `GpwStress.D3ChangesGammaDiagonal` guard (cheap MT H₂) in
-  `tests/cpu/gpw/test_cpu_gpw_stress.cpp`.
-- **Speed:** CP2K NUMERICAL stress twin wall 33.6 s (np 2 × OMP 2); the fair
-  ATV wall is the analytic product (SCF + fixed-P stress) — measured below
-  after first green (the regression's extra plain/FD twins exist only for the
-  difference pin and the dual gate).
+- **Correctness:** the six gates above (all green, measured column), plus the
+  unit-tier analytic-vs-FD identity `GpwStress.AnalyticMatchesFdWithD3` and
+  the `GpwStress.D3ChangesGammaDiagonal` guard (cheap MT H₂) in
+  `tests/cpu/gpw/test_cpu_gpw_stress.cpp` (suite green, 11.6 s).
+- **Speed:** CP2K NUMERICAL stress twin wall **33.6 s** (np 2 × OMP 2); the
+  fair ATV wall is the analytic product (SCF + fixed-P stress) —
+  **18.5 s** (OMP 8) → ratio **0.55**, inside the 10× fair wall. The
+  regression's extra plain/FD twins (14.9 + 14.3 s) exist only for the
+  difference pin and the dual gate, not the product path. Settings caveat:
+  cutoffs and core counts differ as stated (ATV single 200 Ry grid, OMP 8 vs
+  CP2K NGRIDS 4, 2×2) — both walls deliver the same observable (this cell's
+  stress), which is what is compared.
 
 ## Notes
 

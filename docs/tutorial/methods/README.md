@@ -306,6 +306,7 @@ the Response / phonons table below.
 
 | Method | Page | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
 | ------ | ---- | ---------- | --------------------------------------------- |
+| GPW PBE-D3 zero-damping analytic cell stress (periodic dimer) | [gpw-d3-stress](gpw-d3-stress.md) | `regressions/gpw/gpw-d3-stress` | **0.55** |
 | GPW PBE-D3(BJ) analytic cell stress (periodic dimer) | [gpw-d3bj-stress](gpw-d3bj-stress.md) | `regressions/gpw/gpw-d3bj-stress` | **0.37** |
 | Multi-k analytic cell stress + periodic MBD@rsSCS | [gpw-mbd-kpoint-stress](gpw-mbd-kpoint-stress.md) | `regressions/gpw/gpw-mbd-kpoint-stress` | **perf_exempt** |
 | GPW DFT-D3 three-body ATM (C9) analytic ionic forces | [gpw-d3-atm-forces](gpw-d3-atm-forces.md) | `regressions/gpw/gpw-d3-atm-forces` | **3.3** |
