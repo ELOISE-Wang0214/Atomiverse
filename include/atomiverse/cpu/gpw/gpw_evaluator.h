@@ -223,9 +223,13 @@ class GPWEvaluator : public cpu::GPW, public cpu::TimestepConsumer {
     ///        diagonalizes once to \(D = q[n]\), writes the shadow energy
     ///        \(\mathcal{E}=\mathrm{Tr}(H D)-\mathrm{Tr}(H n)+E_{\mathrm{KS}}[n]\)
     ///        and assembles forces at \((D,H[n])\) with **no iterative
-    ///        SCF** (`last_result().iters == 0`). Γ RKS diagonalization
-    ///        path only — `build()` throws for UKS, multi-k, `use_ot`,
-    ///        `cpmd`, or `second_gen_cp`.
+    ///        SCF** (`last_result().iters == 0`). Γ diagonalization path:
+    ///        RKS (one total-P propagator, occ 2) or collinear UKS (dual
+    ///        \(n^\alpha/n^\beta\), one diagonalization per spin, occ 1,
+    ///        \(\mathcal{E}=\sum_\sigma[\mathrm{Tr}(H^\sigma D^\sigma)
+    ///        -\mathrm{Tr}(H^\sigma n^\sigma)]+E_{\mathrm{KS}}[n]\)) —
+    ///        `build()` throws for multi-k, `use_ot`, `cpmd`, or
+    ///        `second_gen_cp`.
     bool xl_bomd_linearized = false;
     /// @brief Car–Parrinello MD: propagate occupied MO coefficients with a
     ///        fictitious mass and electronic RATTLE (not BOMD, not XL-BOMD).

@@ -471,14 +471,31 @@ TEST(GpwEvaluatorXlBomdLinearized, LinearizedRequiresXlBomdForceCtor) {
     EXPECT_TRUE(xl.method().is_xl_bomd());
 }
 
-// A2: linearized + UKS refused.
-TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedUks) {
+// A1 (xl-bomd-linearized-uks): linearized + Γ UKS builds (dual-spin
+// zero-SCF shadow forces are product; the old RKS-only throw is gone).
+TEST(GpwEvaluatorXlBomdLinearized, BuildAcceptsLinearizedGammaUks) {
+    auto frame = water_frame();
+    auto base = water_eval();
+    base.compute_forces = true;
+    base.nonperiodic = true;
+    base.n_alpha = 5;
+    base.n_beta = 3;
+    XlBomdForce eval{std::move(base), 5, XlBomdLinearized{}};
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_NO_THROW(eval.build(bc));
+}
+
+// A2 (xl-bomd-linearized-uks): linearized + UKS + multi-k still refused.
+TEST(GpwEvaluatorXlBomdLinearized, BuildRejectsLinearizedUksMultiK) {
     auto frame = water_frame();
     auto base = water_eval();
     base.compute_forces = true;
     base.n_alpha = 5;
     base.n_beta = 3;
     XlBomdForce eval{std::move(base), 5, XlBomdLinearized{}};
+    eval.method().k_mesh[2] = 2;
+    eval.method().nonperiodic = false;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
@@ -575,4 +592,47 @@ TEST(XlBomdLinearized, ShadowEnergyRecoversAtFixedPoint) {
     const double delta = tr(H, D) - tr(H, dens);
     const double e_lin2 = tr(H, D) - tr(H, dens) + e_ks_n;
     EXPECT_NEAR(e_lin2 - e_ks_n, delta, 1e-15);
+}
+
+// A3 (xl-bomd-linearized-uks): dual-spin shadow energy recovers E_KS at
+// the fixed point D^sigma = n^sigma; residual = sum_sigma Tr(H^s (D^s-n^s)).
+TEST(XlBomdLinearized, DualSpinShadowEnergyRecoversAtFixedPoint) {
+    constexpr int n = 3;
+    RealMatrix Ha = xt::zeros<double>({n, n});
+    RealMatrix Hb = xt::zeros<double>({n, n});
+    RealMatrix na = xt::zeros<double>({n, n});
+    RealMatrix nbm = xt::zeros<double>({n, n});
+    for (int i = 0; i < n; ++i) {
+        Ha(i, i) = -0.5 - 0.1 * i;
+        Hb(i, i) = -0.4 - 0.12 * i; // distinct spin channels
+        na(i, i) = 0.2 + 0.05 * i;
+        nbm(i, i) = 0.15 + 0.04 * i;
+        for (int j = 0; j < i; ++j) {
+            Ha(i, j) = Ha(j, i) = 0.01 * (i + j);
+            Hb(i, j) = Hb(j, i) = 0.02 * (i + j);
+            na(i, j) = na(j, i) = 0.02 * (i - j + 1);
+            nbm(i, j) = nbm(j, i) = 0.01 * (i - j + 1);
+        }
+    }
+    auto tr = [n](const RealMatrix& A, const RealMatrix& B) {
+        double t = 0.0;
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < n; ++j)
+                t += A(i, j) * B(j, i);
+        return t;
+    };
+    const double e_ks_n = -2.3456789;
+    // Fixed point: D^sigma = n^sigma per spin.
+    const double e_lin = (tr(Ha, na) - tr(Ha, na))
+                         + (tr(Hb, nbm) - tr(Hb, nbm)) + e_ks_n;
+    EXPECT_DOUBLE_EQ(e_lin, e_ks_n);
+
+    // Residual splits per spin: perturb only beta, alpha term stays zero.
+    RealMatrix Db = nbm;
+    Db(0, 0) += 0.05;
+    Db(2, 2) -= 0.03;
+    const double delta_b = tr(Hb, Db) - tr(Hb, nbm);
+    const double e_lin2 = (tr(Ha, na) - tr(Ha, na))
+                          + (tr(Hb, Db) - tr(Hb, nbm)) + e_ks_n;
+    EXPECT_NEAR(e_lin2 - e_ks_n, delta_b, 1e-15);
 }
