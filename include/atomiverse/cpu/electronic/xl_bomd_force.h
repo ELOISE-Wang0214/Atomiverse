@@ -13,7 +13,7 @@ namespace ATV {
 namespace cpu {
 namespace electronic {
 
-/// @brief Tag: zero-SCF linearized-functional XL forces (Γ RKS only).
+/// @brief Tag: zero-SCF linearized-functional XL forces (Γ RKS / Γ UKS).
 struct XlBomdLinearized {};
 
 /// @brief Extended-Lagrangian BOMD evaluator wrapping a pure `GPWEvaluator`.
@@ -28,7 +28,7 @@ class XlBomdForce : public cpu::GPW {
         method_.xl_bomd_linearized = false;
     }
 
-    /// @brief Linearized shadow-force path (requires forces; Γ RKS).
+    /// @brief Linearized shadow-force path (requires forces; Γ RKS / Γ UKS).
     XlBomdForce(gpw::GPWEvaluator method, int k, XlBomdLinearized)
         : XlBomdForce(std::move(method), k) {
         method_.xl_bomd_linearized = true;

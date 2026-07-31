@@ -170,15 +170,12 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
                 "exclusive (XL = Niklasson aux density; SGCP = ASPC + "
                 "partial SCF corrector)");
         if (xl_bomd_linearized) {
-            // Zero-SCF linearized forces: Γ RKS diagonalization foothold.
+            // Zero-SCF linearized forces: Γ diagonalization path (RKS
+            // total-P, or collinear UKS dual P_α/P_β).
             if (!compute_forces)
                 throw std::invalid_argument(
                     "GPWEvaluator: xl_bomd_linearized requires "
                     "compute_forces=true (shadow forces are the product)");
-            if (n_alpha + n_beta > 0)
-                throw std::invalid_argument(
-                    "GPWEvaluator: xl_bomd_linearized is Γ RKS only "
-                    "(UKS linearized XL is a follow-on)");
             if (multi_k)
                 throw std::invalid_argument(
                     "GPWEvaluator: xl_bomd_linearized is Γ-point only "
@@ -1011,14 +1008,22 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // After the cold full-SCF seed (xl history ready): one H[n] build from
     // the auxiliary density n, one diagonalization → D = q[n], shadow
     // energy E = Tr(H D) − Tr(H n) + E_KS[n], forces at (D, H[n]). No
-    // iterative SCF (iters = 0). Cold seed falls through to the SCF-XL
-    // path below (first advance seeds history with D_scf).
-    if (xl_bomd_linearized && xl_ && xl_->ready()) {
+    // iterative SCF (iters = 0). Γ UKS is spin-diagonal: dual auxiliary
+    // densities n^α/n^β, one dual-KS build, one diagonalization per spin
+    // (occ 1), E = Σ_σ [Tr(H^σ D^σ) − Tr(H^σ n^σ)] + E_KS[n^α,n^β].
+    // Cold seed falls through to the SCF-XL path below (first advance
+    // seeds the histories with D_scf / P^σ_scf).
+    const bool lin_uks = (n_alpha + n_beta > 0);
+    if (xl_bomd_linearized && xl_ && xl_->ready()
+        && (!lin_uks || (xl_beta_ && xl_beta_->ready()))) {
         const linalg::RealMatrix& n_aux = xl_->aux();
+        const linalg::RealMatrix* n_aux_beta =
+            lin_uks ? &xl_beta_->aux() : nullptr;
         const int saved_max = solver_->max_iter;
         solver_->max_iter = 0;
         try {
-            last_ = solver_->run(atoms, /*guess_C=*/nullptr, &n_aux);
+            last_ = solver_->run(atoms, /*guess_C=*/nullptr, &n_aux,
+                                 n_aux_beta);
         } catch (...) {
             solver_->max_iter = saved_max;
             throw;
@@ -1026,24 +1031,16 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         solver_->max_iter = saved_max;
 
         if (last_.H_ks.size() == 0 || last_.S.size() == 0
-            || last_.P.size() == 0)
+            || last_.P.size() == 0
+            || (lin_uks
+                && (last_.H_ks_beta.size() == 0 || last_.P_beta.size() == 0)))
             throw std::runtime_error(
                 "GPWEvaluator: xl_bomd_linearized fixed-density step needs "
-                "H_ks, S, and P from max_iter=0");
+                "H_ks (+H_ks_beta for UKS), S, and P from max_iter=0");
 
         const int nb = static_cast<int>(last_.H_ks.shape(0));
-        const int n_occ = solver_->n_occ;
-        if (n_occ < 1)
-            throw std::runtime_error(
-                "GPWEvaluator: xl_bomd_linearized needs n_occ >= 1");
 
-        // One diagonalization of H[n] → D = q[n] (zero iterative SCF).
-        auto [eig, C] =
-            linalg::diagonalize_fock_generalized(last_.H_ks, last_.S);
-        const linalg::RealMatrix D =
-            linalg::build_density_matrix(C, n_occ, nb, 2.0);
-
-        // Shadow energy: Tr(H D) − Tr(H n) + E_KS[n]. Recovers E_KS at D=n.
+        // Shadow energy trace: Tr(H M) over the AO basis.
         auto tr_HM = [nb](const linalg::RealMatrix& H,
                           const linalg::RealMatrix& M) {
             double t = 0.0;
@@ -1055,24 +1052,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                              static_cast<std::size_t>(i));
             return t;
         };
-        const double e_ks_n = last_.e_total;
-        const double tr_Hn = tr_HM(last_.H_ks, last_.P);
-        const double tr_HD = tr_HM(last_.H_ks, D);
-        last_.e_total = tr_HD - tr_Hn + e_ks_n;
-
-        last_.P = D;
-        last_.C = C;
-        last_.eps.assign(eig.begin(), eig.end());
-        last_.converged = true; // stationary for the shadow functional
-        last_.iters = 0;        // zero iterative SCF
-
-        xl_->advance(D);
-
-        frame.meta.get(kEnergy) += last_.e_total * ATV::units::kHartreeInEv;
-        frame.meta.get(kEnergyElectronic) +=
-            last_.e_total * ATV::units::kHartreeInEv;
-
-        if (compute_forces) {
+        auto occupied_block = [nb](const linalg::RealMatrix& C, int n_occ) {
             linalg::RealMatrix C_occ = xt::zeros<double>(
                 {static_cast<std::size_t>(nb),
                  static_cast<std::size_t>(n_occ)});
@@ -1082,9 +1062,121 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                           static_cast<std::size_t>(i)) = C(
                         static_cast<std::size_t>(mu),
                         static_cast<std::size_t>(i));
-            // Forces of U(R,n) at fixed n: density D, KS matrix H[n].
-            const auto F = gpw_forces_at_density(atoms, *solver_, D, C_occ,
-                                                 last_.H_ks);
+            return C_occ;
+        };
+        const double e_ks_n = last_.e_total;
+        std::vector<std::array<double, 3>> F;
+
+        if (!lin_uks) {
+            const int n_occ = solver_->n_occ;
+            if (n_occ < 1)
+                throw std::runtime_error(
+                    "GPWEvaluator: xl_bomd_linearized needs n_occ >= 1");
+
+            // One diagonalization of H[n] → D = q[n] (zero iterative SCF).
+            auto [eig, C] =
+                linalg::diagonalize_fock_generalized(last_.H_ks, last_.S);
+            const linalg::RealMatrix D =
+                linalg::build_density_matrix(C, n_occ, nb, 2.0);
+
+            // Shadow energy: Tr(H D) − Tr(H n) + E_KS[n]; E_KS at D=n.
+            last_.e_total =
+                tr_HM(last_.H_ks, D) - tr_HM(last_.H_ks, last_.P) + e_ks_n;
+
+            last_.P = D;
+            last_.C = C;
+            last_.eps.assign(eig.begin(), eig.end());
+            last_.converged = true; // stationary for the shadow functional
+            last_.iters = 0;        // zero iterative SCF
+
+            xl_->advance(D);
+
+            if (compute_forces) {
+                // Forces of U(R,n) at fixed n: density D, KS matrix H[n].
+                F = gpw_forces_at_density(atoms, *solver_,
+                                          D, occupied_block(C, n_occ),
+                                          last_.H_ks);
+            }
+        } else {
+            // Γ UKS: one generalized diagonalization per spin channel.
+            auto [eig_a, Ca] =
+                linalg::diagonalize_fock_generalized(last_.H_ks, last_.S);
+            auto [eig_b, Cb] = linalg::diagonalize_fock_generalized(
+                last_.H_ks_beta, last_.S);
+            const linalg::RealMatrix Da =
+                linalg::build_density_matrix(Ca, n_alpha, nb, 1.0);
+            const linalg::RealMatrix Db =
+                linalg::build_density_matrix(Cb, n_beta, nb, 1.0);
+
+            // Dual-spin shadow energy — recovers E_KS at D^σ = n^σ.
+            last_.e_total = (tr_HM(last_.H_ks, Da)
+                             - tr_HM(last_.H_ks, last_.P))
+                            + (tr_HM(last_.H_ks_beta, Db)
+                               - tr_HM(last_.H_ks_beta, last_.P_beta))
+                            + e_ks_n;
+
+            // Löwdin ⟨S²⟩ at the shadow densities (same formula as the
+            // converged-SCF store): s_z(s_z+1) + N_β − Σ|C_αᵀ S C_β|².
+            const double sz = 0.5 * static_cast<double>(n_alpha - n_beta);
+            double ov = 0.0;
+            if (n_alpha > 0 && n_beta > 0) {
+                // SCb = S·C_β_occ (nb × n_beta), then Sab = C_α_occᵀ·SCb.
+                linalg::RealMatrix SCb = xt::zeros<double>(
+                    {static_cast<std::size_t>(nb),
+                     static_cast<std::size_t>(n_beta)});
+                for (int mu = 0; mu < nb; ++mu)
+                    for (int nu = 0; nu < nb; ++nu) {
+                        const double s = last_.S(
+                            static_cast<std::size_t>(mu),
+                            static_cast<std::size_t>(nu));
+                        for (int j = 0; j < n_beta; ++j)
+                            SCb(static_cast<std::size_t>(mu),
+                                static_cast<std::size_t>(j)) +=
+                                s
+                                * Cb(static_cast<std::size_t>(nu),
+                                     static_cast<std::size_t>(j));
+                    }
+                for (int i = 0; i < n_alpha; ++i)
+                    for (int j = 0; j < n_beta; ++j) {
+                        double sab = 0.0;
+                        for (int mu = 0; mu < nb; ++mu)
+                            sab += Ca(static_cast<std::size_t>(mu),
+                                      static_cast<std::size_t>(i))
+                                   * SCb(static_cast<std::size_t>(mu),
+                                         static_cast<std::size_t>(j));
+                        ov += sab * sab;
+                    }
+            }
+            last_.s2 = sz * (sz + 1.0) + static_cast<double>(n_beta) - ov;
+
+            last_.P = Da;
+            last_.P_beta = Db;
+            last_.C = Ca;
+            last_.C_beta = Cb;
+            last_.eps.assign(eig_a.begin(), eig_a.end());
+            last_.eps_beta.assign(eig_b.begin(), eig_b.end());
+            last_.converged = true; // stationary for the shadow functional
+            last_.iters = 0;        // zero iterative SCF
+
+            xl_->advance(Da);
+            xl_beta_->advance(Db);
+
+            if (compute_forces) {
+                // Forces of U(R,n^α,n^β) at fixed n^σ: densities D^σ, KS
+                // matrices H^σ[n] (dual-spin fixed-density overload).
+                F = gpw_forces_at_density(atoms, *solver_,
+                                          Da, occupied_block(Ca, n_alpha),
+                                          last_.H_ks,
+                                          Db, occupied_block(Cb, n_beta),
+                                          last_.H_ks_beta);
+            }
+        }
+
+        frame.meta.get(kEnergy) += last_.e_total * ATV::units::kHartreeInEv;
+        frame.meta.get(kEnergyElectronic) +=
+            last_.e_total * ATV::units::kHartreeInEv;
+
+        if (compute_forces) {
             AccReal* __restrict sp_fx = frame.span(kAtom_fx);
             AccReal* __restrict sp_fy = frame.span(kAtom_fy);
             AccReal* __restrict sp_fz = frame.span(kAtom_fz);

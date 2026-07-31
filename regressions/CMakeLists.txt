@@ -355,6 +355,9 @@ if(ATV_BUILD_GPW)
         atv_add_regression(dynamics xl-bomd-uks-kpoints THREADS 8)
         # Zero-SCF linearized-functional XL-BOMD forces (shadow BO potential).
         atv_add_regression(dynamics xl-bomd-linearized-forces THREADS 8)
+        # Zero-SCF linearized XL-BOMD on Γ-UKS (dual-spin shadow forces) —
+        # O2 triplet NVE (identical twin of xl-bomd-uks + linearized tag).
+        atv_add_regression(dynamics xl-bomd-linearized-uks THREADS 8)
         # Car–Parrinello MD (dynamics domain): fictitious electronic DOF on
         # the same H2O NVE twin family — not BOMD, not XL-BOMD.
         atv_add_regression(dynamics cpmd-water THREADS 8)
