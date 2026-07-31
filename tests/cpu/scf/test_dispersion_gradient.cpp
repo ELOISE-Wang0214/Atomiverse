@@ -18,11 +18,11 @@
 ///
 /// Note on flavours: D3(BJ) has a closed-form analytic gradient (two-body
 /// C6/C8 BJ terms plus the dC6/dCN·dCN/dR coordination-number chain) shared
-/// with GPW. D4 two-body (`s9 = 0`) now has the matching closed-form path:
-/// BJ pair + CN_d4 weight chain + EEQ charge-response adjoint. ATM (`s9 ≠ 0`)
-/// still uses central differences of the full energy. The D4 rows below are
-/// analytic-vs-FD of the same functional (dual-gated against dftd4 3.7.0 `-g`
-/// in the GPW unit suite).
+/// with GPW. D4 is closed-form on both legs: two-body BJ pair + CN_d4 weight
+/// chain + EEQ charge-response adjoint, and ATM (`s9 ≠ 0`) triple-geometry
+/// derivatives + the C9 → neutral-C6 → CN_d4 chain. The D4 rows below are
+/// analytic-vs-FD of the same functional (dual-gated against dftd4 3.7.0
+/// `--grad` in the GPW unit suite).
 
 #ifdef ATV_HAS_HF
 
@@ -232,9 +232,10 @@ TEST(ScfDispersionGradient, D4ForcesSumToZero) {
 }
 
 /// The ATM three-body term is part of the functional when `s9 != 0`, so it
-/// must be part of the gradient too (FD of the full energy when ATM is on).
-/// The first assertion keeps the row from going vacuous: `s9` has to actually
-/// reach the energy for its gradient to mean anything.
+/// must be part of the gradient too — analytic triple derivatives + the
+/// C9 → neutral-C6 → CN_d4 chain, gated against a central difference of the
+/// full s9=1 energy. The first assertion keeps the row from going vacuous:
+/// `s9` has to actually reach the energy for its gradient to mean anything.
 TEST(ScfDispersionGradient, D4AtmForcesMatchFiniteDifference) {
     D4 d4;
     d4.s9 = 1.0; // PBE-D4-ATM
@@ -242,7 +243,7 @@ TEST(ScfDispersionGradient, D4AtmForcesMatchFiniteDifference) {
     EXPECT_GT(std::abs(d4.energy(f) - D4{}.energy(f)), 1e-8);
     const double worst = worst_fd_residual(d4, 5e-4);
     std::printf("[d4-atm] worst |F - F_fd| = %.3e Ha/Bohr\n", worst);
-    // ATM path is still central-difference; gate step-independence vs 5e-4.
+    // Analytic vs FD: the residual is the FD truncation error at h = 5e-4.
     EXPECT_LT(worst, 1e-9);
 }
 
