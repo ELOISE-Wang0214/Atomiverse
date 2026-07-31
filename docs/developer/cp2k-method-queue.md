@@ -984,7 +984,6 @@ assign = 3** (not queue exhausted).
 
 ## in_progress
 
-- [~] `dfpt-gga-finite-q-si` | Finite-q DFPT with pure GGA kernel (PW) | response | twin: extend `dfpt-finite-q-si` (LSDA) to PBE | GapCensus wave 13; re-verified wave 15 + wave 2 (shift); held wave 1 (shares DFPT GGA kernel with staffed `dfpt-gga-spin-si`; that pick merged — free now) | assigned wave 2 (shift) 2026-07-31
 - [~] `xl-bomd-linearized-kpoints` | Zero-SCF linearized XL-BOMD forces on multi-k RKS/UKS | dynamics | twin: extend linearized XL × k-mesh | GapCensus wave 14; re-verified wave 15 + wave 2 (shift; `gpw_evaluator.cpp:182` throws); held wave 1 (Γ-UKS pick merged — free now) | assigned wave 2 (shift) 2026-07-31
 - [~] `gpw-vdw-multigrid` | Nonlocal vdW-DF/DF2/rVV10 with REL_CUTOFF multigrid (`ngrids>1` throws "multigrid not supported" at `gpw_solver.cpp:5096`) | gpw | twin: CP2K NGRIDS 4 (its default) + vdW-DF ice | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (multigrid pick merged — free now) | assigned wave 2 (shift) 2026-07-31
 - [~] `gpw-ts-stress` | Analytic fixed-P cell stress with free-atom TS (energy folds; dedicated pin missing) | gpw | twin: libMBD E_disp under strain + `gpw_stress_fd` dual-gate (extend `gpw-ts-forces`) | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (stress workers merged — free now; coordinate with in-flight `gpw-d3-stress` on `gpw_stress.cpp`) | assigned wave 2 (shift) 2026-07-31
@@ -996,6 +995,7 @@ assign = 3** (not queue exhausted).
 
 ## done (harness wave 2 2026-07-31)
 
+- [x] `dfpt-gga-finite-q-si` | Finite-q DFPT phonons with the pure GGA (PBE) kernel (PW commensurate X → 2×1×1 supercell Γ-Sternheimer + IFC Fourier) | response | `regressions/response/dfpt-gga-finite-q-si` | ratio **0.17** (CP2K 2026.1 supercell RKS-PBE `VIBRATIONAL_ANALYSIS` 288.7 s / ATV DFPT 49.8 s, serial; CP2K X-branch anchor 98–459 cm⁻¹ by eigenvector phase, supercell PBE energy-FD sharp pin 21.2006 eV/Å², DFPT 21.1974) | 2026-07-31
 - [x] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping (geometry-only fold rebuilt at each strained cell; CP2K NUMERICAL-stress **difference** pin — two full analytic products σ_an(d3)−σ_an(plain) gate the product fold end-to-end) | gpw | `regressions/gpw/gpw-d3-stress` (CP2K 2026.1 pins: E_disp parity 5.5e-11 Ha; Δσ parity 2.3e-10 Ha/Bohr³ — SCF-noise floor of the two-product isolation, signal 1.7e-8 = 75×; dual gate 7.4e-7; wall 47.7 s) | ratio **0.55** (ATV product 18.5 s / CP2K NUMERICAL twin 33.6 s) | 2026-07-31
 
 ## done (harness wave 1 (shift) 2026-07-31)

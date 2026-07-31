@@ -28,11 +28,12 @@ spin+metallic **bands/DOS**, multi-k **CPMD**, **GPW MLWF**,
 **forces** (`reg_gpw-dftu-kpoint-forces`), joint DFPT **GGA×spin**
 (`reg_dfpt-gga-spin-si`), multi-k **BOMD** (`reg_gpw-bomd-kpoints`),
 multi-k **multigrid** (`reg_gpw-multigrid-kpoints`), and Γ-UKS
-linearized **XL** (`reg_xl-bomd-linearized-uks`); **wave 2** closes
-D3-zero **stress** (`reg_gpw-d3-stress`); open residuals after
+linearized **XL** (`reg_xl-bomd-linearized-uks`); **wave 2 (2026-07-31)**
+closes D3-zero **stress** (`reg_gpw-d3-stress`) and ships finite-q DFPT
+**GGA** (`reg_dfpt-gga-finite-q-si`); open residuals after
 that wave (GapCensus wave 2 re-verified + expanded): **TS/XDM stress**,
 **D3/D4 ATM stress**
-pins, DFPT **GGA×finite-q**, vdW **multigrid**, nonlocal **vdW × k-points**,
+pins, vdW **multigrid**, nonlocal **vdW × k-points**,
 multi-k **UKS multigrid**, linearized XL multi-k, multi-k UKS **CPMD**,
 multi-k CPMD **electronic thermostat**, multi-k SGCP **OT**;
 product after
@@ -370,11 +371,12 @@ Two periodic DFT engines exist, with disjoint strengths:
   (`reg_gpw-dftu-kpoint-forces`), **multi-k BOMD**
   (`reg_gpw-bomd-kpoints`), **multi-k multigrid**
   (`reg_gpw-multigrid-kpoints`), joint DFPT **GGA×spin**
-  (`reg_dfpt-gga-spin-si`), and Γ-UKS linearized XL
-  (`reg_xl-bomd-linearized-uks`). Stock VV10 is
+  (`reg_dfpt-gga-spin-si`), Γ-UKS linearized XL
+  (`reg_xl-bomd-linearized-uks`), and finite-q DFPT **GGA**
+  (`reg_dfpt-gga-finite-q-si`). Stock VV10 is
   **blocked** (no CP2K twin). Open residuals (GapCensus wave 2):
   D3-zero stress (incomplete `[~] gpw-d3-stress`), TS/XDM stress, D3/D4
-  ATM stress pins, DFPT GGA×finite-q, vdW multigrid, nonlocal vdW ×
+  ATM stress pins, vdW multigrid, nonlocal vdW ×
   k-points, multi-k UKS multigrid, linearized XL multi-k, multi-k UKS
   CPMD, multi-k CPMD electronic thermostat, multi-k SGCP OT. Hybrids / meta-GGA /
   GAPW / PAW remain blocked (queue not exhausted — see
@@ -518,12 +520,15 @@ Which engine backs which ✓:
   \(K_{\mathrm{xc}}^{\sigma\sigma'}\) from FD of the spin-GGA operator,
   dual-gated by a spin-PBE energy-second-difference pin **and** a CP2K
   2026.1 UKS-PBE k-point `VIBRATIONAL_ANALYSIS` physics anchor, fair wall
-  ratio 0.20). NC-UPF; fixed-occupation and
+  ratio 0.20; **finite-q × pure GGA (PBE)** `reg_dfpt-gga-finite-q-si` —
+  X commensurate supercell Γ-Sternheimer with the GGA kernel, dual-gated by
+  a supercell PBE energy-second-difference pin (21.2006 vs DFPT 21.1974
+  eV/Å², 0.015 %) **and** a CP2K 2026.1 supercell `VIBRATIONAL_ANALYSIS`
+  X-branch anchor, fair wall ratio 0.17). NC-UPF; fixed-occupation and
   metallic-smear Sternheimer paths (Γ / commensurate / direct finite-\(q\);
-  collinear spin × smear at Γ and finite-\(q\)) productized.
-  **Finite-q GGA** remains the open product pin
-  (queued `dfpt-gga-finite-q-si` — kernel claims joint support;
-  Γ GGA×spin now product, finite-q GGA offline pin still open).
+  collinear spin × smear at Γ and finite-\(q\)) productized; the GGA kernel
+  is now pinned at Γ (restricted + spin) and finite \(q\) (restricted);
+  spin × GGA × finite-q stays a census-held joint row.
 - **Berry-phase polarization**: King-Smith–Vanderbilt (KSV) electronic
   polarization on the PW method (`cpu::pw::BerryPolarization`; string-averaged
   Berry phases over occupied Bloch manifolds; symmetry-exact Si pins,
