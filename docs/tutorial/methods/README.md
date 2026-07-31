@@ -370,6 +370,7 @@ grouped by regression domain, alphabetical by slug.
 | GPW PBE + vdW-DF (DRSLL), periodic dimer | [gpw-vdw-df-ice](gpw-vdw-df-ice.md) | `regressions/gpw/gpw-vdw-df-ice` |
 | GPW PBE + vdW-DF2 (LMKLL), periodic dimer | [gpw-vdw-df2-ice](gpw-vdw-df2-ice.md) | `regressions/gpw/gpw-vdw-df2-ice` |
 | GPW nonlocal vdW: self-consistent \(V_{\mathrm{nl}}\) + forces | [gpw-vdw-scf-potential](gpw-vdw-scf-potential.md) | `regressions/gpw/gpw-vdw-scf-potential` |
+| GPW nonlocal vdW on the REL_CUTOFF multigrid (NGRIDS 4) | [gpw-vdw-multigrid](gpw-vdw-multigrid.md) | `regressions/gpw/gpw-vdw-multigrid` |
 | GPW free-atom XDM (periodic water dimer) | [gpw-xdm-ice](gpw-xdm-ice.md) | `regressions/gpw/gpw-xdm-ice` |
 | MPI GPW k-point scaling (4-rank gate) | [mpi-gpw-scaling-4rank](mpi-gpw-scaling-4rank.md) | `regressions/gpw/mpi-gpw-scaling-4rank` |
 | OT + Dudarev DFT+U, Γ-UKS GPW (NiO) | [ot-dftu](ot-dftu.md) | `regressions/gpw/ot-dftu` |

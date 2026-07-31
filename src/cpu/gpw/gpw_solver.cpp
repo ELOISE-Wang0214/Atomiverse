@@ -4075,30 +4075,37 @@ run_gpw_scf_impl(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             build_products(mg, basis, cfg.cell, rcut, eps_default, periodic);
     }
 
+    // Total density on the finest grid from a flattened P. Single-grid:
+    // direct compact (cbg) collocation. Multigrid: collocate each level's
+    // products, then spectral (band-limited) prolongation to the fine grid —
+    // shape-exact and mass-conserving (no D_l correction). Shared by the SCF
+    // KS build, fold_dispersion, and the final nonlocal-vdW evaluation.
+    auto collocate_rho_fine = [&](const std::vector<double>& Pvec) {
+        if (!use_prod)
+            return collocate_density(cbg, nb, Pvec);
+        std::vector<double> rho(static_cast<std::size_t>(mg.levels[0].npts()),
+                                0.0);
+        for (std::size_t l = 0; l < mg.levels.size(); ++l) {
+            std::vector<double> rho_l = collocate_products(
+                mg.levels[l], products.by_level[l], products.prims,
+                products.contribs, nb, Pvec, eps_default);
+            if (l == 0) {
+                rho = std::move(rho_l); // finest level is the reference grid
+            } else {
+                const std::vector<double> up = prolong_fft(
+                    mg.levels[l], mg.levels[0], rho_l, /*spectral*/ true);
+                for (std::size_t g = 0; g < rho.size(); ++g)
+                    rho[g] += up[g];
+            }
+        }
+        return rho;
+    };
+
     // Fold free-atom e_d3, or Hirshfeld-scaled TS/MBD from the final density.
     auto fold_dispersion = [&](GpwResult& out, const RealMatrix& Pmat) {
         if (cfg.hirshfeld && (cfg.ts || cfg.mbd)) {
             const std::vector<double> Pvec = mat_to_vec(Pmat, nb);
-            std::vector<double> rho;
-            if (use_prod) {
-                rho.assign(static_cast<std::size_t>(mg.levels[0].npts()), 0.0);
-                for (std::size_t l = 0; l < mg.levels.size(); ++l) {
-                    std::vector<double> rho_l = collocate_products(
-                        mg.levels[l], products.by_level[l], products.prims,
-                        products.contribs, nb, Pvec, eps_default);
-                    if (l == 0) {
-                        rho = std::move(rho_l);
-                    } else {
-                        const std::vector<double> up =
-                            prolong_fft(mg.levels[l], mg.levels[0], rho_l,
-                                        /*spectral*/ true);
-                        for (std::size_t g = 0; g < rho.size(); ++g)
-                            rho[g] += up[g];
-                    }
-                }
-            } else {
-                rho = collocate_density(cbg, nb, Pvec);
-            }
+            std::vector<double> rho = collocate_rho_fine(Pvec);
             std::vector<int> Z(atoms.size());
             std::vector<std::array<double, 3>> pos(Z.size());
             for (std::size_t i = 0; i < Z.size(); ++i) {
@@ -4170,31 +4177,9 @@ run_gpw_scf_impl(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         [&](const RealMatrix& Pin) -> std::pair<RealMatrix, double> {
         auto t0p = ProfClk::now();
         const std::vector<double> Pvec = mat_to_vec(Pin, nb);
-        // Density on the finest grid. Single-grid: direct compact collocation.
-        // Multigrid: collocate each level's products, prolong to the fine grid.
-        std::vector<double> rho;
-        if (use_prod) {
-            rho.assign(static_cast<std::size_t>(mg.levels[0].npts()), 0.0);
-            for (std::size_t l = 0; l < mg.levels.size(); ++l) {
-                std::vector<double> rho_l = collocate_products(
-                    mg.levels[l], products.by_level[l], products.prims,
-                    products.contribs, nb, Pvec, eps_default);
-                if (l == 0) {
-                    rho =
-                        std::move(rho_l); // finest level is the reference grid
-                } else {
-                    // Spectral (band-limited) prolongation to the fine grid:
-                    // shape-exact and mass-conserving (no D_l correction).
-                    const std::vector<double> up =
-                        prolong_fft(mg.levels[l], mg.levels[0], rho_l,
-                                    /*spectral*/ true);
-                    for (std::size_t g = 0; g < rho.size(); ++g)
-                        rho[g] += up[g];
-                }
-            }
-        } else {
-            rho = collocate_density(cbg, nb, Pvec);
-        }
+        // Density on the finest grid (products + prolongation under
+        // multigrid, cbg gather otherwise).
+        std::vector<double> rho = collocate_rho_fine(Pvec);
         auto t1p = ProfClk::now();
         if (use_mg && std::getenv("ATV_GPW_MG_TRACE")) {
             double qe = 0.0;
@@ -4231,9 +4216,12 @@ run_gpw_scf_impl(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         for (std::size_t g = 0; g < rho.size(); ++g)
             veff[g] = es.v_r[g] + xc.vxc_r[g];
         // Self-consistent nonlocal vdW (DRSLL / LMKLL / rVV10): V_nl = δE/δρ
-        // added every SCF iteration (single-grid only; multigrid rejected above).
+        // added every SCF iteration. `rho` is the finest-grid density on both
+        // paths, and V_nl lands in `veff` before the per-level restriction, so
+        // under multigrid the integrated KS matrix stays the exact gradient of
+        // the collocated E_H + E_xc + E_c^nl (variational SCF).
         double e_nl = 0.0;
-        if ((cfg.vdw_df || cfg.vdw_df2 || cfg.rvv10) && !use_prod) {
+        if (cfg.vdw_df || cfg.vdw_df2 || cfg.rvv10) {
             NonlocalVdwOnGrid nl = nonlocal_vdw_on_grid(grid, rho, cfg.vdw_df,
                                                         cfg.vdw_df2, cfg.rvv10,
                                                         /*potential=*/true);
@@ -4352,27 +4340,7 @@ run_gpw_scf_impl(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
         // Collocate one spin density: multigrid products or single-grid cbg.
         auto collocate_P = [&](const RealMatrix& Pin) {
-            const std::vector<double> Pvec = mat_to_vec(Pin, nb);
-            if (use_prod) {
-                std::vector<double> rho(
-                    static_cast<std::size_t>(mg.levels[0].npts()), 0.0);
-                for (std::size_t l = 0; l < mg.levels.size(); ++l) {
-                    std::vector<double> rho_l = collocate_products(
-                        mg.levels[l], products.by_level[l], products.prims,
-                        products.contribs, nb, Pvec, eps_default);
-                    if (l == 0) {
-                        rho = std::move(rho_l);
-                    } else {
-                        const std::vector<double> up =
-                            prolong_fft(mg.levels[l], mg.levels[0], rho_l,
-                                        /*spectral*/ true);
-                        for (std::size_t g = 0; g < rho.size(); ++g)
-                            rho[g] += up[g];
-                    }
-                }
-                return rho;
-            }
-            return collocate_density(cbg, nb, Pvec);
+            return collocate_rho_fine(mat_to_vec(Pin, nb));
         };
         // Integrate one spin potential: multigrid restrict+products or cbg.
         auto integrate_V = [&](const std::vector<double>& veff) {
@@ -5087,17 +5055,9 @@ run_gpw_scf_impl(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     // Final nonlocal E_c^{nl} on the (self-consistent) total density. V_nl was
     // already applied every SCF iteration; this sets e_disp for fold_dispersion.
     if (cfg.vdw_df || cfg.vdw_df2 || cfg.rvv10) {
-        if (use_prod) {
-            const char* tag = cfg.rvv10     ? "rvv10"
-                              : cfg.vdw_df2 ? "vdw_df2"
-                                            : "vdw_df";
-            throw std::runtime_error(
-                std::string("GPW ") + tag
-                + ": multigrid not supported (single-grid only)");
-        }
         const RealMatrix& Pfinal = (res.P.size() > 0) ? res.P : P;
         const std::vector<double> Pvec = mat_to_vec(Pfinal, nb);
-        std::vector<double> rho = collocate_density(cbg, nb, Pvec);
+        const std::vector<double> rho = collocate_rho_fine(Pvec);
         e_d3 = nonlocal_vdw_on_grid(grid, rho, cfg.vdw_df, cfg.vdw_df2,
                                     cfg.rvv10, /*potential=*/false)
                    .energy;
@@ -5125,6 +5085,14 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             throw std::invalid_argument(
                 "GpwDft::build: UKS supports XcKind::PADE, PBE, PBEsol, "
                 "RevPBE, RPBE, BLYP, or OptB88VdW");
+        // Nonlocal vdW is wired only in the Γ closed-shell RKS runner (SCF
+        // V_nl + post-SCF E_c^nl); accepting it here would silently drop the
+        // nonlocal term (e_disp stays 0 while the run "succeeds").
+        if (vdw_df || vdw_df2 || rvv10)
+            throw std::invalid_argument(
+                "GpwDft::build: nonlocal vdW (vdw_df / vdw_df2 / rvv10) is "
+                "not supported with UKS (E_c^nl would be silently dropped) — "
+                "use closed-shell RKS (n_occ) or clear the vdW flag");
     } else if (n_occ < 1) {
         throw std::invalid_argument(
             "GpwDft::build: n_occ must be >= 1 for closed-shell RKS (got "
