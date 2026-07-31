@@ -194,19 +194,24 @@ struct GpwResult {
     linalg::RealMatrix P_beta;    ///< UKS β density (empty for RKS).
     std::vector<double> eps_beta; ///< UKS β orbital energies (empty for RKS).
     /// @}
-    /// @name Fixed-density KS evaluation payload (Car–Parrinello path)
+    /// @name Fixed-density KS evaluation payload (Car–Parrinello / linearized-XL path)
     /// Populated when `GpwDft::run` is called with `max_iter == 0` and a
     /// density guess — one collocate→Poisson→XC→integrate, no SCF. Empty
     /// after a normal multi-iteration SCF. RKS: `H_ks` only. UKS: `H_ks` is
     /// \(H_\alpha\), `H_ks_beta` is \(H_\beta\). Multi-k RKS fixed-density
-    /// fills `H_ks_k` / `S_k` (size == `n_kpts`) instead of the Γ fields.
+    /// fills `H_ks_k` / `S_k` (size == `n_kpts`) instead of the Γ fields;
+    /// multi-k UKS additionally fills `H_ks_k_beta`.
     /// @{
     linalg::RealMatrix H_ks; ///< KS matrix H[P] / \(H_\alpha\) [Hartree] (nb × nb).
     linalg::RealMatrix H_ks_beta; ///< UKS \(H_\beta\) [Hartree] (empty for RKS).
     linalg::RealMatrix S;    ///< Overlap matrix at this geometry (nb × nb).
     /// @brief Multi-k fixed-density KS matrices \(H_k\) [Hartree] (empty for Γ
     ///        / multi-iteration SCF). One Hermitian nb×nb per sampled k.
+    ///        Multi-k UKS: the α channel \(H^\alpha_k\).
     std::vector<linalg::CplxMatrix> H_ks_k;
+    /// @brief Multi-k UKS β fixed-density KS matrices \(H^\beta_k\) [Hartree]
+    ///        (empty for RKS / Γ / multi-iteration SCF). Paired with `H_ks_k`.
+    std::vector<linalg::CplxMatrix> H_ks_k_beta;
     /// @brief Multi-k overlaps \(S_k\) at the evaluation geometry (empty for Γ
     ///        / multi-iteration SCF). Size == `n_kpts` with `H_ks_k`.
     std::vector<linalg::CplxMatrix> S_k;

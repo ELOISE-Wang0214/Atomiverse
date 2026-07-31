@@ -223,13 +223,18 @@ class GPWEvaluator : public cpu::GPW, public cpu::TimestepConsumer {
     ///        diagonalizes once to \(D = q[n]\), writes the shadow energy
     ///        \(\mathcal{E}=\mathrm{Tr}(H D)-\mathrm{Tr}(H n)+E_{\mathrm{KS}}[n]\)
     ///        and assembles forces at \((D,H[n])\) with **no iterative
-    ///        SCF** (`last_result().iters == 0`). Γ diagonalization path:
-    ///        RKS (one total-P propagator, occ 2) or collinear UKS (dual
+    ///        SCF** (`last_result().iters == 0`). Diagonalization paths:
+    ///        Γ RKS (one total-P propagator, occ 2), Γ collinear UKS (dual
     ///        \(n^\alpha/n^\beta\), one diagonalization per spin, occ 1,
     ///        \(\mathcal{E}=\sum_\sigma[\mathrm{Tr}(H^\sigma D^\sigma)
-    ///        -\mathrm{Tr}(H^\sigma n^\sigma)]+E_{\mathrm{KS}}[n]\)) —
-    ///        `build()` throws for multi-k, `use_ot`, `cpmd`, or
-    ///        `second_gen_cp`.
+    ///        -\mathrm{Tr}(H^\sigma n^\sigma)]+E_{\mathrm{KS}}[n]\)),
+    ///        multi-k RKS (one complex \(n_k\) per sampled k), and multi-k
+    ///        UKS (dual \(n^\sigma_k\)) with the k-weighted shadow energy
+    ///        \(\mathcal{E}=\sum_k w_k\sum_\sigma\mathrm{Re}\,
+    ///        \mathrm{Tr}[H^\sigma_k(D^\sigma_k-n^\sigma_k)]
+    ///        +E_{\mathrm{KS}}[n]\) — `build()` throws for `use_ot`,
+    ///        `cpmd`, `second_gen_cp`, or `compute_stress` (the warm
+    ///        shadow step returns before the stress block).
     bool xl_bomd_linearized = false;
     /// @brief Car–Parrinello MD: propagate occupied MO coefficients with a
     ///        fictitious mass and electronic RATTLE (not BOMD, not XL-BOMD).

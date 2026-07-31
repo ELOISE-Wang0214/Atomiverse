@@ -2572,6 +2572,169 @@ static GpwResult run_gpw_scf_kpoints_uks(
     std::vector<CplxMatrix> Hb_k(static_cast<std::size_t>(nk));
     std::vector<double> last_veff_ab; // α then β, length 2*npts
 
+    // One dual-spin KS build at (Pa_k, Pb_k): collocate ρ^σ → Poisson → spin
+    // XC → V_eff^σ → local H^σ_k + energy terms. Shared by the OT minimizer
+    // and the fixed-density (max_iter == 0) eval below; the DIIS loop keeps
+    // its historical inline copy (byte-identical assembly).
+    auto build_uks_k_energy = [&](const std::vector<CplxMatrix>& Pak,
+                                  const std::vector<CplxMatrix>& Pbk)
+        -> double {
+        std::vector<double> rho_a(static_cast<std::size_t>(grid.npts()), 0.0);
+        std::vector<double> rho_b(static_cast<std::size_t>(grid.npts()), 0.0);
+        for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+            const double wk = weights[static_cast<std::size_t>(ik)];
+            internal::collocate_density_k(
+                kbg, ik, Pak[static_cast<std::size_t>(ik)], wk, rho_a);
+            internal::collocate_density_k(
+                kbg, ik, Pbk[static_cast<std::size_t>(ik)], wk, rho_b);
+        }
+#ifdef ATV_HAS_MPI
+        if (layout.active) {
+            MPI_Allreduce(MPI_IN_PLACE, rho_a.data(),
+                          static_cast<int>(rho_a.size()), MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, rho_b.data(),
+                          static_cast<int>(rho_b.size()), MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
+        }
+#endif
+        std::vector<double> rho(rho_a.size());
+        for (std::size_t g = 0; g < rho.size(); ++g)
+            rho[g] = rho_a[g] + rho_b[g];
+        std::vector<double> n_tot(rho.size());
+        for (std::size_t g = 0; g < rho.size(); ++g)
+            n_tot[g] = rho[g] - n_ion[g];
+        const PoissonResult es = solve_poisson(grid, n_tot);
+        const XcOnGridSpin xc = xc_spin(rho_a, rho_b);
+        std::vector<double> veff_a(rho.size()), veff_b(rho.size());
+        double e_locgrid = 0.0;
+        for (std::size_t g = 0; g < rho.size(); ++g) {
+            double vloc = v_locsr.empty() ? 0.0 : v_locsr[g];
+            if (!v_locsr.empty())
+                e_locgrid += rho[g] * vloc;
+            veff_a[g] = es.v_r[g] + xc.vxc_a[g] + vloc;
+            veff_b[g] = es.v_r[g] + xc.vxc_b[g] + vloc;
+        }
+        e_locgrid *= gw;
+        last_veff_ab.resize(2 * rho.size());
+        for (std::size_t g = 0; g < rho.size(); ++g) {
+            last_veff_ab[g] = veff_a[g];
+            last_veff_ab[g + rho.size()] = veff_b[g];
+        }
+        double e_kin = 0.0, e_nl = 0.0;
+        for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+            const double wk = weights[static_cast<std::size_t>(ik)];
+            const CplxMatrix Va =
+                internal::integrate_potential_k(kbg, ik, veff_a);
+            const CplxMatrix Vb =
+                internal::integrate_potential_k(kbg, ik, veff_b);
+            const CplxMatrix H0 = T_k[static_cast<std::size_t>(ik)]
+                                  + Vnl_k[static_cast<std::size_t>(ik)];
+            Ha_k[static_cast<std::size_t>(ik)] = H0 + Va;
+            Hb_k[static_cast<std::size_t>(ik)] = H0 + Vb;
+            const CplxMatrix Ptot = Pak[static_cast<std::size_t>(ik)]
+                                    + Pbk[static_cast<std::size_t>(ik)];
+            e_kin += wk * ctrace(Ptot, T_k[static_cast<std::size_t>(ik)]);
+            e_nl += wk * ctrace(Ptot, Vnl_k[static_cast<std::size_t>(ik)]);
+        }
+#ifdef ATV_HAS_MPI
+        if (layout.active) {
+            MPI_Allreduce(MPI_IN_PLACE, &e_kin, 1, MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, &e_nl, 1, MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
+        }
+#endif
+        double e_dftu = 0.0;
+        if (do_dftu) {
+            e_dftu += internal::apply_dft_plus_u_k(
+                Ha_k, Pak, S_k, weights, layout.rank, layout.nprocs,
+                layout.active, ao_tags, z_of_atom, plus_u_slots, plus_u_z,
+                &Va_dftu);
+            e_dftu += internal::apply_dft_plus_u_k(
+                Hb_k, Pbk, S_k, weights, layout.rank, layout.nprocs,
+                layout.active, ao_tags, z_of_atom, plus_u_slots, plus_u_z,
+                &Vb_dftu);
+            have_V_dftu = true;
+        }
+        res.e_dftu = e_dftu;
+        res.e_kinetic = e_kin;
+        res.e_nonlocal = 0.0;
+        res.e_loc_sr = e_nl + e_locgrid;
+        res.e_es = es.e_hartree - e_self;
+        res.e_xc = xc.e_xc;
+        const double e_ks =
+            res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc + e_dftu;
+        const double e_ent = use_smear ? (-degauss_ha * last_entropy) : 0.0;
+        res.e_entropy = e_ent;
+        res.e_fermi = use_smear ? last_mu : 0.0;
+        res.n_elec_occ = use_smear ? last_n_elec : n_elec;
+        return e_ks + e_ent;
+    };
+
+    // ── Multi-k UKS fixed-density KS eval (linearized-XL / CP electronic
+    //    step) ─────────────────────────────────────────────────────────────
+    // max_iter == 0: one dual-spin collocate→Poisson→XC→integrate at the
+    // supplied {P_k^α, P_k^β}; no diagonalization, no mixing, no orbital
+    // update. Populates H_ks_k / H_ks_k_beta / S_k — the dual-spin sibling
+    // of the multi-k RKS branch in run_gpw_scf_kpoints.
+    if (cfg.max_iter == 0) {
+        if (guess_Pa_k == nullptr)
+            throw std::invalid_argument(
+                "GPW k-UKS: max_iter==0 (fixed-density) requires the dual "
+                "guess_P_k / guess_P_k_beta densities");
+        if (cfg.use_ot)
+            throw std::invalid_argument(
+                "GPW k-UKS: fixed-density eval is incompatible with use_ot");
+        if (use_smear)
+            throw std::invalid_argument(
+                "GPW k-UKS: fixed-density eval with metallic smearing is not "
+                "productized (fractional occupations need a diagonalization)");
+        // Every rank holds the full dual {P_k^σ} (init loop fills local k).
+        for (int ik = 0; ik < nk; ++ik) {
+            Pa_k[static_cast<std::size_t>(ik)] =
+                CplxMatrix((*guess_Pa_k)[static_cast<std::size_t>(ik)]);
+            Pb_k[static_cast<std::size_t>(ik)] =
+                CplxMatrix((*guess_Pb_k)[static_cast<std::size_t>(ik)]);
+        }
+        res.e_total = build_uks_k_energy(Pa_k, Pb_k);
+        // Full H^σ_k on every rank from the shared dual V_eff.
+        auto [Ha_full, Hb_full] = rebuild_all_H(last_veff_ab);
+        res.H_ks_k.resize(static_cast<std::size_t>(nk));
+        res.H_ks_k_beta.resize(static_cast<std::size_t>(nk));
+        res.S_k.resize(static_cast<std::size_t>(nk));
+        res.P_k.resize(static_cast<std::size_t>(nk));
+        res.P_k_beta.resize(static_cast<std::size_t>(nk));
+        res.k_frac.clear();
+        res.k_weights.clear();
+        res.k_frac.reserve(static_cast<std::size_t>(nk));
+        res.k_weights.reserve(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            const auto& kp = kpts[static_cast<std::size_t>(ik)];
+            res.k_frac.push_back({kp.frac[0], kp.frac[1], kp.frac[2]});
+            res.k_weights.push_back(kp.weight);
+            res.H_ks_k[static_cast<std::size_t>(ik)] =
+                Ha_full[static_cast<std::size_t>(ik)];
+            res.H_ks_k_beta[static_cast<std::size_t>(ik)] =
+                Hb_full[static_cast<std::size_t>(ik)];
+            res.S_k[static_cast<std::size_t>(ik)] =
+                S_k[static_cast<std::size_t>(ik)];
+            res.P_k[static_cast<std::size_t>(ik)] =
+                Pa_k[static_cast<std::size_t>(ik)];
+            res.P_k_beta[static_cast<std::size_t>(ik)] =
+                Pb_k[static_cast<std::size_t>(ik)];
+        }
+        // Integer-occupation ⟨S²⟩ seed (same convention as the SCF exits).
+        {
+            const double sz = 0.5 * static_cast<double>(n_a - n_b);
+            res.s2 = sz * (sz + 1.0) + static_cast<double>(n_b);
+        }
+        res.converged = true;
+        res.iters = 0;
+        fold_dispersion_k_uks(res);
+        return res;
+    }
+
     // ── Multi-k UKS OT (integer / metallic FD/MP / +DFT+U; dual spin) ────
     // Independent complex OT manifolds per (k, σ). Integer path: occ=1
     // open-shell gradient, manifold size n_α / n_β. Metallic smear: full AO
@@ -2763,104 +2926,6 @@ static GpwResult run_gpw_scf_kpoints_uks(
                 occ_b_k[static_cast<std::size_t>(ik)].resize(
                     static_cast<std::size_t>(std::max(n_act_b, 0)), 0.0);
             }
-        };
-
-        auto build_uks_k_energy =
-            [&](const std::vector<CplxMatrix>& Pak,
-                const std::vector<CplxMatrix>& Pbk) -> double {
-            std::vector<double> rho_a(static_cast<std::size_t>(grid.npts()),
-                                      0.0);
-            std::vector<double> rho_b(static_cast<std::size_t>(grid.npts()),
-                                      0.0);
-            for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
-                const double wk = weights[static_cast<std::size_t>(ik)];
-                internal::collocate_density_k(
-                    kbg, ik, Pak[static_cast<std::size_t>(ik)], wk, rho_a);
-                internal::collocate_density_k(
-                    kbg, ik, Pbk[static_cast<std::size_t>(ik)], wk, rho_b);
-            }
-#ifdef ATV_HAS_MPI
-            if (layout.active) {
-                MPI_Allreduce(MPI_IN_PLACE, rho_a.data(),
-                              static_cast<int>(rho_a.size()), MPI_DOUBLE,
-                              MPI_SUM, MPI_COMM_WORLD);
-                MPI_Allreduce(MPI_IN_PLACE, rho_b.data(),
-                              static_cast<int>(rho_b.size()), MPI_DOUBLE,
-                              MPI_SUM, MPI_COMM_WORLD);
-            }
-#endif
-            std::vector<double> rho(rho_a.size());
-            for (std::size_t g = 0; g < rho.size(); ++g)
-                rho[g] = rho_a[g] + rho_b[g];
-            std::vector<double> n_tot(rho.size());
-            for (std::size_t g = 0; g < rho.size(); ++g)
-                n_tot[g] = rho[g] - n_ion[g];
-            const PoissonResult es = solve_poisson(grid, n_tot);
-            const XcOnGridSpin xc = xc_spin(rho_a, rho_b);
-            std::vector<double> veff_a(rho.size()), veff_b(rho.size());
-            double e_locgrid = 0.0;
-            for (std::size_t g = 0; g < rho.size(); ++g) {
-                double vloc = v_locsr.empty() ? 0.0 : v_locsr[g];
-                if (!v_locsr.empty())
-                    e_locgrid += rho[g] * vloc;
-                veff_a[g] = es.v_r[g] + xc.vxc_a[g] + vloc;
-                veff_b[g] = es.v_r[g] + xc.vxc_b[g] + vloc;
-            }
-            e_locgrid *= gw;
-            last_veff_ab.resize(2 * rho.size());
-            for (std::size_t g = 0; g < rho.size(); ++g) {
-                last_veff_ab[g] = veff_a[g];
-                last_veff_ab[g + rho.size()] = veff_b[g];
-            }
-            double e_kin = 0.0, e_nl = 0.0;
-            for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
-                const double wk = weights[static_cast<std::size_t>(ik)];
-                const CplxMatrix Va =
-                    internal::integrate_potential_k(kbg, ik, veff_a);
-                const CplxMatrix Vb =
-                    internal::integrate_potential_k(kbg, ik, veff_b);
-                const CplxMatrix H0 = T_k[static_cast<std::size_t>(ik)]
-                                      + Vnl_k[static_cast<std::size_t>(ik)];
-                Ha_k[static_cast<std::size_t>(ik)] = H0 + Va;
-                Hb_k[static_cast<std::size_t>(ik)] = H0 + Vb;
-                const CplxMatrix Ptot = Pak[static_cast<std::size_t>(ik)]
-                                        + Pbk[static_cast<std::size_t>(ik)];
-                e_kin += wk * ctrace(Ptot, T_k[static_cast<std::size_t>(ik)]);
-                e_nl += wk * ctrace(Ptot, Vnl_k[static_cast<std::size_t>(ik)]);
-            }
-#ifdef ATV_HAS_MPI
-            if (layout.active) {
-                MPI_Allreduce(MPI_IN_PLACE, &e_kin, 1, MPI_DOUBLE, MPI_SUM,
-                              MPI_COMM_WORLD);
-                MPI_Allreduce(MPI_IN_PLACE, &e_nl, 1, MPI_DOUBLE, MPI_SUM,
-                              MPI_COMM_WORLD);
-            }
-#endif
-            double e_dftu = 0.0;
-            if (do_dftu) {
-                e_dftu += internal::apply_dft_plus_u_k(
-                    Ha_k, Pak, S_k, weights, layout.rank, layout.nprocs,
-                    layout.active, ao_tags, z_of_atom, plus_u_slots, plus_u_z,
-                    &Va_dftu);
-                e_dftu += internal::apply_dft_plus_u_k(
-                    Hb_k, Pbk, S_k, weights, layout.rank, layout.nprocs,
-                    layout.active, ao_tags, z_of_atom, plus_u_slots, plus_u_z,
-                    &Vb_dftu);
-                have_V_dftu = true;
-            }
-            res.e_dftu = e_dftu;
-            res.e_kinetic = e_kin;
-            res.e_nonlocal = 0.0;
-            res.e_loc_sr = e_nl + e_locgrid;
-            res.e_es = es.e_hartree - e_self;
-            res.e_xc = xc.e_xc;
-            const double e_ks =
-                res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc + e_dftu;
-            const double e_ent = use_smear ? (-degauss_ha * last_entropy) : 0.0;
-            res.e_entropy = e_ent;
-            res.e_fermi = use_smear ? last_mu : 0.0;
-            res.n_elec_occ = use_smear ? last_n_elec : n_elec;
-            return e_ks + e_ent;
         };
 
         // ── OUTER_SCF + fixed-H OT for multi-k UKS OT+DFT+U (integer) ────
