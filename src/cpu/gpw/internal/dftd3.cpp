@@ -158,7 +158,7 @@ void getc6(const std::vector<D3C6Ref>& refs, double nci, double ncj, double& c6,
 /// CN-chain contributions into `dEdCN`. s9 = s6 for D3. Pair distances for
 /// each leg must be < rcut; geometric mean rabc damps with α=16, sr=4/3.
 void accumulate_atm_c9(const std::vector<int>& Z,
-                       const std::vector<std::array<double, 3>>& pos_bohr,
+                       const std::vector<std::array<double, 3>>& pos_raw,
                        const double cell_bohr[3], bool periodic,
                        const D3Params& params, const std::vector<double>& cn,
                        double rcut, double s9, double& energy,
@@ -171,11 +171,36 @@ void accumulate_atm_c9(const std::vector<int>& Z,
     int m[3] = {0, 0, 0};
     image_counts(cell_bohr, periodic, rcut, m);
 
-    // CP2K-style enumeration over AB (i with j in cell_b) then C in cell_c.
-    // fac0 handles triple-counting across image classes (qs_dispersion_d3.F).
+    // CP2K evaluates doabc on pbc()-wrapped coordinates (ra = pbc(r), Fortran
+    // ANINT = round-half-away-from-zero). The triple legs are gated by HARD
+    // r2 < rcut2 cutoffs over a finite +-m image window, so the included
+    // boundary set — and with it the per-atom force distribution — depends on
+    // where each atom sits inside the cell. Raw (unwrapped) coordinates keep
+    // the energy (invariant to 1e-19 here) but redistribute ~1e-7 Ha/Bohr of
+    // boundary-triple force between translation-equivalent atoms: on the
+    // periodic 6 A water-dimer twin the two molecules' ATM forces came out
+    // exactly swapped relative to CP2K. Wrap first; forces stay attributed by
+    // atom index.
+    std::vector<std::array<double, 3>> pos_bohr(pos_raw.begin(),
+                                                pos_raw.end());
+    if (periodic)
+        for (auto& p : pos_bohr)
+            for (int d = 0; d < 3; ++d)
+                if (cell_bohr[d] > 0.0)
+                    p[d] -= cell_bohr[d] * std::round(p[d] / cell_bohr[d]);
+
+    // CP2K-style enumeration over AB then C in cell_c: the AB pairs replicate
+    // the half neighbor list sab_vdw exactly as the two-body loop does —
+    // iatom <= jatom with ONE orientation per image for i < j, and both +T/-T
+    // images for the self-pair i == j (compensated by fac = 0.5 below, CP2K
+    // qs_dispersion_d3.F). Enumerating off-home i != j pairs in both
+    // orientations instead counts every CASE 3 triple class twice (6 anchored
+    // representatives x fac0 = 1/3): on the periodic 6 A water-dimer twin
+    // that inflated the ATM energy from +7.85e-7 to +6.25e-6 Ha — caught by
+    // the regressions/gpw/gpw-d3-atm-forces CP2K pin.
     for (int iatom = 0; iatom < n; ++iatom) {
         const int za = Z[iatom];
-        for (int jatom = 0; jatom < n; ++jatom) {
+        for (int jatom = iatom; jatom < n; ++jatom) {
             const int zb = Z[jatom];
             const auto& refs_ab = params.c6ab[za][zb];
             if (refs_ab.empty())
@@ -202,11 +227,6 @@ void accumulate_atm_c9(const std::vector<int>& Z,
                         if (r2ab >= rcut2 || r2ab <= 1.0e-12)
                             continue;
                         const bool is000 = (tbx == 0 && tby == 0 && tbz == 0);
-                        // Avoid double-counting AB: only iatom <= jatom in
-                        // the home cell; for B in another cell keep all AB
-                        // with iatom as the home-cell anchor (CP2K NL).
-                        if (is000 && jatom < iatom)
-                            continue;
 
                         for (int tcx = -m[0]; tcx <= m[0]; ++tcx)
                             for (int tcy = -m[1]; tcy <= m[1]; ++tcy)
