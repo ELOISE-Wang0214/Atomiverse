@@ -20,9 +20,10 @@ no CP2K twin, GAPW/PAW; **harness wave 12–14** closed zero-SCF linearized
 XL (Γ RKS), multi-k **SGCP**, D3/D4 **ATM** energy, collinear
 spin+metallic **bands/DOS**, multi-k **CPMD**, **GPW MLWF**,
 **GPW FD phonons** (`reg_gpw-fd-phonon-si`), D3/D3(BJ) **forces**
-(`reg_gpw-d3-forces` / `reg_gpw-d3bj-forces`), and Γ MBD **stress**
-(`reg_gpw-mbd-stress`); **GapCensus wave 15** pending
-residuals (D3/D3BJ **stress**, MBD multi-k **stress**, **TS/XDM stress**,
+(`reg_gpw-d3-forces` / `reg_gpw-d3bj-forces`), Γ MBD **stress**
+(`reg_gpw-mbd-stress`), and D3-zero **stress** (`reg_gpw-d3-stress`);
+**GapCensus wave 15** pending
+residuals (D3BJ **stress**, MBD multi-k **stress**, **TS/XDM stress**,
 multi-k DFT+U **forces**, DFPT **GGA×spin** / **GGA×finite-q**, multi-k
 **BOMD**, multi-k / vdW **multigrid**, linearized XL **UKS**/multi-k,
 D3/D4 **ATM forces**, multi-k UKS **CPMD**, multi-k SGCP **OT**);
@@ -262,9 +263,11 @@ dedicated offline force pins (`reg_gpw-ts-forces` / `reg_gpw-xdm-forces`).
 `reg_gpw-d3-atm`) and D4 \(s_9=1\) (`GpwDft::d4_atm`; `reg_gpw-d4-atm`).
 Two-body D3/D3(BJ) **energy and analytic ionic forces** are product
 (`reg_gpw-d3-forces` / `reg_gpw-d3bj-forces`; CP2K-gated, unified
-`2 × R_CUTOFF` pair cutoff); dedicated D3 / D3(BJ) **stress** pins remain
-open (queued `gpw-d3-stress` / `gpw-d3bj-stress` — same dedicated-pin
-pattern as D4 stress). **ATM force** pins are queued after energy
+`2 × R_CUTOFF` pair cutoff). **D3-zero analytic fixed-\(P\) stress** is
+product (`reg_gpw-d3-stress`; CP2K 2026.1 NUMERICAL stress-**difference**
+pin — D3-minus-plain isolates the dispersion stress — plus `gpw_stress_fd`
+dual-gate); the dedicated **D3(BJ) stress** pin remains open (queued
+`gpw-d3bj-stress` — same dedicated-pin pattern as D4/D3-zero stress). **ATM force** pins are queued after energy
 footholds (`gpw-d3-atm-forces` / `gpw-d4-atm-forces`). **MBD stress**
 ships at **Γ** (`reg_gpw-mbd-stress`); the multi-k stress path refuses
 MBD (fold queued `gpw-mbd-kpoint-stress`). Dedicated **TS / XDM stress**
