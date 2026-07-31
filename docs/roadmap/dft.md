@@ -30,8 +30,9 @@ spin+metallic **bands/DOS**, multi-k **CPMD**, **GPW MLWF**,
 multi-k **multigrid** (`reg_gpw-multigrid-kpoints`), and Γ-UKS
 linearized **XL** (`reg_xl-bomd-linearized-uks`); open residuals after
 that wave (GapCensus wave 2 re-verified + expanded): D3-zero **stress**
-(incomplete `[~] gpw-d3-stress`), **TS/XDM stress**, **D3/D4 ATM stress**
-pins, DFPT **GGA×finite-q**, vdW **multigrid**, nonlocal **vdW × k-points**,
+(incomplete `[~] gpw-d3-stress`), **TS/XDM stress**, the **D3 ATM stress**
+pin (D4 ATM stress shipped wave 2: `reg_gpw-d4-atm-stress`),
+DFPT **GGA×finite-q**, vdW **multigrid**, nonlocal **vdW × k-points**,
 multi-k **UKS multigrid**, linearized XL multi-k, multi-k UKS **CPMD**,
 multi-k CPMD **electronic thermostat**, multi-k SGCP **OT**;
 product after
@@ -284,9 +285,11 @@ analytic \(s_9\) gradient (triple derivatives + C9→neutral-C6→CN chain;
 (`reg_gpw-mbd-kpoint-stress`; k-summed fixed-\(P_k\) Lagrangian folds
 periodic MBD, strained-cell pymbd pins). Dedicated **TS / XDM stress**
 pins are queued (`gpw-ts-stress` / `gpw-xdm-stress`; energy folds are
-product), as are dedicated **D3/D4 ATM stress** pins
-(`gpw-d3-atm-stress` / `gpw-d4-atm-stress`; ATM energy folds at the
-strained cell). Nonlocal vdW × REL_CUTOFF multigrid (`ngrids>1`) throws
+product). The **D4 ATM stress** pin shipped (`reg_gpw-d4-atm-stress`:
+dftd4 3.7.0 strained-cell energies gate the s9 fold — σ^ATM parity
+3.7e-16 Ha/Bohr³ vs the ~7.5e-10 signal, plus `gpw_stress_fd` dual gate);
+the **D3 ATM stress** pin is still queued (`gpw-d3-atm-stress`).
+Nonlocal vdW × REL_CUTOFF multigrid (`ngrids>1`) throws
 (queued `gpw-vdw-multigrid`), and nonlocal vdW on the **k-point path** is
 not wired at all (fail-fast reject; queued `gpw-vdw-kpoints`).
 
@@ -370,8 +373,9 @@ Two periodic DFT engines exist, with disjoint strengths:
   (`reg_dfpt-gga-spin-si`), and Γ-UKS linearized XL
   (`reg_xl-bomd-linearized-uks`). Stock VV10 is
   **blocked** (no CP2K twin). Open residuals (GapCensus wave 2):
-  D3-zero stress (incomplete `[~] gpw-d3-stress`), TS/XDM stress, D3/D4
-  ATM stress pins, DFPT GGA×finite-q, vdW multigrid, nonlocal vdW ×
+  D3-zero stress (incomplete `[~] gpw-d3-stress`), TS/XDM stress, the D3
+  ATM stress pin (D4 ATM stress shipped: `reg_gpw-d4-atm-stress`),
+  DFPT GGA×finite-q, vdW multigrid, nonlocal vdW ×
   k-points, multi-k UKS multigrid, linearized XL multi-k, multi-k UKS
   CPMD, multi-k CPMD electronic thermostat, multi-k SGCP OT. Hybrids / meta-GGA /
   GAPW / PAW remain blocked (queue not exhausted — see
