@@ -30,7 +30,7 @@ spin+metallic **bands/DOS**, multi-k **CPMD**, **GPW MLWF**,
 multi-k **multigrid** (`reg_gpw-multigrid-kpoints`), and Γ-UKS
 linearized **XL** (`reg_xl-bomd-linearized-uks`); open residuals after
 that wave (GapCensus wave 2 re-verified + expanded): D3-zero **stress**
-(incomplete `[~] gpw-d3-stress`), **TS/XDM stress**, **D3/D4 ATM stress**
+(incomplete `[~] gpw-d3-stress`), **TS stress**, **D3/D4 ATM stress**
 pins, DFPT **GGA×finite-q**, vdW **multigrid**, nonlocal **vdW × k-points**,
 multi-k **UKS multigrid**, linearized XL multi-k, multi-k UKS **CPMD**,
 multi-k CPMD **electronic thermostat**, multi-k SGCP **OT**;
@@ -282,9 +282,11 @@ analytic \(s_9\) gradient (triple derivatives + C9→neutral-C6→CN chain;
 `reg_gpw-d4-atm-forces`, dftd4 3.7.0 `--grad` pin at 1e−9 Ha/Bohr).
 **MBD stress** ships at **Γ** (`reg_gpw-mbd-stress`) **and multi-k**
 (`reg_gpw-mbd-kpoint-stress`; k-summed fixed-\(P_k\) Lagrangian folds
-periodic MBD, strained-cell pymbd pins). Dedicated **TS / XDM stress**
-pins are queued (`gpw-ts-stress` / `gpw-xdm-stress`; energy folds are
-product), as are dedicated **D3/D4 ATM stress** pins
+periodic MBD, strained-cell pymbd pins). **XDM stress** carries its
+dedicated pin at Γ (`reg_gpw-xdm-stress`; dual pure-Python strained-cell
+pins + multi-SCF strain-FD dual gate). The dedicated **TS stress** pin is
+queued (`gpw-ts-stress`; energy folds are product), as are dedicated
+**D3/D4 ATM stress** pins
 (`gpw-d3-atm-stress` / `gpw-d4-atm-stress`; ATM energy folds at the
 strained cell). Nonlocal vdW × REL_CUTOFF multigrid (`ngrids>1`) throws
 (queued `gpw-vdw-multigrid`), and nonlocal vdW on the **k-point path** is
@@ -370,7 +372,7 @@ Two periodic DFT engines exist, with disjoint strengths:
   (`reg_dfpt-gga-spin-si`), and Γ-UKS linearized XL
   (`reg_xl-bomd-linearized-uks`). Stock VV10 is
   **blocked** (no CP2K twin). Open residuals (GapCensus wave 2):
-  D3-zero stress (incomplete `[~] gpw-d3-stress`), TS/XDM stress, D3/D4
+  D3-zero stress (incomplete `[~] gpw-d3-stress`), TS stress, D3/D4
   ATM stress pins, DFPT GGA×finite-q, vdW multigrid, nonlocal vdW ×
   k-points, multi-k UKS multigrid, linearized XL multi-k, multi-k UKS
   CPMD, multi-k CPMD electronic thermostat, multi-k SGCP OT. Hybrids / meta-GGA /
