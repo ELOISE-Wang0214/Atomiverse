@@ -958,13 +958,16 @@ in_progress on `wf/gpw-d3-stress` (do not demote). **No ○/✓ table flips.**
 - [ ] `second-gen-cpmd-ot-kpoints` | Multi-k SGCP with OT corrector (`use_ot` + \(P_k\) throws at `gpw_evaluator.cpp:319`) | dynamics | twin: extend `second-gen-cpmd-kpoints` × OT corrector; NVE drift | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (AIMD propagator contention cleared)
 - [ ] `gpw-uks-multigrid-kpoints` | Multi-k UKS REL_CUTOFF multigrid product collocation (k-path rejects "multigrid (ngrids > 1) with UKS — closed-shell RKS only" at `gpw_solver.cpp:5246`) | gpw | twin: CP2K 2026.1 UKS NGRIDS 4 / REL_CUTOFF + MP k-mesh (extend `gpw-multigrid-kpoints` × `gpw-uks-multigrid`) | GapCensus wave 2 (shift) 2026-07-31
 - [ ] `gpw-vdw-kpoints` | Nonlocal vdW-DF/DF2/rVV10 on the k-point path (not wired at all — SCF potential + post-SCF E_c^nl live only in the Γ runner; fail-fast reject at `gpw_solver.cpp:5262`) | gpw | twin: CP2K 2026.1 NON_LOCAL DRSLL ice + KPOINTS | GapCensus wave 2 (shift) 2026-07-31
-- [ ] `gpw-d3-atm-stress` | Analytic fixed-P cell stress with DFT-D3 three-body ATM (C9) (energy folds at the strained cell; dedicated pin missing) | gpw | twin: CP2K 2026.1 NUMERICAL-stress difference pin with D3 ATM on (same pattern as `gpw-d3bj-stress`; extend `gpw-d3-atm-forces` input) | GapCensus wave 2 (shift) 2026-07-31 — hold "behind ATM force pins" cleared
 - [ ] `gpw-d4-atm-stress` | Analytic fixed-P cell stress with DFT-D4 three-body ATM (\(s_9\)) (energy folds; dedicated pin missing) | gpw | twin: dftd4 3.7.0 strained-cell energies + `gpw_stress_fd` dual-gate (same no-CP2K-DFTD4 policy as `gpw-d4-atm-forces`) | GapCensus wave 2 (shift) 2026-07-31 — hold cleared
 - [ ] `cpmd-thermostat-kpoints` | Multi-k CPMD electronic thermostat ("NVE electrons only on the k path" throw at `gpw_evaluator.cpp:251`) | dynamics | twin: extend `cpmd-electronic-thermostat` × `cpmd-kpoints`; thermostat + NVE envelope (same literature policy as the Γ product) | GapCensus wave 2 (shift) 2026-07-31
 
 ## in_progress
 
 - [~] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14; re-verified wave 15 (`3ee28243` D3 stress is DFTB2, not GPW) | assigned wave 1 2026-07-31; kept `[~]` at harness wave 1 — unmerged `wf/gpw-d3-stress` @ `3b3872eb` (wip spec + CP2K NUMERICAL-stress pins + D3 stress gates; merge-base `03c16eef`, behind the nine wave merges; do not demote)
+
+## done (worker wave 2 (shift) 2026-07-31)
+
+- [x] `gpw-d3-atm-stress` | Analytic fixed-P cell stress with DFT-D3 three-body ATM (C9) folded; adds configurable `d3_rcut_bohr` (CP2K `R_CUTOFF`, doubled convention) on `GpwDft`/`GPWEvaluator` so the product folds the oracle's exact functional | gpw | `regressions/gpw/gpw-d3-atm-stress` (CP2K 2026.1 `STRESS_TENSOR NUMERICAL` C9 on−off difference pins: Δσ parity 1.1e−13 Ha/Bohr³ at CP2K's `DX 0.001` step — the hard-gated triple sum is step-locked, unlike the smooth two-body fold; E_disp 2.8e−10; analytic vs multi-SCF FD 2.4e−7) | ratio **0.75** (ATV product 40.8 s / CP2K 54.5 s) | 2026-07-31
 
 ## done (harness wave 1 (shift) 2026-07-31)
 

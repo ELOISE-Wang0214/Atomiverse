@@ -30,8 +30,9 @@ spin+metallic **bands/DOS**, multi-k **CPMD**, **GPW MLWF**,
 multi-k **multigrid** (`reg_gpw-multigrid-kpoints`), and Γ-UKS
 linearized **XL** (`reg_xl-bomd-linearized-uks`); open residuals after
 that wave (GapCensus wave 2 re-verified + expanded): D3-zero **stress**
-(incomplete `[~] gpw-d3-stress`), **TS/XDM stress**, **D3/D4 ATM stress**
-pins, DFPT **GGA×finite-q**, vdW **multigrid**, nonlocal **vdW × k-points**,
+(incomplete `[~] gpw-d3-stress`), **TS/XDM stress**, **D4 ATM stress**
+pin (D3 ATM stress shipped: `reg_gpw-d3-atm-stress`),
+DFPT **GGA×finite-q**, vdW **multigrid**, nonlocal **vdW × k-points**,
 multi-k **UKS multigrid**, linearized XL multi-k, multi-k UKS **CPMD**,
 multi-k CPMD **electronic thermostat**, multi-k SGCP **OT**;
 product after
@@ -284,9 +285,14 @@ analytic \(s_9\) gradient (triple derivatives + C9→neutral-C6→CN chain;
 (`reg_gpw-mbd-kpoint-stress`; k-summed fixed-\(P_k\) Lagrangian folds
 periodic MBD, strained-cell pymbd pins). Dedicated **TS / XDM stress**
 pins are queued (`gpw-ts-stress` / `gpw-xdm-stress`; energy folds are
-product), as are dedicated **D3/D4 ATM stress** pins
-(`gpw-d3-atm-stress` / `gpw-d4-atm-stress`; ATM energy folds at the
-strained cell). Nonlocal vdW × REL_CUTOFF multigrid (`ngrids>1`) throws
+product). The **D3 ATM stress** pin is product
+(`reg_gpw-d3-atm-stress`: CP2K 2026.1 `STRESS_TENSOR NUMERICAL`
+difference C9 on−off isolates the pure ATM stress, Δσ parity 1.1e−13
+Ha/Bohr³ at CP2K's own `DX 0.001` FD step — the hard-gated triple sum is
+step-sensitive, unlike the smooth-cutoff two-body fold — plus the
+configurable `d3_rcut_bohr` member mirroring CP2K `R_CUTOFF`); the **D4
+ATM stress** pin stays queued (`gpw-d4-atm-stress`; ATM energy folds at
+the strained cell). Nonlocal vdW × REL_CUTOFF multigrid (`ngrids>1`) throws
 (queued `gpw-vdw-multigrid`), and nonlocal vdW on the **k-point path** is
 not wired at all (fail-fast reject; queued `gpw-vdw-kpoints`).
 
