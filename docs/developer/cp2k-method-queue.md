@@ -881,7 +881,6 @@ assign = 7** (not queue exhausted).
 
 ## in_progress
 
-- [~] `gpw-d3bj-stress` | Analytic fixed-P cell stress with DFT-D3(BJ) | gpw | twin: CP2K D3(BJ) + NUMERICAL stress / extend d3bj ice | GapCensus wave 13; re-verified wave 15 | assigned wave 1 2026-07-31
 - [~] `gpw-mbd-kpoint-stress` | Multi-k analytic stress folds MBD (k-path throws; Γ product `reg_gpw-mbd-stress`) | gpw | twin: extend `gpw-mbd-periodic` + multi-k stress | GapCensus wave 13; re-verified wave 15 | assigned wave 1 2026-07-31
 - [~] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14; re-verified wave 15 (`3ee28243` D3 stress is DFTB2, not GPW) | assigned wave 1 2026-07-31
 - [~] `gpw-d3-atm-forces` | Analytic ionic forces with DFT-D3 three-body ATM (C9) | gpw | twin: CP2K D3 ATM force / FD on water dimer | GapCensus wave 14; re-verified wave 15 (reuse `3ee28243` ATM F2+FD machinery) | assigned wave 1 2026-07-31
@@ -891,6 +890,10 @@ assign = 7** (not queue exhausted).
 - [~] `gpw-bomd-kpoints` | Multi-k Born-Oppenheimer MD on GPW | dynamics | twin: CP2K Quickstep AIMD with k-mesh | GapCensus wave 13; re-verified wave 15 | assigned wave 1 2026-07-31
 - [~] `gpw-multigrid-kpoints` | Multi-k GPW with REL_CUTOFF multigrid (`ngrids>1`) | gpw | twin: CP2K NGRIDS + k-mesh water/Si | GapCensus wave 14; re-verified wave 15 (k-path `reject`) | assigned wave 1 2026-07-31
 - [~] `xl-bomd-linearized-uks` | Zero-SCF linearized-functional XL-BOMD forces on Γ-UKS | dynamics | twin: extend `xl-bomd-linearized-forces` × UKS | GapCensus wave 14; re-verified wave 15 | assigned wave 1 2026-07-31
+
+## done (assign wave 1 2026-07-31)
+
+- [x] `gpw-d3bj-stress` | Analytic fixed-P cell stress with DFT-D3(BJ) (CP2K NUMERICAL-stress difference pin: Δσ parity 3.9e-14 Ha/Bohr³; dual gate 7.4e-7) | gpw | `regressions/gpw/gpw-d3bj-stress` | ratio **0.37** (CP2K 83.8 s / ATV 31.1 s product) | 2026-07-31
 
 ## done (harness wave 14 2026-07-26)
 

@@ -262,9 +262,11 @@ dedicated offline force pins (`reg_gpw-ts-forces` / `reg_gpw-xdm-forces`).
 `reg_gpw-d3-atm`) and D4 \(s_9=1\) (`GpwDft::d4_atm`; `reg_gpw-d4-atm`).
 Two-body D3/D3(BJ) **energy and analytic ionic forces** are product
 (`reg_gpw-d3-forces` / `reg_gpw-d3bj-forces`; CP2K-gated, unified
-`2 × R_CUTOFF` pair cutoff); dedicated D3 / D3(BJ) **stress** pins remain
-open (queued `gpw-d3-stress` / `gpw-d3bj-stress` — same dedicated-pin
-pattern as D4 stress). **ATM force** pins are queued after energy
+`2 × R_CUTOFF` pair cutoff). **D3(BJ) analytic fixed-\(P\) stress** is now
+CP2K-pinned (`reg_gpw-d3bj-stress`; numerical-stress *difference* pin —
+the real oracle stress pin for the whole dispersion stress fold, Δσ parity
+3.9e−14 Ha/Bohr³); the dedicated D3 zero-damping **stress** pin remains
+open (queued `gpw-d3-stress` — same dedicated-pin pattern). **ATM force** pins are queued after energy
 footholds (`gpw-d3-atm-forces` / `gpw-d4-atm-forces`). **MBD stress**
 ships at **Γ** (`reg_gpw-mbd-stress`); the multi-k stress path refuses
 MBD (fold queued `gpw-mbd-kpoint-stress`). Dedicated **TS / XDM stress**
