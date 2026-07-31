@@ -47,7 +47,16 @@ pure ATM gradient at 4.6e−7 (iso) / 6.9e−7 (per) Ha/Bohr — ~500× above th
 | Per ATM force vs CP2K diff | 1e−8 Ha/Bohr | **9.8e−10** (signal 6.9e−7) |
 | Product wiring | 1e−7 Ha/Bohr | 2.2e−17 |
 | Unit FD iso / per | 1e−7 Ha/Bohr | 4.1e−14 / 2.2e−13 |
-| Wall | ≤ 60 s | 34.5 s (CP2K 10.5 s → ratio 3.3) |
+| Wall | ≤ 60 s | 34.5 s |
+
+## Performance
+
+Twin walls from `REFERENCE.md` (CP2K TIMING `CP2K` TOTAL TIME, `mpirun -np 2`,
+`OMP_NUM_THREADS=2`); ATV wall is the full regression (iso + per SCF + forces).
+
+| Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
+| ---- | ------------------------: | -----------------------: | ----: | ---- | ------ |
+| water dimer iso 12 Å + per 6 Å, PBE-D3(ATM) forces | 10.5 | 34.5 | 3.3 | ✓ | ATV single run covers both cells; CP2K wall is the dominant iso member |
 
 ## Two defects this pin exposed
 

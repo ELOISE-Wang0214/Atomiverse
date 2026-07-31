@@ -295,6 +295,26 @@ conditioning (not force correctness — its earlier block reason was retracted).
 | GPW PBE-D3(BJ) analytic ionic forces (periodic dimer) | [gpw-d3bj-forces](gpw-d3bj-forces.md) | `regressions/gpw/gpw-d3bj-forces` | **2.7** |
 | GPW Γ analytic cell stress with periodic MBD@rsSCS | [gpw-mbd-stress](gpw-mbd-stress.md) | `regressions/gpw/gpw-mbd-stress` | **perf_exempt** |
 
+## Index — CP2K capability shift wave (2026-07-31)
+
+Offline CP2K 2026.1 pins only — see
+[cp2k-method-queue](../../developer/cp2k-method-queue.md) and
+`tools/cp2k_oracle/`. Fair walls from each page's Performance section /
+`REFERENCE.md` (`ratio` or `perf_exempt`). The ninth slug of this batch,
+[dfpt-gga-spin-si](dfpt-gga-spin-si.md) (fair ratio **0.20**), is indexed in
+the Response / phonons table below.
+
+| Method | Page | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
+| ------ | ---- | ---------- | --------------------------------------------- |
+| GPW PBE-D3(BJ) analytic cell stress (periodic dimer) | [gpw-d3bj-stress](gpw-d3bj-stress.md) | `regressions/gpw/gpw-d3bj-stress` | **0.37** |
+| Multi-k analytic cell stress + periodic MBD@rsSCS | [gpw-mbd-kpoint-stress](gpw-mbd-kpoint-stress.md) | `regressions/gpw/gpw-mbd-kpoint-stress` | **perf_exempt** |
+| GPW DFT-D3 three-body ATM (C9) analytic ionic forces | [gpw-d3-atm-forces](gpw-d3-atm-forces.md) | `regressions/gpw/gpw-d3-atm-forces` | **3.3** |
+| GPW DFT-D4 three-body ATM (\(s_9=1\)) analytic ionic forces | [gpw-d4-atm-forces](gpw-d4-atm-forces.md) | `regressions/gpw/gpw-d4-atm-forces` | **perf_exempt** |
+| Multi-k Dudarev DFT+U analytic ionic forces (H₂ + NiO Γ) | [gpw-dftu-kpoint-forces](gpw-dftu-kpoint-forces.md) | `regressions/gpw/gpw-dftu-kpoint-forces` | **≈ 1.0** |
+| Plain multi-k BOMD on GPW (periodic H₂ NVE) | [gpw-bomd-kpoints](gpw-bomd-kpoints.md) | `regressions/gpw/gpw-bomd-kpoints` | **0.064** |
+| Multi-k GPW RKS REL_CUTOFF multigrid (diamond Si) | [gpw-multigrid-kpoints](gpw-multigrid-kpoints.md) | `regressions/gpw/gpw-multigrid-kpoints` | **≈ 1.6** |
+| Zero-SCF linearized XL-BOMD on Γ-UKS (O₂ NVE) | [xl-bomd-linearized-uks](xl-bomd-linearized-uks.md) | `regressions/dynamics/xl-bomd-linearized-uks` | **perf_exempt** |
+
 ## Index — restored capability pages (indexed 2026-07-28)
 
 These pages were written by the Tutorial phase of earlier

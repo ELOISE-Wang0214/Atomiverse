@@ -29,9 +29,11 @@ spin+metallic **bands/DOS**, multi-k **CPMD**, **GPW MLWF**,
 (`reg_dfpt-gga-spin-si`), multi-k **BOMD** (`reg_gpw-bomd-kpoints`),
 multi-k **multigrid** (`reg_gpw-multigrid-kpoints`), and Γ-UKS
 linearized **XL** (`reg_xl-bomd-linearized-uks`); open residuals after
-that wave: D3-zero **stress** (incomplete `[~] gpw-d3-stress`),
-**TS/XDM stress**, DFPT **GGA×finite-q**, vdW **multigrid**, linearized
-XL multi-k, multi-k UKS **CPMD**, multi-k SGCP **OT**;
+that wave (GapCensus wave 2 re-verified + expanded): D3-zero **stress**
+(incomplete `[~] gpw-d3-stress`), **TS/XDM stress**, **D3/D4 ATM stress**
+pins, DFPT **GGA×finite-q**, vdW **multigrid**, nonlocal **vdW × k-points**,
+multi-k **UKS multigrid**, linearized XL multi-k, multi-k UKS **CPMD**,
+multi-k CPMD **electronic thermostat**, multi-k SGCP **OT**;
 product after
 harness wave 11 also ships UGW@UKS-RPBE,
 dedicated TS/XDM force pins, multi-k UKS stress GGA expand, CPMD
@@ -282,8 +284,11 @@ analytic \(s_9\) gradient (triple derivatives + C9→neutral-C6→CN chain;
 (`reg_gpw-mbd-kpoint-stress`; k-summed fixed-\(P_k\) Lagrangian folds
 periodic MBD, strained-cell pymbd pins). Dedicated **TS / XDM stress**
 pins are queued (`gpw-ts-stress` / `gpw-xdm-stress`; energy folds are
-product). Nonlocal vdW × REL_CUTOFF multigrid (`ngrids>1`) throws
-(queued `gpw-vdw-multigrid`).
+product), as are dedicated **D3/D4 ATM stress** pins
+(`gpw-d3-atm-stress` / `gpw-d4-atm-stress`; ATM energy folds at the
+strained cell). Nonlocal vdW × REL_CUTOFF multigrid (`ngrids>1`) throws
+(queued `gpw-vdw-multigrid`), and nonlocal vdW on the **k-point path** is
+not wired at all (fail-fast reject; queued `gpw-vdw-kpoints`).
 
 ## 9. Composite DFT Methods
 
@@ -364,10 +369,11 @@ Two periodic DFT engines exist, with disjoint strengths:
   (`reg_gpw-multigrid-kpoints`), joint DFPT **GGA×spin**
   (`reg_dfpt-gga-spin-si`), and Γ-UKS linearized XL
   (`reg_xl-bomd-linearized-uks`). Stock VV10 is
-  **blocked** (no CP2K twin). Open residuals (post harness wave 1):
-  D3-zero stress (incomplete `[~] gpw-d3-stress`), TS/XDM stress, DFPT
-  GGA×finite-q, vdW multigrid, linearized XL multi-k, multi-k UKS
-  CPMD, multi-k SGCP OT. Hybrids / meta-GGA /
+  **blocked** (no CP2K twin). Open residuals (GapCensus wave 2):
+  D3-zero stress (incomplete `[~] gpw-d3-stress`), TS/XDM stress, D3/D4
+  ATM stress pins, DFPT GGA×finite-q, vdW multigrid, nonlocal vdW ×
+  k-points, multi-k UKS multigrid, linearized XL multi-k, multi-k UKS
+  CPMD, multi-k CPMD electronic thermostat, multi-k SGCP OT. Hybrids / meta-GGA /
   GAPW / PAW remain blocked (queue not exhausted — see
   `cp2k-method-queue.md`). CPU only.
 
@@ -559,7 +565,8 @@ OT+DFT+U** `reg_ot-dftu-kpoints` + **OT+smear** RKS `reg_ot-smearing` +
 UKS OT+U+smear** `reg_ot-uks-dftu-smearing`). **UKS multigrid**
 product collocation ships (`reg_gpw-uks-multigrid`) **and multi-k RKS
 multigrid** (Bloch-phased product collocation;
-`reg_gpw-multigrid-kpoints`).
+`reg_gpw-multigrid-kpoints`); the multi-k **UKS** runner is still
+single-grid (k-path reject; queued `gpw-uks-multigrid-kpoints`).
 **Band structure / DOS** on CPU PW: `cpu::pw::Bands`
 (high-symmetry path) + `cpu::pw::Dos` (MP mesh + Gaussian smearing;
 `reg_bands-dos-si`) **plus collinear-spin bands** (`reg_bands-spin-si`)
