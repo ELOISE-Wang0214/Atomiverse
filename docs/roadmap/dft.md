@@ -28,9 +28,10 @@ spin+metallic **bands/DOS**, multi-k **CPMD**, **GPW MLWF**,
 **forces** (`reg_gpw-dftu-kpoint-forces`), joint DFPT **GGA×spin**
 (`reg_dfpt-gga-spin-si`), multi-k **BOMD** (`reg_gpw-bomd-kpoints`),
 multi-k **multigrid** (`reg_gpw-multigrid-kpoints`), and Γ-UKS
-linearized **XL** (`reg_xl-bomd-linearized-uks`); open residuals after
-that wave (GapCensus wave 2 re-verified + expanded): D3-zero **stress**
-(incomplete `[~] gpw-d3-stress`), **TS/XDM stress**, **D3/D4 ATM stress**
+linearized **XL** (`reg_xl-bomd-linearized-uks`); **wave 2** closes
+D3-zero **stress** (`reg_gpw-d3-stress`); open residuals after
+that wave (GapCensus wave 2 re-verified + expanded): **TS/XDM stress**,
+**D3/D4 ATM stress**
 pins, DFPT **GGA×finite-q**, vdW **multigrid**, nonlocal **vdW × k-points**,
 multi-k **UKS multigrid**, linearized XL multi-k, multi-k UKS **CPMD**,
 multi-k CPMD **electronic thermostat**, multi-k SGCP **OT**;
@@ -273,8 +274,10 @@ Two-body D3/D3(BJ) **energy and analytic ionic forces** are product
 `2 × R_CUTOFF` pair cutoff). **D3(BJ) analytic fixed-\(P\) stress** is now
 CP2K-pinned (`reg_gpw-d3bj-stress`; numerical-stress *difference* pin —
 the real oracle stress pin for the whole dispersion stress fold, Δσ parity
-3.9e−14 Ha/Bohr³); the dedicated D3 zero-damping **stress** pin remains
-open (queued `gpw-d3-stress` — same dedicated-pin pattern). **ATM forces**
+3.9e−14 Ha/Bohr³), and **D3 zero-damping stress** carries its own dedicated
+pin (`reg_gpw-d3-stress`; CP2K 2026.1 NUMERICAL stress-**difference** pin —
+D3-minus-plain isolates the dispersion stress — plus `gpw_stress_fd`
+dual-gate). **ATM forces**
 are product on both families: D3 C9 carries a dedicated CP2K force pin
 (`reg_gpw-d3-atm-forces`; periodic image-triple overcount + pbc anchoring
 fixed in `accumulate_atm_c9`) and `cpu::scf::dftd4` carries the fully
