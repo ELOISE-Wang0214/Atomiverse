@@ -200,6 +200,12 @@ if(ATV_BUILD_PW)
         target_compile_definitions(reg_dfpt-spin-si PRIVATE
             ATV_PW_UPF_PATH="${_atv_si_upf}")
     endif()
+    # Γ DFPT joint collinear spin × pure GGA (PBE) kernel (response).
+    atv_add_regression(response dfpt-gga-spin-si)
+    if(TARGET reg_dfpt-gga-spin-si)
+        target_compile_definitions(reg_dfpt-gga-spin-si PRIVATE
+            ATV_PW_UPF_PATH="${_atv_si_upf}")
+    endif()
     # Γ DFPT with metallic occupation smearing (FD, restricted Si twin).
     atv_add_regression(response dfpt-metallic-si)
     if(TARGET reg_dfpt-metallic-si)
