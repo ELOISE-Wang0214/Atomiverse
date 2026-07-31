@@ -21,13 +21,17 @@ XL (Γ RKS), multi-k **SGCP**, D3/D4 **ATM** energy, collinear
 spin+metallic **bands/DOS**, multi-k **CPMD**, **GPW MLWF**,
 **GPW FD phonons** (`reg_gpw-fd-phonon-si`), D3/D3(BJ) **forces**
 (`reg_gpw-d3-forces` / `reg_gpw-d3bj-forces`), and Γ MBD **stress**
-(`reg_gpw-mbd-stress`); **GapCensus wave 15** pending
-residuals (D3/D3BJ **stress**, MBD multi-k **stress**, **TS/XDM stress**,
-multi-k DFT+U **forces**, DFPT **GGA×finite-q**, multi-k
-**BOMD**, multi-k / vdW **multigrid**, linearized XL **UKS**/multi-k,
-D3/D4 **ATM forces**, multi-k UKS **CPMD**, multi-k SGCP **OT**);
-shift wave 1 also ships joint DFPT **GGA×spin**
-(`reg_dfpt-gga-spin-si`);
+(`reg_gpw-mbd-stress`); **harness wave 1 (2026-07-31)** ships D3(BJ)
+**stress** (`reg_gpw-d3bj-stress`), multi-k MBD **stress**
+(`reg_gpw-mbd-kpoint-stress`), D3/D4 **ATM forces**
+(`reg_gpw-d3-atm-forces` / `reg_gpw-d4-atm-forces`), multi-k DFT+U
+**forces** (`reg_gpw-dftu-kpoint-forces`), joint DFPT **GGA×spin**
+(`reg_dfpt-gga-spin-si`), multi-k **BOMD** (`reg_gpw-bomd-kpoints`),
+multi-k **multigrid** (`reg_gpw-multigrid-kpoints`), and Γ-UKS
+linearized **XL** (`reg_xl-bomd-linearized-uks`); open residuals after
+that wave: D3-zero **stress** (incomplete `[~] gpw-d3-stress`),
+**TS/XDM stress**, DFPT **GGA×finite-q**, vdW **multigrid**, linearized
+XL multi-k, multi-k UKS **CPMD**, multi-k SGCP **OT**;
 product after
 harness wave 11 also ships UGW@UKS-RPBE,
 dedicated TS/XDM force pins, multi-k UKS stress GGA expand, CPMD
@@ -351,13 +355,19 @@ Two periodic DFT engines exist, with disjoint strengths:
   stress for **RevPBE/RPBE/BLYP** (`reg_gpw-kpoint-uks-stress-gga`),
   dedicated **TS/XDM** force pins (`reg_gpw-ts-forces` /
   `reg_gpw-xdm-forces`), **UGW@UKS-RPBE** (`reg_ugw-uks-rpbe`), **D3/D4
-  ATM** energy (`reg_gpw-d3-atm` / `reg_gpw-d4-atm`). Stock VV10 is
-  **blocked** (no CP2K twin). Open residuals (GapCensus wave 15):
-  D3/D3BJ stress, MBD multi-k stress, TS/XDM stress, multi-k DFT+U
-  forces, DFPT GGA×finite-q, multi-k BOMD, multi-k / vdW
-  multigrid, linearized XL UKS/multi-k, D3/D4 ATM forces, multi-k UKS
-  CPMD, multi-k SGCP OT (joint DFPT GGA×spin shipped shift wave 1,
-  `reg_dfpt-gga-spin-si`). Hybrids / meta-GGA /
+  ATM** energy (`reg_gpw-d3-atm` / `reg_gpw-d4-atm`) **and ATM forces**
+  (`reg_gpw-d3-atm-forces` / `reg_gpw-d4-atm-forces`), **D3(BJ) stress**
+  (`reg_gpw-d3bj-stress`), **multi-k MBD stress**
+  (`reg_gpw-mbd-kpoint-stress`), **multi-k DFT+U forces**
+  (`reg_gpw-dftu-kpoint-forces`), **multi-k BOMD**
+  (`reg_gpw-bomd-kpoints`), **multi-k multigrid**
+  (`reg_gpw-multigrid-kpoints`), joint DFPT **GGA×spin**
+  (`reg_dfpt-gga-spin-si`), and Γ-UKS linearized XL
+  (`reg_xl-bomd-linearized-uks`). Stock VV10 is
+  **blocked** (no CP2K twin). Open residuals (post harness wave 1):
+  D3-zero stress (incomplete `[~] gpw-d3-stress`), TS/XDM stress, DFPT
+  GGA×finite-q, vdW multigrid, linearized XL multi-k, multi-k UKS
+  CPMD, multi-k SGCP OT. Hybrids / meta-GGA /
   GAPW / PAW remain blocked (queue not exhausted — see
   `cp2k-method-queue.md`). CPU only.
 
@@ -406,10 +416,12 @@ Which engine backs which ✓:
 - **Periodic DFT+U** is GPW Dudarev PLUS_U energy (`reg_gpw-dftu-nio`) **and
   analytic stress** (`reg_gpw-dftu-stress`) on the **Γ** path **and multi-k
   SCF** (`reg_gpw-dftu-kpoints`) **and multi-k analytic stress**
-  (`reg_gpw-dftu-kpoint-stress`). Multi-k DFT+U **ionic forces** remain
-  open (queued `gpw-dftu-kpoint-forces`). Multi-k **multigrid**
-  (`ngrids>1`) remains open (queued `gpw-multigrid-kpoints`; Γ RKS/UKS
-  multigrid product). Molecular Gaussian DFT+U remains ○.
+  (`reg_gpw-dftu-kpoint-stress`) **and multi-k ionic forces**
+  (`reg_gpw-dftu-kpoint-forces`; variational ½(V̂S+SV̂) +U scatter,
+  full-6N FD dual gate on the k path). Multi-k **multigrid**
+  (`ngrids>1`) is product (`reg_gpw-multigrid-kpoints`; nonlocal vdW ×
+  multigrid still throws — queued `gpw-vdw-multigrid`). Molecular
+  Gaussian DFT+U remains ○.
 - **Periodic dispersion-corrected DFT** is GPW + DFT-D3 zero damping,
   **D3(BJ)** (§8; `reg_gpw-pbe-d3bj-ice`), **D4** energy (`reg_gpw-d4-water`)
   **+ analytic stress** (`reg_gpw-d4-stress`) **+ ionic forces**
@@ -545,7 +557,9 @@ OT+DFT+U** `reg_ot-dftu-kpoints` + **OT+smear** RKS `reg_ot-smearing` +
 **UKS OT+smear** `reg_ot-uks-smearing` + **multi-k UKS OT+U**
 `reg_ot-uks-dftu` + **OT+U+smear** `reg_ot-dftu-smearing` + **multi-k
 UKS OT+U+smear** `reg_ot-uks-dftu-smearing`). **UKS multigrid**
-product collocation ships (`reg_gpw-uks-multigrid`).
+product collocation ships (`reg_gpw-uks-multigrid`) **and multi-k RKS
+multigrid** (Bloch-phased product collocation;
+`reg_gpw-multigrid-kpoints`).
 **Band structure / DOS** on CPU PW: `cpu::pw::Bands`
 (high-symmetry path) + `cpu::pw::Dos` (MP mesh + Gaussian smearing;
 `reg_bands-dos-si`) **plus collinear-spin bands** (`reg_bands-spin-si`)

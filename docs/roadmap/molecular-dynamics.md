@@ -234,7 +234,9 @@ AIMD works by binding a force-providing method/component to `md::Phase::force`
   BOMD**, with an ASPC density predictor for warm starts.
 - `cpu::gpw::GPWEvaluator` with forces on → **periodic KS BOMD** (Γ-point,
   closed-shell); NVE energy-drift pin `reg_gpw-bomd-water`. **Multi-k
-  BOMD** remains ○ (queued `gpw-bomd-kpoints`; multi-k XL is product).
+  BOMD** is product (`reg_gpw-bomd-kpoints`; previous-step \(P_k\) SCF
+  warm start mirroring CP2K EXTRAPOLATION USE_PREV_P; CP2K Quickstep
+  AIMD k-mesh pin, fair wall ratio 0.064; multi-k XL is product too).
 - `cpu::pw::PWEvaluator` with `with_gradient(true)` → **plane-wave BOMD**
   (analytic local + Ewald + KB forces; default is energy-only); foothold
   `reg_pw-bomd-h`.
@@ -251,9 +253,9 @@ multi-k UKS** dual-spin \(P_k^\sigma\) (`reg_xl-bomd-uks-kpoints`). ASPC
 remains a separate density *predictor* (warm start); OT+XL stays
 architecturally excluded (OT parameterizes orbitals, not density);
 **zero-SCF linearized-functional forces** productize on **Γ RKS**
-(`xl_bomd_linearized`; `reg_xl-bomd-linearized-forces`); **Γ-UKS** and
-**multi-k** linearized XL remain open (queued `xl-bomd-linearized-uks` /
-`xl-bomd-linearized-kpoints`).
+(`xl_bomd_linearized`; `reg_xl-bomd-linearized-forces`) **and Γ-UKS**
+dual-spin shadow densities (`reg_xl-bomd-linearized-uks`); **multi-k**
+linearized XL remains open (queued `xl-bomd-linearized-kpoints`).
 
 **Car–Parrinello MD** (fictitious electronic DOF) ships as `cpu::electronic::Cpmd` +
 `GPWEvaluator::{cpmd, cpmd_mu}` (the nuclear dt is pushed in from the MD

@@ -1,6 +1,65 @@
 # CP2K capability loop — handoff
 
-## Harness wave 12 2026-07-26 (parent `dev` @ `4ab58f97`)
+## Harness wave 1 (shift) 2026-07-31 (parent `dev` @ `8a9584f4`)
+
+| Field | Value |
+| ----- | ----- |
+| Branch | `dev` (tracks `origin/dev`, ahead of origin by merges) |
+| Incomplete / `in_progress` | **1** (`[~] gpw-d3-stress` on `wf/gpw-d3-stress` @ `3b3872eb`) |
+| Open CP2K specs on `dev` | **0** (PySCF deferred only: `periodic-rhf-gamma`, `rsh-eri-cam-b3lyp`) |
+| Specs closed this harness | **9** (deleted at `8a9584f4`; INDEX cross-names the batch "harness wave 13") |
+| Unmerged staff `wf/*` | **1** incomplete kept (`wf/gpw-d3-stress`) |
+| Isolation worktrees | **0** (clearup already ran; main tree only) |
+| Leftover builds | **none** in loop scope (concurrent CUDA-RHF campaign artifacts left untouched) |
+| Pending gaps | **7** (held wave-1 list from GapCensus wave 15 — not exhausted) |
+| Blocked | **6** (VV10 + hybrid / GAPW / PAW / CUDA-GPW / meta-GGA) |
+| Done this wave | **9** landings (nine `--no-ff` merges `44749b1a`..`268aaf66`) |
+| Merge gate | scoped rebuild + `ctest -R '^test_cpu_(gpw\|pw\|scf\|xc)_\|^test_xc_'` 57/57 green |
+| Oracle | `tools/cp2k_oracle/` offline pins only |
+| Loop docs | queue / loop / handoff / roadmap residual prose **synced** |
+
+### Wave staff → done
+
+| Slug | Domain | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
+| ---- | ------ | ---------- | --------------------------------------------- |
+| `gpw-d3bj-stress` | gpw | `reg_gpw-d3bj-stress` | **0.37** (CP2K 83.8 s / ATV 31.1 s) |
+| `gpw-mbd-kpoint-stress` | gpw | `reg_gpw-mbd-kpoint-stress` | **perf_exempt** (CP2K stock has no MBD) |
+| `gpw-d3-atm-forces` | gpw | `reg_gpw-d3-atm-forces` | **3.3** (ATV 34.5 s / CP2K 10.5 s) |
+| `gpw-d4-atm-forces` | gpw | `reg_gpw-d4-atm-forces` | **perf_exempt** (no CP2K DFTD4 build) |
+| `gpw-dftu-kpoint-forces` | gpw | `reg_gpw-dftu-kpoint-forces` | — (no wall recorded; full-6N FD dual gate 6.4e-6 Ha/Bohr) |
+| `dfpt-gga-spin-si` | response | `reg_dfpt-gga-spin-si` | **0.20** (CP2K 221.8 s / ATV 44.7 s) |
+| `gpw-bomd-kpoints` | dynamics | `reg_gpw-bomd-kpoints` | **0.064** (ATV 2.14 s / CP2K 33.4 s) |
+| `gpw-multigrid-kpoints` | gpw | `reg_gpw-multigrid-kpoints` | **1.6** (wall 55 s) |
+| `xl-bomd-linearized-uks` | dynamics | `reg_xl-bomd-linearized-uks` | **perf_exempt** (no cp2k binary at pin host) |
+
+### Incomplete kept `[~]` (do not demote)
+
+| Slug | Branch | Tip | Note |
+| ---- | ------ | --- | ---- |
+| `gpw-d3-stress` | `wf/gpw-d3-stress` | `3b3872eb` | wip spec + CP2K NUMERICAL-stress pins + D3 stress gates committed; merge-base `03c16eef` (behind the nine wave merges); acceptance unfinished |
+
+### Roadmap ○→✓ this harness
+
+| Row | Doc | Note |
+| --- | --- | ---- |
+| *(none)* | — | capability table rows already ✓ (DFT+U / dispersion / GGA / AIMD / multigrid) |
+| Residual prose | `dft.md` §8/§10/§12 + `index.md` GPW + `molecular-dynamics.md` AIMD | closed D3(BJ) stress; multi-k MBD stress; D3/D4 ATM forces; multi-k DFT+U forces; joint DFPT GGA×spin; multi-k BOMD; multi-k multigrid; Γ-UKS linearized XL |
+| Pin provenance | `gpw-kpoints-si` | ATV-frozen A7 self-golden pin replaced by genuine CP2K 2026.1 twin (`966d9b8a`) |
+| Still open incomplete | D3-zero stress | `[~] gpw-d3-stress`; stock VV10 stays ○ (blocked) |
+| Still open pending | TS/XDM stress; DFPT GGA×finite-q; vdW multigrid; linearized XL multi-k; multi-k UKS CPMD; multi-k SGCP OT | held wave-1 list |
+
+### Pending residual
+
+**Pending = 7** (held wave-1 list). **Incomplete = 1** (`gpw-d3-stress`).
+Next wave starts with **Recover incomplete** (prefer resume/merge of
+`wf/gpw-d3-stress`) then GapCensus. Blocked = 6 unchanged.
+
+Do **not** staff PySCF deferred specs. No push from parent.
+**Queue not exhausted** — GapCensus owns discovery; incomplete ≫ pending.
+
+---
+
+## Harness wave 12 2026-07-26 (parent `dev` @ `4ab58f97`) — historical
 
 | Field | Value |
 | ----- | ----- |

@@ -869,6 +869,28 @@ linearized-XL evaluator throw sites with the UKS pick), `gpw-vdw-multigrid`
 propagator surface contention with XL/BOMD picks). **Pending residual after
 assign = 7** (not queue exhausted).
 
+**Harness wave 1 (shift) 2026-07-31 (parent `dev` @ `8a9584f4`):** 9 of 10
+staffed slugs merged → `## done` (`gpw-d3bj-stress`, `gpw-mbd-kpoint-stress`,
+`gpw-d3-atm-forces`, `gpw-d4-atm-forces`, `gpw-dftu-kpoint-forces`,
+`dfpt-gga-spin-si`, `gpw-bomd-kpoints`, `gpw-multigrid-kpoints`,
+`xl-bomd-linearized-uks`) — nine `--no-ff` merges `44749b1a`..`268aaf66`;
+merge gate green at close (scoped rebuild +
+`ctest -R '^test_cpu_(gpw|pw|scf|xc)_|^test_xc_'` 57/57). Specs deleted on
+close (`8a9584f4`; the spec-close commit / INDEX cross-name the batch
+"harness wave 13"). **Pending residual = 7** (held wave-1 list unchanged —
+**not** queue exhausted; GapCensus owns next discovery). **in_progress = 1**
+unmerged staff `[~]` (`gpw-d3-stress` on `wf/gpw-d3-stress` @ `3b3872eb` —
+wip spec + CP2K NUMERICAL-stress pins + D3 stress gates committed, acceptance
+unfinished; do not demote). Roadmap: **no ○/✓ table flips** (capability rows
+already ✓); residual prose closed D3(BJ) stress, multi-k MBD stress, D3/D4
+ATM forces, multi-k DFT+U forces, joint DFPT GGA×spin, multi-k BOMD, multi-k
+multigrid, Γ-UKS linearized XL (dft.md §8/§10/§12 + index GPW line + MD AIMD
+BOMD/XL lines); `gpw-kpoints-si` ATV-frozen A7 self-golden pin replaced by
+the genuine CP2K 2026.1 twin number (in `966d9b8a`). **Blocked = 6**
+unchanged. Clearup already ran (merged `wf/*` pruned; no isolation worktrees;
+no loop builds — concurrent CUDA-RHF campaign artifacts left untouched). No
+push.
+
 ## pending
 
 - [ ] `dfpt-gga-finite-q-si` | Finite-q DFPT with pure GGA kernel (PW) | response | twin: extend `dfpt-finite-q-si` (LSDA) to PBE | GapCensus wave 13; re-verified wave 15; held wave 1 (shares DFPT GGA kernel with staffed `dfpt-gga-spin-si`)
@@ -881,14 +903,15 @@ assign = 7** (not queue exhausted).
 
 ## in_progress
 
-- [~] `gpw-mbd-kpoint-stress` | Multi-k analytic stress folds MBD (k-path throws; Γ product `reg_gpw-mbd-stress`) | gpw | twin: extend `gpw-mbd-periodic` + multi-k stress | GapCensus wave 13; re-verified wave 15 | assigned wave 1 2026-07-31
-- [~] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14; re-verified wave 15 (`3ee28243` D3 stress is DFTB2, not GPW) | assigned wave 1 2026-07-31
-- [~] `gpw-d3-atm-forces` | Analytic ionic forces with DFT-D3 three-body ATM (C9) | gpw | twin: CP2K D3 ATM force / FD on water dimer | GapCensus wave 14; re-verified wave 15 (reuse `3ee28243` ATM F2+FD machinery) | assigned wave 1 2026-07-31
-- [~] `gpw-bomd-kpoints` | Multi-k Born-Oppenheimer MD on GPW | dynamics | twin: CP2K Quickstep AIMD with k-mesh | GapCensus wave 13; re-verified wave 15 | assigned wave 1 2026-07-31
-- [~] `gpw-multigrid-kpoints` | Multi-k GPW with REL_CUTOFF multigrid (`ngrids>1`) | gpw | twin: CP2K NGRIDS + k-mesh water/Si | GapCensus wave 14; re-verified wave 15 (k-path `reject`) | assigned wave 1 2026-07-31
-- [~] `xl-bomd-linearized-uks` | Zero-SCF linearized-functional XL-BOMD forces on Γ-UKS | dynamics | twin: extend `xl-bomd-linearized-forces` × UKS | GapCensus wave 14; re-verified wave 15 | assigned wave 1 2026-07-31
+- [~] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14; re-verified wave 15 (`3ee28243` D3 stress is DFTB2, not GPW) | assigned wave 1 2026-07-31; kept `[~]` at harness wave 1 — unmerged `wf/gpw-d3-stress` @ `3b3872eb` (wip spec + CP2K NUMERICAL-stress pins + D3 stress gates; merge-base `03c16eef`, behind the nine wave merges; do not demote)
 
-## done (worker wave 1 2026-07-31)
+## done (harness wave 1 (shift) 2026-07-31)
+
+- [x] `gpw-mbd-kpoint-stress` | Multi-k analytic cell stress folds periodic MBD@rsSCS (k-summed fixed-\(P_k\) Lagrangian; mbd joins the k-path dispersion mutual-exclusion) | gpw | `regressions/gpw/gpw-mbd-kpoint-stress` (pymbd/libmbd `88069c6` strain pins to 1.8e-15 Ha; unstrained multi-k reproduces the Γ `gpw-mbd-periodic` pin to 1.1e-11 Ha; analytic vs multi-SCF strain-FD 1.4e-9 Ha/Bohr³) | ratio **perf_exempt** (CP2K 2026.1 stock has no MBD pair potential; wall 13.6 s) | 2026-07-31
+- [x] `gpw-d3-atm-forces` | Analytic ionic forces with DFT-D3 three-body ATM (C9); fixed CASE-3 periodic image-triple double count (8× ATM energy) + pbc anchoring in `accumulate_atm_c9` | gpw | `regressions/gpw/gpw-d3-atm-forces` (CP2K 2026.1 ENERGY_FORCE pins: iso 5.0e-10 / periodic 9.8e-10 Ha/Bohr; FD 4.1e-14 / 2.2e-13) | ratio **3.3** (ATV 34.5 s / CP2K 10.5 s) | 2026-07-31
+- [x] `gpw-bomd-kpoints` | Plain multi-k Born-Oppenheimer MD with previous-step \(\{P_k\}\) warm start (mirrors CP2K EXTRAPOLATION USE_PREV_P; UKS seeds both spins) | dynamics | `regressions/gpw/gpw-bomd-kpoints` (CP2K 2026.1 Quickstep AIMD k-mesh pins: per-step E_pot trace worst 2.33e-4 Ha; NVE drift 4.25e-3 vs CP2K 4.4e-3) | ratio **0.064** (ATV 2.14 s / CP2K 33.4 s, same host, OMP=8) | 2026-07-31
+- [x] `gpw-multigrid-kpoints` | Multi-k RKS REL_CUTOFF multigrid product collocation (Bloch-phased per-cell density/potential stacks; fixed whole-product mass screen `kProductMassMargin`; nonlocal vdW × k now fail-fast) | gpw | `regressions/gpw/gpw-multigrid-kpoints` (CP2K 2026.1 pin −15.802416412503845 Ha, NGRIDS 4 / REL_CUTOFF 60 / MP 2×2×2; \|ΔE\| 4.7e-7 Ha; TR/Γ-limit identities ≤2.8e-14) — also replaced the `gpw-kpoints-si` ATV-frozen A7 self-golden pin with the genuine CP2K twin | ratio **1.6** (wall 55 s) | 2026-07-31
+- [x] `xl-bomd-linearized-uks` | Zero-SCF dual-spin shadow XL-BOMD forces on Γ-UKS (warm iters 0; shadow \(E=\sum_\sigma[\mathrm{Tr}(H^\sigma D^\sigma)-\mathrm{Tr}(H^\sigma n^\sigma)]+E_{KS}[n]\); ⟨S²⟩ 2.0047) | dynamics | `regressions/dynamics/xl-bomd-linearized-uks` (O₂ triplet NVE, SCF-XL vs linearized A/B; drift 1.8e-7) | ratio **perf_exempt** (no cp2k binary at pin host; literature shadow-XL/NVE envelope — same policy as the XL/BOMD family) | 2026-07-31
 
 - [x] `gpw-dftu-kpoint-forces` | Multi-k analytic ionic forces with Dudarev DFT+U | gpw | twin: CP2K 2026.1 PLUS_U + ENERGY_FORCE on periodic Γ NiO (E asserted; force twin diagnostic — ATV gross-Mulliken vs CP2K net-Mulliken projector, see `.claude/notes/gpw-dftu-projector-divergence.md`); decisive gate = full-6N FD dual gate on the k path (6.4e-6 Ha/Bohr) | done wave 1 2026-07-31 on `wf/gpw-dftu-kpoint-forces` — also fixed the +U scatter to variational ½(V̂S+SV̂) (CP2K-precedented) and re-pinned 6 ATV-self +U pins
 - [x] `gpw-d3bj-stress` | Analytic fixed-P cell stress with DFT-D3(BJ) (CP2K NUMERICAL-stress difference pin: Δσ parity 3.9e-14 Ha/Bohr³; dual gate 7.4e-7) | gpw | `regressions/gpw/gpw-d3bj-stress` | ratio **0.37** (CP2K 83.8 s / ATV 31.1 s product) | 2026-07-31

@@ -68,6 +68,30 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-31 harness wave 1 (shift; parent `dev` @ `8a9584f4`):** 9 of 10
+  staffed merged → done: `gpw-d3bj-stress` (CP2K NUMERICAL-stress difference
+  pin, ratio 0.37), `gpw-mbd-kpoint-stress` (k-summed fixed-\(P_k\) MBD fold,
+  pymbd strain pins), `gpw-d3-atm-forces` (CP2K force pin; fixed periodic
+  image-triple 8× overcount + pbc anchoring, ratio 3.3), `gpw-d4-atm-forces`
+  (closed-form ATM triple derivatives; dftd4 3.7.0 `--grad` pins),
+  `gpw-dftu-kpoint-forces` (variational ½(V̂S+SV̂) +U scatter; full-6N FD
+  dual gate; 6 ATV-self +U pins re-pinned), `dfpt-gga-spin-si` (joint
+  collinear-spin × PBE Sternheimer, CP2K UKS-PBE vib anchor, ratio 0.20),
+  `gpw-bomd-kpoints` (previous-step \(P_k\) warm start; CP2K Quickstep AIMD
+  k-mesh pin, ratio 0.064), `gpw-multigrid-kpoints` (Bloch-phased multigrid
+  product collocation; CP2K pin \|ΔE\| 4.7e-7 Ha, ratio 1.6; also replaced
+  the `gpw-kpoints-si` self-golden A7 pin with the genuine CP2K twin),
+  `xl-bomd-linearized-uks` (zero-SCF dual-spin shadow forces; drift 1.8e-7).
+  `gpw-d3-stress` stays `[~]` (`wf/gpw-d3-stress` @ `3b3872eb` — wip spec +
+  CP2K NUMERICAL-stress pins committed, acceptance unfinished; do not
+  demote). Specs closed (deleted at `8a9584f4`; INDEX cross-names the batch
+  "harness wave 13"). Merge gate green at close (scoped rebuild + loop-domain
+  ctest 57/57). Roadmap: **no ○/✓ table flips**; residual prose closed the
+  nine shipped rows (dft.md §8/§10/§12, index GPW line, MD AIMD BOMD/XL
+  lines). Shift Recover / GapCensus wave 15 / Assign wave 1 narratives live
+  in the queue preamble (not logged here at the time). Pending **7**;
+  incomplete **1**; blocked **6**. Clearup already ran (merged `wf/*` pruned;
+  no isolation worktrees; no loop builds). Queue **not** exhausted. No push.
 - **2026-07-26 harness wave 14 (parent `dev` @ `dcf03d6d`):** the wave was
   **interrupted during the Workers panel** and adjudicated on resume. Merged →
   done **5**: `cpmd-kpoints`, `periodic-wannier-gpw` (both complete worker tips,
