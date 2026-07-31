@@ -338,23 +338,12 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             "gpw_stress analytic k UKS: XcKind must be PADE, PBE, PBEsol, "
             "RevPBE, RPBE, BLYP, or OptB88VdW");
     const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
-                       + (cfg.ts ? 1 : 0) + (cfg.xdm ? 1 : 0);
+                       + (cfg.ts ? 1 : 0) + (cfg.xdm ? 1 : 0)
+                       + (cfg.mbd ? 1 : 0);
     if (n_disp > 1)
         throw std::invalid_argument(
-            "gpw_stress analytic k: d3, d3bj, d4, ts, and xdm are mutually "
-            "exclusive");
-    // MBD@rsSCS is folded into the Gamma fixed-P Lagrangian (energy_fixed_P)
-    // but NOT into this k-summed one, so a multi-k stress would silently omit
-    // E_disp^MBD and report a wrong tensor. Refuse instead: the Gamma path is
-    // productised (regressions/gpw/gpw-mbd-stress) and the multi-k fold is the
-    // separate queued capability gpw-mbd-kpoint-stress.
-    if (cfg.mbd)
-        throw std::invalid_argument(
-            "gpw_stress analytic k: MBD@rsSCS stress is not implemented on the "
-            "multi-k path (it would silently drop E_disp from the strain "
-            "derivative). Use the Gamma path (k_mesh = {1,1,1}, no explicit "
-            "k_points) for MBD stress, or the multi-SCF strain-FD oracle "
-            "gpw_stress_fd.");
+            "gpw_stress analytic k: d3, d3bj, d4, ts, xdm, and mbd are "
+            "mutually exclusive");
 
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
     const int nb = static_cast<int>(basis.size());
@@ -504,7 +493,7 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const double e_es = es.e_hartree - e_self;
 
     double e_disp = 0.0;
-    if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.xdm) {
+    if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.xdm || cfg.mbd) {
         const int na = static_cast<int>(atoms.size());
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
@@ -517,7 +506,18 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 atoms[static_cast<std::size_t>(i)].pos[2]};
         }
         constexpr double kAng2Bohr = 1.0 / 0.52917720859;
-        if (cfg.xdm) {
+        if (cfg.mbd) {
+            // Geometry-only MBD@rsSCS, rebuilt at the strained cell exactly
+            // as on the Gamma path (energy_fixed_P). The k path is already
+            // periodic-only, so no nonperiodic guard is needed here;
+            // mbd_k_mesh all-zero selects isolated free-atom MBD, non-zero
+            // the Ewald + MBD k-mesh lattice sum.
+            const bool mbd_per = cfg.mbd_k_mesh[0] > 0 || cfg.mbd_k_mesh[1] > 0
+                                 || cfg.mbd_k_mesh[2] > 0;
+            e_disp = mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0, {},
+                                   mbd_per ? cfg.mbd_k_mesh : nullptr)
+                         .energy;
+        } else if (cfg.xdm) {
             constexpr double kRcutXdm = 50.0 * kAng2Bohr;
             e_disp =
                 xdm_pbe(Z, pos, cfg.cell, /*periodic=*/true, kRcutXdm).energy;

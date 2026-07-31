@@ -13,9 +13,9 @@
 ///   3. Switching MBD on **moves** the diagonal — MBD is not silently dropped.
 ///   4. Orthorhombic off-diagonals are exactly zero; `kStress` unit conversion.
 ///
-/// Multi-k MBD stress is deliberately **not** covered: that path refuses (it
-/// would drop E_disp from the strain derivative) and is the separate queued
-/// capability `gpw-mbd-kpoint-stress`. See REFERENCE.md.
+/// Multi-k MBD stress is covered by the sibling case
+/// `regressions/gpw/gpw-mbd-kpoint-stress` (k-summed fixed-P_k Lagrangian
+/// folds the same geometry-only E_disp). See REFERENCE.md.
 ///
 /// Public API only. No live third-party oracle. See REFERENCE.md.
 
