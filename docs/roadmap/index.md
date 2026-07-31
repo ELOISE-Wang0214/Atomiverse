@@ -278,8 +278,9 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   XL (`reg_xl-bomd-linearized-uks`); residual pending: D3-zero stress
   (incomplete), TS/XDM + D3/D4 ATM stress pins, DFPT GGA×finite-q,
   vdW multigrid + vdW on the k path, multi-k UKS multigrid,
-  linearized XL multi-k, multi-k UKS CPMD, multi-k SGCP OT, multi-k
-  CPMD electronic thermostat; stock VV10
+  linearized XL multi-k, multi-k SGCP OT, multi-k
+  CPMD electronic thermostat (multi-k UKS CPMD shipped —
+  `reg_cpmd-uks-kpoints`); stock VV10
   remains **blocked** (no CP2K twin);
   hybrids / meta-GGA / GAPW blocked — see `cp2k-method-queue.md` (queue
   not exhausted — GapCensus owns next discovery).

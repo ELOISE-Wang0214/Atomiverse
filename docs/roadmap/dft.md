@@ -32,8 +32,9 @@ linearized **XL** (`reg_xl-bomd-linearized-uks`); open residuals after
 that wave (GapCensus wave 2 re-verified + expanded): D3-zero **stress**
 (incomplete `[~] gpw-d3-stress`), **TS/XDM stress**, **D3/D4 ATM stress**
 pins, DFPT **GGA×finite-q**, vdW **multigrid**, nonlocal **vdW × k-points**,
-multi-k **UKS multigrid**, linearized XL multi-k, multi-k UKS **CPMD**,
-multi-k CPMD **electronic thermostat**, multi-k SGCP **OT**;
+multi-k **UKS multigrid**, linearized XL multi-k,
+multi-k CPMD **electronic thermostat**, multi-k SGCP **OT**
+(multi-k UKS **CPMD** shipped worker wave 2 — `reg_cpmd-uks-kpoints`);
 product after
 harness wave 11 also ships UGW@UKS-RPBE,
 dedicated TS/XDM force pins, multi-k UKS stress GGA expand, CPMD
@@ -372,8 +373,9 @@ Two periodic DFT engines exist, with disjoint strengths:
   **blocked** (no CP2K twin). Open residuals (GapCensus wave 2):
   D3-zero stress (incomplete `[~] gpw-d3-stress`), TS/XDM stress, D3/D4
   ATM stress pins, DFPT GGA×finite-q, vdW multigrid, nonlocal vdW ×
-  k-points, multi-k UKS multigrid, linearized XL multi-k, multi-k UKS
-  CPMD, multi-k CPMD electronic thermostat, multi-k SGCP OT. Hybrids / meta-GGA /
+  k-points, multi-k UKS multigrid, linearized XL multi-k, multi-k CPMD
+  electronic thermostat, multi-k SGCP OT (multi-k UKS CPMD shipped —
+  `reg_cpmd-uks-kpoints`). Hybrids / meta-GGA /
   GAPW / PAW remain blocked (queue not exhausted — see
   `cp2k-method-queue.md`). CPU only.
 
