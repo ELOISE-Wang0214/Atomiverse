@@ -116,10 +116,10 @@ int main() {
         check(std::abs(san[static_cast<std::size_t>(k)]) <= 1e-8,
               "A3 off-diagonal ~ 0");
 
-    // Dual-gate on multi-function s-shell DFT+U is looser than bare multi-k UKS
-    // (nonlinear Mulliken n(S); bond-axis residual dominates). Product gate
-    // 1e-3 Ha/Bohr³; unit smoke 2e-3. Γ DFT+U NiO remains the tight product twin.
-    constexpr double kAnFdTol = 1.0e-3;
+    // With the variational ½(V̂S+SV̂) +U scatter (2026-07-31) the fixed point
+    // is stationary and the dual gate is machine-tight (measured 3e-9
+    // Ha/Bohr³; the old bare-V̂ residual was ~9e-4). Gate with margin.
+    constexpr double kAnFdTol = 1.0e-4;
     std::printf("max|σ_an-σ_fd|=%.3e Ha/Bohr3 (tol %.1e)\n", max_diag_err,
                 kAnFdTol);
     check(max_diag_err <= kAnFdTol, "A2 analytic vs FD max diag");
@@ -132,7 +132,8 @@ int main() {
 
     // A5: soft absolute energy pin (ATV first-green; freeze after measured run).
     // Sibling U=0 multi-k UKS: E ≈ −0.528389 Ha (`gpw-kpoint-uks-stress`).
-    constexpr double kEPin = -0.546250995860; // Ha — ATV first-green 2026-07-26
+    // re-pinned 2026-07-31: variational +U scatter (pre-fix -0.546250995860)
+    constexpr double kEPin = -0.734377348082; // Ha
     constexpr double kETol = 1.0e-3;          // Ha
     const double dE = std::abs(er.e_total - kEPin);
     std::printf("A5: |E - pin|=%.3e Ha (pin %.6f tol %.1e)\n", dE, kEPin,

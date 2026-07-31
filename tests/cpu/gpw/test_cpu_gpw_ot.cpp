@@ -221,7 +221,9 @@ TEST(GpwOt, UksOtPlusUConverges) {
         cfg.cutoff_ry = 100.0;
         cfg.n_alpha = 2;
         cfg.n_beta = 0;
-        cfg.max_iter = 80;
+        // Variational ½(V̂S+SV̂) scatter (2026-07-31) needs ~90+ DIIS iters
+        // on this strong-overlap toy.
+        cfg.max_iter = 300;
         cfg.tol = 1e-6;
         cfg.mix = 0.4;
         cfg.xc = XcKind::PADE;

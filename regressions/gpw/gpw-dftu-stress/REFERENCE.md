@@ -111,3 +111,13 @@ r ≤ 10 for analytic product vs fair ENERGY_FORCE twin).
 - Twin input: `tools/cp2k_oracle/inputs/gpw-dftu-stress/nio_mol_pade_u_stress_num.inp`
 - Deps: `gpw-dftu-nio` ✓, `gpw-analytic-stress` ✓ / `gpw-uks-stress` ✓
 - Energy digits: `regressions/gpw/gpw-dftu-nio/REFERENCE.md` (CP2K 2026.1)
+
+## Re-pin 2026-07-31 — variational +U scatter
+
+`gpw-dftu-kpoint-forces` fixed the Dudarev Fock contribution to the
+variational form ∂E_U/∂P = ½(V̂S+SV̂) (the bare-V̂ scatter left the SCF fixed
+point non-stationary for the reported E_U[n(P,S)]; CP2K uses the S-weighted
+form). All +U fixed points moved; ATV-self absolute pins below were
+re-measured on the new functional (identity/dual gates unchanged and tighter).
+
+- No pin change; the Γ +U stress dual-gate residual improved to **8.4e-8 Ha/Bohr³** (unit) / 2.8e-6 (product) under the variational scatter.

@@ -1252,8 +1252,9 @@ static GpwResult run_gpw_scf_kpoints(
                 T_k[static_cast<std::size_t>(ik)]
                 + Vnl_k[static_cast<std::size_t>(ik)] + Vg;
             if (do_dftu && have_V_dftu)
-                internal::add_real_potential(full[static_cast<std::size_t>(ik)],
-                                             V_dftu);
+                internal::add_dftu_potential_cplx(
+                    full[static_cast<std::size_t>(ik)], V_dftu,
+                    S_k[static_cast<std::size_t>(ik)]);
         }
         return full;
     };
@@ -2295,10 +2296,12 @@ static GpwResult run_gpw_scf_kpoints_uks(
             Ha[static_cast<std::size_t>(ik)] = H0 + Va;
             Hb[static_cast<std::size_t>(ik)] = H0 + Vb;
             if (do_dftu && have_V_dftu) {
-                internal::add_real_potential(Ha[static_cast<std::size_t>(ik)],
-                                             Va_dftu);
-                internal::add_real_potential(Hb[static_cast<std::size_t>(ik)],
-                                             Vb_dftu);
+                internal::add_dftu_potential_cplx(
+                    Ha[static_cast<std::size_t>(ik)], Va_dftu,
+                    S_k[static_cast<std::size_t>(ik)]);
+                internal::add_dftu_potential_cplx(
+                    Hb[static_cast<std::size_t>(ik)], Vb_dftu,
+                    S_k[static_cast<std::size_t>(ik)]);
             }
         }
         return std::make_pair(std::move(Ha), std::move(Hb));
@@ -5056,6 +5059,17 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
     // (including effective Γ via k_mesh = {1,1,1}).
     const bool kpath = !k_points.empty() || k_mesh[0] != 1 || k_mesh[1] != 1
                        || k_mesh[2] != 1 || smearing != Smearing::none;
+    if (!kpath && !is_uks()) {
+        // The Γ-point closed-shell RKS SCF has no +U fold — reject instead of
+        // silently ignoring an active plus_u entry (no-fallback rule).
+        for (const auto& pu : plus_u)
+            if (pu.u_minus_j_ev > 0.0 && pu.l >= 0)
+                throw std::invalid_argument(
+                    "GpwDft::build: Dudarev plus_u is not supported on the "
+                    "Γ-point closed-shell RKS path (it would be silently "
+                    "ignored) — use collinear UKS (n_alpha/n_beta) or "
+                    "k-point sampling (k_mesh / k_points)");
+    }
     if (kpath) {
         // The k-point branch is periodic + single-grid + local-PP-on-grid
         // (RKS or collinear UKS); every other combination is rejected
@@ -5070,9 +5084,9 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
         // UKS (integer occupations and metallic FD/MP, with or without
         // Dudarev DFT+U — including the joint UKS OT+U+smear free-energy
         // path). Multi-k Dudarev DFT+U (PLUS_U) is supported for energy SCF
-        // on DIIS and OT paths (RKS + collinear UKS). Analytic multi-k
-        // DFT+U stress/forces remain out of scope where those paths still
-        // throw.
+        // on DIIS and OT paths (RKS + collinear UKS), for the fixed-P
+        // analytic stress, and for analytic ionic forces (occupation-matrix
+        // W-fold in gpw_forces.cpp).
         if (ngrids > 1)
             reject("multigrid (ngrids > 1)");
         if (nonperiodic)

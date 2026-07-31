@@ -155,7 +155,8 @@ int main() {
     // ── A6: frozen first-green free-energy pin ─────────────────────────────
     // First green 2026-07-26 (REFERENCE.md); OT ≡ DIIS to ~2e-7 Ha.
     {
-        constexpr double kFrozenFHa = -1.081998158198; // OT first green
+        // re-pinned 2026-07-31: variational +U scatter (pre-fix -1.081998158198)
+        constexpr double kFrozenFHa = -1.400026280953;
         constexpr double kAbsTol = 1e-3;
         const double d = std::fabs(f_ot - kFrozenFHa);
         std::printf("A6: F_OT=%.12f  frozen=%.12f  |Δ|=%.3e  e_dftu=%.8f\n",

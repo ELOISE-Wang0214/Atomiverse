@@ -371,6 +371,7 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw gpw-dftu-stress THREADS 8)
     atv_add_regression(gpw gpw-dftu-kpoints THREADS 8)
     atv_add_regression(gpw gpw-dftu-kpoint-stress THREADS 8)
+    atv_add_regression(gpw gpw-dftu-kpoint-forces THREADS 8)
     atv_add_regression(gpw gpw-kpoints-si THREADS 8)
     atv_add_regression(gpw periodic-wannier-gpw THREADS 8)
     # Dispersion ionic forces vs offline CP2K Quickstep D3 twins.

@@ -19,7 +19,9 @@
 #include <stdexcept>
 #include <vector>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/gpw/internal/collocate.h"
+#include "atomiverse/cpu/gpw/internal/dft_plus_u.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
@@ -89,6 +91,49 @@ GpwDft copy_gpw(const GpwDft& m) {
 bool uses_kpath(const GpwDft& cfg) {
     return !cfg.k_points.empty() || cfg.k_mesh[0] != 1 || cfg.k_mesh[1] != 1
            || cfg.k_mesh[2] != 1;
+}
+
+// Solver-side (Z, ℓ, U_ha) tables + per-AO shell tags for cfg.plus_u.
+// Mirrors gpw_solver.cpp / gpw_stress.cpp — a shared extraction is blocked
+// by layering (internal/dft_plus_u.h cannot include gpw_solver.h).
+// Returns false when no entry is active (U ≤ 0 everywhere).
+bool pack_plus_u_tables(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                        int nb, std::vector<internal::AoShellTag>& tags,
+                        std::vector<int>& z_of_atom,
+                        std::vector<internal::PlusUHa>& slots,
+                        std::vector<int>& z_keys) {
+    slots.clear();
+    z_keys.clear();
+    for (const auto& pu : cfg.plus_u) {
+        if (!(pu.u_minus_j_ev > 0.0) || pu.l < 0)
+            continue;
+        z_keys.push_back(static_cast<int>(pu.element));
+        internal::PlusUHa s;
+        s.l = pu.l;
+        s.U_ha = pu.u_minus_j_ev / units::kHartreeInEv;
+        slots.push_back(s);
+    }
+    if (slots.empty())
+        return false;
+    tags.clear();
+    tags.reserve(static_cast<std::size_t>(nb));
+    z_of_atom.assign(atoms.size(), 0);
+    for (int ia = 0; ia < static_cast<int>(atoms.size()); ++ia) {
+        const GpwAtom& a = atoms[static_cast<std::size_t>(ia)];
+        z_of_atom[static_cast<std::size_t>(ia)] = a.z;
+        const int nbf = static_cast<int>(a.basis.size());
+        const int nl = static_cast<int>(a.basis_l.size());
+        for (int k = 0; k < nbf; ++k) {
+            internal::AoShellTag t;
+            t.atom = ia;
+            t.l = (k < nl) ? a.basis_l[static_cast<std::size_t>(k)] : -1;
+            tags.push_back(t);
+        }
+    }
+    if (static_cast<int>(tags.size()) != nb)
+        throw std::runtime_error(
+            "gpw_forces plus_u: AO shell tag count does not match basis size");
+    return true;
 }
 } // namespace
 
@@ -255,6 +300,45 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     }
     int mimg[3];
     pair_image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
+
+    // ── Dudarev DFT+U geometric term ───────────────────────────────────────
+    // n = ½(PS+SP)|shell depends on geometry through S, so at fixed P the +U
+    // energy adds dE_U/dR = Tr[M dS] with M = ½(V̂P+PV̂) per spin. Folding
+    // W ← W − M lets the existing W·dS Pulay term carry it (CP2K
+    // dft_plus_u.F matrix_w correction shape). Uses the same image-summed
+    // overlaps as the Pulay loop, so the derivative matches the SCF's S.
+    RealMatrix W_fold;
+    const RealMatrix* W_use = &W;
+    {
+        std::vector<internal::AoShellTag> tags;
+        std::vector<int> z_of_atom, z_keys;
+        std::vector<internal::PlusUHa> slots;
+        if (pack_plus_u_tables(atoms, cfg, nb, tags, z_of_atom, slots,
+                               z_keys)) {
+            RealMatrix S = xt::zeros<double>({nb, nb});
+            for (int mu = 0; mu < nb; ++mu)
+                for (int nu = 0; nu < nb; ++nu) {
+                    const double reach = radii[static_cast<std::size_t>(mu)]
+                                         + radii[static_cast<std::size_t>(nu)];
+                    S(mu, nu) =
+                        overlap(basis[mu], basis[nu], cfg.cell, mimg, reach);
+                }
+            W_fold = W;
+            if (uks) {
+                internal::subtract_dftu_pulay(W_fold, P, S, /*scale=*/1.0,
+                                              tags, z_of_atom, slots, z_keys);
+                internal::subtract_dftu_pulay(W_fold, *P_beta, S,
+                                              /*scale=*/1.0, tags, z_of_atom,
+                                              slots, z_keys);
+            } else {
+                // Closed-shell: two identical spin channels from P_tot/2.
+                const RealMatrix Pspin = 0.5 * Ptot;
+                internal::subtract_dftu_pulay(W_fold, Pspin, S, /*scale=*/2.0,
+                                              tags, z_of_atom, slots, z_keys);
+            }
+            W_use = &W_fold;
+        }
+    }
 
     // Center-derivative basis functions d φ_u / dR_u along each axis, plus their
     // radii (the l+1 component reaches slightly farther than φ_u).
@@ -445,7 +529,7 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                         overlap(dmu, basis[nu], cfg.cell, mimg, reach);
                     const double t =
                         kinetic(dmu, basis[nu], cfg.cell, mimg, reach);
-                    f += 2.0 * W(mu, nu) * s; // + W dS
+                    f += 2.0 * (*W_use)(mu, nu) * s; // + W dS (+U fold inside)
                     f -= 2.0 * Ptot(mu, nu) * t; // - P dT
                     f -=
                         2.0 * Ptot(mu, nu)
@@ -882,6 +966,44 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
     }
     int mimg[3];
     pair_image_counts(cfg.cell, /*periodic=*/true, 2.0 * rmax, mimg);
+
+    // ── Dudarev DFT+U geometric term (multi-k) ─────────────────────────────
+    // BZ-averaged n = Σ_k w_k ½Herm[(P_k S_k)+(S_k P_k)]|shell depends on
+    // geometry through S_k: fold W_k ← W_k − ½(V̂P_k+P_kV̂) per spin so the
+    // k-summed W·dS_k Pulay term carries dE_U/dR (same Γ device, Bloch-phased).
+    {
+        std::vector<internal::AoShellTag> tags;
+        std::vector<int> z_of_atom, z_keys;
+        std::vector<internal::PlusUHa> slots;
+        if (pack_plus_u_tables(atoms, cfg, nb, tags, z_of_atom, slots,
+                               z_keys)) {
+            constexpr double kBuildScreen = 1e-12; // matches the SCF S_k build
+            std::vector<CplxMatrix> S_k, T_k;
+            internal::build_overlap_kinetic_k(basis, radii, cfg.cell, mimg,
+                                              kBuildScreen, kpts, S_k, T_k);
+            std::vector<double> weights(static_cast<std::size_t>(nk));
+            for (int ik = 0; ik < nk; ++ik)
+                weights[static_cast<std::size_t>(ik)] =
+                    kpts[static_cast<std::size_t>(ik)].weight;
+            if (uks) {
+                internal::subtract_dftu_pulay_k(W_k, Pa_k, S_k, weights,
+                                                /*scale=*/1.0, tags, z_of_atom,
+                                                slots, z_keys);
+                internal::subtract_dftu_pulay_k(W_k, Pb_k, S_k, weights,
+                                                /*scale=*/1.0, tags, z_of_atom,
+                                                slots, z_keys);
+            } else {
+                // Closed-shell: two identical spin channels from P_k/2.
+                std::vector<CplxMatrix> Pspin_k(static_cast<std::size_t>(nk));
+                for (int ik = 0; ik < nk; ++ik)
+                    Pspin_k[static_cast<std::size_t>(ik)] =
+                        0.5 * P_k[static_cast<std::size_t>(ik)];
+                internal::subtract_dftu_pulay_k(W_k, Pspin_k, S_k, weights,
+                                                /*scale=*/2.0, tags, z_of_atom,
+                                                slots, z_keys);
+            }
+        }
+    }
 
     std::vector<std::array<GridBasisFunction, 3>> dphi(nb);
     std::vector<std::array<double, 3>> drad(nb);
