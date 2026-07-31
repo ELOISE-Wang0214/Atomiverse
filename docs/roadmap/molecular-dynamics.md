@@ -266,7 +266,9 @@ density (`reg_cpmd-water`) **and Γ-UKS** (`reg_cpmd-uks`). Conserved
 \(E_{\mathrm{cons}} = T_n + T_e + E_{\mathrm{KS}}\). **Electronic RATTLE**
 (Andersen constraint-preserving orbitals; `reg_cpmd-rattle-water`) is product
 on the closed-shell path. **Electronic thermostat** (Nosé–Hoover on fictitious
-electronic DOF) productizes (`reg_cpmd-electronic-thermostat`). **Multi-k
+electronic DOF) productizes (`reg_cpmd-electronic-thermostat`) at Γ; the
+k path runs NVE electrons only (build-time throw; queued
+`cpmd-thermostat-kpoints`). **Multi-k
 CPMD** (Bloch \(C_k\), one `cpu::electronic::CpmdCplx` per sampled k) ships
 for RKS (`reg_cpmd-kpoints`); multi-k **UKS** CPMD remains ○ (build-time
 throw; queued `cpmd-uks-kpoints`).

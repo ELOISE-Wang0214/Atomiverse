@@ -931,6 +931,22 @@ classical MW / CUDA ports (other loops). Roadmap: **no ○/✓ table flips**
 + MD AIMD CPMD prose refreshed for the wave-2 queue. **Pending = 12**;
 **in_progress = 1**; **blocked = 6**.
 
+**GapCensus wave 2 completion (resumed session) 2026-07-31 (parent `dev` @
+`9983b89c`):** the session-limit orphan commit `9983b89c` landed the wave-2
+queue rewrite + `dft.md` §8/§10 prose but dropped the claimed
+`docs/roadmap/index.md` GPW residual-line and MD-roadmap CPMD refreshes —
+both landed now (index residual line lists all 12 pending families incl.
+ATM stress / vdW×k / k-UKS multigrid / k CPMD thermostat; MD CPMD prose
+names the Γ-only electronic thermostat + queued `cpmd-thermostat-kpoints`).
+Source tree unchanged since the census parent (`b06944ca`; only docs on
+top), and all 12 pending rows re-verified against it this session: the
+seven cited throw/reject sites hold (`gpw_evaluator.cpp` multi-k linearized
+XL / multi-k UKS CPMD / k CPMD thermostat / multi-k SGCP OT;
+`gpw_solver.cpp` vdW×multigrid, k-UKS multigrid, k-path vdW fail-fast) and
+no regression dir exists for any pending slug. `[~] gpw-d3-stress` stays
+in_progress on `wf/gpw-d3-stress` (do not demote). **No ○/✓ table flips.**
+**Pending = 12**; **in_progress = 1**; **blocked = 6**.
+
 ## pending
 
 - [ ] `dfpt-gga-finite-q-si` | Finite-q DFPT with pure GGA kernel (PW) | response | twin: extend `dfpt-finite-q-si` (LSDA) to PBE | GapCensus wave 13; re-verified wave 15 + wave 2 (shift); held wave 1 (shares DFPT GGA kernel with staffed `dfpt-gga-spin-si`; that pick merged — free now)
