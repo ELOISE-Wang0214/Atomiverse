@@ -1147,6 +1147,23 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             guess_p_k_beta = &xl_guess_p_k_beta_;
         }
     }
+    // Plain multi-k BOMD warm start (no XL aux): the previous step's
+    // converged P_k (UKS: both P_k^alpha and P_k^beta — the solver rejects a
+    // partial spin guess) seeds the SCF, the k-path analogue of the Γ
+    // guess_C/guess_P block above and of CP2K's `EXTRAPOLATION USE_PREV_P`.
+    // Pointers into `last_` stay valid through `run` — the result is copied
+    // into `last_` only after it returns (same lifetime story as `&last_.C`).
+    if (guess_p_k == nullptr && last_.n_kpts > 0 && last_.converged
+        && static_cast<int>(last_.P_k.size()) == last_.n_kpts) {
+        if (n_alpha + n_beta > 0) {
+            if (static_cast<int>(last_.P_k_beta.size()) == last_.n_kpts) {
+                guess_p_k = &last_.P_k;
+                guess_p_k_beta = &last_.P_k_beta;
+            }
+        } else {
+            guess_p_k = &last_.P_k;
+        }
+    }
     last_ = solver_->run(atoms, guess, guess_p, guess_p_beta, guess_p_k,
                          guess_p_k_beta);
     if (xl_) {
