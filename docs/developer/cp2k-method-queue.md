@@ -947,24 +947,53 @@ no regression dir exists for any pending slug. `[~] gpw-d3-stress` stays
 in_progress on `wf/gpw-d3-stress` (do not demote). **No ○/✓ table flips.**
 **Pending = 12**; **in_progress = 1**; **blocked = 6**.
 
+**Assign wave 2 (shift) 2026-07-31 (parent `dev` @ `197468ac`):** recover —
+incomplete_count=**1** (`[~] gpw-d3-stress` unmerged `wf/gpw-d3-stress` @
+`3b3872eb`, merge-base `03c16eef` — resume staffed first, incomplete ≫
+pending). Open CP2K/GPW/PW specs=**0** (PySCF deferred only:
+`periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`); isolation worktrees=**0**; all
+12 pending re-verified write-first (no spec / no `wf/*` / no regression
+dir). Staffed **10**: 1 resume (`gpw-d3-stress` — rebase/merge the
+20-behind tip onto `dev`, then finish acceptance; wip spec + CP2K
+NUMERICAL-stress pins + D3 stress gates already on branch) + 9 dep-safe
+pending by census age: `dfpt-gga-finite-q-si` (w13),
+`xl-bomd-linearized-kpoints` (w14), `gpw-vdw-multigrid`, `gpw-ts-stress`,
+`gpw-xdm-stress`, `cpmd-uks-kpoints`, `second-gen-cpmd-ot-kpoints` (w15),
+`gpw-d3-atm-stress`, `gpw-d4-atm-stress` (w2-shift; ATM-force holds
+cleared). Surface notes for workers: five stress slugs share the
+`gpw_stress.cpp` dispersion fold (`gpw-d3-stress` resume +
+ts/xdm/d3-atm/d4-atm) — serialize or split patches carefully (wave-1
+precedent: shipped D3(BJ)/MBD stress pair); `xl-bomd-linearized-kpoints` ∥
+`cpmd-uks-kpoints` ∥ `second-gen-cpmd-ot-kpoints` touch distinct
+`gpw_evaluator.cpp` throw sites (182/242/319) — coordinate, same file;
+`gpw-vdw-multigrid` edits the `gpw_solver.cpp` vdW×multigrid gate alone
+this wave; `dfpt-gga-finite-q-si` is PW response — free of all. No pick
+depends on another pick. **Held pending (3):** `gpw-uks-multigrid-kpoints`
+/ `gpw-vdw-kpoints` (share `gpw_solver.cpp` multigrid/k gates + the
+nonlocal-vdW runner with the `gpw-vdw-multigrid` pick; newest census),
+`cpmd-thermostat-kpoints` (extends the multi-k CPMD path staffed
+`cpmd-uks-kpoints` builds — adjacent throw sites
+`gpw_evaluator.cpp:242/251`; newest census). **Pending residual after
+assign = 3** (not queue exhausted).
+
 ## pending
 
-- [ ] `dfpt-gga-finite-q-si` | Finite-q DFPT with pure GGA kernel (PW) | response | twin: extend `dfpt-finite-q-si` (LSDA) to PBE | GapCensus wave 13; re-verified wave 15 + wave 2 (shift); held wave 1 (shares DFPT GGA kernel with staffed `dfpt-gga-spin-si`; that pick merged — free now)
-- [ ] `xl-bomd-linearized-kpoints` | Zero-SCF linearized XL-BOMD forces on multi-k RKS/UKS | dynamics | twin: extend linearized XL × k-mesh | GapCensus wave 14; re-verified wave 15 + wave 2 (shift; `gpw_evaluator.cpp:182` throws); held wave 1 (Γ-UKS pick merged — free now)
-- [ ] `gpw-vdw-multigrid` | Nonlocal vdW-DF/DF2/rVV10 with REL_CUTOFF multigrid (`ngrids>1` throws "multigrid not supported" at `gpw_solver.cpp:5096`) | gpw | twin: CP2K NGRIDS 4 (its default) + vdW-DF ice | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (multigrid pick merged — free now)
-- [ ] `gpw-ts-stress` | Analytic fixed-P cell stress with free-atom TS (energy folds; dedicated pin missing) | gpw | twin: libMBD E_disp under strain + `gpw_stress_fd` dual-gate (extend `gpw-ts-forces`) | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (stress workers merged — free now; coordinate with in-flight `gpw-d3-stress` on `gpw_stress.cpp`)
-- [ ] `gpw-xdm-stress` | Analytic fixed-P cell stress with XDM (energy folds; dedicated pin missing) | gpw | twin: extend `gpw-xdm-forces` pin + `gpw_stress_fd` dual-gate | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (stress workers merged — free now; coordinate with in-flight `gpw-d3-stress`)
-- [ ] `cpmd-uks-kpoints` | Multi-k UKS Car–Parrinello MD (dual-spin Bloch \(C_k^\sigma\); `gpw_evaluator.cpp:242` throws) | dynamics | twin: extend `cpmd-kpoints` × `cpmd-uks`; NVE drift envelope | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (AIMD propagator contention cleared — XL/BOMD picks merged)
-- [ ] `second-gen-cpmd-ot-kpoints` | Multi-k SGCP with OT corrector (`use_ot` + \(P_k\) throws at `gpw_evaluator.cpp:319`) | dynamics | twin: extend `second-gen-cpmd-kpoints` × OT corrector; NVE drift | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (AIMD propagator contention cleared)
-- [ ] `gpw-uks-multigrid-kpoints` | Multi-k UKS REL_CUTOFF multigrid product collocation (k-path rejects "multigrid (ngrids > 1) with UKS — closed-shell RKS only" at `gpw_solver.cpp:5246`) | gpw | twin: CP2K 2026.1 UKS NGRIDS 4 / REL_CUTOFF + MP k-mesh (extend `gpw-multigrid-kpoints` × `gpw-uks-multigrid`) | GapCensus wave 2 (shift) 2026-07-31
-- [ ] `gpw-vdw-kpoints` | Nonlocal vdW-DF/DF2/rVV10 on the k-point path (not wired at all — SCF potential + post-SCF E_c^nl live only in the Γ runner; fail-fast reject at `gpw_solver.cpp:5262`) | gpw | twin: CP2K 2026.1 NON_LOCAL DRSLL ice + KPOINTS | GapCensus wave 2 (shift) 2026-07-31
-- [ ] `gpw-d3-atm-stress` | Analytic fixed-P cell stress with DFT-D3 three-body ATM (C9) (energy folds at the strained cell; dedicated pin missing) | gpw | twin: CP2K 2026.1 NUMERICAL-stress difference pin with D3 ATM on (same pattern as `gpw-d3bj-stress`; extend `gpw-d3-atm-forces` input) | GapCensus wave 2 (shift) 2026-07-31 — hold "behind ATM force pins" cleared
-- [ ] `gpw-d4-atm-stress` | Analytic fixed-P cell stress with DFT-D4 three-body ATM (\(s_9\)) (energy folds; dedicated pin missing) | gpw | twin: dftd4 3.7.0 strained-cell energies + `gpw_stress_fd` dual-gate (same no-CP2K-DFTD4 policy as `gpw-d4-atm-forces`) | GapCensus wave 2 (shift) 2026-07-31 — hold cleared
-- [ ] `cpmd-thermostat-kpoints` | Multi-k CPMD electronic thermostat ("NVE electrons only on the k path" throw at `gpw_evaluator.cpp:251`) | dynamics | twin: extend `cpmd-electronic-thermostat` × `cpmd-kpoints`; thermostat + NVE envelope (same literature policy as the Γ product) | GapCensus wave 2 (shift) 2026-07-31
+- [ ] `gpw-uks-multigrid-kpoints` | Multi-k UKS REL_CUTOFF multigrid product collocation (k-path rejects "multigrid (ngrids > 1) with UKS — closed-shell RKS only" at `gpw_solver.cpp:5246`) | gpw | twin: CP2K 2026.1 UKS NGRIDS 4 / REL_CUTOFF + MP k-mesh (extend `gpw-multigrid-kpoints` × `gpw-uks-multigrid`) | GapCensus wave 2 (shift) 2026-07-31 | held assign wave 2 (shift) — shares `gpw_solver.cpp` multigrid gates with staffed `gpw-vdw-multigrid`
+- [ ] `gpw-vdw-kpoints` | Nonlocal vdW-DF/DF2/rVV10 on the k-point path (not wired at all — SCF potential + post-SCF E_c^nl live only in the Γ runner; fail-fast reject at `gpw_solver.cpp:5262`) | gpw | twin: CP2K 2026.1 NON_LOCAL DRSLL ice + KPOINTS | GapCensus wave 2 (shift) 2026-07-31 | held assign wave 2 (shift) — nonlocal-vdW runner + `gpw_solver.cpp` k gates contend with staffed `gpw-vdw-multigrid`
+- [ ] `cpmd-thermostat-kpoints` | Multi-k CPMD electronic thermostat ("NVE electrons only on the k path" throw at `gpw_evaluator.cpp:251`) | dynamics | twin: extend `cpmd-electronic-thermostat` × `cpmd-kpoints`; thermostat + NVE envelope (same literature policy as the Γ product) | GapCensus wave 2 (shift) 2026-07-31 | held assign wave 2 (shift) — extends the multi-k CPMD path staffed `cpmd-uks-kpoints` builds (adjacent throw sites `gpw_evaluator.cpp:242/251`)
 
 ## in_progress
 
-- [~] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14; re-verified wave 15 (`3ee28243` D3 stress is DFTB2, not GPW) | assigned wave 1 2026-07-31; kept `[~]` at harness wave 1 — unmerged `wf/gpw-d3-stress` @ `3b3872eb` (wip spec + CP2K NUMERICAL-stress pins + D3 stress gates; merge-base `03c16eef`, behind the nine wave merges; do not demote)
+- [~] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14; re-verified wave 15 (`3ee28243` D3 stress is DFTB2, not GPW) | assigned wave 1 2026-07-31; kept `[~]` at harness wave 1 — unmerged `wf/gpw-d3-stress` @ `3b3872eb` (wip spec + CP2K NUMERICAL-stress pins + D3 stress gates; merge-base `03c16eef`, behind the nine wave merges; do not demote) | re-staffed assign wave 2 (shift) 2026-07-31 — **resume**: rebase/merge onto `dev`, then finish acceptance
+- [~] `dfpt-gga-finite-q-si` | Finite-q DFPT with pure GGA kernel (PW) | response | twin: extend `dfpt-finite-q-si` (LSDA) to PBE | GapCensus wave 13; re-verified wave 15 + wave 2 (shift); held wave 1 (shares DFPT GGA kernel with staffed `dfpt-gga-spin-si`; that pick merged — free now) | assigned wave 2 (shift) 2026-07-31
+- [~] `xl-bomd-linearized-kpoints` | Zero-SCF linearized XL-BOMD forces on multi-k RKS/UKS | dynamics | twin: extend linearized XL × k-mesh | GapCensus wave 14; re-verified wave 15 + wave 2 (shift; `gpw_evaluator.cpp:182` throws); held wave 1 (Γ-UKS pick merged — free now) | assigned wave 2 (shift) 2026-07-31
+- [~] `gpw-vdw-multigrid` | Nonlocal vdW-DF/DF2/rVV10 with REL_CUTOFF multigrid (`ngrids>1` throws "multigrid not supported" at `gpw_solver.cpp:5096`) | gpw | twin: CP2K NGRIDS 4 (its default) + vdW-DF ice | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (multigrid pick merged — free now) | assigned wave 2 (shift) 2026-07-31
+- [~] `gpw-ts-stress` | Analytic fixed-P cell stress with free-atom TS (energy folds; dedicated pin missing) | gpw | twin: libMBD E_disp under strain + `gpw_stress_fd` dual-gate (extend `gpw-ts-forces`) | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (stress workers merged — free now; coordinate with in-flight `gpw-d3-stress` on `gpw_stress.cpp`) | assigned wave 2 (shift) 2026-07-31
+- [~] `gpw-xdm-stress` | Analytic fixed-P cell stress with XDM (energy folds; dedicated pin missing) | gpw | twin: extend `gpw-xdm-forces` pin + `gpw_stress_fd` dual-gate | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (stress workers merged — free now; coordinate with in-flight `gpw-d3-stress`) | assigned wave 2 (shift) 2026-07-31
+- [~] `cpmd-uks-kpoints` | Multi-k UKS Car–Parrinello MD (dual-spin Bloch \(C_k^\sigma\); `gpw_evaluator.cpp:242` throws) | dynamics | twin: extend `cpmd-kpoints` × `cpmd-uks`; NVE drift envelope | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (AIMD propagator contention cleared — XL/BOMD picks merged) | assigned wave 2 (shift) 2026-07-31
+- [~] `second-gen-cpmd-ot-kpoints` | Multi-k SGCP with OT corrector (`use_ot` + \(P_k\) throws at `gpw_evaluator.cpp:319`) | dynamics | twin: extend `second-gen-cpmd-kpoints` × OT corrector; NVE drift | GapCensus wave 15; re-verified wave 2 (shift); held wave 1 (AIMD propagator contention cleared) | assigned wave 2 (shift) 2026-07-31
+- [~] `gpw-d3-atm-stress` | Analytic fixed-P cell stress with DFT-D3 three-body ATM (C9) (energy folds at the strained cell; dedicated pin missing) | gpw | twin: CP2K 2026.1 NUMERICAL-stress difference pin with D3 ATM on (same pattern as `gpw-d3bj-stress`; extend `gpw-d3-atm-forces` input) | GapCensus wave 2 (shift) 2026-07-31 — hold "behind ATM force pins" cleared | assigned wave 2 (shift) 2026-07-31
+- [~] `gpw-d4-atm-stress` | Analytic fixed-P cell stress with DFT-D4 three-body ATM (\(s_9\)) (energy folds; dedicated pin missing) | gpw | twin: dftd4 3.7.0 strained-cell energies + `gpw_stress_fd` dual-gate (same no-CP2K-DFTD4 policy as `gpw-d4-atm-forces`) | GapCensus wave 2 (shift) 2026-07-31 — hold cleared | assigned wave 2 (shift) 2026-07-31
 
 ## done (harness wave 1 (shift) 2026-07-31)
 
