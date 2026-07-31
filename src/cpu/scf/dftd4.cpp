@@ -7,10 +7,12 @@
 /// over lattice images. ATM (`s9`) follows dftd4 `damping/atm.f90` with neutral
 /// C6 reweight (dftd4 `disp.f90`).
 ///
-/// Two-body forces are analytic: explicit BJ pair derivatives, the CN_d4 chain
-/// through reference Gaussian weights, and an EEQ adjoint for charge response
-/// (A λ = ∂E/∂q). ATM forces (`s9 ≠ 0`) remain central differences of the full
-/// energy functional.
+/// Forces are fully analytic. Two-body: explicit BJ pair derivatives, the
+/// CN_d4 chain through reference Gaussian weights, and an EEQ adjoint for
+/// charge response (A λ = ∂E/∂q). ATM (`s9 ≠ 0`): explicit triple-geometry
+/// derivatives of the damped Axilrod–Teller angle term plus the C9 → C6 →
+/// CN_d4 chain; the neutral-charge reweight (q = 0, dftd4 `disp.f90`) is
+/// geometry-independent, so the ATM leg needs no EEQ adjoint.
 
 #include "atomiverse/cpu/scf/dftd4.h"
 
@@ -847,11 +849,18 @@ double triple_scale(int ii, int jj, int kk) {
 ///
 /// C6 matrix must be the **neutral-charge** reweight (q=0), matching
 /// simple-dftd4 `disp.f90`. Zero-damping alp=16 with BJ critical radii.
+///
+/// Optional analytic gradient outputs (both accumulated, caller-zeroed):
+/// `forces` receives the explicit triple-geometry part of F = −∇E (fixed C6);
+/// `dEdc6` receives ∂E/∂C6 per unordered pair on the **lower triangle**
+/// (`dEdc6[max][min]`, C9 chain ½·E_triple/C6), for the caller's CN chain.
 double disp3_atm(const std::vector<int>& Z,
                  const std::vector<std::array<double, 3>>& pos,
                  const double cell[3], bool periodic,
                  const std::vector<std::vector<double>>& c6, double s9,
-                 double a1, double a2, double alp, double disp3_cut) {
+                 double a1, double a2, double alp, double disp3_cut,
+                 std::vector<std::array<double, 3>>* forces = nullptr,
+                 std::vector<std::vector<double>>* dEdc6 = nullptr) {
     if (std::abs(s9) < 1.0e-30)
         return 0.0;
     const int n = static_cast<int>(Z.size());
@@ -944,16 +953,81 @@ double disp3_atm(const std::vector<int>& Z,
                         const double r3 = r2 * r1;
                         const double r5 = r3 * r2;
 
-                        const double fdmp =
-                            1.0 / (1.0 + 6.0 * std::pow(r0 / r1, alp / 3.0));
-                        const double ang = 0.375 * (r2ij + r2jk - r2ik)
-                                               * (r2ij - r2jk + r2ik)
-                                               * (-r2ij + r2jk + r2ik) / r5
-                                           + 1.0 / r3;
+                        const double u = std::pow(r0 / r1, alp / 3.0);
+                        const double fdmp = 1.0 / (1.0 + 6.0 * u);
+                        const double P = (r2ij + r2jk - r2ik)
+                                         * (r2ij - r2jk + r2ik)
+                                         * (-r2ij + r2jk + r2ik);
+                        const double ang = 0.375 * P / r5 + 1.0 / r3;
                         const double rr = ang * fdmp;
                         // Per-atom: energy_i -= dE/3 with dE = rr*c9*triple
                         // → total E += -rr*c9*triple
-                        energy += -rr * c9 * triple;
+                        const double e_t = -rr * c9 * triple;
+                        energy += e_t;
+
+                        if (dEdc6) {
+                            // C9 chain: ∂E_t/∂C6 = ½ E_t / C6 per pair
+                            // (C9 = −s9 √(C6ij C6ik C6jk); C6 > 0).
+                            constexpr double c6_tiny = 1.0e-300;
+                            if (std::abs(c6ij) > c6_tiny)
+                                (*dEdc6)[static_cast<std::size_t>(iat)]
+                                        [static_cast<std::size_t>(jat)] +=
+                                    0.5 * e_t / c6ij;
+                            if (std::abs(c6ik) > c6_tiny)
+                                (*dEdc6)[static_cast<std::size_t>(iat)]
+                                        [static_cast<std::size_t>(kat)] +=
+                                    0.5 * e_t / c6ik;
+                            if (std::abs(c6jk) > c6_tiny)
+                                (*dEdc6)[static_cast<std::size_t>(jat)]
+                                        [static_cast<std::size_t>(kat)] +=
+                                    0.5 * e_t / c6jk;
+                        }
+                        if (forces) {
+                            // E_t = G·ang·fdmp with G = −c9·triple, over the
+                            // squared edges x=r²ij, y=r²jk, z=r²ik.
+                            // ∂fdmp/∂x = fdmp²·u·alp/x (u shrinks with r1).
+                            // ang = 0.375·P/r5 + 1/r3 with symmetric
+                            // P = (x+y−z)(x−y+z)(−x+y+z):
+                            // ∂P/∂x = 2xy + 2xz − 3x² + y² + z² − 2yz.
+                            const double G = -c9 * triple;
+                            const double x = r2ij;
+                            const double y = r2jk;
+                            const double z = r2ik;
+                            const double dP_dx = 2.0 * x * y + 2.0 * x * z
+                                                 - 3.0 * x * x + y * y + z * z
+                                                 - 2.0 * y * z;
+                            const double dP_dy = 2.0 * y * x + 2.0 * y * z
+                                                 - 3.0 * y * y + x * x + z * z
+                                                 - 2.0 * x * z;
+                            const double dP_dz = 2.0 * z * x + 2.0 * z * y
+                                                 - 3.0 * z * z + x * x + y * y
+                                                 - 2.0 * x * y;
+                            auto dE_dr2 = [&](double dP_de, double e) {
+                                const double dang =
+                                    0.375 * (dP_de - 2.5 * P / e) / r5
+                                    - 1.5 / (e * r3);
+                                const double dfdmp =
+                                    fdmp * fdmp * u * alp / e;
+                                return G * (dang * fdmp + ang * dfdmp);
+                            };
+                            const double dij = dE_dr2(dP_dx, x);
+                            const double djk = dE_dr2(dP_dy, y);
+                            const double dik = dE_dr2(dP_dz, z);
+                            // ∂r²ij/∂R_j = 2v_ij (v_ij = R_j+T_j−R_i), etc.;
+                            // F = −∇E. Self-image edges cancel identically.
+                            auto& fi = (*forces)[static_cast<std::size_t>(iat)];
+                            auto& fj = (*forces)[static_cast<std::size_t>(jat)];
+                            auto& fk = (*forces)[static_cast<std::size_t>(kat)];
+                            fi[0] += 2.0 * (dij * vij0 + dik * vik0);
+                            fi[1] += 2.0 * (dij * vij1 + dik * vik1);
+                            fi[2] += 2.0 * (dij * vij2 + dik * vik2);
+                            fj[0] += 2.0 * (-dij * vij0 + djk * vjk0);
+                            fj[1] += 2.0 * (-dij * vij1 + djk * vjk1);
+                            fj[2] += 2.0 * (-dij * vij2 + djk * vjk2);
+                            fk[0] += 2.0 * (-dik * vik0 - djk * vjk0);
+                            fk[1] += 2.0 * (-dik * vik1 - djk * vjk1);
+                            fk[2] += 2.0 * (-dik * vik2 - djk * vjk2);
+                        }
                     }
                 }
             }
@@ -1023,16 +1097,16 @@ double ref_c6(const std::vector<std::array<double, kD4NFreq>>& ai,
     return kThoPi * trapzd(pol);
 }
 
-/// @brief Analytic two-body D4 forces (BJ + CN_d4 chain + EEQ charge adjoint).
-///
-/// ATM (`s9 ≠ 0`) is not included here — caller may FD the residual.
-void dftd4_twobody_grad(const std::vector<int>& Z,
-                        const std::vector<std::array<double, 3>>& pos,
-                        const double cell[3], bool periodic, double s6,
-                        double s8, double a1, double a2, double ga, double gc,
-                        double wf, double charge, double cn_cut,
-                        double disp2_cut, double& energy,
-                        std::vector<std::array<double, 3>>& forces) {
+/// @brief Analytic D4 energy + forces: two-body (BJ + CN_d4 chain + EEQ
+///        charge adjoint) plus optional ATM (`s9 ≠ 0`: explicit triple
+///        geometry + neutral-C6 CN chain; q = 0 ⇒ no EEQ adjoint on that leg).
+void dftd4_grad(const std::vector<int>& Z,
+                const std::vector<std::array<double, 3>>& pos,
+                const double cell[3], bool periodic, double s6, double s8,
+                double a1, double a2, double ga, double gc, double wf,
+                double charge, double cn_cut, double disp2_cut, double s9,
+                double disp3_cut, double& energy,
+                std::vector<std::array<double, 3>>& forces) {
     const int n = static_cast<int>(Z.size());
     forces.assign(static_cast<std::size_t>(n), {0.0, 0.0, 0.0});
     energy = 0.0;
@@ -1314,7 +1388,120 @@ void dftd4_twobody_grad(const std::vector<int>& Z,
         }
     }
 
-    // CN_d4 forces
+    // ---- ATM three-body (s9 ≠ 0): explicit triples + neutral-C6 CN chain ----
+    if (std::abs(s9) > 1.0e-30) {
+        // Neutral-charge reweight (dftd4 disp.f90): ζ at q = 0 is a constant
+        // per (Z, reference), so gw0 = gwk·ζ0 moves only through CN_d4.
+        std::vector<std::vector<double>> gw0(
+            static_cast<std::size_t>(n),
+            std::vector<double>(static_cast<std::size_t>(mref + 1), 0.0));
+        std::vector<std::vector<double>> zet0(
+            static_cast<std::size_t>(n),
+            std::vector<double>(static_cast<std::size_t>(mref + 1), 0.0));
+        for (int iat = 0; iat < n; ++iat) {
+            const int zi = Z[static_cast<std::size_t>(iat)];
+            const int nref = nref_of(zi);
+            const double zi_eff = kD4Zeff[static_cast<std::size_t>(zi)];
+            const double gi = kD4Hardness[static_cast<std::size_t>(zi)] * gc;
+            for (int ir = 1; ir <= nref; ++ir) {
+                const double qref =
+                    kD4Clsq[static_cast<std::size_t>(d4_idx2(ir, zi))];
+                const double z0 = zeta(ga, gi, qref + zi_eff, zi_eff);
+                zet0[static_cast<std::size_t>(iat)]
+                    [static_cast<std::size_t>(ir)] = z0;
+                gw0[static_cast<std::size_t>(iat)]
+                   [static_cast<std::size_t>(ir)] =
+                    gwk[static_cast<std::size_t>(iat)]
+                       [static_cast<std::size_t>(ir)]
+                    * z0;
+            }
+        }
+
+        // Neutral C6 matrix.
+        std::vector<std::vector<double>> c6a(
+            static_cast<std::size_t>(n),
+            std::vector<double>(static_cast<std::size_t>(n), 0.0));
+        for (int i = 0; i < n; ++i) {
+            const int zi = Z[static_cast<std::size_t>(i)];
+            const int nrefi = nref_of(zi);
+            const auto& ai = ref_alpha[slot(zi)];
+            for (int j = 0; j < n; ++j) {
+                const int zj = Z[static_cast<std::size_t>(j)];
+                const int nrefj = nref_of(zj);
+                const auto& aj = ref_alpha[slot(zj)];
+                double s = 0.0;
+                for (int ir = 1; ir <= nrefi; ++ir)
+                    for (int jr = 1; jr <= nrefj; ++jr)
+                        s += gw0[static_cast<std::size_t>(i)]
+                                [static_cast<std::size_t>(ir)]
+                             * gw0[static_cast<std::size_t>(j)]
+                                  [static_cast<std::size_t>(jr)]
+                             * ref_c6(ai, aj, ir, jr);
+                c6a[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] =
+                    s;
+            }
+        }
+
+        // Triple kernel: energy, explicit −∇E at fixed C6, and ∂E/∂C6.
+        std::vector<std::vector<double>> dEdc6a(
+            static_cast<std::size_t>(n),
+            std::vector<double>(static_cast<std::size_t>(n), 0.0));
+        constexpr double kAlpAtm = 16.0;
+        energy += disp3_atm(Z, pos, cell, periodic, c6a, s9, a1, a2, kAlpAtm,
+                            disp3_cut, &forces, &dEdc6a);
+
+        // C6 → gw0 → CN_d4 chain (folds into the shared CN force pass below).
+        std::vector<std::vector<double>> dEdgw0(
+            static_cast<std::size_t>(n),
+            std::vector<double>(static_cast<std::size_t>(mref + 1), 0.0));
+        for (int i = 0; i < n; ++i) {
+            const int zi = Z[static_cast<std::size_t>(i)];
+            const int nrefi = nref_of(zi);
+            const auto& ai = ref_alpha[slot(zi)];
+            for (int j = 0; j <= i; ++j) {
+                const double w = dEdc6a[static_cast<std::size_t>(i)]
+                                       [static_cast<std::size_t>(j)];
+                if (w == 0.0)
+                    continue;
+                const int zj = Z[static_cast<std::size_t>(j)];
+                const int nrefj = nref_of(zj);
+                const auto& aj = ref_alpha[slot(zj)];
+                for (int ir = 1; ir <= nrefi; ++ir) {
+                    double s = 0.0;
+                    for (int jr = 1; jr <= nrefj; ++jr)
+                        s += gw0[static_cast<std::size_t>(j)]
+                                [static_cast<std::size_t>(jr)]
+                             * ref_c6(ai, aj, ir, jr);
+                    dEdgw0[static_cast<std::size_t>(i)]
+                          [static_cast<std::size_t>(ir)] += w * s;
+                }
+                // i == j: c6_ii is quadratic in gw0_i — this second pass adds
+                // the other factor, giving the required factor of two.
+                for (int jr = 1; jr <= nrefj; ++jr) {
+                    double s = 0.0;
+                    for (int ir = 1; ir <= nrefi; ++ir)
+                        s += gw0[static_cast<std::size_t>(i)]
+                                [static_cast<std::size_t>(ir)]
+                             * ref_c6(ai, aj, ir, jr);
+                    dEdgw0[static_cast<std::size_t>(j)]
+                          [static_cast<std::size_t>(jr)] += w * s;
+                }
+            }
+        }
+        for (int i = 0; i < n; ++i) {
+            const int nref = nref_of(Z[static_cast<std::size_t>(i)]);
+            for (int ir = 1; ir <= nref; ++ir)
+                dEdCN_d4[static_cast<std::size_t>(i)] +=
+                    dEdgw0[static_cast<std::size_t>(i)]
+                          [static_cast<std::size_t>(ir)]
+                    * zet0[static_cast<std::size_t>(i)]
+                          [static_cast<std::size_t>(ir)]
+                    * dgwk_dcn[static_cast<std::size_t>(i)]
+                              [static_cast<std::size_t>(ir)];
+        }
+    }
+
+    // CN_d4 forces (two-body chain + ATM neutral-C6 chain)
     apply_cn_forces(dEdCN_d4, dcn_d4, forces);
 
     // ---- EEQ adjoint: M λ = (∂E/∂q, 0); force from λᵀ (∂rhs − ∂M sol) ----
@@ -1475,14 +1662,12 @@ D4Result dftd4(const std::vector<int>& Z,
                const double cell_bohr[3], bool periodic, double s6, double s8,
                double a1, double a2, double ga, double gc, double wf,
                double charge, double cn_cut, double disp2_cut, double s9,
-               double disp3_cut, double grad_h) {
+               double disp3_cut) {
     const int n = static_cast<int>(Z.size());
     D4Result res;
     res.forces.assign(static_cast<std::size_t>(n), {0.0, 0.0, 0.0});
     if (n <= 0)
         return res;
-    if (!(grad_h > 0.0) || !std::isfinite(grad_h))
-        throw std::runtime_error("D4: grad_h must be positive and finite");
     if (static_cast<int>(pos_bohr.size()) != n)
         throw std::runtime_error("D4: Z and pos size mismatch");
     for (int z : Z)
@@ -1492,47 +1677,8 @@ D4Result dftd4(const std::vector<int>& Z,
         throw std::runtime_error("D4: periodic cell edges must be positive");
 
     const double cell[3] = {cell_bohr[0], cell_bohr[1], cell_bohr[2]};
-
-    // Two-body always analytic. ATM (s9≠0): central-difference of the ATM
-    // energy alone (CN + neutral C6 + triples), then add to F_2body so
-    // F = −∇(E₂+E_ATM). Cheaper than full 6N EEQ+pair energies and still
-    // conservative for the total functional.
-    dftd4_twobody_grad(Z, pos_bohr, cell, periodic, s6, s8, a1, a2, ga, gc, wf,
-                       charge, cn_cut, disp2_cut, res.energy, res.forces);
-    if (std::abs(s9) <= 1.0e-30)
-        return res;
-
-    auto e_atm_only = [&](const std::vector<std::array<double, 3>>& p) {
-        std::vector<double> cn_d;
-        cn_d4(Z, p, cell, periodic, cn_cut, cn_d);
-        std::vector<double> q0(static_cast<std::size_t>(n), 0.0);
-        std::vector<std::vector<double>> gw0;
-        weight_refs(Z, cn_d, q0, ga, gc, wf, gw0);
-        std::vector<std::vector<double>> c6_atm;
-        atomic_c6(Z, gw0, ga, gc, c6_atm);
-        constexpr double kAlpAtm = 16.0;
-        return disp3_atm(Z, p, cell, periodic, c6_atm, s9, a1, a2, kAlpAtm,
-                         disp3_cut);
-    };
-    const double e_atm0 = e_atm_only(pos_bohr);
-    res.energy += e_atm0;
-    std::vector<std::array<double, 3>> pos = pos_bohr;
-    for (int i = 0; i < n; ++i) {
-        for (int k = 0; k < 3; ++k) {
-            const double x0 =
-                pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)];
-            pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)] =
-                x0 + grad_h;
-            const double ep = e_atm_only(pos);
-            pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)] =
-                x0 - grad_h;
-            const double em = e_atm_only(pos);
-            pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)] = x0;
-            res.forces[static_cast<std::size_t>(i)]
-                      [static_cast<std::size_t>(k)] +=
-                -(ep - em) / (2.0 * grad_h);
-        }
-    }
+    dftd4_grad(Z, pos_bohr, cell, periodic, s6, s8, a1, a2, ga, gc, wf, charge,
+               cn_cut, disp2_cut, s9, disp3_cut, res.energy, res.forces);
     return res;
 }
 
@@ -1545,7 +1691,7 @@ namespace {
 /// field that folds E_disp into its total energy stops being conservative.
 /// @param frame        System geometry (Å, Z).
 /// @param m            The method whose members set the D4 parameters.
-/// @param want_forces  Also fill `forces` (analytic two-body / FD if ATM).
+/// @param want_forces  Also fill `forces` (analytic, ATM included).
 /// @return Energy [Hartree]; forces [Hartree/Bohr] iff `want_forces`.
 D4Result evaluate_d4(const Frame& frame, const D4& m, bool want_forces) {
     constexpr double kCnCut = 30.0;    // Bohr (dftd4 default)

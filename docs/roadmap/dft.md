@@ -264,8 +264,11 @@ Two-body D3/D3(BJ) **energy and analytic ionic forces** are product
 (`reg_gpw-d3-forces` / `reg_gpw-d3bj-forces`; CP2K-gated, unified
 `2 × R_CUTOFF` pair cutoff); dedicated D3 / D3(BJ) **stress** pins remain
 open (queued `gpw-d3-stress` / `gpw-d3bj-stress` — same dedicated-pin
-pattern as D4 stress). **ATM force** pins are queued after energy
-footholds (`gpw-d3-atm-forces` / `gpw-d4-atm-forces`). **MBD stress**
+pattern as D4 stress). **D4 ATM forces** are product: `cpu::scf::dftd4`
+carries the fully analytic \(s_9\) gradient (triple derivatives +
+C9→neutral-C6→CN chain; `reg_gpw-d4-atm-forces`, dftd4 3.7.0 `--grad`
+pin at 1e−9 Ha/Bohr). The **D3 ATM force** pin stays queued
+(`gpw-d3-atm-forces`). **MBD stress**
 ships at **Γ** (`reg_gpw-mbd-stress`); the multi-k stress path refuses
 MBD (fold queued `gpw-mbd-kpoint-stress`). Dedicated **TS / XDM stress**
 pins are queued (`gpw-ts-stress` / `gpw-xdm-stress`; energy folds are
