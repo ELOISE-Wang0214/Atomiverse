@@ -310,6 +310,61 @@ TEST(GpwDftD3Atm, AnalyticForcesMatchFiniteDifference) {
     EXPECT_LT(max_err, 1e-7);
 }
 
+// Periodic ATM gradient: analytic F(c9 on) - F(c9 off) vs central FD of
+// E(c9 on) - E(c9 off). The two-body part cancels exactly, so this gates the
+// three-body gradient alone — including the lattice-image triple classes
+// (CP2K doabc CASE 2/3, fac0 = 1/3) that the isolated FD test never reaches.
+// A 6 A cell with rcut = 20 Bohr keeps every image class populated and the
+// enumeration small enough for the unit tier. The dimer is shifted off the
+// x = L/2 wrap boundary: the ATM sum follows CP2K in evaluating pbc()-wrapped
+// coordinates through HARD r < rcut leg gates over a finite image window, so
+// the truncated energy is discontinuous (at the ~1e-7 boundary-triple level)
+// exactly on a wrap seam — the FD identity holds in the interior of a wrap
+// branch, and the unshifted CP2K geometry puts O1 exactly on the seam.
+TEST(GpwDftD3Atm, PeriodicAtmForcesMatchFiniteDifference) {
+    const D3Params params{};
+    auto pos = water_dimer_bohr();
+    const double L = 6.0 * kAngToBohr;
+    const double shift[3] = {0.31 * kAngToBohr, 0.29 * kAngToBohr,
+                             0.33 * kAngToBohr};
+    for (auto& p : pos)
+        for (int d = 0; d < 3; ++d)
+            p[d] += shift[d];
+    const double cell[3] = {L, L, L};
+    const double rcut = 20.0;
+    const auto atm_only = [&](const std::vector<std::array<double, 3>>& p,
+                              D3Result& on, D3Result& off) {
+        on = dftd3_pbe(kZ, p, cell, /*periodic=*/true, params, rcut, true);
+        off = dftd3_pbe(kZ, p, cell, /*periodic=*/true, params, rcut, false);
+    };
+
+    D3Result on, off;
+    atm_only(pos, on, off);
+    ASSERT_GT(std::abs(on.energy - off.energy), 1e-10); // images engage
+    const double h = 1e-5;
+    double max_err = 0.0;
+    for (std::size_t i = 0; i < pos.size(); ++i) {
+        for (int d = 0; d < 3; ++d) {
+            const double save = pos[i][d];
+            D3Result pon, poff, mon, moff;
+            pos[i][d] = save + h;
+            atm_only(pos, pon, poff);
+            pos[i][d] = save - h;
+            atm_only(pos, mon, moff);
+            pos[i][d] = save;
+            const double fd =
+                -((pon.energy - poff.energy) - (mon.energy - moff.energy))
+                / (2.0 * h);
+            const double analytic = on.forces[i][d] - off.forces[i][d];
+            max_err = std::max(max_err, std::abs(fd - analytic));
+        }
+    }
+    std::printf("[D3-ATM per] dE_atm=%.3e Ha  max |dF_analytic - dF_fd| = "
+                "%.2e Ha/Bohr\n",
+                on.energy - off.energy, max_err);
+    EXPECT_LT(max_err, 1e-7);
+}
+
 // GpwDft.d3_atm folds standalone ATM energy into e_disp for the water dimer.
 TEST(GpwDftD3Atm, IntegratedIntoGpwScf) {
     using namespace ATV::cpu::gpw;

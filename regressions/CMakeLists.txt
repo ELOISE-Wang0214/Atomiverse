@@ -377,6 +377,8 @@ if(ATV_BUILD_GPW)
     # Dispersion ionic forces vs offline CP2K Quickstep D3 twins.
     atv_add_regression(gpw gpw-d3-forces THREADS 8)
     atv_add_regression(gpw gpw-d3bj-forces THREADS 8)
+    # D3 three-body ATM (C9) force pin, isolated + periodic image triples.
+    atv_add_regression(gpw gpw-d3-atm-forces THREADS 8)
     # Gamma analytic cell stress folding periodic MBD@rsSCS.
     atv_add_regression(gpw gpw-mbd-stress THREADS 8)
     # Multi-k analytic cell stress folding periodic MBD@rsSCS.
