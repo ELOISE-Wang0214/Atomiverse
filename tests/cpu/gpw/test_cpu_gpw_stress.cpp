@@ -559,6 +559,36 @@ TEST(GpwStress, AnalyticMatchesFdWithD4) {
     });
 }
 
+// ── Γ RKS + DFT-D3(BJ) analytic stress ────────────────────────────────────
+TEST(GpwStress, AnalyticMatchesFdWithD3Bj) {
+    // Geometry-only D3(BJ) folded into the fixed-P Lagrangian; dual-gate vs
+    // multi-SCF FD on cheap MT H₂. Residual unit-tier loose; e2e CP2K pin is
+    // reg_gpw-d3bj-stress.
+    const auto atoms = cheap_h2_atoms();
+    GpwDft cfg = cheap_h2_cfg();
+    cfg.d3bj = true;
+    const double h = 3e-3;
+    EXPECT_NO_THROW({
+        const auto san = gpw_stress(atoms, cfg, h);
+        const auto sfd = gpw_stress_fd(atoms, cfg, h);
+        double max_err = 0.0;
+        for (int a = 0; a < 3; ++a) {
+            const double err = std::abs(san[static_cast<std::size_t>(a)]
+                                        - sfd[static_cast<std::size_t>(a)]);
+            max_err = std::max(max_err, err);
+            std::printf("  D3BJ axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n", a,
+                        san[static_cast<std::size_t>(a)],
+                        sfd[static_cast<std::size_t>(a)], err);
+            EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(a)]));
+            EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(a)]));
+        }
+        EXPECT_DOUBLE_EQ(san[3], 0.0);
+        EXPECT_DOUBLE_EQ(san[4], 0.0);
+        EXPECT_DOUBLE_EQ(san[5], 0.0);
+        EXPECT_LT(max_err, 5e-5) << "Γ RKS + D3(BJ) analytic vs multi-SCF FD";
+    });
+}
+
 // ── Γ RKS + MBD@rsSCS analytic stress ─────────────────────────────────────
 // Free-atom (isolated) MBD is geometry-only, so it enters the fixed-P
 // Lagrangian exactly like D3/D4: analytic must track the multi-SCF strain-FD.
