@@ -31,13 +31,14 @@ multi-k **multigrid** (`reg_gpw-multigrid-kpoints`), and Γ-UKS
 linearized **XL** (`reg_xl-bomd-linearized-uks`); **wave 2 (2026-07-31)**
 closes D3-zero **stress** (`reg_gpw-d3-stress`) and ships finite-q DFPT
 **GGA** (`reg_dfpt-gga-finite-q-si`), vdW-DF **multigrid**
-(`reg_gpw-vdw-multigrid`), and multi-k linearized **XL** — RKS +
-collinear UKS, CP2K-anchored (`reg_xl-bomd-linearized-kpoints`); open
+(`reg_gpw-vdw-multigrid`), multi-k linearized **XL** — RKS +
+collinear UKS, CP2K-anchored (`reg_xl-bomd-linearized-kpoints`), and
+multi-k UKS **CPMD** (`reg_cpmd-uks-kpoints`); open
 residuals after
 that wave (GapCensus wave 2 re-verified + expanded): **TS/XDM stress**,
 **D3/D4 ATM stress**
 pins, nonlocal **vdW × k-points**,
-multi-k **UKS multigrid**, multi-k UKS **CPMD**,
+multi-k **UKS multigrid**,
 multi-k CPMD **electronic thermostat**, multi-k SGCP **OT**;
 product after
 harness wave 11 also ships UGW@UKS-RPBE,
@@ -379,23 +380,16 @@ Two periodic DFT engines exist, with disjoint strengths:
   (`reg_gpw-bomd-kpoints`), **multi-k multigrid**
   (`reg_gpw-multigrid-kpoints`), joint DFPT **GGA×spin**
   (`reg_dfpt-gga-spin-si`), Γ-UKS linearized XL
-<<<<<<< HEAD
-  (`reg_xl-bomd-linearized-uks`), and finite-q DFPT **GGA**
-  (`reg_dfpt-gga-finite-q-si`). Stock VV10 is
+  (`reg_xl-bomd-linearized-uks`), finite-q DFPT **GGA**
+  (`reg_dfpt-gga-finite-q-si`), D3-zero **stress** (`reg_gpw-d3-stress`),
+  vdW-DF **multigrid** (`reg_gpw-vdw-multigrid`), multi-k linearized
+  XL — RKS + collinear UKS with the new k-UKS fixed-density eval,
+  CP2K-anchored (`reg_xl-bomd-linearized-kpoints`), and multi-k UKS
+  CPMD (`reg_cpmd-uks-kpoints`). Stock VV10 is
   **blocked** (no CP2K twin). Open residuals (GapCensus wave 2):
-  D3-zero stress (incomplete `[~] gpw-d3-stress`), TS/XDM stress, D3/D4
-  ATM stress pins, vdW multigrid, nonlocal vdW ×
-  k-points, multi-k UKS multigrid, linearized XL multi-k, multi-k UKS
-=======
-  (`reg_xl-bomd-linearized-uks`), and multi-k linearized XL — RKS +
-  collinear UKS with the new k-UKS fixed-density eval, CP2K-anchored
-  (`reg_xl-bomd-linearized-kpoints`). Stock VV10 is
-  **blocked** (no CP2K twin). Open residuals (GapCensus wave 2):
-  D3-zero stress (incomplete `[~] gpw-d3-stress`), TS/XDM stress, D3/D4
-  ATM stress pins, DFPT GGA×finite-q, vdW multigrid, nonlocal vdW ×
-  k-points, multi-k UKS multigrid, multi-k UKS
->>>>>>> wf/xl-bomd-linearized-kpoints
-  CPMD, multi-k CPMD electronic thermostat, multi-k SGCP OT. Hybrids / meta-GGA /
+  TS/XDM stress, D3/D4 ATM stress pins, nonlocal vdW ×
+  k-points, multi-k UKS multigrid, multi-k CPMD electronic thermostat,
+  multi-k SGCP OT. Hybrids / meta-GGA /
   GAPW / PAW remain blocked (queue not exhausted — see
   `cp2k-method-queue.md`). CPU only.
 

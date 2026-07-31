@@ -207,10 +207,12 @@ struct GpwResult {
     linalg::RealMatrix S;    ///< Overlap matrix at this geometry (nb × nb).
     /// @brief Multi-k fixed-density KS matrices \(H_k\) [Hartree] (empty for Γ
     ///        / multi-iteration SCF). One Hermitian nb×nb per sampled k.
-    ///        Multi-k UKS: the α channel \(H^\alpha_k\).
+    ///        RKS: total. Multi-k UKS fixed-density: the α channel
+    ///        \(H_k^\alpha\), paired with `H_ks_k_beta`.
     std::vector<linalg::CplxMatrix> H_ks_k;
-    /// @brief Multi-k UKS β fixed-density KS matrices \(H^\beta_k\) [Hartree]
-    ///        (empty for RKS / Γ / multi-iteration SCF). Paired with `H_ks_k`.
+    /// @brief Multi-k UKS β fixed-density KS matrices \(H_k^\beta\) [Hartree]
+    ///        (empty for RKS / Γ / multi-iteration SCF). Size == `n_kpts`,
+    ///        paired with `H_ks_k` — the dual-spin Bloch XL-BOMD/CPMD payload.
     std::vector<linalg::CplxMatrix> H_ks_k_beta;
     /// @brief Multi-k overlaps \(S_k\) at the evaluation geometry (empty for Γ
     ///        / multi-iteration SCF). Size == `n_kpts` with `H_ks_k`.

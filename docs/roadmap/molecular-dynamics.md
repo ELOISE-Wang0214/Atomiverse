@@ -274,8 +274,10 @@ electronic DOF) productizes (`reg_cpmd-electronic-thermostat`) at Γ; the
 k path runs NVE electrons only (build-time throw; queued
 `cpmd-thermostat-kpoints`). **Multi-k
 CPMD** (Bloch \(C_k\), one `cpu::electronic::CpmdCplx` per sampled k) ships
-for RKS (`reg_cpmd-kpoints`); multi-k **UKS** CPMD remains ○ (build-time
-throw; queued `cpmd-uks-kpoints`).
+for RKS (`reg_cpmd-kpoints`) **and collinear UKS** (dual-spin Bloch
+\(C_k^\sigma\), one propagator per (k, spin) with occ-1 spin-diagonal EOM
+on \(H_k^\sigma\) from the dual-spin fixed-density multi-k eval;
+`reg_cpmd-uks-kpoints`).
 
 **Second-generation Car–Parrinello MD** (Kühne et al. 2007; ASPC predictor +
 partial-SCF corrector, no fictitious electronic mass) ships on closed-shell Γ

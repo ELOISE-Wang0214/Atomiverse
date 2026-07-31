@@ -2672,14 +2672,14 @@ static GpwResult run_gpw_scf_kpoints_uks(
         return e_ks + e_ent;
     };
 
-    // ── Multi-k UKS fixed-density KS eval (linearized-XL / CP electronic
-    //    step) ─────────────────────────────────────────────────────────────
-    // max_iter == 0: one dual-spin collocate→Poisson→XC→integrate at the
+    // ── Multi-k UKS fixed-density KS eval (linearized-XL warm step / the
+    //    dual-spin Bloch CPMD electronic step) ───────────────────────────────
+    // max_iter == 0: one dual-spin collocate→Poisson→spin-XC→integrate at the
     // supplied {P_k^α, P_k^β}; no diagonalization, no mixing, no orbital
-    // update. Populates H_ks_k / H_ks_k_beta / S_k — the dual-spin sibling
-    // of the multi-k RKS branch in run_gpw_scf_kpoints.
+    // update. Populates H_ks_k (α) / H_ks_k_beta (β) / S_k — the dual-spin
+    // sibling of the multi-k RKS branch in run_gpw_scf_kpoints.
     if (cfg.max_iter == 0) {
-        if (guess_Pa_k == nullptr)
+        if (guess_Pa_k == nullptr || guess_Pb_k == nullptr)
             throw std::invalid_argument(
                 "GPW k-UKS: max_iter==0 (fixed-density) requires the dual "
                 "guess_P_k / guess_P_k_beta densities");
