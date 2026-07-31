@@ -26,6 +26,13 @@
 /// `GpwResult::C_occ_k` (RKS / UKS α) and `C_occ_k_beta` (UKS β) supply the
 /// occupied MOs used to rebuild \(P_k^\sigma\) / \(W_k^\sigma\).
 ///
+/// Dudarev DFT+U (`cfg.plus_u`): the Mulliken occupation depends on geometry
+/// through the overlap, so the +U energy contributes an occupation-matrix
+/// force term \(dE_U/dR=\sum_k w_k\,\mathrm{Re\,Tr}[M_k\,dS_k]\) with
+/// \(M_k^\sigma=\tfrac12(\hat V^\sigma P_k^\sigma+P_k^\sigma\hat V^\sigma)\).
+/// It is folded as \(W\leftarrow W-M\) into the Pulay contraction on Γ and
+/// multi-k alike (`internal/dft_plus_u.h`, `subtract_dftu_pulay[_k]`).
+///
 /// Reference: VandeVondele, Krack, Mohamed, Parrinello, Chassaing, Hutter,
 /// Comput. Phys. Commun. 167, 103 (2005) (Quickstep GPW forces).
 #pragma once

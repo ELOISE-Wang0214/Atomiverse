@@ -884,7 +884,6 @@ assign = 7** (not queue exhausted).
 - [~] `gpw-mbd-kpoint-stress` | Multi-k analytic stress folds MBD (k-path throws; Γ product `reg_gpw-mbd-stress`) | gpw | twin: extend `gpw-mbd-periodic` + multi-k stress | GapCensus wave 13; re-verified wave 15 | assigned wave 1 2026-07-31
 - [~] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14; re-verified wave 15 (`3ee28243` D3 stress is DFTB2, not GPW) | assigned wave 1 2026-07-31
 - [~] `gpw-d3-atm-forces` | Analytic ionic forces with DFT-D3 three-body ATM (C9) | gpw | twin: CP2K D3 ATM force / FD on water dimer | GapCensus wave 14; re-verified wave 15 (reuse `3ee28243` ATM F2+FD machinery) | assigned wave 1 2026-07-31
-- [~] `gpw-dftu-kpoint-forces` | Multi-k analytic ionic forces with Dudarev DFT+U | gpw | twin: CP2K PLUS_U + FORCES on NiO / small cell | GapCensus wave 13; re-verified wave 15 (`gpw_forces` still only copies `plus_u` into cfg) | assigned wave 1 2026-07-31
 - [~] `dfpt-gga-spin-si` | DFPT phonons with collinear spin **and** pure GGA kernel (PW) | response | twin: extend `dfpt-gga-si` x `dfpt-spin-si` | GapCensus wave 13; re-verified wave 15 | assigned wave 1 2026-07-31
 - [~] `gpw-bomd-kpoints` | Multi-k Born-Oppenheimer MD on GPW | dynamics | twin: CP2K Quickstep AIMD with k-mesh | GapCensus wave 13; re-verified wave 15 | assigned wave 1 2026-07-31
 - [~] `gpw-multigrid-kpoints` | Multi-k GPW with REL_CUTOFF multigrid (`ngrids>1`) | gpw | twin: CP2K NGRIDS + k-mesh water/Si | GapCensus wave 14; re-verified wave 15 (k-path `reject`) | assigned wave 1 2026-07-31
@@ -892,6 +891,7 @@ assign = 7** (not queue exhausted).
 
 ## done (worker wave 1 2026-07-31)
 
+- [x] `gpw-dftu-kpoint-forces` | Multi-k analytic ionic forces with Dudarev DFT+U | gpw | twin: CP2K 2026.1 PLUS_U + ENERGY_FORCE on periodic Γ NiO (E asserted; force twin diagnostic — ATV gross-Mulliken vs CP2K net-Mulliken projector, see `.claude/notes/gpw-dftu-projector-divergence.md`); decisive gate = full-6N FD dual gate on the k path (6.4e-6 Ha/Bohr) | done wave 1 2026-07-31 on `wf/gpw-dftu-kpoint-forces` — also fixed the +U scatter to variational ½(V̂S+SV̂) (CP2K-precedented) and re-pinned 6 ATV-self +U pins
 - [x] `gpw-d3bj-stress` | Analytic fixed-P cell stress with DFT-D3(BJ) (CP2K NUMERICAL-stress difference pin: Δσ parity 3.9e-14 Ha/Bohr³; dual gate 7.4e-7) | gpw | `regressions/gpw/gpw-d3bj-stress` | ratio **0.37** (CP2K 83.8 s / ATV 31.1 s product) | 2026-07-31
 - [x] `gpw-d4-atm-forces` | Analytic ionic forces with DFT-D4 three-body ATM (\(s_9\)): closed-form triple derivatives + C9→neutral-C6→CN chain replace the FD ATM leg in `cpu::scf::dftd4` | gpw | `regressions/gpw/gpw-d4-atm-forces` (dftd4 3.7.0 `--grad` pins: isolated 1e-9; periodic direct 5e-8 — the oracle's periodic ATM gradient is non-conservative by ~2.4e-8 vs its own energy, FD-verified — plus 1e-9 FD-parity over its printed displaced energies + ATM-increment gate) | ratio **perf_exempt** (no CP2K DFTD4 build; same policy as `gpw-d4-forces`) | 2026-07-31
 

@@ -92,3 +92,13 @@ High-spin H₂ toy (DZV-GTH-PADE) — identity suite + absolute ATV pin:
 - S. L. Dudarev et al., *Phys. Rev. B* **57**, 1505 (1998) — simplified U.
 - G. Lippert, J. Hutter, M. Parrinello, *Mol. Phys.* **92**, 477 (1997) — GPW.
 - S. Goedecker, M. Teter, J. Hutter, *Phys. Rev. B* **54**, 1703 (1996) — PADE / GTH.
+
+## Re-pin 2026-07-31 — variational +U scatter
+
+`gpw-dftu-kpoint-forces` fixed the Dudarev Fock contribution to the
+variational form ∂E_U/∂P = ½(V̂S+SV̂) (the bare-V̂ scatter left the SCF fixed
+point non-stationary for the reported E_U[n(P,S)]; CP2K uses the S-weighted
+form). All +U fixed points moved; ATV-self absolute pins below were
+re-measured on the new functional (identity/dual gates unchanged and tighter).
+
+- E(MP 2×2×2 TR + U=4 eV, 120 Ry): −0.814170782662 → **−0.997491857710 Ha** (A1 Γ-limit identity now 1.9e-8 Ha; DIIS budget 400).

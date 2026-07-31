@@ -87,3 +87,13 @@ free-energy OT finds the lower closed-shell-like minimum — not an OT bug.
 | Fair wall twin | **none** (CP2K aborts OT+k / OT+SMEAR) |
 | Status | **perf_exempt** — internal OT≡DIIS identity is the product gate |
 | Reason | Same class as `ot-dftu-smearing` / `ot-uks-dftu` |
+
+## Re-pin 2026-07-31 — variational +U scatter
+
+`gpw-dftu-kpoint-forces` fixed the Dudarev Fock contribution to the
+variational form ∂E_U/∂P = ½(V̂S+SV̂) (the bare-V̂ scatter left the SCF fixed
+point non-stationary for the reported E_U[n(P,S)]; CP2K uses the S-weighted
+form). All +U fixed points moved; ATV-self absolute pins below were
+re-measured on the new functional (identity/dual gates unchanged and tighter).
+
+- A6 frozen free energy: −1.081998158198 → **−1.400026280953 Ha** (equal-spin ≡ RKS Mermin minimum).
