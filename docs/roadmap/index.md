@@ -274,11 +274,13 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   (`reg_gpw-d3-atm-forces` / `reg_gpw-d4-atm-forces`), multi-k DFT+U
   forces (`reg_gpw-dftu-kpoint-forces`), joint DFPT GGA×spin
   (`reg_dfpt-gga-spin-si`), multi-k BOMD (`reg_gpw-bomd-kpoints`),
-  multi-k multigrid (`reg_gpw-multigrid-kpoints`), and Γ-UKS linearized
-  XL (`reg_xl-bomd-linearized-uks`); residual pending: D3-zero stress
+  multi-k multigrid (`reg_gpw-multigrid-kpoints`), Γ-UKS linearized
+  XL (`reg_xl-bomd-linearized-uks`), and multi-k linearized XL —
+  RKS + UKS, CP2K-anchored (`reg_xl-bomd-linearized-kpoints`);
+  residual pending: D3-zero stress
   (incomplete), TS/XDM + D3/D4 ATM stress pins, DFPT GGA×finite-q,
   vdW multigrid + vdW on the k path, multi-k UKS multigrid,
-  linearized XL multi-k, multi-k UKS CPMD, multi-k SGCP OT, multi-k
+  multi-k UKS CPMD, multi-k SGCP OT, multi-k
   CPMD electronic thermostat; stock VV10
   remains **blocked** (no CP2K twin);
   hybrids / meta-GGA / GAPW blocked — see `cp2k-method-queue.md` (queue

@@ -27,12 +27,14 @@ spin+metallic **bands/DOS**, multi-k **CPMD**, **GPW MLWF**,
 (`reg_gpw-d3-atm-forces` / `reg_gpw-d4-atm-forces`), multi-k DFT+U
 **forces** (`reg_gpw-dftu-kpoint-forces`), joint DFPT **GGA×spin**
 (`reg_dfpt-gga-spin-si`), multi-k **BOMD** (`reg_gpw-bomd-kpoints`),
-multi-k **multigrid** (`reg_gpw-multigrid-kpoints`), and Γ-UKS
-linearized **XL** (`reg_xl-bomd-linearized-uks`); open residuals after
+multi-k **multigrid** (`reg_gpw-multigrid-kpoints`), Γ-UKS
+linearized **XL** (`reg_xl-bomd-linearized-uks`), and multi-k
+linearized **XL** — RKS + collinear UKS, CP2K-anchored
+(`reg_xl-bomd-linearized-kpoints`); open residuals after
 that wave (GapCensus wave 2 re-verified + expanded): D3-zero **stress**
 (incomplete `[~] gpw-d3-stress`), **TS/XDM stress**, **D3/D4 ATM stress**
 pins, DFPT **GGA×finite-q**, vdW **multigrid**, nonlocal **vdW × k-points**,
-multi-k **UKS multigrid**, linearized XL multi-k, multi-k UKS **CPMD**,
+multi-k **UKS multigrid**, multi-k UKS **CPMD**,
 multi-k CPMD **electronic thermostat**, multi-k SGCP **OT**;
 product after
 harness wave 11 also ships UGW@UKS-RPBE,
@@ -367,12 +369,14 @@ Two periodic DFT engines exist, with disjoint strengths:
   (`reg_gpw-dftu-kpoint-forces`), **multi-k BOMD**
   (`reg_gpw-bomd-kpoints`), **multi-k multigrid**
   (`reg_gpw-multigrid-kpoints`), joint DFPT **GGA×spin**
-  (`reg_dfpt-gga-spin-si`), and Γ-UKS linearized XL
-  (`reg_xl-bomd-linearized-uks`). Stock VV10 is
+  (`reg_dfpt-gga-spin-si`), Γ-UKS linearized XL
+  (`reg_xl-bomd-linearized-uks`), and multi-k linearized XL — RKS +
+  collinear UKS with the new k-UKS fixed-density eval, CP2K-anchored
+  (`reg_xl-bomd-linearized-kpoints`). Stock VV10 is
   **blocked** (no CP2K twin). Open residuals (GapCensus wave 2):
   D3-zero stress (incomplete `[~] gpw-d3-stress`), TS/XDM stress, D3/D4
   ATM stress pins, DFPT GGA×finite-q, vdW multigrid, nonlocal vdW ×
-  k-points, multi-k UKS multigrid, linearized XL multi-k, multi-k UKS
+  k-points, multi-k UKS multigrid, multi-k UKS
   CPMD, multi-k CPMD electronic thermostat, multi-k SGCP OT. Hybrids / meta-GGA /
   GAPW / PAW remain blocked (queue not exhausted — see
   `cp2k-method-queue.md`). CPU only.

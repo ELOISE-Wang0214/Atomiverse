@@ -253,9 +253,13 @@ multi-k UKS** dual-spin \(P_k^\sigma\) (`reg_xl-bomd-uks-kpoints`). ASPC
 remains a separate density *predictor* (warm start); OT+XL stays
 architecturally excluded (OT parameterizes orbitals, not density);
 **zero-SCF linearized-functional forces** productize on **Γ RKS**
-(`xl_bomd_linearized`; `reg_xl-bomd-linearized-forces`) **and Γ-UKS**
-dual-spin shadow densities (`reg_xl-bomd-linearized-uks`); **multi-k**
-linearized XL remains open (queued `xl-bomd-linearized-kpoints`).
+(`xl_bomd_linearized`; `reg_xl-bomd-linearized-forces`), **Γ-UKS**
+dual-spin shadow densities (`reg_xl-bomd-linearized-uks`), **and the
+multi-k path** — RKS and collinear UKS, k-weighted complex shadow
+\(D_k^\sigma\) with the new k-UKS fixed-density eval
+(`reg_xl-bomd-linearized-kpoints`, CP2K-anchored per-step trace);
+linearized XL + `compute_stress` now refuses at `build()` (was a silent
+warm-step drop).
 
 **Car–Parrinello MD** (fictitious electronic DOF) ships as `cpu::electronic::Cpmd` +
 `GPWEvaluator::{cpmd, cpmd_mu}` (the nuclear dt is pushed in from the MD

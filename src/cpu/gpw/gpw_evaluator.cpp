@@ -16,6 +16,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/cpu/gpw/internal/gpw_stress.h"
+#include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/linalg/density.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/linalg/matrix.h"
@@ -76,6 +77,44 @@ void publish_electronic_energies(cpu::Frame& frame, double te_ev,
         frame.meta.insert(kEnergyElectronThermostat, etherm_ev);
     else
         frame.meta.set(kEnergyElectronThermostat, etherm_ev);
+}
+
+/// Complex Bloch density from occupied coefficients:
+/// \(P = f\,C_{\mathrm{occ}} C_{\mathrm{occ}}^\dagger\) (occupancy f per
+/// orbital: 2 for closed-shell RKS, 1 per spin channel). Shared by the
+/// multi-k CPMD fixed-density step and the multi-k linearized-XL warm step.
+/// @param C Bloch coefficients (nb × m, columns = orbitals). @param n_occ
+/// Occupied column count (≤ m). @param occ Occupancy f (dimensionless).
+/// @return Hermitian nb × nb density (dimensionless).
+linalg::CplxMatrix density_from_cocc(const linalg::CplxMatrix& C, int n_occ,
+                                     double occ) {
+    using Cplx = std::complex<double>;
+    const int nb = static_cast<int>(C.shape(0));
+    linalg::CplxMatrix P = xt::zeros<Cplx>(
+        {static_cast<std::size_t>(nb), static_cast<std::size_t>(nb)});
+    for (int o = 0; o < n_occ; ++o)
+        for (int mu = 0; mu < nb; ++mu) {
+            const Cplx cmu = occ * C(mu, o);
+            for (int nu = 0; nu < nb; ++nu)
+                P(mu, nu) += cmu * std::conj(C(nu, o));
+        }
+    return P;
+}
+
+/// Row-major flat occupied block (the `GpwResult::C_occ_k` layout the k-path
+/// force/stress assembly consumes).
+/// @param C Bloch coefficients (nb × m). @param n_occ Occupied columns.
+/// @return Flat nb × n_occ complex block, row-major.
+std::vector<std::complex<double>> flatten_occ(const linalg::CplxMatrix& C,
+                                              int n_occ) {
+    const int nb = static_cast<int>(C.shape(0));
+    std::vector<std::complex<double>> flat(
+        static_cast<std::size_t>(nb) * static_cast<std::size_t>(n_occ));
+    for (int mu = 0; mu < nb; ++mu)
+        for (int o = 0; o < n_occ; ++o)
+            flat[static_cast<std::size_t>(mu) * static_cast<std::size_t>(n_occ)
+                 + static_cast<std::size_t>(o)] = C(mu, o);
+    return flat;
 }
 } // namespace
 
@@ -170,16 +209,18 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
                 "exclusive (XL = Niklasson aux density; SGCP = ASPC + "
                 "partial SCF corrector)");
         if (xl_bomd_linearized) {
-            // Zero-SCF linearized forces: Γ diagonalization path (RKS
-            // total-P, or collinear UKS dual P_α/P_β).
+            // Zero-SCF linearized forces on the diagonalization path:
+            // Γ RKS (total P), Γ UKS (dual P_α/P_β), multi-k RKS (complex
+            // P_k per k), multi-k UKS (dual P_k^α/P_k^β per k).
             if (!compute_forces)
                 throw std::invalid_argument(
                     "GPWEvaluator: xl_bomd_linearized requires "
                     "compute_forces=true (shadow forces are the product)");
-            if (multi_k)
+            if (compute_stress)
                 throw std::invalid_argument(
-                    "GPWEvaluator: xl_bomd_linearized is Γ-point only "
-                    "(multi-k linearized XL is a follow-on)");
+                    "GPWEvaluator: xl_bomd_linearized stress path is not "
+                    "productized (the shadow warm step returns before the "
+                    "stress block; variable-cell linearized XL is deferred)");
         }
         // Validates xl_bomd_k ∈ [3, 9] via the real constructor even when
         // multi-k uses XlBomdCplx (same Table I).
@@ -391,26 +432,13 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         // Multi-k RKS CPMD: fixed-density {P_k} → forces → electronic VV.
         using Cplx = std::complex<double>;
         const int nk = static_cast<int>(cpmd_k_.size());
-        auto density_from_cocc = [](const linalg::CplxMatrix& C,
-                                    int n_occ) -> linalg::CplxMatrix {
-            const int nb = static_cast<int>(C.shape(0));
-            linalg::CplxMatrix P = xt::zeros<Cplx>(
-                {static_cast<std::size_t>(nb), static_cast<std::size_t>(nb)});
-            for (int o = 0; o < n_occ; ++o)
-                for (int mu = 0; mu < nb; ++mu) {
-                    const Cplx cmu = C(mu, o);
-                    for (int nu = 0; nu < nb; ++nu)
-                        P(mu, nu) += 2.0 * cmu * std::conj(C(nu, o));
-                }
-            return P;
-        };
         auto fixed_density_eval_k = [&]() {
             const int n_occ = solver_->n_occ;
             cpmd_guess_p_k_.resize(static_cast<std::size_t>(nk));
             for (int ik = 0; ik < nk; ++ik)
                 cpmd_guess_p_k_[static_cast<std::size_t>(ik)] =
                     density_from_cocc(cpmd_k_[static_cast<std::size_t>(ik)].C(),
-                                      n_occ);
+                                      n_occ, /*occ=*/2.0);
             const int saved_max = solver_->max_iter;
             solver_->max_iter = 0;
             try {
@@ -454,14 +482,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                     cpmd_k_[static_cast<std::size_t>(ik)].C();
                 const auto& H = last_.H_ks_k[static_cast<std::size_t>(ik)];
                 const int nb = static_cast<int>(C.shape(0));
-                std::vector<Cplx> flat(
-                    static_cast<std::size_t>(nb)
-                    * static_cast<std::size_t>(n_occ));
-                for (int mu = 0; mu < nb; ++mu)
-                    for (int o = 0; o < n_occ; ++o)
-                        flat[static_cast<std::size_t>(mu) * n_occ
-                             + static_cast<std::size_t>(o)] = C(mu, o);
-                last_.C_occ_k[static_cast<std::size_t>(ik)] = std::move(flat);
+                last_.C_occ_k[static_cast<std::size_t>(ik)] =
+                    flatten_occ(C, n_occ);
                 // ε_i ≈ Re (C† H C)_ii  (BO surface → exact eigenvalues).
                 std::vector<double> eps(static_cast<std::size_t>(n_occ), 0.0);
                 for (int o = 0; o < n_occ; ++o) {
@@ -1177,6 +1199,175 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             last_.e_total * ATV::units::kHartreeInEv;
 
         if (compute_forces) {
+            AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+            AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+            AccReal* __restrict sp_fz = frame.span(kAtom_fz);
+            for (int i = 0; i < n; ++i) {
+                sp_fx[i] += F[static_cast<std::size_t>(i)][0]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fy[i] += F[static_cast<std::size_t>(i)][1]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fz[i] += F[static_cast<std::size_t>(i)][2]
+                            * ATV::units::kHartreePerBohrInEvPerAngstrom;
+            }
+        }
+        return;
+    }
+
+    // ── Multi-k zero-SCF linearized XL-BOMD (shadow forces on the k path) ──
+    // After the cold multi-k SCF seed (one complex XL history per sampled k,
+    // dual per spin for UKS): one KS build at the auxiliary densities {n_k}
+    // (fixed-density, max_iter = 0), one generalized diagonalization per
+    // (k, σ) → D_k^σ = q[n], k-weighted shadow energy
+    //   E = Σ_k w_k Σ_σ Re Tr[H_k^σ[n] (D_k^σ − n_k^σ)] + E_KS[n],
+    // and forces from the (D_k, ε_k, C_k^occ) payload on the k-path
+    // assembly. No iterative SCF (iters = 0). The cold seed falls through
+    // to the SCF-XL path below (its first advance seeds each per-k history
+    // with P_k^σ_scf).
+    const bool lin_k_ready = [&]() {
+        if (!xl_bomd_linearized || xl_k_.empty())
+            return false;
+        for (const auto& x : xl_k_)
+            if (!x.ready())
+                return false;
+        if (lin_uks) {
+            if (xl_k_beta_.size() != xl_k_.size())
+                return false;
+            for (const auto& x : xl_k_beta_)
+                if (!x.ready())
+                    return false;
+        }
+        return true;
+    }();
+    if (lin_k_ready) {
+        const int nk = static_cast<int>(xl_k_.size());
+        xl_guess_p_k_.resize(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik)
+            xl_guess_p_k_[static_cast<std::size_t>(ik)] =
+                xl_k_[static_cast<std::size_t>(ik)].aux();
+        if (lin_uks) {
+            xl_guess_p_k_beta_.resize(static_cast<std::size_t>(nk));
+            for (int ik = 0; ik < nk; ++ik)
+                xl_guess_p_k_beta_[static_cast<std::size_t>(ik)] =
+                    xl_k_beta_[static_cast<std::size_t>(ik)].aux();
+        }
+        const int saved_max = solver_->max_iter;
+        solver_->max_iter = 0;
+        try {
+            last_ = solver_->run(atoms, /*guess_C=*/nullptr,
+                                 /*guess_P=*/nullptr, /*guess_P_beta=*/nullptr,
+                                 &xl_guess_p_k_,
+                                 lin_uks ? &xl_guess_p_k_beta_ : nullptr);
+        } catch (...) {
+            solver_->max_iter = saved_max;
+            throw;
+        }
+        solver_->max_iter = saved_max;
+
+        if (last_.n_kpts != nk
+            || static_cast<int>(last_.H_ks_k.size()) != nk
+            || static_cast<int>(last_.S_k.size()) != nk
+            || static_cast<int>(last_.k_weights.size()) != nk
+            || (lin_uks
+                && static_cast<int>(last_.H_ks_k_beta.size()) != nk))
+            throw std::runtime_error(
+                "GPWEvaluator: multi-k xl_bomd_linearized fixed-density step "
+                "needs H_ks_k (+H_ks_k_beta for UKS), S_k and k_weights from "
+                "max_iter=0");
+
+        const double e_ks_n = last_.e_total;
+        // Re Tr(H M) over one complex Bloch pair (shadow trace term).
+        auto tr_HM = [](const linalg::CplxMatrix& H,
+                        const linalg::CplxMatrix& M) {
+            const int m = static_cast<int>(H.shape(0));
+            double t = 0.0;
+            for (int i = 0; i < m; ++i)
+                for (int j = 0; j < m; ++j)
+                    t += (H(static_cast<std::size_t>(i),
+                            static_cast<std::size_t>(j))
+                          * M(static_cast<std::size_t>(j),
+                              static_cast<std::size_t>(i)))
+                             .real();
+            return t;
+        };
+
+        const int n_occ_a = lin_uks ? n_alpha : solver_->n_occ;
+        const int n_occ_b = lin_uks ? n_beta : 0;
+        if (n_occ_a < 1)
+            throw std::runtime_error(
+                lin_uks
+                    ? "GPWEvaluator: multi-k UKS xl_bomd_linearized needs "
+                      "n_alpha >= 1"
+                    : "GPWEvaluator: multi-k xl_bomd_linearized needs "
+                      "n_occ >= 1");
+
+        last_.eps_k.assign(static_cast<std::size_t>(nk), {});
+        last_.C_occ_k.assign(static_cast<std::size_t>(nk), {});
+        last_.P_k.assign(static_cast<std::size_t>(nk), linalg::CplxMatrix{});
+        if (lin_uks) {
+            last_.eps_k_beta.assign(static_cast<std::size_t>(nk), {});
+            last_.C_occ_k_beta.assign(static_cast<std::size_t>(nk), {});
+            last_.P_k_beta.assign(static_cast<std::size_t>(nk),
+                                  linalg::CplxMatrix{});
+        }
+
+        double shadow = 0.0;
+        for (int ik = 0; ik < nk; ++ik) {
+            const std::size_t k = static_cast<std::size_t>(ik);
+            const double wk = last_.k_weights[k];
+            const internal::KOrth orth(last_.S_k[k],
+                                       solver_->lindep_threshold);
+            auto [eps_a, Ca] = internal::diagonalize_k(last_.H_ks_k[k], orth);
+            if (static_cast<int>(Ca.shape(1)) < n_occ_a)
+                throw std::runtime_error(
+                    "GPWEvaluator: multi-k xl_bomd_linearized: occupied "
+                    "count exceeds the independent basis directions at a "
+                    "k-point");
+            const linalg::CplxMatrix Da =
+                density_from_cocc(Ca, n_occ_a, lin_uks ? 1.0 : 2.0);
+            shadow += wk
+                      * (tr_HM(last_.H_ks_k[k], Da)
+                         - tr_HM(last_.H_ks_k[k], xl_guess_p_k_[k]));
+            last_.eps_k[k] = std::move(eps_a);
+            last_.C_occ_k[k] = flatten_occ(Ca, n_occ_a);
+            last_.P_k[k] = Da;
+            if (lin_uks) {
+                auto [eps_b, Cb] =
+                    internal::diagonalize_k(last_.H_ks_k_beta[k], orth);
+                if (static_cast<int>(Cb.shape(1)) < n_occ_b)
+                    throw std::runtime_error(
+                        "GPWEvaluator: multi-k UKS xl_bomd_linearized: "
+                        "occupied beta count exceeds the independent basis "
+                        "directions at a k-point");
+                const linalg::CplxMatrix Db =
+                    density_from_cocc(Cb, n_occ_b, 1.0);
+                shadow += wk
+                          * (tr_HM(last_.H_ks_k_beta[k], Db)
+                             - tr_HM(last_.H_ks_k_beta[k],
+                                     xl_guess_p_k_beta_[k]));
+                last_.eps_k_beta[k] = std::move(eps_b);
+                last_.C_occ_k_beta[k] = flatten_occ(Cb, n_occ_b);
+                last_.P_k_beta[k] = Db;
+            }
+            // XL advance(D) per k (per spin): the aux for the next step.
+            xl_k_[k].advance(last_.P_k[k]);
+            if (lin_uks)
+                xl_k_beta_[k].advance(last_.P_k_beta[k]);
+        }
+        last_.e_total = e_ks_n + shadow;
+        last_.converged = true; // stationary for the shadow functional
+        last_.iters = 0;        // zero iterative SCF
+
+        frame.meta.get(kEnergy) += last_.e_total * ATV::units::kHartreeInEv;
+        frame.meta.get(kEnergyElectronic) +=
+            last_.e_total * ATV::units::kHartreeInEv;
+
+        if (compute_forces) {
+            // Forces of U(R,{n_k}) at fixed n: the k-path assembly at the
+            // (D_k, ε_k, C_k^occ) payload — since C_k are exact
+            // eigenvectors of H_k[n], W = C (C†HC) C† (the Γ product's
+            // off-BO energy-weighted density) reduces to Σ f ε C C†.
+            const auto F = gpw_forces_from_scf(atoms, *solver_, last_);
             AccReal* __restrict sp_fx = frame.span(kAtom_fx);
             AccReal* __restrict sp_fy = frame.span(kAtom_fy);
             AccReal* __restrict sp_fz = frame.span(kAtom_fz);
