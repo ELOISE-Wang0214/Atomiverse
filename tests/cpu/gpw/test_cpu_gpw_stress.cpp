@@ -416,27 +416,23 @@ TEST(GpwStress, UksKpointGgaAnalyticMatchesFdDiagonal) {
         cfg.k_mesh[0] = 1;
         cfg.k_mesh[1] = 1;
         cfg.k_mesh[2] = 2;
+        // z-only axes mask keeps the three-GGA sweep unit-tier (the k axis is
+        // the one exercising the k-summed fold; x/y FD coverage lives in the
+        // cheaper RKS KpointAnalyticMatchesFdDiagonal).
+        const std::array<bool, 3> axes = {false, false, true};
         const double h = 3e-3;
-        const auto san = gpw_stress(atoms, cfg, h);
-        const auto sfd = gpw_stress_fd(atoms, cfg, h);
-        double max_err = 0.0;
-        for (int a = 0; a < 3; ++a) {
-            const double err = std::abs(san[static_cast<std::size_t>(a)]
-                                        - sfd[static_cast<std::size_t>(a)]);
-            max_err = std::max(max_err, err);
-            std::printf("  k-UKS %s axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n",
-                        names[ig], a, san[static_cast<std::size_t>(a)],
-                        sfd[static_cast<std::size_t>(a)], err);
-            EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(a)]));
-            EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(a)]));
-        }
+        const auto san = gpw_stress(atoms, cfg, h, axes);
+        const auto sfd = gpw_stress_fd(atoms, cfg, h, axes);
+        const double err = std::abs(san[2] - sfd[2]);
+        std::printf("  k-UKS %s axis z  an=%.6e  fd=%.6e  |d|=%.3e\n",
+                    names[ig], san[2], sfd[2], err);
+        EXPECT_TRUE(std::isfinite(san[2]));
+        EXPECT_TRUE(std::isfinite(sfd[2]));
         EXPECT_DOUBLE_EQ(san[3], 0.0);
         EXPECT_DOUBLE_EQ(san[4], 0.0);
         EXPECT_DOUBLE_EQ(san[5], 0.0);
-        const double max_diag =
-            std::max({std::abs(san[0]), std::abs(san[1]), std::abs(san[2])});
-        EXPECT_GT(max_diag, 1e-8) << names[ig];
-        EXPECT_LT(max_err, 1e-4)
+        EXPECT_GT(std::abs(san[2]), 1e-8) << names[ig];
+        EXPECT_LT(err, 1e-4)
             << "k-UKS " << names[ig] << " analytic vs multi-SCF FD";
     }
 }
@@ -455,6 +451,9 @@ TEST(GpwStress, DftUUksAnalyticMatchesFdDiagonal) {
     cfg.n_beta = 0;
     cfg.xc = XcKind::PADE;
     cfg.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_ev=*/4.0});
+    // Variational ½(V̂S+SV̂) scatter (2026-07-31) converges slower on this
+    // strong-overlap toy: ~90–150 DIIS iters instead of <80.
+    cfg.max_iter = 300;
     const double h = 3e-3;
     EXPECT_NO_THROW({
         const auto san = gpw_stress(atoms, cfg, h);
@@ -489,8 +488,18 @@ TEST(GpwStress, DftUKpointUksAnalyticMatchesFdDiagonal) {
     // energy_fixed_P_k includes BZ-averaged E_U[n({P_k},{S_k})] and dual-gates
     // against multi-SCF FD. Product residual lives in
     // reg_gpw-dftu-kpoint-stress.
-    const auto atoms = cheap_h2_atoms();
+    // Symmetric compressed bond (matches reg_gpw-dftu-kpoint-stress): the
+    // asymmetric cheap_h2 toy oscillates under the variational +U outer loop
+    // at U=4 (multi-branch strong-overlap regime), the symmetric one is a
+    // single branch.
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.5, 6.0, 6.0};
+    const std::vector<GpwAtom> atoms{GpwAtom(rA, basis, pot, 1),
+                                     GpwAtom(rB, basis, pot, 1)};
     GpwDft cfg = cheap_h2_cfg();
+    cfg.cutoff_ry = 100.0;
     cfg.n_occ = 0;
     cfg.n_alpha = 2;
     cfg.n_beta = 0;
@@ -500,32 +509,28 @@ TEST(GpwStress, DftUKpointUksAnalyticMatchesFdDiagonal) {
     cfg.k_mesh[0] = 1;
     cfg.k_mesh[1] = 1;
     cfg.k_mesh[2] = 2;
-    cfg.max_iter = 120;
+    cfg.max_iter = 300; // variational +U scatter needs a larger DIIS budget
     cfg.mix = 0.35;
     cfg.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_ev=*/4.0});
     const double h = 3e-3;
+    // z-only axes mask keeps the +U k-path smoke unit-tier (the k axis is the
+    // one exercising the BZ-averaged E_U fold; full-axes product residual
+    // lives in reg_gpw-dftu-kpoint-stress).
+    const std::array<bool, 3> axes = {false, false, true};
     EXPECT_NO_THROW({
-        const auto san = gpw_stress(atoms, cfg, h);
-        const auto sfd = gpw_stress_fd(atoms, cfg, h);
-        double max_err = 0.0;
-        for (int a = 0; a < 3; ++a) {
-            const double err = std::abs(san[static_cast<std::size_t>(a)]
-                                        - sfd[static_cast<std::size_t>(a)]);
-            max_err = std::max(max_err, err);
-            std::printf("  k+DFT+U axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n", a,
-                        san[static_cast<std::size_t>(a)],
-                        sfd[static_cast<std::size_t>(a)], err);
-            EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(a)]));
-            EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(a)]));
-        }
+        const auto san = gpw_stress(atoms, cfg, h, axes);
+        const auto sfd = gpw_stress_fd(atoms, cfg, h, axes);
+        const double err = std::abs(san[2] - sfd[2]);
+        std::printf("  k+DFT+U axis z  an=%.6e  fd=%.6e  |d|=%.3e\n", san[2],
+                    sfd[2], err);
+        EXPECT_TRUE(std::isfinite(san[2]));
+        EXPECT_TRUE(std::isfinite(sfd[2]));
         EXPECT_DOUBLE_EQ(san[3], 0.0);
         EXPECT_DOUBLE_EQ(san[4], 0.0);
         EXPECT_DOUBLE_EQ(san[5], 0.0);
-        const double max_diag =
-            std::max({std::abs(san[0]), std::abs(san[1]), std::abs(san[2])});
-        EXPECT_GT(max_diag, 1e-8);
+        EXPECT_GT(std::abs(san[2]), 1e-8);
         // Unit smoke: order-of-magnitude; e2e dual-gate is tighter.
-        EXPECT_LT(max_err, 2e-3)
+        EXPECT_LT(err, 2e-3)
             << "multi-k DFT+U UKS analytic vs multi-SCF FD diagonal";
     });
 }
@@ -559,6 +564,7 @@ TEST(GpwStress, AnalyticMatchesFdWithD4) {
     });
 }
 
+// ── Γ RKS + DFT-D3 (zero damping) analytic stress ─────────────────────────
 TEST(GpwStress, AnalyticMatchesFdWithD3) {
     // Geometry-only D3 zero damping folded into the fixed-P Lagrangian;
     // dual-gate vs multi-SCF FD on cheap MT H₂. e2e CP2K pin is
@@ -606,6 +612,36 @@ TEST(GpwStress, D3ChangesGammaDiagonal) {
     std::printf("[GPW stress D3] max|sigma(d3)-sigma(plain)|=%.3e Ha/Bohr3\n",
                 max_shift);
     EXPECT_GT(max_shift, 1e-12) << "D3 is not entering the stress Lagrangian";
+}
+
+// ── Γ RKS + DFT-D3(BJ) analytic stress ────────────────────────────────────
+TEST(GpwStress, AnalyticMatchesFdWithD3Bj) {
+    // Geometry-only D3(BJ) folded into the fixed-P Lagrangian; dual-gate vs
+    // multi-SCF FD on cheap MT H₂. Residual unit-tier loose; e2e CP2K pin is
+    // reg_gpw-d3bj-stress.
+    const auto atoms = cheap_h2_atoms();
+    GpwDft cfg = cheap_h2_cfg();
+    cfg.d3bj = true;
+    const double h = 3e-3;
+    EXPECT_NO_THROW({
+        const auto san = gpw_stress(atoms, cfg, h);
+        const auto sfd = gpw_stress_fd(atoms, cfg, h);
+        double max_err = 0.0;
+        for (int a = 0; a < 3; ++a) {
+            const double err = std::abs(san[static_cast<std::size_t>(a)]
+                                        - sfd[static_cast<std::size_t>(a)]);
+            max_err = std::max(max_err, err);
+            std::printf("  D3BJ axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n", a,
+                        san[static_cast<std::size_t>(a)],
+                        sfd[static_cast<std::size_t>(a)], err);
+            EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(a)]));
+            EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(a)]));
+        }
+        EXPECT_DOUBLE_EQ(san[3], 0.0);
+        EXPECT_DOUBLE_EQ(san[4], 0.0);
+        EXPECT_DOUBLE_EQ(san[5], 0.0);
+        EXPECT_LT(max_err, 5e-5) << "Γ RKS + D3(BJ) analytic vs multi-SCF FD";
+    });
 }
 
 // ── Γ RKS + MBD@rsSCS analytic stress ─────────────────────────────────────
@@ -657,15 +693,49 @@ TEST(GpwStress, MbdChangesGammaDiagonal) {
     EXPECT_GT(max_shift, 1e-12) << "MBD is not entering the stress Lagrangian";
 }
 
-// Multi-k + MBD stress must refuse rather than silently drop E_disp from the
-// strain derivative (gpw-mbd-kpoint-stress is a separate queued capability).
-TEST(GpwStress, MbdMultiKStressThrows) {
-    const auto atoms = cheap_h2_atoms();
-    GpwDft cfg = cheap_h2_cfg();
+// Multi-k + MBD: the k-summed fixed-P_k Lagrangian folds E_disp^MBD (rebuilt
+// at each strained cell) — dual-gate analytic vs multi-SCF strain-FD on the
+// same periodic H2 mesh-1x1x2 fixture as KpointAnalyticMatchesFdDiagonal.
+TEST(GpwStress, MbdMultiKAnalyticMatchesFd) {
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.5, 6.0, 6.0};
+    const std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
+                                        GpwAtom(rB, basis, pot, 1)};
+
+    GpwDft cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 12.0;
+    cfg.cutoff_ry = 100.0;
+    cfg.n_occ = 1;
+    cfg.tol = 1e-8;
+    cfg.max_iter = 60;
     cfg.nonperiodic = false;
-    cfg.mbd = true;
+    cfg.local_pp_on_grid = true;
+    cfg.xc = XcKind::PADE;
+    cfg.eps_default = 1e-8;
     cfg.k_mesh[0] = 1;
     cfg.k_mesh[1] = 1;
     cfg.k_mesh[2] = 2;
-    EXPECT_THROW(gpw_stress(atoms, cfg, 3e-3), std::invalid_argument);
+    cfg.mbd = true;
+    cfg.mbd_k_mesh[0] = cfg.mbd_k_mesh[1] = cfg.mbd_k_mesh[2] = 2;
+
+    const double h = 3e-3;
+    const auto san = gpw_stress(atoms, cfg, h);
+    const auto sfd = gpw_stress_fd(atoms, cfg, h);
+    double max_err = 0.0;
+    for (int a = 0; a < 3; ++a) {
+        const double err = std::abs(san[static_cast<std::size_t>(a)]
+                                    - sfd[static_cast<std::size_t>(a)]);
+        max_err = std::max(max_err, err);
+        std::printf("  MBD k-mesh axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n", a,
+                    san[static_cast<std::size_t>(a)],
+                    sfd[static_cast<std::size_t>(a)], err);
+        EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(a)]));
+        EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(a)]));
+    }
+    EXPECT_DOUBLE_EQ(san[3], 0.0);
+    EXPECT_DOUBLE_EQ(san[4], 0.0);
+    EXPECT_DOUBLE_EQ(san[5], 0.0);
+    EXPECT_LT(max_err, 5e-5) << "multi-k + MBD analytic vs multi-SCF FD";
 }

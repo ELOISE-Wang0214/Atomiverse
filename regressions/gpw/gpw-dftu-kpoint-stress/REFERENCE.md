@@ -99,3 +99,13 @@ DFT+U stress.
 - Twin input: `tools/cp2k_oracle/inputs/gpw-dftu-kpoint-stress/h2_uks_dftu_kpoint_stress.inp`
 - Deps: `gpw-dftu-kpoints` ✓, `gpw-dftu-stress` ✓, `gpw-kpoint-uks-stress` ✓
 - Citations: Dudarev *et al.*, PRB **57**, 1505 (1998); Nielsen & Martin, PRB **32**, 3780 (1985).
+
+## Re-pin 2026-07-31 — variational +U scatter
+
+`gpw-dftu-kpoint-forces` fixed the Dudarev Fock contribution to the
+variational form ∂E_U/∂P = ½(V̂S+SV̂) (the bare-V̂ scatter left the SCF fixed
+point non-stationary for the reported E_U[n(P,S)]; CP2K uses the S-weighted
+form). All +U fixed points moved; ATV-self absolute pins below were
+re-measured on the new functional (identity/dual gates unchanged and tighter).
+
+- E(k-UKS+U 1×1×2, 100 Ry): −0.546250995860 → **−0.734377348082 Ha**; max|σ_an−σ_fd| improved 9.3e-4 → **3.0e-9 Ha/Bohr³** (gate tightened to 1e-4).

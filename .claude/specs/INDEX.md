@@ -14,6 +14,18 @@ History is the git log (specs deleted).
 | driver-api-01-evaluator-registration | `set_evaluator`; no public `add` / `add_potential` |
 | driver-api-02-aimd-wrappers | CarParrinello / XlBomdForce / SecondGenCp; private flags |
 
+## Closed — CP2K harness wave 13 (2026-07-31)
+
+Merged into `dev` (merge wave 1, nine --no-ff merges `44749b1a`..`268aaf66`);
+merge gate green (scoped rebuild + `ctest -R '^test_cpu_(gpw|pw|scf|xc)_|^test_xc_'`
+57/57). Specs deleted; history is the git log.
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| cp2k-method-loop harness wave 13 | gpw-d3bj-stress, gpw-mbd-kpoint-stress, gpw-d3-atm-forces, gpw-d4-atm-forces, gpw-dftu-kpoint-forces, dfpt-gga-spin-si, gpw-bomd-kpoints, gpw-multigrid-kpoints, xl-bomd-linearized-uks | D3(BJ) analytic cell stress (CP2K pin); multi-k stress folds periodic MBD@rsSCS; D3 ATM (C9) force pin + periodic image-triple/pbc anchoring fixes; analytic D4 ATM (s9) forces (dftd4 3.7.0 pins); multi-k DFT+U occupation-matrix forces; collinear-spin × pure-GGA DFPT phonons; plain multi-k BOMD P_k warm start; multi-k RKS REL_CUTOFF multigrid; zero-SCF linearized XL-BOMD on Γ-UKS |
+
+Do not re-create closed slugs without superseding intent.
+
 ## Live — esmm campaign: ES × MM connection layer (2026-07-26, 16 specs)
 
 Operator-approved three-wave campaign (plan-mode design review + Q&A 2026-07-26):

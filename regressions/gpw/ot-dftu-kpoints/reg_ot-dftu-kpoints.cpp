@@ -136,7 +136,8 @@ int main() {
 
     // ── A3: MP 2×2×2 activation + absolute pin ─────────────────────────────
     // First-green ATV absolute (REFERENCE.md, 2026-07-26).
-    constexpr double kE_pin = -1.077477969428;
+    // re-pinned 2026-07-31: variational +U scatter (pre-fix -1.077477969428)
+    constexpr double kE_pin = -1.396485808593;
     constexpr double kTolE = 1e-3; // Ha
     constexpr double kFloorAct = 1e-4;
 

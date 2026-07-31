@@ -36,13 +36,33 @@ Silicon diamond in the **body-centred-tetragonal 4-atom cell**
 | k mesh | MONKHORST-PACK 2×2×2, time-reversal folded → 4 k, w = ¼ |
 | SCF | DIIS depth 6, tol 1e-8 Ha, EPS_DEFAULT 1e-7 |
 
-## Offline oracle status
+## Offline CP2K pin
 
-**No CP2K binary / module on the worker host at pin time** (2026-07-25:
-`module avail cp2k` empty; no `cp2k`, `cp2k.psmp`, `cp2k.sopt`, `cp2k.ssmp`
-on PATH) — same status as the `gpw-pbesol-si` / `gpw-d4-water` pins.
-Absolute CP2K digits are therefore **not invented** and **no live process**
-runs at regression time. Pin strategy (binding, mirrors precedent):
+- **Engine:** CP2K **2026.1** (`cp2k.psmp`), module `CP2K/2026.1` on
+  Arrhenius (visible after `module load buildtool-easybuild/5.2.1-hpca3ef7d197
+  GCC/14.3.0 MPICH/4.3.2`).
+- **Input:** the exact twin `tools/cp2k_oracle/inputs/gpw-kpoints-si.inp`
+  (CUTOFF 150, NGRIDS 1, MONKHORST-PACK 2 2 2, PBE, EPS_SCF 1e-8).
+- **Run (offline only; never in ctest):**
+  ```bash
+  module load buildtool-easybuild/5.2.1-hpca3ef7d197 GCC/14.3.0 MPICH/4.3.2 CP2K/2026.1
+  export CP2K_DATA_DIR=$EBROOTCP2K/share/cp2k/data
+  ln -sf $CP2K_DATA_DIR/{BASIS_MOLOPT,GTH_POTENTIALS} .
+  OMP_NUM_THREADS=4 mpirun -np 1 cp2k.psmp -i gpw-kpoints-si.inp -o si_kpoints_sg.out
+  ```
+- **Date:** 2026-07-31 (replaces the 2026-07-25 ATV-frozen first-green band —
+  no CP2K module was visible then without the easybuild toolchain loaded).
+
+| Quantity | CP2K pin | Tolerance (A7) |
+|----------|----------|----------------|
+| E_tot [Ha] | **−15.802416412655166** | **1e-3 Ha** |
+
+Key log line (CP2K 2026.1): `ENERGY| Total FORCE_EVAL ( QS ) energy
+[hartree]            -15.802416412655166`; SCF converged in 13 steps; wall
+≈ 3.3 s (1 rank × OMP 4). ATV first green −15.8023941333 Ha sits 2.2e-5 Ha
+from the CP2K number.
+
+Supporting internal identities (unchanged):
 
 1. **Internal exactness identities** — the decisive k-point correctness
    checks; each holds to SCF tolerance *independent of any oracle*:
@@ -59,10 +79,7 @@ runs at regression time. Pin strategy (binding, mirrors precedent):
    assembly conjugated the wrong side (V_nl evaluated at −k; Hermitian,
    Γ-exact, TR-invisible — but 2.09 Ha off at κ = ¼). Fixed in
    `internal/kpoints.cpp`; the identity is now machine-exact.
-2. **Frozen first-green ATV absolute band** (A7; setup integrity, not a
-   third-party oracle). Replace with a cited CP2K number by running
-   `tools/cp2k_oracle/inputs/gpw-kpoints-si.inp` when an offline CP2K
-   exists, then tighten the tolerance.
+2. **Absolute CP2K pin** (A7): the offline CP2K 2026.1 number above.
 
 ### Atomiverse numbers (first green, 2026-07-25)
 
@@ -80,29 +97,24 @@ runs at regression time. Pin strategy (binding, mirrors precedent):
 
 - A1 ≤ 1e-6 Ha; A2 ≤ 5e-5 Ha; A3 ≤ 5e-6 Ha (identities).
 - A4 ≥ 1e-3 Ha activation floor; A5 gap ≥ 0.1 eV.
-- A7 absolute: 1e-3 Ha vs the frozen first-green value until an offline
-  CP2K twin replaces it.
+- A7 absolute: 1e-3 Ha vs the offline CP2K 2026.1 pin.
 
 ## What is checked
 
 1. Γ-limit, supercell-folding, and time-reversal identities (A1–A3).
 2. k-sampling activation and insulating gap + k payload shapes (A4–A5).
-3. SCF convergence, finiteness (A6); frozen absolute band (A7).
+3. SCF convergence, finiteness (A6); absolute CP2K pin (A7).
 4. No external process spawn; ≤ 60 s.
 
 ## Performance
 
 | Item | Value |
 | ---- | ----- |
-| `perf_exempt` | **true** |
-| reason | No CP2K binary/module on the pin host for a fair wall twin. |
-| r = T_atv/T_cp2k | n/a (exempt) |
-| `within_10x` | n/a (exempt) |
+| T_cp2k (twin input, 1 rank × OMP 4, 2026-07-31) | ≈ 3.3 s |
+| T_atv (main MP 2×2×2 run alone, OMP=8) | ~4 s |
+| r = T_atv/T_cp2k | ≈ 1.2 (≤ 10 ✓) |
+| `within_10x` | true |
 | T_atv (whole regression: 7 SCF solves, OMP=8, Release) | ~17 s |
-| T_atv (main MP 2×2×2 run alone) | ~4 s |
-
-When CP2K is available, run the twin input single-rank (same OMP), record
-both walls and replace this section with measured r (target ≤ 10).
 
 ## Provenance
 

@@ -238,10 +238,12 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   **periodic MLWF** (`reg_periodic-wannier-si` + spin
   `reg_periodic-wannier-uks`), **Berry** (`reg_berry-polarization` + spin
   `reg_berry-spin-si`), **DFPT** Γ / finite-q / incommensurate /
-  **GGA kernel** / **collinear spin** / **metallic smear** /
-  spin-incommensurate / **finite-q+smear** / **spin+smear**
+  **GGA kernel** / **collinear spin** / **joint spin×GGA** /
+  **metallic smear** / spin-incommensurate / **finite-q+smear** /
+  **spin+smear**
   (`reg_dfpt-phonon-si` / `reg_dfpt-finite-q-si` /
   `reg_dfpt-incommensurate-si` / `reg_dfpt-gga-si` / `reg_dfpt-spin-si` /
+  `reg_dfpt-gga-spin-si` /
   `reg_dfpt-metallic-si` / `reg_dfpt-spin-incommensurate` /
   `reg_dfpt-finite-q-smearing` / `reg_dfpt-spin-smearing`). CUDA PW remains
   LDA / spin-unpolarized.
@@ -266,11 +268,19 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   collinear spin+metallic bands/DOS, multi-k CPMD, GPW MLWF,
   **GPW FD phonons** (`reg_gpw-fd-phonon-si`), D3/D3(BJ) **forces**
   (`reg_gpw-d3-forces` / `reg_gpw-d3bj-forces`), and Γ MBD **stress**
-  (`reg_gpw-mbd-stress`); **GapCensus wave 15**
-  residual pending (D3/D3BJ stress, MBD multi-k + TS/XDM stress, multi-k
-  DFT+U forces, DFPT GGA combos, multi-k BOMD, multi-k / vdW multigrid,
-  linearized XL UKS/k, D3/D4 ATM forces, multi-k UKS CPMD, multi-k SGCP
-  OT); stock VV10 remains **blocked** (no CP2K twin);
+  (`reg_gpw-mbd-stress`); **harness wave 1 (2026-07-31)** ships D3(BJ) +
+  multi-k MBD stress (`reg_gpw-d3bj-stress` /
+  `reg_gpw-mbd-kpoint-stress`), D3/D4 ATM forces
+  (`reg_gpw-d3-atm-forces` / `reg_gpw-d4-atm-forces`), multi-k DFT+U
+  forces (`reg_gpw-dftu-kpoint-forces`), joint DFPT GGA×spin
+  (`reg_dfpt-gga-spin-si`), multi-k BOMD (`reg_gpw-bomd-kpoints`),
+  multi-k multigrid (`reg_gpw-multigrid-kpoints`), and Γ-UKS linearized
+  XL (`reg_xl-bomd-linearized-uks`); residual pending: D3-zero stress
+  (incomplete), TS/XDM + D3/D4 ATM stress pins, DFPT GGA×finite-q,
+  vdW multigrid + vdW on the k path, multi-k UKS multigrid,
+  linearized XL multi-k, multi-k UKS CPMD, multi-k SGCP OT, multi-k
+  CPMD electronic thermostat; stock VV10
+  remains **blocked** (no CP2K twin);
   hybrids / meta-GGA / GAPW blocked — see `cp2k-method-queue.md` (queue
   not exhausted — GapCensus owns next discovery).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).

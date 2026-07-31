@@ -70,7 +70,9 @@ int main() {
             cfg.cutoff_ry = 100.0;
             cfg.n_alpha = 2;
             cfg.n_beta = 0;
-            cfg.max_iter = 100;
+            // Variational ½(V̂S+SV̂) +U scatter (2026-07-31) needs a larger
+            // DIIS budget on this strong-overlap toy (~90-150 iters).
+            cfg.max_iter = 400;
             cfg.tol = 1e-7;
             cfg.mix = 0.35;
             cfg.xc = XcKind::PADE;
@@ -103,8 +105,10 @@ int main() {
     }
 
     // ── A2/A3: MP 2×2×2 high-spin H₂ UKS ± PLUS_U ────────────────────────
-    // Frozen first-green ATV absolute (REFERENCE.md), 2026-07-26.
-    constexpr double kE_pin = -0.814170782662;
+    // Frozen ATV absolute (REFERENCE.md). Re-pinned 2026-07-31 for the
+    // variational ½(V̂S+SV̂) +U scatter (the bare-V̂ fixed point was
+    // non-stationary for E_U[n(P,S)]; pre-fix pin was −0.814170782662).
+    constexpr double kE_pin = -0.997491857710;
     constexpr double kTolE = 1e-3; // Ha
     constexpr double kFloorAct = 1e-4;
 
@@ -115,7 +119,7 @@ int main() {
             m.cutoff_ry = 120.0;
             m.n_alpha = 2;
             m.n_beta = 0;
-            m.max_iter = 120;
+            m.max_iter = 400; // variational +U scatter: larger DIIS budget
             m.tol = 1e-7;
             m.mix = 0.35;
             m.xc = XcKind::PADE;

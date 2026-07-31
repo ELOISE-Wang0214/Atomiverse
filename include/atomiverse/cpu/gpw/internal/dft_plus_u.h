@@ -4,9 +4,16 @@
 /// Occupation matrix on the AO subspace of atom A with angular momentum L:
 ///   \( n_{mm'} = \tfrac12\big[(PS)_{mm'} + (SP)_{mm'}\big] \)  (Mulliken, symmetrized).
 /// Energy (one spin channel, U in Hartree):
-///   \( E_U = \tfrac{U}{2}\big[\mathrm{Tr}\,n - \mathrm{Tr}(n n)\big] \).
-/// Potential added to the spin Fock matrix on that subspace:
-///   \( V_{mm'} = U\big(\tfrac12\delta_{mm'} - n_{mm'}\big) \).
+///   \( E_U = \tfrac12 U\big[\mathrm{Tr}\,n - \mathrm{Tr}(n n)\big] \).
+/// Subspace potential \( V_{mm'} = U(\tfrac12\delta_{mm'} - n_{mm'}) \),
+/// scattered to the full AO matrix \(\hat V\). What enters the Fock matrix is
+/// the **variational** derivative for this occupation,
+///   \( \partial E_U/\partial P = \tfrac12(\hat V S + S\hat V) \)
+/// — adding bare \(\hat V\) instead leaves the SCF fixed point non-stationary
+/// for the reported \(E_U[n(P,S)]\), which broke the analytic-vs-FD force
+/// dual gate by O(1) Ha/Bohr on the H₂ DZV +U toy (2026-07-31). CP2K applies
+/// the same S-weighted form for its geometry-dependent Mulliken-charges
+/// method (`dft_plus_u.F`: `h_block += ½(dEdq_i+dEdq_j)·S_ij`).
 ///
 /// Multi-k (collinear): Brillouin-zone average
 ///   \( n=\sum_k w_k\,\tfrac12\mathrm{Herm}\big[(P_k S_k)+(S_k P_k)\big] \)
@@ -118,6 +125,37 @@ inline void scatter_potential(linalg::RealMatrix& H,
               idx[static_cast<std::size_t>(b)]) += V_sub(a, b);
 }
 
+/// @brief Add the variational Dudarev potential ½(V̂S + SV̂) onto a real H.
+/// @param V_hat Full-AO scattered subspace potential [Hartree].
+/// @param S Overlap with the same image convention the occupation used.
+inline void add_dftu_potential(linalg::RealMatrix& H,
+                               const linalg::RealMatrix& V_hat,
+                               const linalg::RealMatrix& S) {
+    const int nb = static_cast<int>(H.shape(0));
+    for (int i = 0; i < nb; ++i)
+        for (int j = 0; j < nb; ++j) {
+            double vs = 0.0;
+            for (int k = 0; k < nb; ++k)
+                vs += V_hat(i, k) * S(k, j) + S(i, k) * V_hat(k, j);
+            H(i, j) += 0.5 * vs;
+        }
+}
+
+/// @brief Add the variational Dudarev potential ½(V̂S_k + S_kV̂) onto one H_k.
+inline void add_dftu_potential_cplx(linalg::CplxMatrix& H,
+                                    const linalg::RealMatrix& V_hat,
+                                    const linalg::CplxMatrix& S) {
+    using Cplx = std::complex<double>;
+    const int nb = static_cast<int>(H.shape(0));
+    for (int i = 0; i < nb; ++i)
+        for (int j = 0; j < nb; ++j) {
+            Cplx vs(0.0, 0.0);
+            for (int k = 0; k < nb; ++k)
+                vs += V_hat(i, k) * S(k, j) + S(i, k) * V_hat(k, j);
+            H(i, j) += 0.5 * vs;
+        }
+}
+
 /// @brief Mulliken spin population m_A = Σ_{μ∈A,ν} (Pα−Pβ)_{μν} S_{νμ}.
 inline std::vector<double>
 mulliken_spin_populations(const linalg::RealMatrix& Pa,
@@ -153,8 +191,12 @@ inline double apply_dft_plus_u(linalg::RealMatrix& H,
                                const std::vector<AoShellTag>& tags,
                                const std::vector<int>& z_of_atom,
                                const std::vector<PlusUHa>& by_z_slot,
-                               const std::vector<int>& z_keys) {
+                               const std::vector<int>& z_keys,
+                               linalg::RealMatrix* V_hat_out = nullptr) {
     double e_u = 0.0;
+    const int nb = static_cast<int>(P.shape(0));
+    linalg::RealMatrix V_hat = xt::zeros<double>({nb, nb});
+    bool any = false;
     const int n_atoms = static_cast<int>(z_of_atom.size());
     for (int iat = 0; iat < n_atoms; ++iat) {
         const int z = z_of_atom[static_cast<std::size_t>(iat)];
@@ -170,9 +212,15 @@ inline double apply_dft_plus_u(linalg::RealMatrix& H,
             const linalg::RealMatrix occ = mulliken_occupation(P, S, idx);
             linalg::RealMatrix V;
             e_u += dudarev_energy_potential(pu.U_ha, occ, V);
-            scatter_potential(H, idx, V);
+            scatter_potential(V_hat, idx, V);
+            any = true;
         }
     }
+    // Variational Fock contribution ∂E_U/∂P = ½(V̂S + SV̂) (see file header).
+    if (any)
+        add_dftu_potential(H, V_hat, S);
+    if (V_hat_out)
+        *V_hat_out = std::move(V_hat);
     return e_u;
 }
 
@@ -208,6 +256,44 @@ inline double dft_plus_u_energy(const linalg::RealMatrix& P,
     return e_u;
 }
 
+/// @brief Fold the Dudarev geometric force term into a Γ Pulay density.
+///
+/// The Mulliken occupation \(n=\tfrac12[(PS)+(SP)]\) depends on geometry
+/// through \(S\), so at fixed \(P\) the +U energy contributes
+/// \(dE_U/dR=\mathrm{Tr}[M\,dS]\) with \(M=\tfrac12(\hat V P+P\hat V)\) and
+/// \(\hat V\) the Dudarev potential scattered on the full AO matrix. The
+/// standard \(W\!\cdot\!dS\) Pulay contraction then picks it up as
+/// \(W\leftarrow W-M\) — the same device CP2K uses for its
+/// geometry-dependent Mulliken-charges +U (`dft_plus_u.F`, `matrix_w`
+/// correction).
+///
+/// @param W Total energy-weighted density; M is subtracted in place.
+/// @param P_spin One spin channel's density [e] (RKS: pass P_tot/2).
+/// @param S Overlap (nb × nb), same image convention as the SCF.
+/// @param channel_scale 2 for the two identical RKS channels, 1 per UKS spin.
+inline void subtract_dftu_pulay(linalg::RealMatrix& W,
+                                const linalg::RealMatrix& P_spin,
+                                const linalg::RealMatrix& S,
+                                double channel_scale,
+                                const std::vector<AoShellTag>& tags,
+                                const std::vector<int>& z_of_atom,
+                                const std::vector<PlusUHa>& by_z_slot,
+                                const std::vector<int>& z_keys) {
+    const int nb = static_cast<int>(P_spin.shape(0));
+    linalg::RealMatrix H_discard = xt::zeros<double>({nb, nb});
+    linalg::RealMatrix V_hat;
+    apply_dft_plus_u(H_discard, P_spin, S, tags, z_of_atom, by_z_slot, z_keys,
+                     &V_hat);
+    // W -= channel_scale * ½ (V̂ P + P V̂)
+    for (int i = 0; i < nb; ++i)
+        for (int j = 0; j < nb; ++j) {
+            double vp = 0.0;
+            for (int k = 0; k < nb; ++k)
+                vp += V_hat(i, k) * P_spin(k, j) + P_spin(i, k) * V_hat(k, j);
+            W(i, j) -= channel_scale * 0.5 * vp;
+        }
+}
+
 // ── Multi-k (complex Bloch) Dudarev helpers ──────────────────────────────
 
 /// @brief Weighted Hermitian Mulliken occupation block from one \(P_k,S_k\).
@@ -240,27 +326,6 @@ inline void accumulate_mulliken_occupation_k(
             occ(a, b) += w * mh.real();
         }
     }
-}
-
-/// @brief Scatter a real subspace potential into a complex Fock matrix.
-inline void scatter_potential_cplx(linalg::CplxMatrix& H,
-                                   const std::vector<int>& idx,
-                                   const linalg::RealMatrix& V_sub) {
-    const int n = static_cast<int>(idx.size());
-    for (int a = 0; a < n; ++a)
-        for (int b = 0; b < n; ++b)
-            H(idx[static_cast<std::size_t>(a)],
-              idx[static_cast<std::size_t>(b)]) += V_sub(a, b);
-}
-
-/// @brief Add a full real potential matrix onto a complex \(H_k\).
-inline void add_real_potential(linalg::CplxMatrix& H,
-                               const linalg::RealMatrix& V) {
-    const int nb = static_cast<int>(H.shape(0));
-    for (int i = 0; i < nb; ++i)
-        for (int j = 0; j < nb; ++j)
-            if (V(i, j) != 0.0)
-                H(i, j) += V(i, j);
 }
 
 /// @brief BZ-averaged Dudarev energy + full-AO real potential for one spin.
@@ -337,6 +402,11 @@ inline double build_dftu_potential_k(
 }
 
 /// @brief Apply multi-k Dudarev to every local \(H_k\) for one spin.
+///
+/// Adds the variational \(\tfrac12(\hat V S_k + S_k\hat V)\) onto each local
+/// \(H_k\) (see file header). `V_out` receives the raw \(\hat V\) — re-adding
+/// it later (band-payload rebuild) must go through `add_dftu_potential_cplx`
+/// with the matching \(S_k\), never a bare add.
 /// @return \(E_U\) [Hartree] for this spin (global when `allreduce_occ`).
 inline double apply_dft_plus_u_k(std::vector<linalg::CplxMatrix>& H_k,
                                  const std::vector<linalg::CplxMatrix>& P_k,
@@ -354,10 +424,53 @@ inline double apply_dft_plus_u_k(std::vector<linalg::CplxMatrix>& H_k,
         by_z_slot, z_keys, V_full);
     const int nk = static_cast<int>(H_k.size());
     for (int ik = ik_begin; ik < nk; ik += ik_stride)
-        add_real_potential(H_k[static_cast<std::size_t>(ik)], V_full);
+        add_dftu_potential_cplx(H_k[static_cast<std::size_t>(ik)], V_full,
+                                S_k[static_cast<std::size_t>(ik)]);
     if (V_out)
         *V_out = std::move(V_full);
     return e_u;
+}
+
+/// @brief Multi-k analogue of `subtract_dftu_pulay`: \(W_k\leftarrow W_k-M_k\).
+///
+/// \(\hat V\) is built from the BZ-averaged occupation of `P_spin_k`
+/// (all k, serial — force assembly is replicated per rank), then
+/// \(M_k=\tfrac12(\hat V P_k+P_k\hat V)\) is subtracted from every
+/// \(W_k\) so the k-summed \(W\!\cdot\!dS_k\) Pulay term carries
+/// \(dE_U/dR=\sum_k w_k\,\mathrm{Re\,Tr}[M_k\,dS_k]\).
+///
+/// @param W_k Per-k total energy-weighted densities; modified in place.
+/// @param P_spin_k One spin channel per k (RKS: pass P_k/2 views).
+/// @param channel_scale 2 for the two identical RKS channels, 1 per UKS spin.
+inline void subtract_dftu_pulay_k(std::vector<linalg::CplxMatrix>& W_k,
+                                  const std::vector<linalg::CplxMatrix>& P_spin_k,
+                                  const std::vector<linalg::CplxMatrix>& S_k,
+                                  const std::vector<double>& weights,
+                                  double channel_scale,
+                                  const std::vector<AoShellTag>& tags,
+                                  const std::vector<int>& z_of_atom,
+                                  const std::vector<PlusUHa>& by_z_slot,
+                                  const std::vector<int>& z_keys) {
+    using Cplx = std::complex<double>;
+    const int nk = static_cast<int>(P_spin_k.size());
+    if (nk == 0)
+        return;
+    linalg::RealMatrix V_hat;
+    build_dftu_potential_k(P_spin_k, S_k, weights, /*ik_begin=*/0,
+                           /*ik_stride=*/1, /*allreduce_occ=*/false, tags,
+                           z_of_atom, by_z_slot, z_keys, V_hat);
+    const int nb = static_cast<int>(V_hat.shape(0));
+    for (int ik = 0; ik < nk; ++ik) {
+        const linalg::CplxMatrix& P = P_spin_k[static_cast<std::size_t>(ik)];
+        linalg::CplxMatrix& W = W_k[static_cast<std::size_t>(ik)];
+        for (int i = 0; i < nb; ++i)
+            for (int j = 0; j < nb; ++j) {
+                Cplx vp(0.0, 0.0);
+                for (int k = 0; k < nb; ++k)
+                    vp += V_hat(i, k) * P(k, j) + P(i, k) * V_hat(k, j);
+                W(i, j) -= channel_scale * 0.5 * vp;
+            }
+    }
 }
 
 } // namespace internal

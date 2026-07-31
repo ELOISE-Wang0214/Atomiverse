@@ -260,6 +260,51 @@ TEST(GpwSolverClass, BuildAcceptsD3) {
     EXPECT_NO_THROW(solver.build(atoms));
 }
 
+// k-gate: closed-shell multi-k accepts REL_CUTOFF multigrid (ngrids>1 with a
+// positive rel_cutoff) — the gpw-multigrid-kpoints capability.
+TEST(GpwSolverClass, BuildAcceptsKpointMultigridRks) {
+    const auto atoms = small_h2();
+    GpwDft solver = small_cfg();
+    solver.k_mesh[0] = solver.k_mesh[1] = solver.k_mesh[2] = 2;
+    solver.ngrids = 4;
+    solver.rel_cutoff = 60.0;
+    EXPECT_NO_THROW(solver.build(atoms));
+}
+
+// k-gate: multi-k multigrid without a positive rel_cutoff is rejected
+// fail-fast (no silent single-grid fallback on the k path).
+TEST(GpwSolverClass, BuildRejectsKpointMultigridWithoutRelCutoff) {
+    const auto atoms = small_h2();
+    GpwDft solver = small_cfg();
+    solver.k_mesh[0] = 2;
+    solver.ngrids = 4;
+    solver.rel_cutoff = 0.0;
+    EXPECT_THROW(solver.build(atoms), std::invalid_argument);
+}
+
+// k-gate: multi-k UKS multigrid is out of scope — rejected fail-fast.
+TEST(GpwSolverClass, BuildRejectsKpointMultigridUks) {
+    const auto atoms = small_h2();
+    GpwDft solver = small_cfg();
+    solver.k_mesh[0] = 2;
+    solver.n_occ = 0;
+    solver.n_alpha = 1;
+    solver.n_beta = 1;
+    solver.ngrids = 4;
+    solver.rel_cutoff = 60.0;
+    EXPECT_THROW(solver.build(atoms), std::invalid_argument);
+}
+
+// k-gate: nonlocal vdW is not wired on the k path (the Γ runner owns the SCF
+// potential and post-SCF E_c^nl) — rejected instead of silently dropping it.
+TEST(GpwSolverClass, BuildRejectsKpointNonlocalVdw) {
+    const auto atoms = small_h2();
+    GpwDft solver = small_cfg();
+    solver.k_mesh[0] = 2;
+    solver.vdw_df = true;
+    EXPECT_THROW(solver.build(atoms), std::invalid_argument);
+}
+
 // Edge case: build() rejects an empty atom list (Design §2: atoms/basis
 // non-empty is part of the one-time fail-fast validation).
 TEST(GpwSolverClass, BuildRejectsEmptyAtoms) {

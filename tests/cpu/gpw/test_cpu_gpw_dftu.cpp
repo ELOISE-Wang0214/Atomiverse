@@ -141,6 +141,97 @@ TEST(GpwDftU, MullikenOccupationKMatchesReal) {
     EXPECT_NEAR(n_k(0, 1), n_real(0, 1), 1e-12);
 }
 
+TEST(GpwDftU, SubtractDftuPulayHandChecked) {
+    // nb = 2, one correlated AO (atom 0, l = 0, idx = {0}), U = 1 Ha.
+    // n_00 = ½[(PS)+(SP)]_00 = p00 + p01·s, V̂ = diag(U(½ − n00), 0),
+    // M = ½(V̂P + PV̂):  M00 = v·p00, M01 = M10 = ½·v·p01, M11 = 0.
+    using ATV::cpu::gpw::internal::AoShellTag;
+    using ATV::cpu::gpw::internal::PlusUHa;
+    using ATV::cpu::gpw::internal::subtract_dftu_pulay;
+    const double p00 = 0.7, p01 = 0.2, p11 = 0.4, s = 0.3;
+    RealMatrix P = xt::zeros<double>({2, 2});
+    P(0, 0) = p00;
+    P(0, 1) = P(1, 0) = p01;
+    P(1, 1) = p11;
+    RealMatrix S = xt::zeros<double>({2, 2});
+    S(0, 0) = S(1, 1) = 1.0;
+    S(0, 1) = S(1, 0) = s;
+    const std::vector<AoShellTag> tags = {{0, 0}, {1, 0}};
+    const std::vector<int> z_of_atom = {28, 8};
+    const std::vector<PlusUHa> slots = {{/*l=*/0, /*U_ha=*/1.0}};
+    const std::vector<int> z_keys = {28};
+
+    RealMatrix W = xt::zeros<double>({2, 2});
+    subtract_dftu_pulay(W, P, S, /*channel_scale=*/1.0, tags, z_of_atom,
+                        slots, z_keys);
+    const double n00 = p00 + p01 * s;
+    const double v = 1.0 * (0.5 - n00);
+    EXPECT_NEAR(W(0, 0), -v * p00, 1e-14);
+    EXPECT_NEAR(W(0, 1), -0.5 * v * p01, 1e-14);
+    EXPECT_NEAR(W(1, 0), -0.5 * v * p01, 1e-14);
+    EXPECT_NEAR(W(1, 1), 0.0, 1e-14);
+}
+
+TEST(GpwDftU, SubtractDftuPulayKGammaMatchesReal) {
+    // One real k = Γ (weight 1) must reproduce the real fold exactly.
+    using Cplx = std::complex<double>;
+    using ATV::cpu::gpw::internal::AoShellTag;
+    using ATV::cpu::gpw::internal::PlusUHa;
+    using ATV::cpu::gpw::internal::subtract_dftu_pulay;
+    using ATV::cpu::gpw::internal::subtract_dftu_pulay_k;
+    using ATV::cpu::linalg::CplxMatrix;
+    RealMatrix P = xt::zeros<double>({2, 2});
+    P(0, 0) = 0.7;
+    P(0, 1) = P(1, 0) = 0.2;
+    P(1, 1) = 0.4;
+    RealMatrix S = xt::zeros<double>({2, 2});
+    S(0, 0) = S(1, 1) = 1.0;
+    S(0, 1) = S(1, 0) = 0.3;
+    const std::vector<AoShellTag> tags = {{0, 0}, {1, 0}};
+    const std::vector<int> z_of_atom = {28, 8};
+    const std::vector<PlusUHa> slots = {{/*l=*/0, /*U_ha=*/1.0}};
+    const std::vector<int> z_keys = {28};
+
+    RealMatrix W_real = xt::zeros<double>({2, 2});
+    subtract_dftu_pulay(W_real, P, S, /*channel_scale=*/2.0, tags, z_of_atom,
+                        slots, z_keys);
+
+    std::vector<CplxMatrix> P_k(1), S_k(1),
+        W_k(1, CplxMatrix(xt::zeros<Cplx>({2, 2})));
+    P_k[0] = xt::zeros<Cplx>({2, 2});
+    S_k[0] = xt::zeros<Cplx>({2, 2});
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) {
+            P_k[0](i, j) = P(i, j);
+            S_k[0](i, j) = S(i, j);
+        }
+    subtract_dftu_pulay_k(W_k, P_k, S_k, {1.0}, /*channel_scale=*/2.0, tags,
+                          z_of_atom, slots, z_keys);
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) {
+            EXPECT_NEAR(W_k[0](i, j).real(), W_real(i, j), 1e-14);
+            EXPECT_NEAR(W_k[0](i, j).imag(), 0.0, 1e-14);
+        }
+}
+
+TEST(GpwDftU, BuildRejectsGammaRksPlusU) {
+    // Active plus_u on the Γ closed-shell RKS path must throw (the Γ RKS SCF
+    // has no +U fold — silent ignore is forbidden).
+    using namespace ATV::cpu::gpw;
+    GpwDft cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 8.0;
+    cfg.n_occ = 1;
+    cfg.nonperiodic = false;
+    cfg.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_ev=*/4.0});
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    const double r0[3] = {3.3, 4.0, 4.0};
+    const double r1[3] = {4.7, 4.0, 4.0};
+    std::vector<GpwAtom> atoms{GpwAtom(r0, basis, pot, 1),
+                               GpwAtom(r1, basis, pot, 1)};
+    EXPECT_THROW(cfg.build(atoms), std::invalid_argument);
+}
+
 TEST(GpwDftU, BuildAcceptsKmeshPlusU) {
     using namespace ATV::cpu::gpw;
     GpwDft cfg;
@@ -177,7 +268,8 @@ TEST(GpwDftU, KpointGammaLimitMatchesRealGammaUks) {
         cfg.cutoff_ry = 100.0;
         cfg.n_alpha = 2;
         cfg.n_beta = 0;
-        cfg.max_iter = 80;
+        // Variational ½(V̂S+SV̂) scatter (2026-07-31): ~90+ DIIS iters here.
+        cfg.max_iter = 300;
         cfg.tol = 1e-7;
         cfg.xc = XcKind::PADE;
         cfg.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_ev=*/4.0});

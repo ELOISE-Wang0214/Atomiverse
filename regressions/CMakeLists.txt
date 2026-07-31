@@ -200,6 +200,12 @@ if(ATV_BUILD_PW)
         target_compile_definitions(reg_dfpt-spin-si PRIVATE
             ATV_PW_UPF_PATH="${_atv_si_upf}")
     endif()
+    # Γ DFPT joint collinear spin × pure GGA (PBE) kernel (response).
+    atv_add_regression(response dfpt-gga-spin-si)
+    if(TARGET reg_dfpt-gga-spin-si)
+        target_compile_definitions(reg_dfpt-gga-spin-si PRIVATE
+            ATV_PW_UPF_PATH="${_atv_si_upf}")
+    endif()
     # Γ DFPT with metallic occupation smearing (FD, restricted Si twin).
     atv_add_regression(response dfpt-metallic-si)
     if(TARGET reg_dfpt-metallic-si)
@@ -288,8 +294,10 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw gpw-d4-water THREADS 8)
     atv_add_regression(gpw gpw-d4-atm THREADS 8)
     atv_add_regression(gpw gpw-d3-stress THREADS 8)
+    atv_add_regression(gpw gpw-d3bj-stress THREADS 8)
     atv_add_regression(gpw gpw-d4-stress THREADS 8)
     atv_add_regression(gpw gpw-d4-forces THREADS 8)
+    atv_add_regression(gpw gpw-d4-atm-forces THREADS 8)
     atv_add_regression(gpw gpw-ts-ice THREADS 8)
     atv_add_regression(gpw gpw-ts-forces THREADS 8)
     atv_add_regression(gpw gpw-xdm-ice THREADS 8)
@@ -333,6 +341,9 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw gpw-uks-multigrid THREADS 8)
     if(ATV_BUILD_MD)
         atv_add_regression(gpw gpw-bomd-water THREADS 8)
+        # Plain multi-k BOMD (full SCF each step, previous-step P_k warm
+        # start) — H2 NVE pinned vs CP2K 2026.1 Quickstep AIMD + KPOINTS.
+        atv_add_regression(gpw gpw-bomd-kpoints THREADS 8)
         # Extended-Lagrangian BOMD (dynamics domain): XL auxiliary-density
         # propagation on the same H2O NVE twin.
         atv_add_regression(dynamics xl-bomd-water THREADS 8)
@@ -345,6 +356,9 @@ if(ATV_BUILD_GPW)
         atv_add_regression(dynamics xl-bomd-uks-kpoints THREADS 8)
         # Zero-SCF linearized-functional XL-BOMD forces (shadow BO potential).
         atv_add_regression(dynamics xl-bomd-linearized-forces THREADS 8)
+        # Zero-SCF linearized XL-BOMD on Γ-UKS (dual-spin shadow forces) —
+        # O2 triplet NVE (identical twin of xl-bomd-uks + linearized tag).
+        atv_add_regression(dynamics xl-bomd-linearized-uks THREADS 8)
         # Car–Parrinello MD (dynamics domain): fictitious electronic DOF on
         # the same H2O NVE twin family — not BOMD, not XL-BOMD.
         atv_add_regression(dynamics cpmd-water THREADS 8)
@@ -372,13 +386,21 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw gpw-dftu-stress THREADS 8)
     atv_add_regression(gpw gpw-dftu-kpoints THREADS 8)
     atv_add_regression(gpw gpw-dftu-kpoint-stress THREADS 8)
+    atv_add_regression(gpw gpw-dftu-kpoint-forces THREADS 8)
     atv_add_regression(gpw gpw-kpoints-si THREADS 8)
+    # Multi-k RKS with CP2K REL_CUTOFF multigrid product collocation
+    # (offline CP2K 2026.1 pin — gpw-multigrid-kpoints).
+    atv_add_regression(gpw gpw-multigrid-kpoints THREADS 8)
     atv_add_regression(gpw periodic-wannier-gpw THREADS 8)
     # Dispersion ionic forces vs offline CP2K Quickstep D3 twins.
     atv_add_regression(gpw gpw-d3-forces THREADS 8)
     atv_add_regression(gpw gpw-d3bj-forces THREADS 8)
+    # D3 three-body ATM (C9) force pin, isolated + periodic image triples.
+    atv_add_regression(gpw gpw-d3-atm-forces THREADS 8)
     # Gamma analytic cell stress folding periodic MBD@rsSCS.
     atv_add_regression(gpw gpw-mbd-stress THREADS 8)
+    # Multi-k analytic cell stress folding periodic MBD@rsSCS.
+    atv_add_regression(gpw gpw-mbd-kpoint-stress THREADS 8)
     atv_add_regression(gpw gpw-metallic-smearing THREADS 8)
     atv_add_regression(gpw gpw-uks-smearing THREADS 8)
     atv_add_regression(gpw gpw-kpoint-forces THREADS 8)

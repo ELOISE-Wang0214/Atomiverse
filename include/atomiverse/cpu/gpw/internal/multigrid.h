@@ -20,6 +20,7 @@
 /// unchanged (bit-identical).
 #pragma once
 
+#include <array>
 #include <vector>
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
@@ -150,6 +151,8 @@ struct GridProduct {
     int ua = 0,
         ub = 0; ///< indices into ProductSet::prims (bra, ket cartesian prim).
     int level = 0; ///< assigned grid level (index into MultiGrid::levels).
+    int t[3] = {0, 0, 0}; ///< ket image shift (lattice cells; bra stays home).
+    int tcell = 0; ///< index of `t` in ProductSet::cells (Bloch phase lookup).
 };
 
 /// @brief One spherical basis function μ that a cartesian primitive feeds, with
@@ -184,6 +187,10 @@ struct ProductSet {
     std::vector<PrimRef> prims; ///< unique cartesian primitives.
     std::vector<PrimContrib>
         contribs; ///< flat contributor pool (sliced by PrimRef).
+    /// Distinct ket image shifts over all products, lexicographically sorted;
+    /// `GridProduct::tcell` indexes this list. Size 1 (the home cell) for an
+    /// isolated system; the Γ path ignores it (every cell weighs by the same P).
+    std::vector<std::array<int, 3>> cells;
 };
 
 /// @brief Build the geometry-fixed primitive-pair product list (the product-based
@@ -231,6 +238,30 @@ std::vector<double> integrate_products(
     const UniformGrid& grid, const std::vector<GridProduct>& prods,
     const std::vector<PrimRef>& prims, const std::vector<PrimContrib>& contribs,
     int nb, const std::vector<double>& V_level, double eps);
+
+/// @brief `collocate_products` with a per-image-cell density-matrix stack —
+///        the Bloch-sampled product collocation. Each product weighs by
+///        `D[tcell][μ·nb+ν]` instead of one shared `P`: for k-point sampling
+///        D(t) = Σ_k w_k Re[P^k e^{−2πi κ·t}] (t = the product's ket image
+///        shift), which reduces to the Γ path when every D[c] is the same P.
+/// @param D One row-major nb×nb real matrix per `ProductSet::cells` entry.
+/// @return Level density ρ_level, length grid.npts().
+std::vector<double> collocate_products_cells(
+    const UniformGrid& grid, const std::vector<GridProduct>& prods,
+    const std::vector<PrimRef>& prims, const std::vector<PrimContrib>& contribs,
+    int nb, const std::vector<std::vector<double>>& D, double eps);
+
+/// @brief `integrate_products` resolved per image cell — the EXACT transpose of
+///        `collocate_products_cells`: each product's ∫V·shape scatters into the
+///        real matrix of ITS ket image shift, V_t[tcell][μ·nb+ν]. The per-k
+///        grid KS matrix is the caller's phase sum Σ_t e^{+2πi κ·t}·V_t
+///        (Hermitian: the lattice-shifted window makes V_{−t} = V_tᵀ exactly).
+/// @param ncells Number of image cells (`ProductSet::cells.size()`).
+/// @return One row-major nb×nb real matrix per image cell.
+std::vector<std::vector<double>> integrate_products_cells(
+    const UniformGrid& grid, const std::vector<GridProduct>& prods,
+    const std::vector<PrimRef>& prims, const std::vector<PrimContrib>& contribs,
+    int nb, const std::vector<double>& V_level, std::size_t ncells, double eps);
 
 } // namespace gpw
 } // namespace cpu
