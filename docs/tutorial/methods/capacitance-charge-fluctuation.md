@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `capacitance-charge-fluctuation` |
-| Regression | `regressions/md/capacitance-charge-fluctuation/` |
 | Public API | `cpu::CapacitanceChargeFluctuation` (`Observer` on `cpu::md::MD`, default `end_of_step` @ +50) |
 | Roadmap | map slice E10 ecosystem |
 | Oracle | **literature** (Limmer / Scalfi–Salanne / MetalWalls charge-fluctuation \(C\); no LAMMPS or MetalWalls binary twin) |
@@ -179,26 +178,26 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_capacitance-charge-fluctuation -j"$(nproc)"
-  ./build/regressions/reg_capacitance-charge-fluctuation
+  reg_capacitance-charge-fluctuation
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/observe/capacitance_charge_fluctuation.h` | Public `CapacitanceChargeFluctuation` |
+| `capacitance_charge_fluctuation.h` | Public `CapacitanceChargeFluctuation` |
 | `src/cpu/observe/capacitance_charge_fluctuation.cpp` | Sum \(Q\), moments, meta write-back |
-| `include/atomiverse/core/frame_schema.h` | `kCapacitanceDiff`, `kCapacitanceIntegral`, `kElectrodeCharge` |
-| `regressions/md/capacitance-charge-fluctuation/reg_capacitance-charge-fluctuation.cpp` | Product gate |
+| `frame_schema.h` | `kCapacitanceDiff`, `kCapacitanceIntegral`, `kElectrodeCharge` |
+| `reg_capacitance-charge-fluctuation.cpp` | Product gate |
 | `tests/cpu/observe/test_capacitance_charge_fluctuation.cpp` | Unit surface (not the e2e pin) |
-| `tools/metalwalls_oracle/pin_notes_capacitance-charge-fluctuation.md` | Offline pin provenance |
+| MetalWalls oracle | Offline pin provenance |
 
 ## Validation (vs literature)
 
 Source:
-[`regressions/md/capacitance-charge-fluctuation/REFERENCE.md`](../../../regressions/md/capacitance-charge-fluctuation/REFERENCE.md)
+case `capacitance-charge-fluctuation` pin
 (offline pin; **never** live MetalWalls or LAMMPS in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md),
-[`tools/metalwalls_oracle/pin_notes_capacitance-charge-fluctuation.md`](../../../tools/metalwalls_oracle/pin_notes_capacitance-charge-fluctuation.md).
+MetalWalls oracle,
+MetalWalls oracle.
 
 **Oracle:** **literature** — Limmer et al., *J. Chem. Phys.* **139**, 184704
 (2013) (charge-fluctuation \(C\)); Scalfi et al., *Phys. Chem. Chem. Phys.*
@@ -260,7 +259,7 @@ PY
 ## Performance
 
 Source: REFERENCE.md dual-gate summary; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{oracle}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -297,9 +296,7 @@ same \(Q\) series and \(k_B\); neither shipped as a binary pin for this slug.
 
 ## References
 
-- Offline pin: [`regressions/md/capacitance-charge-fluctuation/REFERENCE.md`](../../../regressions/md/capacitance-charge-fluctuation/REFERENCE.md)
-- Product gate: [`regressions/md/capacitance-charge-fluctuation/reg_capacitance-charge-fluctuation.cpp`](../../../regressions/md/capacitance-charge-fluctuation/reg_capacitance-charge-fluctuation.cpp)
-- Public header: [`include/atomiverse/cpu/observe/capacitance_charge_fluctuation.h`](../../../include/atomiverse/cpu/observe/capacitance_charge_fluctuation.h)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md), [`tools/metalwalls_oracle/pin_notes_capacitance-charge-fluctuation.md`](../../../tools/metalwalls_oracle/pin_notes_capacitance-charge-fluctuation.md)
-- Capability map: [`.claude/notes/metalwalls-capability-map.md`](../../../.claude/notes/metalwalls-capability-map.md) (E10)
+- Offline pin: case `capacitance-charge-fluctuation` pin
+- Oracle notes: MetalWalls oracle, MetalWalls oracle
+- Capability map: `.claude/notes/metalwalls-capability-map.md` (E10)
 - Literature: Limmer et al., *J. Chem. Phys.* **139**, 184704 (2013); Scalfi et al., *Phys. Chem. Chem. Phys.* **22**, 10480 (2020); Marin-Laflèche et al., *J. Open Source Softw.* **5**(53), 2373 (2020) (MetalWalls)

@@ -21,10 +21,10 @@ Numerically identical to the Poisson foothold path (`mp2_ri = false`,
 cFIT / `RI_AUX` tables and multi-k MP2 are residuals.
 
 ```cpp
-cpu::gpw::GpwDft m;
-// ... members; build(); run(atoms);
+cpu::gpw::GpwDft m{{si_kind}};
+// ... members; build(frame); run(frame);  // frame: Å positions, Z, box
 m.mp2_ri = true;                     // product default
-const cpu::gpw::Mp2Result& r = m.mp2(atoms);
+const cpu::gpw::Mp2Result& r = m.mp2();
 // r.ri == true; r.e_corr [Ha]
 ```
 

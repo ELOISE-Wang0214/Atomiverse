@@ -5,9 +5,8 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-xdm-forces` |
-| Regression | `regressions/gpw/gpw-xdm-forces/` |
-| Public API | `cpu::gpw::GpwDft::xdm` / `cpu::gpw::GPWEvaluator::xdm` with force assembly; `xdm_pbe` → `XdmResult::{energy,forces}`; `GpwResult::e_disp` [Ha] |
-| Related energy pin | `regressions/gpw/gpw-xdm-ice/` (same geometry / tables; energy-only) |
+| Public API | `cpu::gpw::GpwDft::xdm` (bound through `cpu::gpw::GPWEvaluator`) with force assembly; `xdm_pbe` → `XdmResult::{energy,forces}`; `GpwResult::e_disp` [Ha] |
+| Related energy pin | `gpw-xdm-ice` (same geometry / tables; energy-only) |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -27,11 +26,11 @@ volume scaling) with the same dual pure-Python lattice-sum policy as
 `gpw-xdm-ice` and the force dual-gate policy as `gpw-mbd-forces` /
 `gpw-ts-forces`.
 
-Public surface: bool members `xdm` on `cpu::gpw::GpwDft` and
-`cpu::gpw::GPWEvaluator` (no `*Config` bag). When `xdm=true`, `assemble_gpw_forces`
+Public surface: bool members `xdm` on `cpu::gpw::GpwDft` (bound through
+`cpu::gpw::GPWEvaluator`; no `*Config` bag). When `xdm=true`, `assemble_gpw_forces`
 adds XDM forces to the electronic force; `GpwResult::e_disp` reports the same
 periodic energy as the energy-only path. Product gate:
-`regressions/gpw/gpw-xdm-forces` (`reg_gpw-xdm-forces`). Wall ratio is
+`gpw-xdm-forces` (`reg_gpw-xdm-forces`). Wall ratio is
 **perf_exempt** (E_disp + force dual-gate; no fair CP2K ENERGY_FORCE without
 stock XDM).
 
@@ -134,12 +133,13 @@ D3(BJ) / D4 / MBD).
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
+Public surface only (`GpwDft` members; no `*Config`, no
 `make_*` / `build_*` factories). Product regression gates the internal kernel
 `xdm_pbe` (same pattern as `gpw-mbd-forces`) plus a short `GpwDft` SCF with
 `xdm=true`:
 
 ```cpp
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -147,7 +147,7 @@ Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::xdm_pbe;
@@ -166,8 +166,9 @@ const auto xdm_per = xdm_pbe(Z, pos, cellp, /*periodic=*/true, rcut);
 // Dual-gate: independent central FD of energy vs product forces (h=1e-5 Bohr)
 
 // Product SCF materializes the same periodic E_disp on GpwResult.
-GpwDft gpw;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+// frame: same dimer in Å, Z in kAtom_type; kinds = {O, H} Kind entries
+frame.box = ATV::cpu::Box::cubic(12.0);  // Å
+GpwDft gpw{kinds};
 gpw.cutoff_ry = 200.0;
 gpw.n_occ = 8;
 gpw.max_iter = 8;
@@ -177,22 +178,25 @@ gpw.xc = XcKind::PBE;
 gpw.nonperiodic = false;
 gpw.xdm = true; // exclusive vs d3/d3bj/d4/ts/mbd/vdw_*
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp within 1e-8 of periodic dual-Python pin
-// assemble_gpw_forces(..., cfg with xdm) adds F_XDM to electronic forces
+// gpw.forces(frame) adds F_XDM to the electronic forces (kAtom_f* [eV/Å])
 ```
 
 Driver / Frame path (component; same member):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/300.0, /*max_iter=*/200,
-                                 /*tol=*/1e-7, /*mix=*/0.3,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false,
-                                 /*compute_forces=*/true);
-eval.xdm = true;
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 300.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.3;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;
+dft.nonperiodic = false;
+dft.xdm = true;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/true);
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp [Hartree]
 // Frame kAtom_f* [eV/Å] includes electronic + XDM forces
@@ -212,33 +216,33 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-xdm-forces -j$(nproc)
-  ./build/regressions/reg_gpw-xdm-forces
+  reg_gpw-xdm-forces
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::xdm`, `GpwResult::e_disp` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::xdm` |
-| `include/atomiverse/cpu/gpw/internal/xdm_dispersion.h` | `xdm_pbe` / `XdmResult` |
-| `include/atomiverse/cpu/gpw/basis_data/xdm_tables.h` | Free-atom \(\alpha,M_1{-}M_3\); PBE \(a_1,a_2\) |
+| `gpw_solver.h` | `GpwDft::xdm`, `GpwResult::e_disp` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds the configured `GpwDft`) |
+| `xdm_dispersion.h` | `xdm_pbe` / `XdmResult` |
+| `xdm_tables.h` | Free-atom \(\alpha,M_1{-}M_3\); PBE \(a_1,a_2\) |
 | `src/cpu/gpw/internal/xdm_dispersion.cpp` | Energy + analytic force kernel |
 | `src/cpu/gpw/internal/gpw_forces.cpp` | `assemble_gpw_forces` folds `xdm` forces |
 | `tests/cpu/gpw/test_cpu_gpw_xdm.cpp` | Unit energy/force dual-gate |
 | `tests/cpu/gpw/test_cpu_gpw_forces.cpp` | Product Γ RKS + XDM analytic vs multi-SCF FD |
-| `regressions/gpw/gpw-xdm-forces/reg_gpw-xdm-forces.cpp` | Product e2e gate |
-| `regressions/gpw/gpw-xdm-forces/REFERENCE.md` | Offline pins + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-xdm-forces/` | Twin policy note (no stock XDM) |
-| `regressions/gpw/gpw-xdm-ice/` | Energy-only sibling pin |
+| `reg_gpw-xdm-forces.cpp` | Product e2e gate |
+| case `gpw-xdm-forces` pin | Offline pins + perf_exempt |
+| CP2K oracle | Twin policy note (no stock XDM) |
+| `gpw-xdm-ice` | Energy-only sibling pin |
 
 ## Validation (dual pure-Python / FD dual-gate)
 
 Source:
-[`regressions/gpw/gpw-xdm-forces/REFERENCE.md`](../../../regressions/gpw/gpw-xdm-forces/REFERENCE.md).
+case `gpw-xdm-forces` pin.
 Oracle: offline **dual pure-Python** lattice sum (same tables as ATV
 `xdm_tables.h`) + **independent central FD** of \(E_{\mathrm{disp}}\) vs
 product analytic forces. Twin notes under
-`tools/cp2k_oracle/inputs/gpw-xdm-forces/`. Hard-coded pins in the regression
+CP2K oracle. Hard-coded pins in the regression
 binary — **never** live CP2K / postg / QE from ctest.
 
 **Setup:**
@@ -287,7 +291,7 @@ sample (not a live engine re-run).
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 XDM evaluation is \(O(N^2\times N_{\mathrm{images}})\) over a 6-atom cell
 (microseconds). Full GPW SCF wall dominates if present. There is **no** fair
@@ -295,7 +299,7 @@ CP2K `ENERGY_FORCE` twin without stock XDM.
 
 | Twin | \(T_{\mathrm{oracle}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | ----------------------: | ----: | ---- | ------ |
-| Full QS ENERGY_FORCE | n/a (no stock `TYPE XDM`) | — | **perf_exempt** | — | Twin note retained under `tools/cp2k_oracle/inputs/gpw-xdm-forces/` |
+| Full QS ENERGY_FORCE | n/a (no stock `TYPE XDM`) | — | **perf_exempt** | — | Twin note retained under CP2K oracle |
 | E_disp + force dual-gate | n/a | `reg_gpw-xdm-forces` | **perf_exempt** | — | Geometry-only primary deliverable |
 
 **perf_exempt = true.** Same policy as `gpw-xdm-ice` / `gpw-ts-forces` /
@@ -324,10 +328,10 @@ parity, not \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \le 10\).
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-xdm-forces/REFERENCE.md`
-- Energy sibling: `regressions/gpw/gpw-xdm-ice/REFERENCE.md`
-- Twin notes: `tools/cp2k_oracle/inputs/gpw-xdm-forces/water_dimer_xdm_forces.note`
-- Oracle policy: `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-xdm-forces` pin
+- Energy sibling: case `gpw-xdm-ice` pin
+- Twin notes: CP2K oracle
+- Oracle policy: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
 - Narrative GPW: `docs/tutorial/ch09-gpw.md`
 - Related force pins: `gpw-ts-forces`, `gpw-mbd-forces`, `gpw-d4-forces`,

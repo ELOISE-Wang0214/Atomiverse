@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-finite-q-smearing` |
-| Regression | `regressions/response/dfpt-finite-q-smearing/` |
 | Public API | `cpu::pw::DfptPhonon` (members: `q_frac`, response/CG tolerances) + `cpu::pw::DfptPhononResult`; ground state via `cpu::pw::PW` members `smearing`, `degauss` [Ry], `extra_bands` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — finite-q + metallic smear ✓ |
 | Dep | `dfpt-finite-q-si` ✓ (fixed-occ X twin); `dfpt-metallic-si` ✓ (Γ FD); `pw-smearing-al` ✓ (occupations) |
@@ -57,7 +56,7 @@ as:
 1. Expand the primitive cell to an \(n_a\times n_b\times n_c\) supercell.
 2. Run **smear-aware Γ-point DFPT** on that supercell
    (`internal::dfpt_gamma_force_constants` — same engine as Γ metallic
-   sibling `regressions/response/dfpt-metallic-si`).
+   sibling `dfpt-metallic-si`).
 3. Fourier the supercell IFCs to the requested \(\mathbf{q}\) of the
    primitive cell (`PhononDispersion::frequencies_at_q`).
 
@@ -95,8 +94,8 @@ public `*Config` bag and **no** `make_*` / `build_*` factory. Frame is not
 mutated; spectra live on the owned result.
 
 Headers:
-`include/atomiverse/cpu/planewave/dfpt_phonon.h` (facade),
-`include/atomiverse/cpu/planewave/pw_solver.h` (smear members);
+`dfpt_phonon.h` (facade),
+`pw_solver.h` (smear members);
 internals under `planewave/internal/dfpt.*` (not a user type).
 
 ```cpp
@@ -164,18 +163,18 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_dfpt-finite-q-smearing
-  ./build/regressions/reg_dfpt-finite-q-smearing
+  reg_dfpt-finite-q-smearing
   # or: cmake --build build --target run_reg_dfpt-finite-q-smearing
 '
 ```
 
 Source consumer:
-`regressions/response/dfpt-finite-q-smearing/reg_dfpt-finite-q-smearing.cpp`.
+`reg_dfpt-finite-q-smearing.cpp`.
 
 ## Validation (CP2K product intent; offline pins)
 
 Source:
-[`regressions/response/dfpt-finite-q-smearing/REFERENCE.md`](../../../regressions/response/dfpt-finite-q-smearing/REFERENCE.md)
+case `dfpt-finite-q-smearing` pin
 (hard-coded gates only; **never** live CP2K in ctest).
 
 ### ATV system (frequency gates)
@@ -219,13 +218,13 @@ counterpart of ATV finite-\(q\) DFPT under metallic occupations.
 | Item | Value |
 | ---- | ----- |
 | Preferred oracle | CP2K + `&SMEAR` (FD \(T_e\) matched to `degauss ≈ 0.02` Ry ≈ 3158 K) |
-| Note | `tools/cp2k_oracle/inputs/dfpt-finite-q-smearing.note` |
+| Note | CP2K oracle |
 | Suggested structure | diamond Si primitive, PADE/LDA, GTH-PADE + DZVP-MOLOPT-SR-GTH (Si q4) |
 | Phonon | supercell \(2\times1\times1\) or finite-\(q\) path sampling **X** |
 | CP2K binary this pin host | **not available** (`module avail cp2k` empty) |
 | Absolute \(E\) / \(\omega\) vs ATV | **not compared** (different Hamiltonian) |
 
-Oracle contract: `tools/cp2k_oracle/README.md` (offline only).
+Oracle contract: CP2K oracle (offline only).
 
 ## Performance
 
@@ -245,7 +244,7 @@ this slug is **`perf_exempt`**.
 | `ratio_atv_over_oracle` | n/a (exempt) |
 | `within_10x` | n/a (exempt; correctness gates only) |
 
-Handoff: the case `REFERENCE.md` records
+Handoff: the case pin notes records
 `dfpt-finite-q-smearing` as **`perf_exempt`**.
 
 ## Limitations
@@ -272,16 +271,14 @@ Handoff: the case `REFERENCE.md` records
 
 ## References
 
-- Offline pin: `regressions/response/dfpt-finite-q-smearing/REFERENCE.md`
-- Regression: `regressions/response/dfpt-finite-q-smearing/reg_dfpt-finite-q-smearing.cpp`
-- Fixed-occ sibling: `regressions/response/dfpt-finite-q-si/REFERENCE.md`
-- Γ metallic sibling: `regressions/response/dfpt-metallic-si/REFERENCE.md`
-- CP2K product note: `tools/cp2k_oracle/inputs/dfpt-finite-q-smearing.note`
-- Oracle contract: `tools/cp2k_oracle/README.md`
-- Handoff (`perf_exempt`): the case `REFERENCE.md`
+- Offline pin: case `dfpt-finite-q-smearing` pin
+- Fixed-occ sibling: case `dfpt-finite-q-si` pin
+- Γ metallic sibling: case `dfpt-metallic-si` pin
+- CP2K product note: CP2K oracle
+- Oracle contract: CP2K oracle
+- Handoff (`perf_exempt`): the case pin notes
 - Roadmap: `docs/roadmap/dft.md` §11 DFPT (finite-q + metallic smear ✓)
-- Public header: `include/atomiverse/cpu/planewave/dfpt_phonon.h`
-- PW smear members: `include/atomiverse/cpu/planewave/pw_solver.h`
+- PW smear members: `pw_solver.h`
 - Internals: `include|src/.../planewave/internal/dfpt.*`, `smearing.*`
 - Related tutorials: [dfpt-phonon-si](dfpt-phonon-si.md) (Γ fixed-occ),
   [pw-smearing-al](pw-smearing-al.md) (metallic occupations),

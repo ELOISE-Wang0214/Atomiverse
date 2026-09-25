@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/g0w0.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
@@ -17,39 +19,43 @@
 
 namespace {
 
-std::vector<ATV::cpu::gpw::GpwAtom> si_bct(double a_bohr) {
-    using namespace ATV::cpu::gpw;
-    const double at = a_bohr / std::sqrt(2.0);
-    const GaussianBasis bas(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-    const GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
+ATV::cpu::Frame si_bct(double a_ang) {
+    using namespace ATV;
+    const double at = a_ang / std::sqrt(2.0);
     const double frac[4][3] = {
         {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}, {0.5, 0.0, 0.25}, {0.0, 0.5, 0.75}};
-    std::vector<GpwAtom> atoms;
+    cpu::Frame frame(4);
     for (int i = 0; i < 4; ++i) {
-        const double pos[3] = {frac[i][0] * at, frac[i][1] * at,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bas, pot, 14);
+        frame.span(kAtom_type)[i] = 14;
+        frame.span(kAtom_x)[i] = frac[i][0] * at;
+        frame.span(kAtom_y)[i] = frac[i][1] * at;
+        frame.span(kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = cpu::Box::orthorhombic(at, at, a_ang);
+    return frame;
+}
+
+ATV::cpu::gpw::Kind si_kind() {
+    using namespace ATV::cpu::gpw;
+    return Kind{molrs::Element::Si,
+                GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+                GthPotential(molrs::Element::Si, "GTH-PBE-q4")};
 }
 
 } // namespace
 
 int main() {
     using namespace ATV::cpu::gpw;
-    constexpr double kA2B = 1.0 / 0.52917720859;
-    const double a_bohr = 5.43 * kA2B;
+    const double a_ang = 5.43;
 
     // Dual-gate vs closed-shell multi-k finite-q G0W0 first-green
     // (periodic-gw-kpoints). UKS nα=nβ → UGW ≡ RGW when orbitals match.
     constexpr double kGapRefEv = 7.529834; // eV (periodic-gw-kpoints)
     constexpr double kGapTolEv = 0.5;      // eV setup band
 
-    auto atoms = si_bct(a_bohr);
+    ATV::cpu::Frame frame = si_bct(a_ang);
 
-    GpwDft m;
-    m.cell[0] = m.cell[1] = a_bohr / std::sqrt(2.0);
-    m.cell[2] = a_bohr;
+    GpwDft m{{si_kind()}};
     m.cutoff_ry = 80.0;
     m.n_alpha = 8;
     m.n_beta = 8;
@@ -66,10 +72,10 @@ int main() {
     m.k_mesh[2] = 1;
     m.k_time_reversal = false;
     m.diis_depth = 6;
-    m.build(atoms);
+    m.build(frame);
 
     const auto t0 = std::chrono::steady_clock::now();
-    const GpwResult& scf = m.run(atoms);
+    const GpwResult& scf = m.run(frame);
     if (!scf.converged || scf.n_kpts != 2 || scf.C_k.size() != 2
         || scf.C_k_beta.size() != 2) {
         std::fprintf(stderr,
@@ -86,7 +92,7 @@ int main() {
         return 1;
     }
 
-    const G0W0Result& gw = m.g0w0(atoms);
+    const G0W0Result& gw = m.g0w0();
     const auto t1 = std::chrono::steady_clock::now();
     const double wall = std::chrono::duration<double>(t1 - t0).count();
 

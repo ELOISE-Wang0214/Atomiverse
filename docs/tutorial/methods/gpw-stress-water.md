@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-stress-water` |
-| Regression | `regressions/gpw/gpw-stress-water/` |
 | Public API | `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd`, `stress_strain_h`); product analytic default — see [gpw-analytic-stress](gpw-analytic-stress.md); free `gpw_stress` / `gpw_stress_fd` |
 | Related narrative | [Ch. 9 GPW](../ch09-gpw.md) |
 | Queue | CP2K capability loop — wave 2 done (2026-07-24) |
@@ -24,7 +23,7 @@ Public surface: `cpu::gpw::GPWEvaluator` members `compute_stress` and
 `stress_strain_h` (no `*Config` bag) bound into `cpu::Evaluate`; stress on
 Frame as `kStress` [eV/Å³] Voigt, pin channel
 `last_stress_ha_bohr3()` [Ha/Bohr³]. Product gate:
-`regressions/gpw/gpw-stress-water` (`reg_gpw-stress-water`), offline CP2K
+`gpw-stress-water` (`reg_gpw-stress-water`), offline CP2K
 **2026.1** NUMERICAL pin. Fair wall ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} = 4.75\) vs ENERGY_FORCE baseline
 (≤10×).
@@ -102,7 +101,7 @@ is the same-method FD twin.
 ## Implementation
 
 Public surface only (`cpu::Frame`, `cpu::gpw::Kind` / lookup constructors,
-`GPWEvaluator` members; no public `*Config`, no `make_*` factories). Match
+`GpwDft` / `GPWEvaluator` members; no public `*Config`, no `make_*` factories). Match
 the regression:
 
 ```cpp
@@ -141,10 +140,10 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-cpu::gpw::GPWEvaluator eval(
-    /*kinds*/ {O, H}, /*cutoff_ry*/ 400.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-    /*compute_forces*/ false);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 400.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;  dft.nonperiodic = true;
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 eval.compute_stress = true;
 eval.stress_strain_h = 2e-3;
 
@@ -171,26 +170,26 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-stress-water -j$(nproc)
-  ./build/regressions/reg_gpw-stress-water
+  reg_gpw-stress-water
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | Public `compute_stress`, `stress_strain_h`, `last_stress_ha_bohr3()` |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | Public free `gpw_stress` [Ha/Bohr³] |
-| `include/atomiverse/cpu/gpw/internal/gpw_stress.h` | Private strain-FD implementation |
+| `gpw_evaluator.h` | Public `compute_stress`, `stress_strain_h`, `last_stress_ha_bohr3()` |
+| `gpw_solver.h` | Public free `gpw_stress` [Ha/Bohr³] |
+| `gpw_stress.h` | Private strain-FD implementation |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Orthorhombic central FD of SCF energy |
 | `src/cpu/gpw/gpw_evaluator.cpp` | Wire stress into Evaluate launch + `kStress` |
 | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` | Unit: finite diagonals, off-diag ≈ 0 (not CP2K e2e) |
-| `regressions/gpw/gpw-stress-water/reg_gpw-stress-water.cpp` | Product gate |
-| `regressions/gpw/gpw-stress-water/REFERENCE.md` | Offline CP2K pins + fair wall |
-| `tools/cp2k_oracle/inputs/h2o_stress_mt.inp` | CP2K twin (`STRESS_TENSOR NUMERICAL`) |
+| `reg_gpw-stress-water.cpp` | Product gate |
+| case `gpw-stress-water` pin | Offline CP2K pins + fair wall |
+| CP2K oracle | CP2K twin (`STRESS_TENSOR NUMERICAL`) |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/gpw-stress-water/REFERENCE.md`](../../../regressions/gpw/gpw-stress-water/REFERENCE.md).
+case `gpw-stress-water` pin.
 Oracle: offline **CP2K 2026.1** (`cp2k.psmp`, EasyBuild
 `2026.1-gmpflf-2026.03`), Arrhenius epyc, `RUN_TYPE ENERGY_FORCE` +
 `STRESS_TENSOR NUMERICAL`. Hard-coded pins in the regression binary —
@@ -202,7 +201,7 @@ Oracle: offline **CP2K 2026.1** (`cp2k.psmp`, EasyBuild
 | ---- | ----- |
 | Engine | CP2K 2026.1 Quickstep GPW |
 | Host | Arrhenius epyc (offline oracle) |
-| Twin input | `tools/cp2k_oracle/inputs/h2o_stress_mt.inp` |
+| Twin input | CP2K oracle |
 | Threads (pin wall) | single rank, `OMP_NUM_THREADS=4`, `OMP_PROC_BIND=close` |
 | Atomiverse path | `GPWEvaluator` + `Evaluate`, `compute_stress=true`, \(h=2\times 10^{-3}\) |
 
@@ -240,18 +239,18 @@ Offline oracle sketch (host with CP2K module; not ctest):
 ```bash
 module load ... CP2K/2026.1
 export CP2K_DATA_DIR=.../share/cp2k/data
-cp2k.psmp -i tools/cp2k_oracle/inputs/h2o_stress_mt.inp -o stress.out
+cp2k.psmp -i <CP2K oracle input for this case> -o stress.out
 # ENERGY| Total FORCE_EVAL ( QS ) energy [hartree]  -17.212337150586624
 # STRESS| Numerical stress tensor [bar]  (xx ~ +6.46e3, zz ~ +3.74e3, yy ~ +3.89)
 ```
 
 ## Performance
 
-Source: `REFERENCE.md` fair wall on Arrhenius epyc login (same host class as
+Source: pin notes fair wall on Arrhenius epyc login (same host class as
 pin), 4 OMP threads, `OMP_PROC_BIND=close`, single rank. Handoff / queue
 record ratio **4.75**.
 
-- **ATV:** `./build/regressions/reg_gpw-stress-water` (strain-FD: 6+1 SCF).
+- **ATV:** `reg_gpw-stress-water` (strain-FD: 6+1 SCF).
 - **CP2K fair denominator:** ENERGY_FORCE single-SCF baseline (**10.15 s**),
   not the full NUMERICAL multi-SCF wall — same convention as product gate
   (ATV stress pass is compared to one energy+force-class twin wall).
@@ -291,11 +290,11 @@ would change both accuracy path and wall.
 
 ## References
 
-- Offline pin + fair wall: `regressions/gpw/gpw-stress-water/REFERENCE.md`
-- Twin input: `tools/cp2k_oracle/inputs/h2o_stress_mt.inp`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin + fair wall: case `gpw-stress-water` pin
+- Twin input: CP2K oracle
+- Oracle notes: CP2K oracle
 - Related force pin: `docs/tutorial/methods/gpw-forces-water.md`,
-  `regressions/gpw/gpw-forces-water/`
+  `gpw-forces-water`
 - Narrative GPW: `docs/tutorial/ch09-gpw.md`
 - Roadmap: `docs/roadmap/dft.md` (strain-FD cell stress ✓;
   `GPWEvaluator::compute_stress`)

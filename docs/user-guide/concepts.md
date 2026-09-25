@@ -91,9 +91,9 @@ sim.set_evaluator(cpu::PairLJCut{eps, sigma, rcut});
 sim.set_evaluator(cpu::scf::RHF{cpu::scf::BasisSet::STO3G});
 ```
 
-A few methods are reached through a thin evaluator component rather than
-directly — `cpu::gpw::GPWEvaluator` is the Frame-shaped door to `GpwDft`. See
-[Methods](methods.md) for which is which.
+A few methods are bound to a Driver slot through a thin evaluator component
+that owns the method — `cpu::gpw::GPWEvaluator` wraps a configured `GpwDft`.
+See [Methods](methods.md) for which is which.
 
 ## When the loop stops
 

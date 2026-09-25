@@ -23,7 +23,7 @@ potential) on **multi-k RKS and collinear multi-k UKS** Gaussian-and-plane-waves
   \]
   (recovers \(E_{\mathrm{KS}}\) at \(D_k^\sigma = n_k^\sigma\); RKS is the
   single-spin occ-2 case)
-- Forces: k-path assembly (`gpw_forces_from_scf`) at the
+- Forces: k-path assembly (`internal::gpw_forces_from_scf`) at the
   \((D_k, \varepsilon_k, C_k^{\mathrm{occ}})\) payload — since the \(C_k\) are
   exact eigenvectors of \(H_k[n]\), the off-BO energy-weighted density
   \(W = C (C^\dagger H C) C^\dagger\) of the Γ product reduces to

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-variable-cell-molopt` |
-| Regression | `regressions/gpw/gpw-variable-cell-molopt/` |
 | Public API | `cpu::minimizer::Minimize` + `AnisotropicCellRelax` + `StressConverged` + `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_axes`) |
 | Roadmap | [dft.md](../../roadmap/dft.md) variable-cell / CELL_OPT |
 | Wave | CP2K capability harness wave 2 — **done** (2026-07-25) |
@@ -21,10 +20,11 @@ relaxes under \(P_{\mathrm{target}}=0\) while \(b=c=8\) Å vacuum edges
 stay bit-identical.
 
 This page is the **pin-quality MOLOPT re-twin** of
-[`gpw-variable-cell-ice`](../../../regressions/gpw/gpw-variable-cell-ice/)
+`gpw-variable-cell-ice`
 (GTH-PADE compact pivot). Product path:
 
-- electronic structure: `cpu::gpw::GPWEvaluator` with **PBE** /
+- electronic structure: `cpu::gpw::GpwDft` bound through
+  `cpu::gpw::GPWEvaluator` with **PBE** /
   **DZVP-MOLOPT-SR-GTH** / **GTH-PBE**, product **analytic fixed-\(P\)**
   cell stress (`compute_stress = true`, `stress_use_fd = false`),
   `stress_axes = {x}`;
@@ -148,7 +148,7 @@ Cartesian start: \(x_i = f_{x,i}\,a_0\), \(z_{\mathrm{H2}} = f_{z}\,c\).
 ## Implementation
 
 Public surface only (`cpu::Frame`, `Kind` / lookup constructors,
-`GPWEvaluator` ctor args + members, Minimize preset, Optimizer +
+`GpwDft` members, `GPWEvaluator` stress members, Minimize preset, Optimizer +
 Criterion). No public `*Config`, no `make_*` / `build_*` factories.
 Match the regression:
 
@@ -159,6 +159,7 @@ Match the regression:
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
+#include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/minimize/anisotropic_cell_relax.h"
 #include "atomiverse/cpu/minimize/minimize.h"
@@ -195,10 +196,15 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-cpu::gpw::GPWEvaluator eval(
-    /*kinds*/ {O, H}, /*cutoff_ry*/ 300.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ false,
-    /*compute_forces*/ false);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 300.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = false;
+
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 eval.compute_stress = true;
 eval.stress_use_fd = false;               // product analytic fixed-P
 eval.stress_strain_h = 2e-3;
@@ -246,29 +252,29 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-variable-cell-molopt
-  ./build/regressions/reg_gpw-variable-cell-molopt
+  reg_gpw-variable-cell-molopt
   # or: cmake --build build --target run_reg_gpw-variable-cell-molopt
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `compute_stress`, `stress_use_fd`, `stress_axes`, `last_stress_ha_bohr3()` |
-| `include/atomiverse/cpu/minimize/anisotropic_cell_relax.h` | Diagonal cell optimizer + axis mask |
-| `include/atomiverse/cpu/driver/criteria.h` | `StressConverged` |
-| `include/atomiverse/cpu/minimize/minimize.h` | Minimize preset |
+| `gpw_evaluator.h` | `compute_stress`, `stress_use_fd`, `stress_axes`, `last_stress_ha_bohr3()` |
+| `anisotropic_cell_relax.h` | Diagonal cell optimizer + axis mask |
+| `criteria.h` | `StressConverged` |
+| `minimize.h` | Minimize preset |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Analytic fixed-\(P\) + FD oracle |
-| `regressions/gpw/gpw-variable-cell-molopt/reg_gpw-variable-cell-molopt.cpp` | Product gate |
-| `regressions/gpw/gpw-variable-cell-molopt/REFERENCE.md` | Offline CP2K pins + fair wall |
-| `tools/cp2k_oracle/inputs/gpw-variable-cell-molopt/` | `chain_cellopt.inp`, full-MOLOPT secondary, E(a) scan |
+| `reg_gpw-variable-cell-molopt.cpp` | Product gate |
+| case `gpw-variable-cell-molopt` pin | Offline CP2K pins + fair wall |
+| CP2K oracle | `chain_cellopt.inp`, full-MOLOPT secondary, E(a) scan |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/gpw-variable-cell-molopt/REFERENCE.md`](../../../regressions/gpw/gpw-variable-cell-molopt/REFERENCE.md).
+case `gpw-variable-cell-molopt` pin.
 Oracle: offline **CP2K 2026.1** (`cp2k.psmp`, EasyBuild
 `2026.1-gmpflf-2026.03`), Arrhenius epyc login, 1 rank × 4 OMP. Inputs under
-`tools/cp2k_oracle/inputs/gpw-variable-cell-molopt/`. Hard-coded pins in the
+CP2K oracle. Hard-coded pins in the
 regression binary — **never** live CP2K from ctest.
 
 **Setup:**
@@ -341,18 +347,18 @@ export CP2K_DATA_DIR=$CP2KROOT/share/cp2k/data
 export PATH=$CP2KROOT/bin:$PATH
 export OMP_NUM_THREADS=4
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_MOLOPT,GTH_POTENTIALS} .
-cp $REPO/tools/cp2k_oracle/inputs/gpw-variable-cell-molopt/chain_cellopt.inp .
+cp <cp2k oracle input for this case>/chain_cellopt.inp .
 mpirun -np 1 cp2k.psmp -i chain_cellopt.inp -o cellopt.out
 # CELL | Vector a  → a* ; ENERGY| Total FORCE_EVAL → E*
 ```
 
 ## Performance
 
-Source: `REFERENCE.md` fair wall on Arrhenius epyc login (same host class
+Source: pin notes fair wall on Arrhenius epyc login (same host class
 as pin), 1 rank × 4 OMP, `OMP_PROC_BIND=close`. Queue / handoff record
 ratio **~7.5**.
 
-- **ATV:** `./build/regressions/reg_gpw-variable-cell-molopt` — outer
+- **ATV:** `reg_gpw-variable-cell-molopt` — outer
   CELL_OPT with analytic stress per SCF (measured **42.5 s**).
 - **CP2K fair denominator:** same a₀ = **3.24 Å** CELL_OPT twin wall
   from timing table (**5.67 s**), not the longer a₀ = 3.328 scan start.
@@ -389,13 +395,11 @@ strain-FD tax that forced the ice pivot to compact GTH-PADE.
 ## References
 
 - Offline pin + fair wall:
-  `regressions/gpw/gpw-variable-cell-molopt/REFERENCE.md`
-- Regression:
-  `regressions/gpw/gpw-variable-cell-molopt/reg_gpw-variable-cell-molopt.cpp`
-- Twin inputs: `tools/cp2k_oracle/inputs/gpw-variable-cell-molopt/`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+  case `gpw-variable-cell-molopt` pin
+- Twin inputs: CP2K oracle
+- Oracle notes: CP2K oracle
 - Prior foothold (GTH-PADE pivot):
-  `regressions/gpw/gpw-variable-cell-ice/`
+  `gpw-variable-cell-ice`
 - Analytic stress product path: [gpw-analytic-stress](gpw-analytic-stress.md),
   strain-FD history: [gpw-stress-water](gpw-stress-water.md)
 - Narrative GPW: `docs/tutorial/ch09-gpw.md`; optimization:

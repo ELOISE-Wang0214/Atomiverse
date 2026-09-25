@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -34,16 +35,12 @@
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_stress.h"
 #include "atomiverse/cpu/scf/dftd4.h"
 #include "atomiverse/molrs.hpp"
 
 using namespace ATV;
 
 namespace {
-
-// Same Å→Bohr as dftd4 3.7.0 pin scripts (gpw-d4-water / pin_d4_strain.py).
-constexpr double kAng2Bohr = 1.0 / 0.52917720859;
 
 // ── Offline dftd4 3.7.0 unstrained E_disp (REFERENCE.md) ──────────────────
 // Periodic water dimer, 12 Å cube, PBE-D4 BJ, ATM off. Bit-identical to the
@@ -116,17 +113,18 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 120.0;
-    eval.max_iter = 120;
-    eval.tol = 1e-6;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = false;
-    eval.k_mesh[0] = 1;
-    eval.k_mesh[1] = 1;
-    eval.k_mesh[2] = 2; // MP 1×1×2, TR-folded
-    eval.d4 = true;
+    cpu::gpw::GpwDft eval_method{{O, H}};
+    eval_method.cutoff_ry = 120.0;
+    eval_method.max_iter = 120;
+    eval_method.tol = 1e-6;
+    eval_method.mix = 0.4;
+    eval_method.xc = cpu::gpw::XcKind::PBE;
+    eval_method.nonperiodic = false;
+    eval_method.k_mesh[0] = 1;
+    eval_method.k_mesh[1] = 1;
+    eval_method.k_mesh[2] = 2; // MP 1×1×2, TR-folded
+    eval_method.d4 = true;
+    cpu::gpw::GPWEvaluator eval(std::move(eval_method));
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
@@ -157,18 +155,9 @@ int main() {
               "E orthorhombic off-diagonal exactly 0");
 
     // ── (2) Multi-SCF strain-FD dual gate on the same multi-k method ──────
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
-    for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double p[3] = {xs[i] * kAng2Bohr, ys[i] * kAng2Bohr,
-                             zs[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(p, k.basis, k.pot, z[i]));
-    }
 
     auto make_cfg = [&](bool d4) {
-        cpu::gpw::GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = L * kAng2Bohr;
+        cpu::gpw::GpwDft m{{O, H}};
         m.cutoff_ry = 120.0;
         m.n_occ = 8;
         m.max_iter = 120;
@@ -185,8 +174,7 @@ int main() {
     };
 
     const auto t2 = clock::now();
-    const auto sfd =
-        cpu::gpw::internal::gpw_stress_fd_impl(atoms, make_cfg(true), 2.0e-3);
+    const auto sfd = cpu::gpw::gpw_stress_fd(frame, make_cfg(true), 2.0e-3);
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -208,8 +196,7 @@ int main() {
     check(max_diag_err <= kAnFdTol, "C analytic vs multi-SCF FD diagonal");
 
     // ── (3) Wiring: σ(d4) − σ(plain) vs the offline CP2K multi-k Δσ pin ───
-    const auto s_plain = cpu::gpw::internal::gpw_stress_analytic_impl(
-        atoms, make_cfg(false), 2.0e-3);
+    const auto s_plain = cpu::gpw::gpw_stress(frame, make_cfg(false), 2.0e-3);
     double max_wire = 0.0;
     double max_cp2k = 0.0;
     for (int a = 0; a < 3; ++a) {

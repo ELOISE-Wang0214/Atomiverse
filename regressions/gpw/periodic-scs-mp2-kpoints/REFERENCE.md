@@ -20,15 +20,15 @@ E_{\mathrm{corr}}^{\mathrm{SCS}} = c_{\mathrm{OS}}\,E_{\mathrm{OS}}
 Public path:
 
 ```cpp
-cpu::gpw::GpwDft m;
+cpu::gpw::GpwDft m{{si_kind}};
 m.k_mesh[0] = 2; m.k_mesh[1] = 1; m.k_mesh[2] = 1;
 m.k_time_reversal = false;
 m.mp2_ri = true;
 m.mp2_n_virt = 2;
 m.mp2_os_scale = 1.2;
 m.mp2_ss_scale = 1.0 / 3.0;
-// build(); run(atoms);
-const cpu::gpw::Mp2Result& r = m.mp2(atoms);
+// build(frame); run(frame);  // frame: Å positions, Z, box
+const cpu::gpw::Mp2Result& r = m.mp2();
 // r.e_corr_os / r.e_corr_ss remain **unscaled**;
 // r.e_corr = 1.2 * OS + (1/3) * SS
 ```

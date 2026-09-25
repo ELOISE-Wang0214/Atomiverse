@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-gga-si` |
-| Regression | `regressions/response/dfpt-gga-si/` |
 | Public API | `cpu::pw::DfptPhonon` (members) + `cpu::pw::DfptPhononResult`; `PW.xc = XCType::PBE` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — **GGA kernel** ✓ (`reg_dfpt-gga-si`) |
 | Dep | `dfpt-phonon-si` ✓ (LSDA Γ product); ground-state twin `pw-pbe-gga-si` ✓ |
@@ -82,7 +81,7 @@ pseudopotential, closed-shell insulator. Same Hamiltonian family as
 **Key exclusions (non-goals of this slug)**
 
 - Live CP2K / Quantum ESPRESSO inside ctest (offline pins only; preferred
-  oracle note at `tools/cp2k_oracle/inputs/dfpt-gga-si.note`).
+  oracle note at CP2K oracle).
 - Hybrid / meta-GGA response kernels.
 - Metallic smearing / Fermi-surface terms; collinear UKS DFPT.
 - LO–TO splitting / Born effective charges (nonpolar Si does not need them
@@ -142,8 +141,8 @@ off, and spin is restricted — hybrids and metals are not silent fallbacks.
 
 Headers / sources:
 
-- Public: `include/atomiverse/cpu/planewave/dfpt_phonon.h`
-- Private assembly: `include/atomiverse/cpu/planewave/internal/dfpt.h`,
+- Public: `dfpt_phonon.h`
+- Private assembly: `dfpt.h`,
   `src/cpu/planewave/internal/dfpt.cpp`, `src/cpu/planewave/dfpt_phonon.cpp`
 
 Build and run the regression (scoped; never bare full-tree build for this
@@ -166,10 +165,10 @@ bash -lc '
 
 ## Validation (vs offline pin / preferred CP2K)
 
-Source: `regressions/response/dfpt-gga-si/REFERENCE.md` (offline pin; never
+Source: case `dfpt-gga-si` pin (offline pin; never
 live CP2K in ctest). Preferred external oracle: CP2K Quickstep DFPT /
 `VIBRATIONAL_ANALYSIS` on the same cell (PBE) — see
-`tools/cp2k_oracle/inputs/dfpt-gga-si.note`. **Host status 2026-07-26:** no
+CP2K oracle. **Host status 2026-07-26:** no
 CP2K binary/module; sharp gate is same-Hamiltonian energy FD.
 
 Diamond Si primitive (a = 5.43 Å, 10 Ry, 2×2×2 MP, PBE, NC UPF). Measured
@@ -191,7 +190,7 @@ acceptance / hybrid reject guards. No full SCF e2e under `tests/`.
 
 ## Performance
 
-Source: the case `REFERENCE.md` + REFERENCE.md.
+Source: the case pin notes + REFERENCE.md.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | ----: | ---- | ------ |
@@ -215,9 +214,8 @@ and fair ratio \(r = T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) (require \(r\le 10\)).
 
 ## References
 
-- Offline pin: `regressions/response/dfpt-gga-si/REFERENCE.md`
-- Regression: `regressions/response/dfpt-gga-si/reg_dfpt-gga-si.cpp`
-- Oracle note: `tools/cp2k_oracle/inputs/dfpt-gga-si.note`
+- Offline pin: case `dfpt-gga-si` pin
+- Oracle note: CP2K oracle
 - Sibling LSDA product: `docs/tutorial/methods/dfpt-phonon-si.md`
 - Ground-state PBE twin: `docs/tutorial/methods/pw-pbe-gga-si.md`
 - Literature: Baroni, de Gironcoli, Dal Corso, Giannozzi, *Rev. Mod. Phys.*

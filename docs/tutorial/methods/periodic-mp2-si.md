@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-mp2-si` |
-| Regression | `regressions/gpw/periodic-mp2-si/` |
-| Public API | `cpu::gpw::GpwDft::mp2(atoms)` → `cpu::gpw::Mp2Result` (`cpu/gpw/mp2.h`); members `mp2_n_virt`, `mp2_os_scale`, `mp2_ss_scale` |
+| Public API | `cpu::gpw::GpwDft::mp2()` → `cpu::gpw::Mp2Result` (`cpu/gpw/mp2.h`); members `mp2_n_virt`, `mp2_os_scale`, `mp2_ss_scale` |
 | Roadmap | roadmap §10 ○ Periodic MP2 foothold; unblocks `periodic-rpa-si` |
 
 ## Summary
@@ -57,17 +56,17 @@ periodic exact exchange (blocked row `periodic-hybrid-gpw`). Cost:
 ## Public API
 
 ```cpp
-cpu::gpw::GpwDft m;                    // concrete method — members as params
-m.cell[0] = m.cell[1] = m.cell[2] = a; // Bohr
+// frame: sc-Si₂, positions [Å], Z = 14 in kAtom_type, box = cpu::Box::cubic(5.43)
+cpu::gpw::GpwDft m{{Si}};              // Si = Kind{Si, DZVP-MOLOPT-GTH, GTH-PBE-q4}
 m.cutoff_ry = 30.0;
 m.n_occ = 4;
 m.xc = cpu::gpw::XcKind::PBE;
 m.level_shift = 0.3;                   // convergence aid (eps unshifted)
-m.build(atoms);
-m.run(atoms);                          // converged Γ RKS
+m.build(frame);
+m.run(frame);                          // converged Γ RKS (eV on kEnergy)
 
 m.mp2_n_virt = 0;                      // 0 = all kept virtuals
-const cpu::gpw::Mp2Result& r = m.mp2(atoms);
+const cpu::gpw::Mp2Result& r = m.mp2();   // at the last run()'s geometry
 // r.e_corr (< 0), r.e_corr_os / r.e_corr_ss, r.e_total = r.e_scf + r.e_corr
 ```
 
@@ -82,11 +81,11 @@ kernels are private (`cpu/gpw/internal/mp2_kernels.h`).
   sum ≡ explicit spin-orbital MP2 sum (1e-12); MO-on-grid ≡ explicit
   Γ-image-summed AO contraction (1e-9); \((pp|pp)\) ≡ 2 × Poisson Hartree
   energy of the same pair density (1e-10); guard throws.
-- **E2E** (`regressions/gpw/periodic-mp2-si/`): periodic Γ sc-Si₂
+- **E2E** (`periodic-mp2-si`): periodic Γ sc-Si₂
   (a = 5.43 Å, DZVP-MOLOPT-GTH + GTH-PBE-q4, PBE, 30 Ry): SCF converged;
   E_corr < 0; virtual-space monotonicity E_corr(22) ≤ E_corr(8) < 0;
   OS+SS ≡ E_corr; frozen first-green band E_corr = −0.2764 Ha ± 1e-3 until
-  the offline CP2K twin re-pin (`tools/cp2k_oracle/inputs/periodic-mp2-si.inp`).
+  the offline CP2K twin re-pin (CP2K oracle).
   Fair wall vs CP2K is **perf_exempt** (no CP2K binary on the pin host).
 
 ## Follow-ons

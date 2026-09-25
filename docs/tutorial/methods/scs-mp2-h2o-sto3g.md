@@ -7,7 +7,7 @@ correlation channels separately.
 
 $$ E_{\mathrm{SCS}} = \tfrac{1}{3} E_{\mathrm{SS}} + 1.2\, E_{\mathrm{OS}}. $$
 
-Regression: `regressions/scf/scs-mp2-h2o-sto3g`. Related: [Ch. 7](../ch07-correlation.md).
+Regression: `scs-mp2-h2o-sto3g`. Related: [Ch. 7](../ch07-correlation.md).
 
 ## Theory
 
@@ -26,7 +26,7 @@ auto mp = rhf.mp2(frame);   // SCS path as used in reg (see reg source)
 ```
 
 ```bash
-./build/regressions/reg_scs-mp2-h2o-sto3g
+reg_scs-mp2-h2o-sto3g
 ```
 
 ## Results

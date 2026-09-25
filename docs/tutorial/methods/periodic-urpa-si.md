@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-urpa-si` |
-| Regression | `regressions/gpw/periodic-urpa-si/` |
-| Public API | `cpu::gpw::GpwDft::direct_rpa(atoms)` → `cpu::gpw::RpaResult` after Γ **UKS** `run()` (`cpu/gpw/rpa.h`, `gpw_solver.h`) |
+| Public API | `cpu::gpw::GpwDft::direct_rpa()` → `cpu::gpw::RpaResult` after Γ **UKS** `run()` (`cpu/gpw/rpa.h`, `gpw_solver.h`) |
 | Roadmap | handoff **perf_exempt**; roadmap §10 Periodic RPA residual prose (URPA@UKS) |
 
 ## Summary
@@ -111,28 +110,30 @@ Public surface only (`GpwDft` members + lookup constructors; matches
 `reg_periodic-urpa-si.cpp`):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/rpa.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
-constexpr double kA2B = 1.8897259885789;
-constexpr double a_bohr = 5.43 * kA2B;
+constexpr double a = 5.43;                    // cubic cell [Å]
 
-const GaussianBasis bas(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-const GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
-const double pos0[3] = {0.0, 0.0, 0.0};
-const double pos1[3] = {a_bohr / 4.0, a_bohr / 4.0, a_bohr / 4.0};
+cpu::Frame frame(2);                          // sc-Si₂, positions [Å]
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 14;
+    frame.span(kAtom_x)[i] = frame.span(kAtom_y)[i] =
+        frame.span(kAtom_z)[i] = i * a / 4.0;
+}
+frame.box = cpu::Box::cubic(a);
 
-std::vector<GpwAtom> atoms;
-atoms.emplace_back(pos0, bas, pot, 14);
-atoms.emplace_back(pos1, bas, pot, 14);
-
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = a_bohr;  // Bohr
+GpwDft m{{Kind{molrs::Element::Si,
+               GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+               GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 30.0;
 m.n_alpha = 4;
 m.n_beta = 4;               // UKS closed-shell occupations
@@ -142,11 +143,11 @@ m.mix = 0.3;
 m.level_shift = 0.3;        // small-gap sc-Si₂ aid (eps unshifted for RPA)
 m.xc = XcKind::PBE;
 m.mp2_ri = true;            // product RI-GPW (ia|jb)
-m.build(atoms);
-const GpwResult& scf = m.run(atoms);  // scf.converged, scf.e_total [Ha]
+m.build(frame);
+const GpwResult& scf = m.run(frame);  // scf.converged, scf.e_total [Ha]
 
 m.mp2_n_virt = 0;           // 0 = all kept virtuals per spin
-const RpaResult& r = m.direct_rpa(atoms);
+const RpaResult& r = m.direct_rpa();
 // r.e_corr, r.e_total [Ha]; r.omega_ha (composite α⊕β OV); r.ri == true
 ```
 
@@ -168,27 +169,27 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_periodic-urpa-si -j$(nproc)
-  ./build/regressions/reg_periodic-urpa-si
+  reg_periodic-urpa-si
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::direct_rpa`, UKS members |
-| `include/atomiverse/cpu/gpw/rpa.h` | `RpaResult` public value type |
+| `gpw_solver.h` | `GpwDft::direct_rpa`, UKS members |
+| `rpa.h` | `RpaResult` public value type |
 | `src/cpu/gpw/rpa.cpp` | Γ URPA dispatch → `internal::direct_rpa_uhf` |
-| `include/atomiverse/cpu/gpw/gaussian_basis.h` | `GaussianBasis(Element, name)` |
-| `include/atomiverse/cpu/gpw/gth_potential.h` | `GthPotential(Element, name)` |
-| `regressions/gpw/periodic-urpa-si/reg_periodic-urpa-si.cpp` | Product gate |
-| `tools/cp2k_oracle/inputs/periodic-urpa-si.inp` | Offline CP2K twin (never ctest) |
+| `gaussian_basis.h` | `GaussianBasis(Element, name)` |
+| `gth_potential.h` | `GthPotential(Element, name)` |
+| `reg_periodic-urpa-si.cpp` | Product gate |
+| CP2K oracle | Offline CP2K twin (never ctest) |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/periodic-urpa-si/REFERENCE.md`](../../../regressions/gpw/periodic-urpa-si/REFERENCE.md).
+case `periodic-urpa-si` pin.
 
 **Oracle status.** Input twin:
-`tools/cp2k_oracle/inputs/periodic-urpa-si.inp` (UKS MULT 1 + `&RI_RPA`
+CP2K oracle (UKS MULT 1 + `&RI_RPA`
 MINIMAX). CP2K’s default path is **frequency-integrated RI-RPA with Gaussian
 RI_AUX and EXX total-energy assembly**, not the exact plasmon formula on PW-RI
 \((ia|jb)\). Absolute CP2K \(E_c\) digits are **not invented** as a hard twin of
@@ -235,7 +236,7 @@ Offline re-pin (human only; **never** ctest):
 
 ```bash
 # when a CP2K binary is available — diagnostic only (algorithm differs)
-cp2k.psmp -i tools/cp2k_oracle/inputs/periodic-urpa-si.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o /tmp/periodic-urpa-si.out
 # record RI-RPA correlation only as near-twin diagnostic; do not invent
 # plasmon-equivalent digits without a documented algorithm match
@@ -243,7 +244,7 @@ cp2k.psmp -i tools/cp2k_oracle/inputs/periodic-urpa-si.inp \
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/gpw/periodic-urpa-si/REFERENCE.md);
+Source: pin notes;
 queue/handoff **perf_exempt** (wave 7, 2026-07-26).
 
 | Item | Value |
@@ -282,16 +283,16 @@ Campaign records the same: ratio **perf_exempt**.
 
 ## References
 
-- Offline pin: `regressions/gpw/periodic-urpa-si/REFERENCE.md`
-- Regression consumer: `regressions/gpw/periodic-urpa-si/reg_periodic-urpa-si.cpp`
-- Oracle twin: `tools/cp2k_oracle/inputs/periodic-urpa-si.inp`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin: case `periodic-urpa-si` pin
+- Regression consumer: `reg_periodic-urpa-si.cpp`
+- Oracle twin: CP2K oracle
+- Oracle notes: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` § Periodic RPA / URPA@UKS
 - Related method pages: [periodic-mp2-si](periodic-mp2-si.md) (Γ MP2 foothold),
   [direct-rpa-h2-sto3g](direct-rpa-h2-sto3g.md) (molecular plasmon dRPA),
   [gpw-uks-o2-gamma](gpw-uks-o2-gamma.md) (Γ UKS energy)
-- Public API: `include/atomiverse/cpu/gpw/gpw_solver.h`,
-  `include/atomiverse/cpu/gpw/rpa.h`
+- Public API: `gpw_solver.h`,
+  `rpa.h`
 - F. Furche, *J. Chem. Phys.* **114**, 5982 (2001) — plasmon RPA correlation.
 - X. Ren et al., *New J. Phys.* **14**, 053020 (2012) — RPA in condensed matter.
 - M. Del Ben, J. Hutter, J. VandeVondele, *J. Chem. Theory Comput.* **8**, 4177

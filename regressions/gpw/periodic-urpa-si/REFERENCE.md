@@ -17,10 +17,10 @@ When \(C^\alpha \approx C^\beta\), **URPA ≡ RKS dRPA** — dual-gated against
 the `periodic-rpa-si` first-green \(E_c\).
 
 ```cpp
-cpu::gpw::GpwDft m;
+cpu::gpw::GpwDft m{{si_kind}};
 m.n_alpha = 4; m.n_beta = 4;   // UKS
-// ... members; build(); run(atoms);
-const cpu::gpw::RpaResult& r = m.direct_rpa(atoms);
+// ... members; build(frame); run(frame);  // frame: Å positions, Z, box
+const cpu::gpw::RpaResult& r = m.direct_rpa();
 // r.e_corr, r.e_total [Ha]; r.omega_ha (composite α⊕β OV)
 ```
 

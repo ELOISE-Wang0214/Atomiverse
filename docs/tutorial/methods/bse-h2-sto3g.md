@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `bse-h2-sto3g` |
-| Regression | `regressions/scf/bse-h2-sto3g/` |
 | Public API | `cpu::scf::RHF::bse(n_states, tda)` → `BSEResult` |
 | Roadmap | [excited-states.md](../../roadmap/excited-states.md) § BSE@G0W0 |
 
@@ -17,7 +16,7 @@ screened Coulomb \(W\) is built from exact 4-centre MO ERIs (no density
 fitting). Primary observable: lowest singlet excitation **S1 [eV]**. Public
 path is `RHF::run(frame)` then `RHF::bse(n_states, tda)` — no `*Config` bag, no
 factory. Regression binary: `reg_bse-h2-sto3g` under
-`regressions/scf/bse-h2-sto3g/`. Twin is PySCF 2.14.0 exact-ERI + spectral
+`bse-h2-sto3g`. Twin is PySCF 2.14.0 exact-ERI + spectral
 G0W0 BSE (not the DF-only stock `pyscf.gw.bse.BSE(gw.GW(...))` path). This is
 the excited-state foothold after `reg_g0w0-h2-sto3g`.
 
@@ -73,7 +72,7 @@ triplet / SF-BSE; TDDFT/TDHF (different kernels); CUDA.
 ## Implementation
 
 Frame in → RHF members → `run` → post-SCF `bse()`. Headers:
-`include/atomiverse/cpu/scf/rhf.h`, `bse.h`, `g0w0.h`; consumer includes
+`rhf.h`, `bse.h`, `g0w0.h`; consumer includes
 `methods.h`.
 
 ```cpp
@@ -114,15 +113,15 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_bse-h2-sto3g -j$(nproc)
-  ./build/regressions/reg_bse-h2-sto3g
+  reg_bse-h2-sto3g
 '
 ```
 
-Source consumer: `regressions/scf/bse-h2-sto3g/reg_bse-h2-sto3g.cpp`.
+Source consumer: `reg_bse-h2-sto3g.cpp`.
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/bse-h2-sto3g/REFERENCE.md`](../../../regressions/scf/bse-h2-sto3g/REFERENCE.md)
+Source: case `bse-h2-sto3g` pin
 (offline pin only; PySCF never imported from CMake/ctest).
 
 | Setting | Value |
@@ -153,7 +152,7 @@ gap.
 Oracle repro:
 
 ```bash
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py bse \
+python <pyscf pin> bse \
   --geom h2 --basis sto-3g --conv-tol 1e-12
 ```
 
@@ -167,9 +166,9 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\) unless exempted.
 | exact-ERI BSE@spectral-G0W0 | 0.2233 | 0.0134 | **0.060** | ✓ | ATV binary = RHF + spectral G0W0 + BSE; PySCF = RKS(hf)+dRPA+GWExact+exact-ERI static BSE |
 
 ```bash
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
   --method bse --geom h2 --basis sto-3g --repeat 5 \
-  -- ./build/regressions/reg_bse-h2-sto3g
+  -- reg_bse-h2-sto3g
 ```
 
 **Twin caveats.** (1) Method class match is exact-ERI + spectral G0W0 only —
@@ -195,12 +194,12 @@ not split out. (3) Microsecond-scale reg binary on a 2-AO system (\(n_{\mathrm{o
 
 ## References
 
-- Offline pin: `regressions/scf/bse-h2-sto3g/REFERENCE.md`
+- Offline pin: case `bse-h2-sto3g` pin
 - Perf (in REFERENCE): fair_bench numbers above; handoff
-  the case `REFERENCE.md` records ratio **0.060**
+  the case pin notes records ratio **0.060**
 - Roadmap: `docs/roadmap/excited-states.md` (BSE@G0W0 ✓ CPU)
-- Public headers: `include/atomiverse/cpu/scf/bse.h`, `g0w0.h`, `rhf.h`
-- Prerequisite pin: `regressions/scf/g0w0-h2-sto3g/REFERENCE.md` /
+- Public headers: `bse.h`, `g0w0.h`, `rhf.h`
+- Prerequisite pin: case `g0w0-h2-sto3g` pin /
   [g0w0-h2-sto3g.md](g0w0-h2-sto3g.md)
 - Hillenbrand, Li & Zhu, *J. Chem. Phys.* **162**, 174117 (2025) (PySCF BSE)
 - *J. Comput. Chem.* **38**, 383 (2017) (molecular BSE / static \(W\))

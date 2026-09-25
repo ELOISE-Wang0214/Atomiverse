@@ -23,14 +23,14 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
-
-constexpr double kA2B = 1.0 / 0.52917720859; // Å → Bohr
 
 int g_fail = 0;
 
@@ -46,31 +46,30 @@ void check(bool ok, const char* what) {
 // Diamond Si in the body-centred-tetragonal 4-atom cell (a_t = a/√2, c = a) —
 // the orthorhombic-compatible setting of the fcc diamond lattice (the same
 // geometry as regressions/gpw/gpw-kpoints-si and the CP2K twin input).
-std::vector<ATV::cpu::gpw::GpwAtom> si_bct(double a_bohr) {
-    using namespace ATV;
-    const double at = a_bohr / std::sqrt(2.0);
-    const ATV::cpu::gpw::GaussianBasis bSi(molrs::Element::Si,
-                                           "DZVP-MOLOPT-GTH");
-    const ATV::cpu::gpw::GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
+ATV::cpu::Frame si_bct(double a_ang) {
+    const double at = a_ang / std::sqrt(2.0);
     const double frac[4][3] = {
         {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}, {0.5, 0.0, 0.25}, {0.0, 0.5, 0.75}};
-    std::vector<ATV::cpu::gpw::GpwAtom> atoms;
+    ATV::cpu::Frame frame(4);
     for (int i = 0; i < 4; ++i) {
-        const double pos[3] = {frac[i][0] * at, frac[i][1] * at,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bSi, pSi, 14);
+        frame.span(ATV::kAtom_type)[i] = 14;
+        frame.span(ATV::kAtom_x)[i] = frac[i][0] * at;
+        frame.span(ATV::kAtom_y)[i] = frac[i][1] * at;
+        frame.span(ATV::kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = ATV::cpu::Box::orthorhombic(at, at, a_ang);
+    return frame;
 }
 
 // One shared method shape; the main run is the CP2K twin &MGRID (CUTOFF 150,
 // NGRIDS 4, REL_CUTOFF 60); identity gates run the same machinery on a
 // cheaper 40 Ry / REL 20 ladder; single grid = ngrids 1 (rel 0).
-ATV::cpu::gpw::GpwDft si_method(double a_bohr, double cutoff_ry, int ngrids,
+ATV::cpu::gpw::GpwDft si_method(double cutoff_ry, int ngrids,
                                 double rel_cutoff) {
-    ATV::cpu::gpw::GpwDft m;
-    m.cell[0] = m.cell[1] = a_bohr / std::sqrt(2.0);
-    m.cell[2] = a_bohr;
+    using namespace ATV::cpu::gpw;
+    GpwDft m{{Kind{molrs::Element::Si,
+                   GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+                   GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
     m.cutoff_ry = cutoff_ry;
     m.ngrids = ngrids;
     m.rel_cutoff = rel_cutoff;
@@ -96,19 +95,18 @@ int main() {
                         .count());
     };
 
-    const double a = 5.43 * kA2B; // Si lattice constant 5.43 Å → 10.26120 Bohr
-    const auto atoms = si_bct(a);
+    auto frame = si_bct(5.43); // Si lattice constant 5.43 Å
 
     // ── M2: TR-folded multigrid SCF on the cheap ladder (40 Ry / REL 20) ───
     // (The 8k-vs-folded-4k full-SCF identity was measured machine-exact at
     // bring-up — REFERENCE.md; the folding mechanism itself is unit-pinned.)
     double e_mg_id = 0.0; // TR-folded multigrid energy, reused by M3
     {
-        GpwDft tr = si_method(a, 40.0, 4, 20.0);
+        GpwDft tr = si_method(40.0, 4, 20.0);
         tr.k_mesh[0] = tr.k_mesh[1] = tr.k_mesh[2] = 2;
         tr.k_time_reversal = true; // 4 k, doubled weights
-        tr.build(atoms);
-        const auto& rt = tr.run(atoms);
+        tr.build(frame);
+        const auto& rt = tr.run(frame);
         check(rt.converged, "M2 TR-mesh multigrid SCF converged");
         mark("M2 TR-mesh done");
         e_mg_id = rt.e_total;
@@ -122,10 +120,10 @@ int main() {
     // multigrid is a cost optimization, not a physics change; the ATV gap is
     // the REL_CUTOFF product-screen residual, mHa-class budget.)
     {
-        GpwDft sg = si_method(a, 40.0, 1, 0.0);
+        GpwDft sg = si_method(40.0, 1, 0.0);
         sg.k_mesh[0] = sg.k_mesh[1] = sg.k_mesh[2] = 2;
-        sg.build(atoms);
-        const auto& rs = sg.run(atoms);
+        sg.build(frame);
+        const auto& rs = sg.run(frame);
         check(rs.converged, "M3 single-grid SCF converged");
         mark("M3 single-grid done");
         const double dgrid = std::abs(e_mg_id - rs.e_total);
@@ -137,11 +135,11 @@ int main() {
 
     // ── Main run: MP 2×2×2 TR at 150 Ry, NGRIDS 4 (M4-M5) ──────────────────
     {
-        GpwDft mp = si_method(a, 150.0, 4, 60.0);
+        GpwDft mp = si_method(150.0, 4, 60.0);
         mp.k_mesh[0] = mp.k_mesh[1] = mp.k_mesh[2] = 2;
-        mp.build(atoms);
+        mp.build(frame);
         const auto t0 = std::chrono::steady_clock::now();
-        const auto& rm = mp.run(atoms);
+        const auto& rm = mp.run(frame);
         const double wall =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - t0)
                 .count();

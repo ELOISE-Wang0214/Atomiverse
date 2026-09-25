@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -57,10 +58,15 @@ int main() {
     // Same envelope family as gpw-bomd-water (200 Ry / tol 1e-5 keeps the
     // multi-step run inside the ≤60 s gate; absolute E/F parity is the
     // gpw-forces-water pin's job). XL-BOMD K=5 (Niklasson 2009 Table I).
-    cpu::gpw::GPWEvaluator gpw_base(
-        /*kinds*/ {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-        /*compute_forces*/ true);
+    cpu::gpw::GpwDft gpw_base_dft{{O, H}};
+    gpw_base_dft.cutoff_ry = 200.0;
+    gpw_base_dft.max_iter = 60;
+    gpw_base_dft.tol = 1e-5;
+    gpw_base_dft.mix = 0.3;
+    gpw_base_dft.xc = cpu::gpw::XcKind::PBE;
+    gpw_base_dft.nonperiodic = true;
+    cpu::gpw::GPWEvaluator gpw_base(std::move(gpw_base_dft),
+                                    /*compute_forces=*/true);
     cpu::electronic::XlBomdForce eval{std::move(gpw_base), 5};
     constexpr double dt = 0.5; // fs
     constexpr int n_prod = 4;

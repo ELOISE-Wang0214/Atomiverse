@@ -2,17 +2,19 @@
 /// @brief END-TO-END: GPW analytic forces on multi-k collinear UKS.
 ///
 /// Periodic high-spin H₂ (DZV-GTH-PADE, PADE XC), k_mesh = 1×1×2,
-/// n_alpha=2, n_beta=0. See REFERENCE.md. Public: `GpwDft` +
-/// `gpw_forces_analytic`.
+/// n_alpha=2, n_beta=0. See REFERENCE.md. Public: `GpwDft::forces(frame)`.
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
@@ -40,19 +42,39 @@ constexpr double kNewtonTol = 1e-6;
 } // namespace
 
 int main() {
+    using namespace ATV;
     using namespace ATV::cpu::gpw;
 
-    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
-    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
-
-    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rA[3] = {5.5, 6.0, 6.0}; // Bohr
     const double rB[3] = {6.5, 6.0, 6.0}; // 1.0 Bohr compressed bond
-    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
-                                  GpwAtom(rB, basis, pot, 1)};
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        const double* r = (i == 0) ? rA : rB;
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_x)[i] = r[0] * units::kBohrInAngstrom;
+        frame.span(kAtom_y)[i] = r[1] * units::kBohrInAngstrom;
+        frame.span(kAtom_z)[i] = r[2] * units::kBohrInAngstrom;
+    }
+    frame.box = cpu::Box::cubic(12.0 * units::kBohrInAngstrom);
+
+    // SCF + analytic forces of a fresh `m`; Frame forces [eV/Å] → Ha/Bohr.
+    auto analytic_forces = [&frame](GpwDft m) {
+        m.build(frame);
+        m.forces(frame);
+        std::vector<std::array<double, 3>> F(2);
+        for (int i = 0; i < 2; ++i)
+            F[static_cast<std::size_t>(i)] = {
+                frame.span(kAtom_fx)[i] / units::kHartreePerBohrInEvPerAngstrom,
+                frame.span(kAtom_fy)[i] / units::kHartreePerBohrInEvPerAngstrom,
+                frame.span(kAtom_fz)[i]
+                    / units::kHartreePerBohrInEvPerAngstrom};
+        return F;
+    };
 
     auto make_cfg = []() {
-        GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        GpwDft m{{Kind{molrs::Element::H,
+                       GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                       GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
         m.cutoff_ry = 100.0;
         m.n_alpha = 2;
         m.n_beta = 0;
@@ -69,8 +91,8 @@ int main() {
     };
 
     GpwDft energy = make_cfg();
-    energy.build(atoms);
-    const auto& er = energy.run(atoms);
+    energy.build(frame);
+    const auto& er = energy.run(frame);
     check(er.converged, "A1 k-UKS SCF converged");
     check(std::isfinite(er.e_total), "A1 finite energy");
     check(er.n_kpts >= 1, "A1 n_kpts >= 1");
@@ -81,7 +103,7 @@ int main() {
     std::printf("E(k-UKS 1x1x2) = %.12f Ha  iters=%d  nk=%d\n", er.e_total,
                 er.iters, er.n_kpts);
 
-    const auto Fa = gpw_forces_analytic(atoms, make_cfg());
+    const auto Fa = analytic_forces(make_cfg());
     check(Fa.size() == 2, "A1 two force vectors");
     for (int a = 0; a < 2; ++a)
         for (int k = 0; k < 3; ++k)
@@ -109,8 +131,9 @@ int main() {
     // Closed-shell multi-k UKS ≡ multi-k RKS (force identity).
     {
         auto make_closed = [](bool as_uks) {
-            GpwDft m;
-            m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+            GpwDft m{{Kind{molrs::Element::H,
+                           GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                           GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
             m.cutoff_ry = 100.0;
             m.tol = 1e-8;
             m.max_iter = 60;
@@ -129,8 +152,8 @@ int main() {
             }
             return m;
         };
-        const auto Fr = gpw_forces_analytic(atoms, make_closed(false));
-        const auto Fu = gpw_forces_analytic(atoms, make_closed(true));
+        const auto Fr = analytic_forces(make_closed(false));
+        const auto Fu = analytic_forces(make_closed(true));
         double max_d = 0.0;
         for (int a = 0; a < 2; ++a)
             for (int k = 0; k < 3; ++k)

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `fumi-tosi-nacl` |
-| Regression | `regressions/forcefield/fumi-tosi-nacl/` |
 | Public API | `cpu::PairBorn` (multi-type table) + `cpu::PairCoulCut` on `cpu::Evaluate` |
 | Roadmap | map salt/wall FF |
 | Oracle | **LAMMPS** `pair_style hybrid/overlay born coul/cut` (`pair_modify pair born shift yes`) |
@@ -149,33 +148,33 @@ const double E = f.meta.get(kEnergy);  // [eV]
 // forces: f.span(kAtom_fx), kAtom_fy, kAtom_fz
 ```
 
-Headers: `include/atomiverse/cpu/potentials/pair_born.h`,
+Headers: `pair_born.h`,
 `pair_coul_cut.h`. Regression source:
-`regressions/forcefield/fumi-tosi-nacl/reg_fumi-tosi-nacl.cpp`.
+`reg_fumi-tosi-nacl.cpp`.
 
 ```bash
 # MD-only configure (see ) then:
 cmake --build build --target reg_fumi-tosi-nacl -j$(nproc)
-./build/regressions/reg_fumi-tosi-nacl
+reg_fumi-tosi-nacl
 ```
 
 Offline LAMMPS twin (never in ctest):
 
 ```bash
-# tools/metalwalls_oracle/inputs/lammps/in.fumi_tosi_nacl4
+# <MetalWalls oracle input for this case>
 lmp -in in.fumi_tosi_nacl4
 ```
 
 ## Validation (vs LAMMPS)
 
-Source: `regressions/forcefield/fumi-tosi-nacl/REFERENCE.md` (offline pin;
+Source: case `fumi-tosi-nacl` pin (offline pin;
 **ctest never launches LAMMPS**).
 
 | Field | Value |
 | ----- | ----- |
 | Oracle | **LAMMPS** |
 | `oracle_version` | 30 Mar 2026 - Development (`develop` / `patch_30Mar2026-1074-g7f680de296`) |
-| Twin input | `tools/metalwalls_oracle/inputs/lammps/in.fumi_tosi_nacl4` |
+| Twin input | MetalWalls oracle |
 | Command | `lmp -in in.fumi_tosi_nacl4` (run 0; metal units) |
 | Pin date | 2026-07-24 |
 
@@ -195,8 +194,8 @@ is recorded in REFERENCE only.
 
 ## Performance
 
-Source: `regressions/forcefield/fumi-tosi-nacl/REFERENCE.md`,
-the case `REFERENCE.md`.
+Source: case `fumi-tosi-nacl` pin,
+the case pin notes.
 
 | Twin | \(T_{\mathrm{oracle}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{oracle}}\) | ≤10× | Caveat |
 | ---- | --------------------------: | -----------------------: | -----------------------------------------: | ---- | ------ |
@@ -229,14 +228,13 @@ a molten-salt box.
 
 ## References
 
-- Offline pin: [`regressions/forcefield/fumi-tosi-nacl/REFERENCE.md`](../../../regressions/forcefield/fumi-tosi-nacl/REFERENCE.md)
-- Regression: `regressions/forcefield/fumi-tosi-nacl/reg_fumi-tosi-nacl.cpp`
-- LAMMPS twin: `tools/metalwalls_oracle/inputs/lammps/in.fumi_tosi_nacl4`
-- Pin notes: `tools/metalwalls_oracle/pin_notes.md` → `fumi-tosi-nacl`
+- Offline pin: case `fumi-tosi-nacl` pin
+- LAMMPS twin: MetalWalls oracle
+- Pin notes: MetalWalls oracle → `fumi-tosi-nacl`
 - Roadmap: `docs/roadmap/force-fields.md` (Born–Mayer–Huggins / Fumi–Tosi)
-- Public API: `include/atomiverse/cpu/potentials/pair_born.h`,
+- Public API: `pair_born.h`,
   `pair_coul_cut.h`
-- Single-type Born foothold: `regressions/forcefield/born-repulsion-foothold/`
+- Single-type Born foothold: `born-repulsion-foothold`
 - LAMMPS doc: `pair_style born`, `pair_style coul/cut`, `pair_style hybrid/overlay`
 - Fumi–Tosi / BMH context: Fumi & Tosi, *J. Phys. Chem. Solids* **25**, 31 (1964);
   Tosi & Fumi, *J. Phys. Chem. Solids* **25**, 45 (1964)

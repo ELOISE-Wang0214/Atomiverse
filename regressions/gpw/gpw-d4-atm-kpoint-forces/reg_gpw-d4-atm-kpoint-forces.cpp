@@ -21,6 +21,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -32,7 +33,6 @@
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/cpu/scf/dftd4.h"
 #include "atomiverse/molrs.hpp"
 
@@ -97,6 +97,32 @@ void check(bool ok, const char* what) {
     } else {
         std::printf("  ok: %s\n", what);
     }
+}
+
+/// Frame forces [eV/Å] → Ha/Bohr, one xyz triple per atom.
+std::vector<std::array<double, 3>> forces_ha_bohr(const ATV::cpu::Frame& f) {
+    const double c = ATV::units::kHartreePerBohrInEvPerAngstrom;
+    const int n = f.nlocal();
+    std::vector<std::array<double, 3>> out(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i)
+        out[static_cast<std::size_t>(i)] = {
+            static_cast<double>(f.span(ATV::kAtom_fx)[i]) / c,
+            static_cast<double>(f.span(ATV::kAtom_fy)[i]) / c,
+            static_cast<double>(f.span(ATV::kAtom_fz)[i]) / c};
+    return out;
+}
+
+/// Geometry-only copy (Z, positions, box) of `src` for a twin solve.
+ATV::cpu::Frame geometry_copy(const ATV::cpu::Frame& src) {
+    ATV::cpu::Frame f(src.nlocal());
+    for (int i = 0; i < src.nlocal(); ++i) {
+        f.span(ATV::kAtom_type)[i] = src.span(ATV::kAtom_type)[i];
+        f.span(ATV::kAtom_x)[i] = src.span(ATV::kAtom_x)[i];
+        f.span(ATV::kAtom_y)[i] = src.span(ATV::kAtom_y)[i];
+        f.span(ATV::kAtom_z)[i] = src.span(ATV::kAtom_z)[i];
+    }
+    f.box = src.box;
+    return f;
 }
 
 } // namespace
@@ -189,18 +215,19 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 120.0;
-    eval.max_iter = 120;
-    eval.tol = 1e-6;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = false;
-    eval.k_mesh[0] = 1;
-    eval.k_mesh[1] = 1;
-    eval.k_mesh[2] = 2; // MP 1×1×2, TR-folded
-    eval.d4 = true;
-    eval.d4_atm = true;
+    cpu::gpw::GpwDft eval_method{{O, H}};
+    eval_method.cutoff_ry = 120.0;
+    eval_method.max_iter = 120;
+    eval_method.tol = 1e-6;
+    eval_method.mix = 0.4;
+    eval_method.xc = cpu::gpw::XcKind::PBE;
+    eval_method.nonperiodic = false;
+    eval_method.k_mesh[0] = 1;
+    eval_method.k_mesh[1] = 1;
+    eval_method.k_mesh[2] = 2; // MP 1×1×2, TR-folded
+    eval_method.d4 = true;
+    eval_method.d4_atm = true;
+    cpu::gpw::GPWEvaluator eval(std::move(eval_method));
     eval.compute_forces = true;
     eval.compute_stress = false;
 
@@ -227,18 +254,8 @@ int main() {
     check(wall_product_s <= kWallBudget, "C product wall <= 60 s");
 
     // ── (4) Wiring: F(d4_atm) − F(plain) on the multi-k assembly ──────────
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
-    for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& kind = (z[i] == 8) ? O : H;
-        const double p[3] = {xs[i] * kAng2Bohr, ys[i] * kAng2Bohr,
-                             zs[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(p, kind.basis, kind.pot, z[i]));
-    }
-
     auto make_cfg = [&](bool d4, bool d4_atm) {
-        cpu::gpw::GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = L * kAng2Bohr;
+        cpu::gpw::GpwDft m{{O, H}};
         m.cutoff_ry = 120.0;
         m.n_occ = 8;
         m.max_iter = 120;
@@ -255,13 +272,15 @@ int main() {
         return m;
     };
 
-    cpu::gpw::GpwDft method_atm = make_cfg(true, true);
-    method_atm.build(atoms);
-    const auto F_on =
-        cpu::gpw::gpw_forces_from_scf(atoms, method_atm, eval.last_result());
+    // Product forces: the evaluator's Frame force (eV/Å → Ha/Bohr).
+    const auto F_on = forces_ha_bohr(frame);
+    // Twin: fresh SCF + analytic forces with dispersion off (geometry-only,
+    // so the converged density matches the product run).
+    cpu::Frame frame_twin = geometry_copy(frame);
     cpu::gpw::GpwDft method_plain = make_cfg(false, false);
-    const auto F_plain =
-        cpu::gpw::gpw_forces_from_scf(atoms, method_plain, eval.last_result());
+    method_plain.build(frame_twin);
+    method_plain.forces(frame_twin);
+    const auto F_plain = forces_ha_bohr(frame_twin);
 
     double max_wire = 0.0;
     double max_f_on = 0.0;

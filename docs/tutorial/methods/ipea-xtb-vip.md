@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ipea-xtb-vip` |
-| Regression | `regressions/semiempirical/ipea-xtb-vip/` |
 | Public API | `cpu::semiempirical::IPEA` (`compute_vip` / `compute_vea`); `cpu::Evaluate` |
 | Related narrative | [Ch. 17 Semiempirical AM1](../ch17-semiempirical-am1.md) (SE product surface; IPEA is a GFN-xTB sibling, not NDDO) |
 | Queue | TB method loop — harness wave 13 done (`0a7e8b2a` / `5a140845`) |
@@ -127,7 +126,7 @@ Cation (7 e): occupations \(2.0000 + 1.6667\times 3\) (t2 hole). Anion (9 e):
 | Units | \(E\) [eV] on `kEnergy`; \(\mathrm{IP}_v\), \(\mathrm{EA}_v\) [eV] on `last_vip` / `last_vea` |
 | Conversion | \(1\,\mathrm{Ha}=27.211386245988\) eV (`units::kHartreeInEv`); shift uses tblite 27.21138505 |
 
-**Geometry [Å]** (`tools/tb_oracle/inputs/xtb/ch4_ipea_vip/mol.xyz`):
+**Geometry [Å]** (TB oracle (OpenMOPAC / DFTB+ / xtb)):
 same tetrahedral CH₄ as `reg_ipea-xtb-small` (\(s=1.09/\sqrt{3}\)).
 
 | Atom | \(Z\) | \(x\) | \(y\) | \(z\) |
@@ -228,7 +227,7 @@ bash -lc '
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse test_cpu_xtb_ipea \
         reg_ipea-xtb-vip
-  ./build/regressions/reg_ipea-xtb-vip
+  reg_ipea-xtb-vip
   # or: cmake --build build --target run_reg_ipea-xtb-vip
   ctest --test-dir build -R "^(test_cpu_xtb_ipea)$" --output-on-failure
 '
@@ -236,17 +235,17 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/ipea.h` | Public `IPEA` (`compute_vip`, `compute_vea`, `last_vip`, `last_vea`) |
-| `include/atomiverse/cpu/semiempirical/basis_data/ipea_tables.h` | Static H/C/N/O + `kIpeaShiftEv` / `kIpeaEtempK` |
+| `ipea.h` | Public `IPEA` (`compute_vip`, `compute_vea`, `last_vip`, `last_vea`) |
+| `ipea_tables.h` | Static H/C/N/O + `kIpeaShiftEv` / `kIpeaEtempK` |
 | `src/cpu/semiempirical/ipea.cpp` | N-electron SCC; ionized ΔSCC + degenerate-shell occ; IP/EA minus shift |
 | `tests/cpu/semiempirical/test_xtb_ipea.cpp` | Unit: shift constant, finite CH₄ VIP/VEA, flags-off zeros |
-| `regressions/semiempirical/ipea-xtb-vip/reg_ipea-xtb-vip.cpp` | Product gate |
-| `tools/tb_oracle/inputs/xtb/ch4_ipea_vip/` | Offline xtb 6.7.1 twin (`mol.xyz` + `xtb.out.txt`) |
+| `reg_ipea-xtb-vip.cpp` | Product gate |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | Offline xtb 6.7.1 twin (`mol.xyz` + `xtb.out.txt`) |
 
 ## Validation (vs xtb)
 
 Source:
-[`regressions/semiempirical/ipea-xtb-vip/REFERENCE.md`](../../../regressions/semiempirical/ipea-xtb-vip/REFERENCE.md).
+case `ipea-xtb-vip` pin.
 Oracle: **`xtb`** IPEA (`param_ipea-xtb.txt` as GFN1) `--vipea` (Ásgeirsson,
 Bauer, Grimme, *Chem. Sci.* **8**, 4879 (2017); Bannwarth et al., *WIREs
 Comput. Mol. Sci.* **11**, e01493 (2021)).
@@ -258,8 +257,8 @@ oracle: xtb
 oracle_version: 6.7.1 (compiled 2026-06-09)
 ```
 
-Offline pin only. Twin protocol: `tools/tb_oracle/README.md`, inputs under
-`tools/tb_oracle/inputs/xtb/ch4_ipea_vip/`.
+Offline pin only. Twin protocol: TB oracle (OpenMOPAC / DFTB+ / xtb), inputs under
+TB oracle (OpenMOPAC / DFTB+ / xtb).
 
 **Setup:**
 
@@ -267,7 +266,7 @@ Offline pin only. Twin protocol: `tools/tb_oracle/README.md`, inputs under
 | ---- | ----- |
 | Engine (identity) | ATV IPEA-xTB closed-shell N-electron + ionized ΔSCC |
 | Oracle family | xtb (not OpenMOPAC, not DFTB+) |
-| Offline twin | `tools/tb_oracle/inputs/xtb/ch4_ipea_vip/` |
+| Offline twin | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 | Command | `XTBPATH=… xtb mol.xyz --gfn 1 --chrg 0 --uhf 0 --vipea` (`OMP_NUM_THREADS=1`; `param_gfn1-xtb.txt` ← `param_ipea-xtb.txt`; banner `I P E A - x T B`) |
 | Atomiverse path | `IPEA` on `Evaluate` at `evaluate::Phase::evaluate`; `compute_vip` / `compute_vea` |
 | Conversion | \(E[\mathrm{eV}]=E[\mathrm{Ha}]\times 27.211386245988\) |
@@ -330,7 +329,7 @@ Discriminates IPEA from GFN1: eq CH4 GFN1 is −4.274232224875 Eh vs IPEA
 Offline re-pin (human only; never ctest):
 
 ```bash
-# when xtb 6.7.1 is available; see tools/tb_oracle/inputs/xtb/ch4_ipea_vip/
+# when xtb is available — see the TB oracle notes for this case
 # XTBPATH with param_ipea as GFN1; --gfn 1 --chrg 0 --uhf 0 --vipea
 # Td CH4 r_CH=1.09 Å; record TOTAL ENERGY [Eh], "delta SCC IP/EA (eV)",
 # "empirical IP/EA shift (eV)"
@@ -338,7 +337,7 @@ Offline re-pin (human only; never ctest):
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/semiempirical/ipea-xtb-vip/REFERENCE.md).
+Source: pin notes.
 Fair 1-thread wall of `reg_ipea-xtb-vip` (Release, `OMP_NUM_THREADS=1`).
 Gate convention (TB loop): \(r = T_{\mathrm{ATV}}/T_{\mathrm{xtb}} \le 10\)
 unless `perf_exempt`. Same *product* (CH₄ ΔSCC IP/EA); ATV is three SCCs
@@ -379,15 +378,15 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{oracle}} \le 10\) when a twin exists.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/ipea-xtb-vip/REFERENCE.md`](../../../regressions/semiempirical/ipea-xtb-vip/REFERENCE.md)
-- Twin: `tools/tb_oracle/inputs/xtb/ch4_ipea_vip/` (`mol.xyz`, `xtb.out.txt`)
+- Offline pin: case `ipea-xtb-vip` pin
+- Twin: TB oracle (OpenMOPAC / DFTB+ / xtb) (`mol.xyz`, `xtb.out.txt`)
 - Energy sibling: [`ipea-xtb-small.md`](ipea-xtb-small.md) /
-  `regressions/semiempirical/ipea-xtb-small/REFERENCE.md`
+  case `ipea-xtb-small` pin
 - Force sibling: [`ipea-xtb-forces.md`](ipea-xtb-forces.md) /
-  `regressions/semiempirical/ipea-xtb-forces/REFERENCE.md`
+  case `ipea-xtb-forces` pin
 - Hessian sibling: [`ipea-xtb-analytic-hessian.md`](ipea-xtb-analytic-hessian.md) /
-  `regressions/semiempirical/ipea-xtb-analytic-hessian/REFERENCE.md`
-- Oracle README: `tools/tb_oracle/README.md`
+  case `ipea-xtb-analytic-hessian` pin
+- Oracle README: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: `docs/roadmap/semiempirical.md` §3
 - Spec history (closed, deleted at done): git `wf/ipea-xtb-vip`
 - V. Ásgeirsson, C. Bauer, S. Grimme, *Chem. Sci.* **8**, 4879 (2017),

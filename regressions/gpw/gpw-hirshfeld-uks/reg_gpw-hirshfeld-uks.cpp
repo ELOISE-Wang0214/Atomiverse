@@ -6,8 +6,9 @@
 
 #include <cmath>
 #include <cstdio>
-#include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -16,36 +17,32 @@
 int main() {
     using namespace ATV;
     using cpu::gpw::GaussianBasis;
-    using cpu::gpw::GpwAtom;
     using cpu::gpw::GpwDft;
     using cpu::gpw::GthPotential;
+    using cpu::gpw::Kind;
     using cpu::gpw::XcKind;
 
-    constexpr double kA2B = 1.0 / 0.52917720859;
     // O₂, R = 1.2075 Å, centered in 12 Å cubic cell (MT / nonperiodic).
     constexpr double L_ang = 12.0;
     constexpr double R_ang = 1.2075;
-    const double L = L_ang * kA2B;
-    const double z0 = 0.5 * L - 0.5 * R_ang * kA2B;
-    const double z1 = 0.5 * L + 0.5 * R_ang * kA2B;
-
-    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-GTH");
-    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
-    std::vector<GpwAtom> atoms;
-    {
-        const double p0[3] = {0.5 * L, 0.5 * L, z0};
-        const double p1[3] = {0.5 * L, 0.5 * L, z1};
-        atoms.emplace_back(p0, bO, pO, 8);
-        atoms.emplace_back(p1, bO, pO, 8);
+    const double z[2] = {0.5 * L_ang - 0.5 * R_ang, 0.5 * L_ang + 0.5 * R_ang};
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 8;
+        frame.span(kAtom_x)[i] = 0.5 * L_ang;
+        frame.span(kAtom_y)[i] = 0.5 * L_ang;
+        frame.span(kAtom_z)[i] = z[i];
     }
+    frame.box = cpu::Box::cubic(L_ang);
 
     // Offline pin (REFERENCE.md): Hirshfeld-scaled MBD@rsSCS, isolated MBD
     // geometry with volumes from the Γ-UKS PBE density (cutoff 200 Ry).
     constexpr double kEDispRef = -1.0379964698969957e-04; // Ha (PIN_CANDIDATE)
     constexpr double kTol = 1.0e-8;                       // Ha
 
-    GpwDft gpw;
-    gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+    GpwDft gpw{{Kind{molrs::Element::O,
+                     GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
+                     GthPotential(molrs::Element::O, "GTH-PBE-q6")}}};
     gpw.cutoff_ry = 200.0;
     gpw.n_alpha = 7; // multiplicity 3, 12 valence e⁻
     gpw.n_beta = 5;
@@ -58,8 +55,8 @@ int main() {
     gpw.mbd = true;
     gpw.hirshfeld = true;
 
-    gpw.build(atoms);
-    const auto& res = gpw.run(atoms);
+    gpw.build(frame);
+    const auto& res = gpw.run(frame);
 
     std::printf("PIN_CANDIDATE E_disp=%.16e Ha  volumes:", res.e_disp);
     for (double v : res.volume_ratios)

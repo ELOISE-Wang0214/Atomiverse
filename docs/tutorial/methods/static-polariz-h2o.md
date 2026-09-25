@@ -4,7 +4,7 @@
 
 Dipole polarizability \(\alpha_{ab} = \partial \mu_a / \partial F_b\) from
 **CPHF** electric-field response (singlet A+B).
-Regression: `regressions/scf/static-polariz-h2o`.
+Regression: `static-polariz-h2o`.
 
 ## Theory
 
@@ -23,14 +23,14 @@ auto alpha = rhf.polarizability();   // 3×3 [a.u.]
 ```
 
 ```bash
-./build/regressions/reg_static-polariz-h2o
+reg_static-polariz-h2o
 ```
 
 ## Results
 
 ### Accuracy vs PySCF 2.14.0 (CPHF / FF cross-check)
 
-Pins and component-wise tols live in `REFERENCE.md` (analytic CPHF on PySCF
+Pins and component-wise tols live in pin notes (analytic CPHF on PySCF
 MOs/ERIs; FF \(h\sim 2\times 10^{-4}\) a.u.). Product gate: match pin within
 reg tolerance (typically \(\sim 10^{-5}\) a.u. class).
 

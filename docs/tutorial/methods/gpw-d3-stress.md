@@ -3,8 +3,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d3-stress` |
-| Regression | `regressions/gpw/gpw-d3-stress/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`d3`, `compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd` with `GpwDft::d3` |
+| Public API | `cpu::gpw::GpwDft` (`d3`) bound by `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd` with `GpwDft::d3` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -31,7 +30,7 @@ Decisive internal residual: product analytic vs multi-SCF strain-FD
 Public surface: bool / stress members on `cpu::gpw::GPWEvaluator` and
 `cpu::gpw::GpwDft` (no `*Config` bag, no `make_*` / `build_*`). Frame
 `kStress` is eV/Å³; pin channel `last_stress_ha_bohr3()` [Ha/Bohr³].
-Product gate: `regressions/gpw/gpw-d3-stress` (`reg_gpw-d3-stress`).
+Product gate: `gpw-d3-stress` (`reg_gpw-d3-stress`).
 
 ## Method
 
@@ -90,12 +89,16 @@ the same `e_disp` branch); CUDA GPW.
 Public surface only (`GPWEvaluator` / `GpwDft` members; Frame in/out):
 
 ```cpp
-cpu::gpw::GPWEvaluator eval({O, H});
-eval.cutoff_ry = 200.0;
-eval.tol = 1e-7;             // matches CP2K EPS_SCF twin
-eval.xc = cpu::gpw::XcKind::PBE;
-eval.nonperiodic = false;    // PERIODIC XYZ
-eval.d3 = true;              // zero damping; exclusive vs d3bj/d4/ts/xdm/mbd
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;              // matches CP2K EPS_SCF twin
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = false;     // PERIODIC XYZ
+dft.d3 = true;               // zero damping; exclusive vs d3bj/d4/ts/xdm/mbd
+
+cpu::gpw::GPWEvaluator eval(std::move(dft));
 eval.compute_stress = true;  // product analytic fixed-P
 eval.stress_use_fd = false;
 
@@ -114,23 +117,23 @@ a second warm-started analytic product with `d3=false`, subtracted.
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `d3`, `compute_stress`, `last_stress_ha_bohr3` |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::d3`, `gpw_stress` / `gpw_stress_fd` |
+| `gpw_evaluator.h` | `compute_stress`, `last_stress_ha_bohr3` |
+| `gpw_solver.h` | `GpwDft::d3`, `gpw_stress` / `gpw_stress_fd` |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Fixed-\(P\)+Pulay Lagrangian; D3 rebuilt under strain (Γ + multi-k) |
-| `include/atomiverse/cpu/gpw/internal/dftd3.h` | `dftd3_pbe`, `kD3Cp2kPairCutoffBohr` |
+| `dftd3.h` | `dftd3_pbe`, `kD3Cp2kPairCutoffBohr` |
 | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` | `AnalyticMatchesFdWithD3`, `D3ChangesGammaDiagonal` |
-| `regressions/gpw/gpw-d3-stress/` | Product gate + REFERENCE.md pins |
-| `tools/cp2k_oracle/inputs/gpw-d3-stress/` | CP2K NUMERICAL stress twin inputs |
+| `gpw-d3-stress` | Product gate + REFERENCE.md pins |
+| CP2K oracle | CP2K NUMERICAL stress twin inputs |
 
 ## Validation (CP2K 2026.1 + dual-gate)
 
 Oracle: **CP2K 2026.1** (`cp2k.psmp`, EasyBuild `2026.1-gmpflf-2026.03`,
 git:5e54ba2), run **offline** on the Arrhenius epyc login node
 (`mpirun -np 2`, `OMP_NUM_THREADS=2`), 2026-07-31 — never launched from
-ctest. Inputs: `tools/cp2k_oracle/inputs/gpw-d3-stress/`
+ctest. Inputs: CP2K oracle
 (`water_dimer_d3_stress.inp`, `water_dimer_plain_stress.inp`). Full
 provenance and re-run recipe:
-[`regressions/gpw/gpw-d3-stress/REFERENCE.md`](../../../regressions/gpw/gpw-d3-stress/REFERENCE.md).
+case `gpw-d3-stress` pin.
 
 CP2K printed (Hartree): total (plain) −34.338293290245112,
 total (D3) −34.339114184921726, `Dispersion energy`
@@ -183,7 +186,7 @@ difference pin and dual gate, not the product path.
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-d3-stress/REFERENCE.md`
+- Offline pin: case `gpw-d3-stress` pin
 - S. Grimme, J. Antony, S. Ehrlich, H. Krieg, *J. Chem. Phys.* **132**,
   154104 (2010) (DFT-D3, zero damping)
 - J. VandeVondele et al., *Comput. Phys. Commun.* **167**, 103 (2005) (GPW)

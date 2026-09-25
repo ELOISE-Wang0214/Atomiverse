@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `mp3-h2-sto3g` |
-| Regression | `regressions/scf/mp3-h2-sto3g/` |
 | Public API | `cpu::scf::RHF::mp3` → `MP3Result` |
 | Roadmap | post-HF / MPn (canonical closed-shell) |
 
@@ -18,7 +17,7 @@ total \(E_{\mathrm{corr}}\) on H₂ / STO-3G. Public path: construct
 `cpu::scf::RHF`, set members (`basis`, `tol`, …), call `mp3(frame)` — Frame in,
 `MP3Result` out; no `*Config` bag. Offline pin rebuilds Szabo–Ostlund /
 Psi4NumPy diagrams on PySCF RHF orbitals (PySCF 2.14 has no `mp.MP3`). Product
-regression: `regressions/scf/mp3-h2-sto3g` (`reg_mp3-h2-sto3g`).
+regression: `mp3-h2-sto3g` (`reg_mp3-h2-sto3g`).
 
 ## Method
 
@@ -55,7 +54,7 @@ $$
   `frozen=0`.
 
 PySCF 2.14.0 does **not** ship `mp.MP3`. Oracle: rebuild diagrams on
-`scf.RHF` + `ao2mo` MO ERIs (`tools/pyscf_oracle/pin_scf.py mp3`); \(E^{(2)}\)
+`scf.RHF` + `ao2mo` MO ERIs (PySCF oracle); \(E^{(2)}\)
 cross-checks `mp.MP2` to machine precision.
 
 ## Implementation
@@ -87,23 +86,23 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release \
   -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
 cmake --build build --target reg_mp3-h2-sto3g -j"$(nproc)"
 export LD_LIBRARY_PATH="${LIBRARY_PATH}:${LD_LIBRARY_PATH}"
-./build/regressions/reg_mp3-h2-sto3g
+reg_mp3-h2-sto3g
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/mp3.h` | `MP3Result` public POD |
-| `include/atomiverse/cpu/scf/mean_field_method.h` | `RHF::mp3(Frame&)` CRTP entry |
-| `include/atomiverse/cpu/scf/internal/mp3_pack.h` | private `mp3_energy` |
+| `mp3.h` | `MP3Result` public POD |
+| `mean_field_method.h` | `RHF::mp3(Frame&)` CRTP entry |
+| `mp3_pack.h` | private `mp3_energy` |
 | `src/cpu/scf/mp3.cpp` | spin-orbital doubles residual kernel |
 | `src/cpu/scf/mean_field_method.cpp` | public `mp3` (fresh RHF + ERI + call pack) |
-| `regressions/scf/mp3-h2-sto3g/reg_mp3-h2-sto3g.cpp` | e2e consumer |
+| `reg_mp3-h2-sto3g.cpp` | e2e consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/mp3-h2-sto3g/REFERENCE.md`](../../../regressions/scf/mp3-h2-sto3g/REFERENCE.md)
+Source: case `mp3-h2-sto3g` pin
 (offline pin; **never** live PySCF in ctest). Oracle:
-`tools/pyscf_oracle/pin_scf.py mp3`; env `tools/setup_pyscf_env.sh`.
+PySCF oracle; env PySCF oracle.
 
 | Field | Value |
 | ----- | ----- |
@@ -130,14 +129,14 @@ between MP2 and FCI.
 
 ## Performance
 
-Source: `REFERENCE.md` fair-bench block (2026-07-23); worker / queue ratio
+Source: pin notes fair-bench block (2026-07-23); worker / queue ratio
 **0.774**.
 ```bash
 export OMP_NUM_THREADS=1
 export LD_LIBRARY_PATH="${LIBRARY_PATH}:${LD_LIBRARY_PATH}"
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
     --method mp3 --geom h2 --basis sto-3g --repeat 5 -- \
-    ./build/regressions/reg_mp3-h2-sto3g
+    reg_mp3-h2-sto3g
 ```
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -164,9 +163,9 @@ asserts.
 
 ## References
 
-- Offline pin: `regressions/scf/mp3-h2-sto3g/REFERENCE.md`
+- Offline pin: case `mp3-h2-sto3g` pin
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
-- Pin helper: `tools/pyscf_oracle/pin_scf.py` (`mp3`)
+- Pin helper: PySCF oracle (`mp3`)
 - A. Szabo, N. S. Ostlund, *Modern Quantum Chemistry*, Dover; Table 6.2 /
   pp. 364–368 (third-order diagrams)
 - Psi4NumPy `Moller-Plesset/MP3.py` (spatial diagram reduction used by pin)

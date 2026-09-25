@@ -289,7 +289,7 @@ the rock-salt Madelung constant (a purely geometric lattice sum),
 `k_e = 14.399645 eV·Å/e²` is the Coulomb constant in these units, and `d` is
 the nearest-neighbour spacing. The Python gate is 5e-4 relative, which is
 the PME discretization budget at 0.5 Å / order 6; the equivalent C++ case
-`regressions/md/npt_pme_nacl` measures 3.8e-8 on the same settings.
+`npt_pme_nacl` measures 3.8e-8 on the same settings.
 
 ## AM1 semiempirical single point, forces and BOMD
 
@@ -488,10 +488,10 @@ print(rhf.energy())        # total energy [Hartree]
 ```
 
 The printed energy reproduces **−74.961754 Ha**, the value
-`regressions/scf/h2o_rhf_sto3g` pins at exactly this geometry (LibreTexts
+`h2o_rhf_sto3g` pins at exactly this geometry (LibreTexts
 *Live Textbook of Physical Chemistry* §28.2, cross-checked against PySCF
 2.13), inside that case's stated **1 × 10⁻³ Ha** window —
-see `regressions/scf/h2o_rhf_sto3g/REFERENCE.md`. `python/tests/test_scf.py`
+see case `h2o_rhf_sto3g` pin. `python/tests/test_scf.py`
 grades this same geometry against the same number and window.
 
 ## CPU geometry minimization
@@ -544,7 +544,7 @@ opt.add_criterion(av.ForceConverged(ftol=0.01, rms_ftol=0.005))
 `FIRE`'s defaults are ASE's and assume O(1) eV/Å forces. A soft system — an Ar
 Lennard-Jones dimer has a residual of ~10⁻² eV/Å — needs a longer pseudo-time
 scale, hence the `dt0=1.0, dt_max=20.0` retune above
-(`regressions/minimizer/fire_lj_dimer`).
+(`fire_lj_dimer`).
 
 `ForceConverged` has five tolerances and **all five** must hold at once: the
 largest per-atom force `ftol` and the RMS force `rms_ftol` (both eV/Å), the
@@ -629,7 +629,7 @@ Set expectations from what the C++ regression actually measures. Two Ar atoms
 3.0 Å apart in a 6.0 Å cube — compressed well inside the Lennard-Jones
 minimum — expand to L ≈ 6.32 Å with |P| ≈ 1.1×10⁻³ eV/Å³ after 200 iterations,
 and reach |P| < 5×10⁻⁴ eV/Å³ after 559
-(`regressions/minimizer/cell_lj_pressure`). These are steepest-descent
+(`cell_lj_pressure`). These are steepest-descent
 skeletons with a soft modulus, not equation-of-state solvers: budget iterations
 generously and check `result.converged` rather than assuming the budget was
 enough.
@@ -920,7 +920,7 @@ the quantum length scale of a free particle of mass m at temperature T. For
 an ideal gas z *is* the number density, so μ = k_BT·ln(zΛ³) turns a target
 density into the number you pass. The −0.177 eV above is exactly that:
 zσ³ = 0.05 for argon (m = 39.948 amu, σ = 3.4 Å) at T = 180 K. This is the
-convention of `regressions/mc/gcmc_lj/REFERENCE.md` (Frenkel & Smit
+convention of case `gcmc_lj` pin (Frenkel & Smit
 eq. 5.6.9), which is what its ⟨N⟩(z) pin measures.
 
 **Match the mass.** The `InsertDeleteMove` mass **must** be the mass `GCMC`
@@ -938,16 +938,16 @@ launcher protocol — so `run()` raises `RuntimeError` under
 per rank.
 
 The quantitative ensemble physics is pinned in the C++ regressions, not
-here: `regressions/mc/npt_lj` grades ⟨V⟩ against the exact finite-N result
+here: `npt_lj` grades ⟨V⟩ against the exact finite-N result
 ⟨V⟩ = (N+1)k_BT/P + N·B₂ (Frenkel & Smit, *Understanding Molecular
 Simulation* 2nd ed. §5.4) — it lands 0.05 % off, inside a tolerance of
 3 blocked standard errors plus 0.2 % for the virial truncation, and it also
 grades the ensemble *width* σ_V = √(N+1)·k_BT/P — and
-`regressions/mc/gcmc_lj` grades ⟨N⟩(z) at two activities against the Mayer
+`gcmc_lj` grades ⟨N⟩(z) at two activities against the Mayer
 expansion ρ = z − 2B₂z² (Hill, *An Introduction to Statistical
 Thermodynamics* §15-3). B₂ is the second virial coefficient, the leading
 correction to ideal-gas behaviour, evaluated by quadrature for exactly the
-cut-and-shifted potential the engine samples. Read their `REFERENCE.md`
+cut-and-shifted potential the engine samples. Read their pin notes
 before choosing a state point.
 
 ## Key concepts
@@ -1204,7 +1204,7 @@ A pinned example: Si₂ in the fcc primitive cell at *a* = 5.43 Å with one atom
 displaced +0.08 Å along *x*, `GTH-PBE-q4`, `ecut_ry = 8`, Γ-only
 (`k_mesh = 1`), `tol = 1e-6`, `max_iter = 40`, `xc = "LSDA"` gives
 max|F| = 2.517979 eV/Å — the CPU number
-`regressions/pw/cuda-pw-forces/REFERENCE.md` pins (GH200 job 1050105), where
+case `cuda-pw-forces` pin pins (GH200 job 1050105), where
 it is the oracle for the CUDA twin.
 
 ### Plane-wave Born-Oppenheimer MD

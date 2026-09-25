@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pw-uks-kmesh-fe` |
-| Regression | `regressions/pw/pw-uks-kmesh-fe/` |
 | Public API | `cpu::pw::PW` (`spin_polarized`, `multiplicity`, `k_mesh ≥ 2`) → `PWResult::{magnetization, energy_ha}` |
 | Track | CP2K capability wave 2 () |
 | Roadmap | [dft.md](../../roadmap/dft.md) § k-point periodic UKS; queue `pw-uks-kmesh-fe` (done) |
@@ -80,7 +79,7 @@ Public surface only: construct `cpu::pw::PW`, set members (no `*Config` bag,
 no `make_*` / `build_*` factory), `build(frame)` → `run(frame)`. **No new
 public members** relative to Γ UKS — this slug gates existing
 `spin_polarized` / `multiplicity` / `k_mesh` with `k_mesh ≥ 2`. Header:
-`include/atomiverse/cpu/planewave/pw_solver.h`. Internals stay under
+`pw_solver.h`. Internals stay under
 `cpu/planewave/internal/`.
 
 ```cpp
@@ -132,7 +131,7 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_PW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_pw-uks-kmesh-fe -j$(nproc)
-  ./build/regressions/reg_pw-uks-kmesh-fe
+  reg_pw-uks-kmesh-fe
 '
 ```
 
@@ -140,16 +139,15 @@ bash -lc '
 
 | Role | Path |
 | ---- | ---- |
-| Public API | `include/atomiverse/cpu/planewave/pw_solver.h` |
+| Public API | `pw_solver.h` |
 | SCF / spin × k branch | `src/cpu/planewave/pw_solver.cpp` |
 | Unit (multi-k mag) | `tests/cpu/planewave/test_pw_spin.cpp` |
-| Regression | `regressions/pw/pw-uks-kmesh-fe/reg_pw-uks-kmesh-fe.cpp` |
-| Offline pin | `regressions/pw/pw-uks-kmesh-fe/REFERENCE.md` |
-| Oracle note | `tools/cp2k_oracle/inputs/pw-uks-kmesh-fe.note` |
+| Offline pin | case `pw-uks-kmesh-fe` pin |
+| Oracle note | CP2K oracle |
 
 ## Validation (CP2K)
 
-Source: [`regressions/pw/pw-uks-kmesh-fe/REFERENCE.md`](../../../regressions/pw/pw-uks-kmesh-fe/REFERENCE.md)
+Source: case `pw-uks-kmesh-fe` pin
 (offline only; **no live CP2K or QE in ctest**). Closed acceptance
 (git `pw-uks-kmesh-fe` / wave 2): multi-k collinear UKS, mag + \(e_{\mathrm{tot}}\),
 `perf_exempt`.
@@ -190,12 +188,12 @@ regression gate is **stability under the frozen method string**, not a
 literature chemical-accuracy claim. Optional CP2K documentation twin
 (algorithm only, not energy-compared): Quickstep UKS + `KPOINTS`
 Monkhorst–Pack \(2\times2\times2\) on the same O₂ cell with GTH + MOLOPT —
-see `tools/cp2k_oracle/inputs/pw-uks-kmesh-fe.note`. Magnetization remains the
+see CP2K oracle. Magnetization remains the
 hard literature gate.
 
 ## Performance
 
-Source: `REFERENCE.md` § Perf; queue/handoff mark this slug **perf_exempt**.
+Source: pin notes § Perf; queue/handoff mark this slug **perf_exempt**.
 
 | Field | Value |
 | ----- | ----- |
@@ -232,9 +230,9 @@ Dual gate: (1) mag + \(e_{\mathrm{tot}}\) + SCF converge with `k_mesh = 2`;
 
 ## References
 
-- Offline pin: [`regressions/pw/pw-uks-kmesh-fe/REFERENCE.md`](../../../regressions/pw/pw-uks-kmesh-fe/REFERENCE.md)
-- Regression consumer: `regressions/pw/pw-uks-kmesh-fe/reg_pw-uks-kmesh-fe.cpp`
-- Oracle note: `tools/cp2k_oracle/inputs/pw-uks-kmesh-fe.note`
+- Offline pin: case `pw-uks-kmesh-fe` pin
+- Regression consumer: `reg_pw-uks-kmesh-fe.cpp`
+- Oracle note: CP2K oracle
 - Closed acceptance (git history): `.claude/specs/pw-uks-kmesh-fe/` (deleted at
   done; wave 2 2026-07-24)
 - Narrative PW / GPW chapters: [ch08-plane-wave.md](../ch08-plane-wave.md),
@@ -242,7 +240,7 @@ Dual gate: (1) mag + \(e_{\mathrm{tot}}\) + SCF converge with `k_mesh = 2`;
 - Related Γ UKS PW: [`pw-spin-polarized-o2`](pw-spin-polarized-o2.md)
 - Related restricted multi-k: [`pw-lda-si`](pw-lda-si.md),
   [`pw-smearing-al`](pw-smearing-al.md)
-- Related Γ-UKS GPW (different basis/PP): `regressions/gpw/gpw-uks-o2-gamma`
+- Related Γ-UKS GPW (different basis/PP): `gpw-uks-o2-gamma`
 - Herzberg G., *Molecular Spectra and Molecular Structure* I (O₂ \(^3\Sigma_g^-\)
   ground multiplet)
 - Hamann D. R., optimized norm-conserving Vanderbilt pseudopotentials; SG15

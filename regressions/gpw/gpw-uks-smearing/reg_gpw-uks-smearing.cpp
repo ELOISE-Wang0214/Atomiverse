@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -30,31 +32,44 @@ void check(bool ok, const char* what) {
     }
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> h2_toy(double L_bohr) {
+/// H₂ toy in a cubic box of edge L [Bohr]; atoms ±0.7 Bohr about the centre.
+ATV::cpu::Frame h2_toy(double L_bohr) {
     using namespace ATV;
-    const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-    const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-    const double r0[3] = {0.5 * L_bohr - 0.7, 0.5 * L_bohr, 0.5 * L_bohr};
-    const double r1[3] = {0.5 * L_bohr + 0.7, 0.5 * L_bohr, 0.5 * L_bohr};
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.emplace_back(r0, bH, pH, 1);
-    atoms.emplace_back(r1, bH, pH, 1);
-    return atoms;
+    cpu::Frame frame(2);
+    const double c = 0.5 * L_bohr / kA2B;
+    const double dz = 0.7 / kA2B;
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_y)[i] = c;
+        frame.span(kAtom_z)[i] = c;
+    }
+    frame.span(kAtom_x)[0] = c - dz;
+    frame.span(kAtom_x)[1] = c + dz;
+    frame.box = cpu::Box::cubic(L_bohr / kA2B);
+    return frame;
 }
 
-/// BCC conventional cubic: 2 Na at (0,0,0) and (½,½,½).
-std::vector<ATV::cpu::gpw::GpwAtom> na_bcc(double a_bohr) {
+ATV::cpu::gpw::Kind h_kind() {
     using namespace ATV;
-    const cpu::gpw::GaussianBasis bNa(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH");
-    const cpu::gpw::GthPotential pNa(molrs::Element::Na, "GTH-PBE-q9");
+    return cpu::gpw::Kind{
+        molrs::Element::H,
+        cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+        cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
+}
+
+/// BCC conventional cubic: 2 Na at (0,0,0) and (½,½,½); a in Å.
+ATV::cpu::Frame na_bcc(double a_ang) {
+    using namespace ATV;
     const double frac[2][3] = {{0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}};
-    std::vector<cpu::gpw::GpwAtom> atoms;
+    cpu::Frame frame(2);
     for (int i = 0; i < 2; ++i) {
-        const double pos[3] = {frac[i][0] * a_bohr, frac[i][1] * a_bohr,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bNa, pNa, 11);
+        frame.span(kAtom_type)[i] = 11;
+        frame.span(kAtom_x)[i] = frac[i][0] * a_ang;
+        frame.span(kAtom_y)[i] = frac[i][1] * a_ang;
+        frame.span(kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = cpu::Box::cubic(a_ang);
+    return frame;
 }
 
 } // namespace
@@ -68,10 +83,9 @@ int main() {
     // ── R5: closed-shell UKS+smear ≡ RKS+smear on H₂ multi-k ──────────────
     {
         const double L = 8.0;
-        auto atoms = h2_toy(L);
+        cpu::Frame frame = h2_toy(L);
 
-        GpwDft rks;
-        rks.cell[0] = rks.cell[1] = rks.cell[2] = L;
+        GpwDft rks({h_kind()});
         rks.cutoff_ry = 100.0;
         rks.n_occ = 1;
         rks.max_iter = 80;
@@ -81,11 +95,10 @@ int main() {
         rks.k_mesh[2] = 2;
         rks.smearing = Smearing::fermi_dirac;
         rks.degauss = 0.02;
-        rks.build(atoms);
-        const auto rr = rks.run(atoms);
+        rks.build(frame);
+        const auto rr = rks.run(frame);
 
-        GpwDft uks;
-        uks.cell[0] = uks.cell[1] = uks.cell[2] = L;
+        GpwDft uks({h_kind()});
         uks.cutoff_ry = 100.0;
         uks.n_alpha = 1;
         uks.n_beta = 1;
@@ -96,8 +109,8 @@ int main() {
         uks.k_mesh[2] = 2;
         uks.smearing = Smearing::fermi_dirac;
         uks.degauss = 0.02;
-        uks.build(atoms);
-        const auto ru = uks.run(atoms);
+        uks.build(frame);
+        const auto ru = uks.run(frame);
 
         check(rr.converged && ru.converged, "R5 both converge");
         check(std::fabs(ru.e_total - rr.e_total) <= 5e-6,
@@ -115,13 +128,14 @@ int main() {
     const double f_tol_ha = 1e-4;             // Ha
     const double ne_tol = 1e-5;
     const double a_ang = 4.225;
-    const double a = a_ang * kA2B;
     const double n_elec = 18.0; // 2 × GTH-PBE-q9
 
-    auto atoms = na_bcc(a);
+    cpu::Frame frame = na_bcc(a_ang);
 
-    GpwDft m;
-    m.cell[0] = m.cell[1] = m.cell[2] = a;
+    GpwDft m({cpu::gpw::Kind{
+        molrs::Element::Na,
+        cpu::gpw::GaussianBasis(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH"),
+        cpu::gpw::GthPotential(molrs::Element::Na, "GTH-PBE-q9")}});
     m.cutoff_ry = 150.0;
     m.n_alpha = 10; // ferro seed; M free under smear
     m.n_beta = 8;
@@ -137,10 +151,10 @@ int main() {
     m.degauss = 0.02; // Ry
     m.extra_bands = 4;
 
-    m.build(atoms);
+    m.build(frame);
 
     const auto t0 = std::chrono::steady_clock::now();
-    const auto& r = m.run(atoms);
+    const auto& r = m.run(frame);
     const auto t1 = std::chrono::steady_clock::now();
     const double wall_s = std::chrono::duration<double>(t1 - t0).count();
 

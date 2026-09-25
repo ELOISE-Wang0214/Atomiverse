@@ -12,6 +12,8 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/g0w0.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
@@ -22,25 +24,32 @@ namespace {
 
 using ATV::cpu::gpw::G0W0Result;
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::GthPotential;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::XcKind;
 
-std::vector<GpwAtom> make_si2(double a_bohr) {
-    const double pos0[3] = {0.0, 0.0, 0.0};
-    const double pos1[3] = {a_bohr / 4.0, a_bohr / 4.0, a_bohr / 4.0};
-    const GaussianBasis bas(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-    const GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
-    std::vector<GpwAtom> atoms;
-    atoms.emplace_back(pos0, bas, pot, 14);
-    atoms.emplace_back(pos1, bas, pot, 14);
-    return atoms;
+ATV::cpu::Frame make_si2(double a_ang) {
+    ATV::cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        const double q = (i == 0) ? 0.0 : a_ang / 4.0;
+        frame.span(ATV::kAtom_type)[i] = 14;
+        frame.span(ATV::kAtom_x)[i] = q;
+        frame.span(ATV::kAtom_y)[i] = q;
+        frame.span(ATV::kAtom_z)[i] = q;
+    }
+    frame.box = ATV::cpu::Box::cubic(a_ang);
+    return frame;
 }
 
-void configure_common(GpwDft& m, double a_bohr) {
-    m.cell[0] = m.cell[1] = m.cell[2] = a_bohr;
+Kind si_kind() {
+    return Kind{molrs::Element::Si,
+                GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+                GthPotential(molrs::Element::Si, "GTH-PBE-q4")};
+}
+
+void configure_common(GpwDft& m) {
     m.cutoff_ry = 30.0;
     m.max_iter = 80;
     m.tol = 1e-6;
@@ -53,8 +62,7 @@ void configure_common(GpwDft& m, double a_bohr) {
 } // namespace
 
 int main() {
-    constexpr double kA2B = 1.8897259885789;
-    constexpr double a_bohr = 5.43 * kA2B;
+    constexpr double a_ang = 5.43;
 
     // Dual-gate: UGW@UKS-RPBE vs RKS G0W0@RPBE on the same deck when
     // nα=nβ (UGW ≡ RGW). REFERENCE.md records first-green digits.
@@ -63,17 +71,17 @@ int main() {
     constexpr double kPbeUgwGapEv = 5.719545;
     constexpr double kDeFloorEv = 1.0e-3; // eV
 
-    auto atoms = make_si2(a_bohr);
+    ATV::cpu::Frame frame = make_si2(a_ang);
 
     // ── UKS RPBE + UGW ────────────────────────────────────────────────
-    GpwDft m_u;
-    configure_common(m_u, a_bohr);
+    GpwDft m_u{{si_kind()}};
+    configure_common(m_u);
     m_u.n_alpha = 4;
     m_u.n_beta = 4;
-    m_u.build(atoms);
+    m_u.build(frame);
 
     const auto t0 = std::chrono::steady_clock::now();
-    const GpwResult& scf_u = m_u.run(atoms);
+    const GpwResult& scf_u = m_u.run(frame);
     const auto t1 = std::chrono::steady_clock::now();
     if (!scf_u.converged || !std::isfinite(scf_u.e_total)) {
         std::fprintf(stderr,
@@ -89,7 +97,7 @@ int main() {
 
     m_u.mp2_n_virt = 0;
     m_u.mp2_ri = true;
-    const G0W0Result& gw_u = m_u.g0w0(atoms);
+    const G0W0Result& gw_u = m_u.g0w0();
     const auto t2 = std::chrono::steady_clock::now();
 
     const double wall_scf_u = std::chrono::duration<double>(t1 - t0).count();
@@ -148,13 +156,13 @@ int main() {
     }
 
     // ── RKS RPBE + G0W0 dual-gate twin ────────────────────────────────
-    GpwDft m_r;
-    configure_common(m_r, a_bohr);
+    GpwDft m_r{{si_kind()}};
+    configure_common(m_r);
     m_r.n_occ = 4; // closed-shell RKS
-    m_r.build(atoms);
+    m_r.build(frame);
 
     const auto t3 = std::chrono::steady_clock::now();
-    const GpwResult& scf_r = m_r.run(atoms);
+    const GpwResult& scf_r = m_r.run(frame);
     const auto t4 = std::chrono::steady_clock::now();
     if (!scf_r.converged || !std::isfinite(scf_r.e_total)) {
         std::fprintf(stderr,
@@ -166,7 +174,7 @@ int main() {
 
     m_r.mp2_n_virt = 0;
     m_r.mp2_ri = true;
-    const G0W0Result& gw_r = m_r.g0w0(atoms);
+    const G0W0Result& gw_r = m_r.g0w0();
     const auto t5 = std::chrono::steady_clock::now();
     const double wall_scf_r = std::chrono::duration<double>(t4 - t3).count();
     const double wall_gw_r = std::chrono::duration<double>(t5 - t4).count();

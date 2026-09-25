@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dftb2-spin-analytic-forces` |
-| Regression | `regressions/semiempirical/dftb2-spin-analytic-forces/` |
 | Public API | `cpu::semiempirical::DFTB2` (`multiplicity`, `with_forces`) |
 | Track | TB / SE method loop wave 2 () |
 | Roadmap | Spin-polarized DFTB analytic gradient (collinear open shell) |
@@ -24,5 +23,5 @@ the full energy. Public surface unchanged — `multiplicity` + `with_forces` on
 
 Dual \(\alpha/\beta\) densities at the SCC solution; gradient is
 Hellmann–Feynman + Pulay + fixed-\(\Delta q\) SCC \(\gamma\) + repulsive, with
-spin-dependent onsite shifts on \(\partial S\). See `REFERENCE.md` for the
+spin-dependent onsite shifts on \(\partial S\). See pin notes for the
 formula and gates.

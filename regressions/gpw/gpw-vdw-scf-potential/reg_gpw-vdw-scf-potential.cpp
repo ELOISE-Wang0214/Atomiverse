@@ -6,12 +6,13 @@
 
 #include <cmath>
 #include <cstdio>
-#include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
@@ -29,29 +30,27 @@ const double kAng[6][3] = {
 };
 const int kZ[6] = {8, 1, 1, 8, 1, 1};
 
-std::vector<ATV::cpu::gpw::GpwAtom> make_atoms(const double ang[6][3]) {
-    using namespace ATV::cpu::gpw;
-    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
-    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
-    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
-    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
-    std::vector<GpwAtom> atoms;
-    atoms.reserve(6);
+ATV::cpu::Frame make_frame(const double ang[6][3]) {
+    using namespace ATV;
+    cpu::Frame frame(6);
     for (int i = 0; i < 6; ++i) {
-        const double pos[3] = {ang[i][0] * kA2B, ang[i][1] * kA2B,
-                               ang[i][2] * kA2B};
-        if (kZ[i] == 8)
-            atoms.emplace_back(pos, bO, pO, 8);
-        else
-            atoms.emplace_back(pos, bH, pH, 1);
+        frame.span(kAtom_type)[i] = kZ[i];
+        frame.span(kAtom_x)[i] = ang[i][0];
+        frame.span(kAtom_y)[i] = ang[i][1];
+        frame.span(kAtom_z)[i] = ang[i][2];
     }
-    return atoms;
+    frame.box = cpu::Box::cubic(12.0);
+    return frame;
 }
 
 ATV::cpu::gpw::GpwDft make_gpw() {
-    ATV::cpu::gpw::GpwDft gpw;
-    const double L = 12.0 * kA2B;
-    gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+    using namespace ATV::cpu::gpw;
+    GpwDft gpw({Kind{molrs::Element::O,
+                     GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH"),
+                     GthPotential(molrs::Element::O, "GTH-PBE-q6")},
+                Kind{molrs::Element::H,
+                     GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
+                     GthPotential(molrs::Element::H, "GTH-PBE-q1")}});
     gpw.cutoff_ry = 200.0;
     gpw.n_occ = 8;
     gpw.max_iter = 40;
@@ -73,10 +72,11 @@ int main() {
     constexpr double kEDispCp2k = 6.116467960721e-02; // Ha
     constexpr double kEDispTol = 1.0e-4;              // Ha
 
-    auto atoms = make_atoms(kAng);
+    ATV::cpu::Frame frame = make_frame(kAng);
     GpwDft gpw = make_gpw();
-    gpw.build(atoms);
-    const GpwResult res = gpw.run(atoms);
+    gpw.build(frame);
+    // One SCF + analytic forces at the SC density (Frame forces in eV/Å).
+    const GpwResult res = gpw.forces(frame);
 
     if (!res.converged) {
         std::fprintf(stderr, "FAIL: SCF did not converge (iters=%d)\n",
@@ -91,8 +91,6 @@ int main() {
         return 1;
     }
 
-    // Analytic forces at SC density.
-    const auto f_ana = gpw_forces_from_scf(atoms, gpw, res);
     // Central FD of E_total w.r.t. O0 x (H-bond axis) — non-trivial component.
     // h in Bohr.
     constexpr double h = 5.0e-4;
@@ -105,21 +103,22 @@ int main() {
     ang_p[0][0] += h / kA2B; // Å
     ang_m[0][0] -= h / kA2B;
 
-    auto atoms_p = make_atoms(ang_p);
-    auto atoms_m = make_atoms(ang_m);
+    ATV::cpu::Frame frame_p = make_frame(ang_p);
+    ATV::cpu::Frame frame_m = make_frame(ang_m);
     GpwDft gpw_p = make_gpw();
     GpwDft gpw_m = make_gpw();
-    gpw_p.build(atoms_p);
-    gpw_m.build(atoms_m);
-    const GpwResult rp = gpw_p.run(atoms_p);
-    const GpwResult rm = gpw_m.run(atoms_m);
+    gpw_p.build(frame_p);
+    gpw_m.build(frame_m);
+    const GpwResult rp = gpw_p.run(frame_p);
+    const GpwResult rm = gpw_m.run(frame_m);
     if (!rp.converged || !rm.converged) {
         std::fprintf(stderr, "FAIL: FD SCF did not converge\n");
         return 1;
     }
     // Force = −dE/dR; E in Ha, R in Bohr.
     const double f_fd_x = -(rp.e_total - rm.e_total) / (2.0 * h);
-    const double f_ana_x = f_ana[0][0];
+    const double f_ana_x = frame.span(ATV::kAtom_fx)[0]
+                           / ATV::units::kHartreePerBohrInEvPerAngstrom;
     const double df = std::abs(f_fd_x - f_ana_x);
     constexpr double kForceTol = 5.0e-4; // Ha/Bohr
 

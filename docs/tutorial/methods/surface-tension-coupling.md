@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `surface-tension-coupling` |
-| Regression | `regressions/md/surface-tension-coupling/` |
 | Public API | `cpu::md::SurfaceTensionNPT` (Integrator on `cpu::md::MD`; thin NPγT front over `NoseHooverNPT` couple-\(xy\)) |
 | Roadmap | `docs/roadmap/molecular-dynamics.md` constant-surface-tension ✓ |
 | Oracle | **LAMMPS** `fix npt … couple xy` (offline pin; no live `lmp` in ctest) |
@@ -167,26 +166,26 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_surface-tension-coupling -j"$(nproc)"
-  ./build/regressions/reg_surface-tension-coupling
+  reg_surface-tension-coupling
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/surface_tension_npt.h` | Public `SurfaceTensionNPT` |
-| `include/atomiverse/cpu/dynamics/nose_hoover_npt.h` | MTK NPT + `set_couple_xy` / `set_surface_tension` |
-| `include/atomiverse/cpu/dynamics/md.h` | Host preset `cpu::md::MD` |
-| `regressions/md/surface-tension-coupling/reg_surface-tension-coupling.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/lammps/in.surface_tension_coupling` | Offline LAMMPS twin |
+| `surface_tension_npt.h` | Public `SurfaceTensionNPT` |
+| `nose_hoover_npt.h` | MTK NPT + `set_couple_xy` / `set_surface_tension` |
+| `md.h` | Host preset `cpu::md::MD` |
+| `reg_surface-tension-coupling.cpp` | Product gate |
+| MetalWalls oracle | Offline LAMMPS twin |
 
 ## Validation (vs LAMMPS)
 
 Source:
-[`regressions/md/surface-tension-coupling/REFERENCE.md`](../../../regressions/md/surface-tension-coupling/REFERENCE.md)
+case `surface-tension-coupling` pin
 (offline pin; **never** live LAMMPS in ctest). Oracle tooling notes:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
+MetalWalls oracle.
 Twin input:
-[`tools/metalwalls_oracle/inputs/lammps/in.surface_tension_coupling`](../../../tools/metalwalls_oracle/inputs/lammps/in.surface_tension_coupling).
+MetalWalls oracle.
 
 **Oracle:** LAMMPS **30 Mar 2026 - Development**
 (`patch_30Mar2026-1074-g7f680de296`; binary recorded in REFERENCE), metal
@@ -224,14 +223,14 @@ and REFERENCE (match `reg_surface-tension-coupling`).
 
 ```bash
 # Requires a local LAMMPS binary with fix npt (standard package)
-lmp -in tools/metalwalls_oracle/inputs/lammps/in.surface_tension_coupling
+lmp -in <LAMMPS oracle input for this case>
 # Pin Lx=Ly / Lz recorded in REFERENCE.md (2026-07-24)
 ```
 
 ## Performance
 
 Source: REFERENCE.md; handoff
-the case `REFERENCE.md`;
+the case pin notes;
 Comparable workload: **108 atoms, 5000 MD steps**, OMP=1, same LJ + couple-\(xy\)
 NPT settings as the pin (fixed Plat on LAMMPS; `SurfaceTensionNPT` on ATV).
 Host: same login node, 2026-07-24.
@@ -269,12 +268,10 @@ REFERENCE / handoff.
 
 ## References
 
-- Offline pin: [`regressions/md/surface-tension-coupling/REFERENCE.md`](../../../regressions/md/surface-tension-coupling/REFERENCE.md)
-- Product gate: [`regressions/md/surface-tension-coupling/reg_surface-tension-coupling.cpp`](../../../regressions/md/surface-tension-coupling/reg_surface-tension-coupling.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/surface_tension_npt.h`](../../../include/atomiverse/cpu/dynamics/surface_tension_npt.h)
-- Base integrator: [`include/atomiverse/cpu/dynamics/nose_hoover_npt.h`](../../../include/atomiverse/cpu/dynamics/nose_hoover_npt.h)
+- Offline pin: case `surface-tension-coupling` pin
+- Base integrator: `nose_hoover_npt.h`
 - Unit tests: none yet — `SurfaceTensionNPT` is covered only by the
   end-to-end regression above.
 - Roadmap: [`docs/roadmap/molecular-dynamics.md`](../../roadmap/molecular-dynamics.md) (constant surface-tension coupling)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md), twin [`tools/metalwalls_oracle/inputs/lammps/in.surface_tension_coupling`](../../../tools/metalwalls_oracle/inputs/lammps/in.surface_tension_coupling)
+- Oracle notes: MetalWalls oracle, twin MetalWalls oracle
 - Literature: Martyna, Tobias, Klein, *J. Chem. Phys.* **101**, 4177 (1994); LAMMPS `fix nh` / `fix npt` documentation (`couple xy`) — <https://docs.lammps.org/fix_nh.html>

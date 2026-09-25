@@ -35,9 +35,13 @@
 # Documentation
 docs/html/
 docs/latex/
-# Staged MolVis web-component bundle (built from molvis/core/dist; ~40MB).
-# Stage with: rsync -a --delete ../molvis/core/dist/ docs/assets/molvis-core/
+# Staged MolVis / MolPlot web-component bundles (~25MB).
+# Stage from sibling checkouts, e.g.:
+#   rsync -a --delete ../molvis/stage-viewer/dist/ docs/assets/molvis-stage-viewer/
+#   rsync -a --delete ../molplot/core/dist/ docs/assets/molplot/
 docs/assets/molvis-core/
+docs/assets/molvis-stage-viewer/
+docs/assets/molplot/
 
 # CMake build directory
 build/

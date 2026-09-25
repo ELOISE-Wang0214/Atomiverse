@@ -18,7 +18,7 @@ Product path:
    `xdm_pbe` is **added** on the multi-k path (identical switch as Γ:
    pure real-space lattice sum, rcut 50 Å, QE NC-PBE BJ damping).
 
-Public API: `GpwDft::xdm = true` + multi-k mesh + `gpw_forces_*` /
+Public API: `GpwDft::xdm = true` + multi-k mesh + `GpwDft::forces(frame)` /
 `GPWEvaluator(compute_forces=true)`. No new symbols.
 
 PBE BJ damping: QE NC-PBE \(a_1=0.4283\), \(a_2=2.4690\) Å. Free-atom

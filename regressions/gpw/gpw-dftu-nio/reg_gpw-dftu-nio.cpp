@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/evaluate/single_point.h"
@@ -46,18 +47,20 @@ int main() {
                      cpu::gpw::GaussianBasis(molrs::Element::O, "SZV-GTH-PADE"),
                      cpu::gpw::GthPotential(molrs::Element::O, "GTH-PADE-q6")};
 
-    cpu::gpw::GPWEvaluator eval({Ni, O});
-    eval.cutoff_ry = 250.0;
-    eval.max_iter = 300;
-    eval.tol = 1e-5;
-    eval.mix = 0.35;
-    eval.xc = cpu::gpw::XcKind::PADE;
-    eval.nonperiodic = true;
+    cpu::gpw::GpwDft dft{{Ni, O}};
+    dft.cutoff_ry = 250.0;
+    dft.max_iter = 300;
+    dft.tol = 1e-5;
+    dft.mix = 0.35;
+    dft.xc = cpu::gpw::XcKind::PADE;
+    dft.nonperiodic = true;
     // multiplicity 3, 24 valence e⁻ → Nα=13, Nβ=11
-    eval.n_alpha = 13;
-    eval.n_beta = 11;
-    eval.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_ev=*/6.0});
+    dft.n_alpha = 13;
+    dft.n_beta = 11;
+    dft.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_ev=*/6.0});
     // Occupations already break spin symmetry (13,11); no AFM seed needed.
+
+    cpu::gpw::GPWEvaluator eval(std::move(dft));
 
     const auto t0 = clock::now();
     cpu::single_point(frame, eval);

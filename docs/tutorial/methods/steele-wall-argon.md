@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `steele-wall-argon` |
-| Regression | `regressions/forcefield/steele-wall-argon/` |
 | Public API | `cpu::md::FixWallLJ1043` (`Bias` Component; default `md::Phase::post_force`) |
 | Roadmap | force-fields note Steele wall |
 | Oracle | **LAMMPS** `fix wall/lj1043` (metal units) |
@@ -139,25 +138,25 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_steele-wall-argon -j"$(nproc)"
-  ./build/regressions/reg_steele-wall-argon
+  reg_steele-wall-argon
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/fix_wall_lj1043.h` | Public `FixWallLJ1043` |
+| `fix_wall_lj1043.h` | Public `FixWallLJ1043` |
 | `src/cpu/dynamics/fix_wall_lj1043.cpp` | Precompute + `launch` (LAMMPS coeffs) |
-| `regressions/forcefield/steele-wall-argon/reg_steele-wall-argon.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/lammps/in.steele_wall_argon` | Offline twin input |
+| `reg_steele-wall-argon.cpp` | Product gate |
+| MetalWalls oracle | Offline twin input |
 
 ## Validation (vs LAMMPS)
 
 Source:
-[`regressions/forcefield/steele-wall-argon/REFERENCE.md`](../../../regressions/forcefield/steele-wall-argon/REFERENCE.md)
+case `steele-wall-argon` pin
 (offline pin; **never** live LAMMPS in ctest). Oracle tooling notes:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
+MetalWalls oracle.
 Twin input:
-[`tools/metalwalls_oracle/inputs/lammps/in.steele_wall_argon`](../../../tools/metalwalls_oracle/inputs/lammps/in.steele_wall_argon).
+MetalWalls oracle.
 
 **Oracle:** LAMMPS **30 Mar 2026 - Development** (`develop` /
 `patch_30Mar2026-1074-g7f680de296`), metal units, `fix wall/lj1043 zlo 0.0
@@ -192,14 +191,14 @@ Geometry, parameters, and tolerances: **Method** table and REFERENCE (match
 
 ```bash
 # Requires a local LAMMPS binary with fix wall/lj1043 (standard package)
-lmp -in tools/metalwalls_oracle/inputs/lammps/in.steele_wall_argon
+lmp -in <LAMMPS oracle input for this case>
 # PE / Fz pins recorded in REFERENCE.md (2026-07-24)
 ```
 
 ## Performance
 
 Source: REFERENCE.md; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{LAMMPS}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -232,9 +231,7 @@ defined offline, record version + walls and replace `perf_exempt` in REFERENCE.
 
 ## References
 
-- Offline pin: [`regressions/forcefield/steele-wall-argon/REFERENCE.md`](../../../regressions/forcefield/steele-wall-argon/REFERENCE.md)
-- Product gate: [`regressions/forcefield/steele-wall-argon/reg_steele-wall-argon.cpp`](../../../regressions/forcefield/steele-wall-argon/reg_steele-wall-argon.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/fix_wall_lj1043.h`](../../../include/atomiverse/cpu/dynamics/fix_wall_lj1043.h)
+- Offline pin: case `steele-wall-argon` pin
 - Roadmap: [`docs/roadmap/force-fields.md`](../../roadmap/force-fields.md) (Steele 10-4-3 / `FixWallLJ1043`)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md), twin [`tools/metalwalls_oracle/inputs/lammps/in.steele_wall_argon`](../../../tools/metalwalls_oracle/inputs/lammps/in.steele_wall_argon)
+- Oracle notes: MetalWalls oracle, twin MetalWalls oracle
 - Literature: Steele, *Surf. Sci.* **36**, 317 (1973); LAMMPS `fix wall` / `wall/lj1043` documentation

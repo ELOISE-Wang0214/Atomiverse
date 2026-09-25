@@ -9,10 +9,10 @@
 ///
 /// This mirrors CP2K's getting-started h2o.inp: isolated H2O, PBE,
 /// DZVP-MOLOPT-GTH basis + GTH-PBE pseudopotentials, Martyna-Tuckerman isolated
-/// electrostatics. The user-facing component is cpu::gpw::GPWEvaluator (role
-/// Evaluator, capability Energy), run through cpu::single_point exactly like
-/// cpu::pw::PWEvaluator; the Gaussian methods (cpu::scf::RHF and friends)
-/// have the same Frame-in / Frame-out shape.
+/// electrostatics. The method is cpu::gpw::GpwDft (kinds + parameters as
+/// public members, Frame in / Frame out — `dft.run(frame)` works directly);
+/// here it is bound to a Driver slot through cpu::gpw::GPWEvaluator and run
+/// with cpu::single_point exactly like cpu::pw::PWEvaluator.
 ///
 /// Build:
 ///   cmake -B build -DATV_BUILD_HF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON \
@@ -24,10 +24,12 @@
 ///
 /// CP2K reference total energy for this input: -17.21233714 Hartree.
 
+#include <cmath>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/cpu/evaluate/single_point.h"
@@ -73,9 +75,16 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval(
-        /*kinds*/ {O, H}, /*cutoff_ry*/ 400.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true);
+    // The method carries every parameter; the evaluator binds it to a slot.
+    cpu::gpw::GpwDft dft{{O, H}};
+    dft.cutoff_ry = 400.0;
+    dft.max_iter = 200;
+    dft.tol = 1e-7;
+    dft.mix = 0.3;
+    dft.xc = cpu::gpw::XcKind::PBE;
+    dft.nonperiodic = true;
+
+    cpu::gpw::GPWEvaluator eval(std::move(dft));
     cpu::single_point(frame, eval);
 
     const double e_ha = eval.last_energy_hartree();

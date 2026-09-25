@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | slug | `ot-uks-o2` |
-| Regression | `regressions/gpw/ot-uks-o2/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`use_ot`, `n_alpha`/`n_beta`, `XcKind::PADE`, `nonperiodic`); `cpu::single_point` |
+| Public API | `cpu::gpw::GpwDft` members (`use_ot`, `n_alpha`/`n_beta`, `XcKind::PADE`, `nonperiodic`) bound via `cpu::gpw::GPWEvaluator`; `cpu::single_point` |
 | Roadmap | `docs/roadmap/dft.md` — product OT minimizer (`use_ot` RKS + **Γ-UKS**) |
 
 ## Summary
@@ -15,15 +14,16 @@
 **Γ point**: separate α/β occupied manifolds on the Stiefel-type constraint
 \(C_\sigma^\top S C_\sigma = I\), spin-resolved **PADE (LSD)** XC, Martyna–Tuckerman
 isolated electrostatics. Product surface is the public member pair
-`cpu::gpw::GPWEvaluator::use_ot` + `n_alpha` / `n_beta` (no `*Config` bag, no
-env required for product code). This page pins **triplet O₂** OT total energy
+`cpu::gpw::GpwDft::use_ot` + `n_alpha` / `n_beta` (no `*Config` bag; the
+member is the only OT switch). This page pins **triplet O₂** OT total energy
 and Löwdin \(\langle S^2\rangle\) against an offline **CP2K 2026.1** OT twin
 (`&OT`, `PRECONDITIONER FULL_SINGLE_INVERSE`, CUTOFF **250 Ry**), and dual-checks
 OT vs in-tree UKS DIIS on the same Atomiverse grids.
 
-Public path: construct `GPWEvaluator` with one `Kind` per element (lookup
-constructors `GaussianBasis` / `GthPotential`), set members, run
-`cpu::single_point(frame, eval)`. Energy on `frame.meta` is **eV**; Hartree and
+Public path: construct `cpu::gpw::GpwDft` with one `Kind` per element (lookup
+constructors `GaussianBasis` / `GthPotential`), set its members, move it into
+`cpu::gpw::GPWEvaluator`, run `cpu::single_point(frame, eval)`. Energy on
+`frame.meta` is **eV**; Hartree and
 \(\langle S^2\rangle\) via `last_energy_hartree()` / `last_s2()`. Product gate:
 `reg_ot-uks-o2`. Fair OT-only wall ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \approx 4.6\) (OMP=4, energy OT, ≤10×).
@@ -98,7 +98,7 @@ high-spin value for \(S=1\): \(S(S+1)=2\). Citation: Löwdin, *Phys. Rev.*
 
 ## Implementation
 
-Public surface only (`cpu::Frame` + `GPWEvaluator` members / ctor args; **no**
+Public surface only (`cpu::Frame` + `GpwDft` members + `GPWEvaluator`; **no**
 `*Config` bag, **no** `make_*` / `build_*` factories). Match the regression
 (**250 Ry** pin budget; 400 Ry DIIS class is `gpw-uks-o2-gamma`):
 
@@ -131,14 +131,18 @@ cpu::gpw::Kind O{molrs::Element::O,
                  cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
                  cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
-cpu::gpw::GPWEvaluator eval(
-    /*kinds*/ {O}, /*cutoff_ry*/ 250.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-    /*mix*/ 0.4, cpu::gpw::XcKind::PADE, /*nonperiodic*/ true,
-    /*compute_forces*/ false, /*fd_step*/ 1e-3, /*d3*/ false,
-    /*use_ot*/ true);
-// equivalent after construction: eval.use_ot = true;
-eval.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
-eval.n_beta = 5;
+cpu::gpw::GpwDft dft{{O}};
+dft.cutoff_ry = 250.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.nonperiodic = true;
+dft.use_ot = true;
+dft.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
+dft.n_beta = 5;
+
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 
 cpu::single_point(frame, eval);
 
@@ -147,9 +151,6 @@ const double e_ev = frame.meta.get(kEnergy);          // [eV]
 const double s2 = eval.last_s2();                     // Löwdin ⟨S²⟩
 const cpu::gpw::GpwResult& r = eval.last_result();    // converged, iters, …
 ```
-
-Diagnostic env `ATV_GPW_OT` may still force OT on (OR with the member); product
-code and the regression **must not** depend on it (`unsetenv` in the reg binary).
 
 Build (GPW needs FFTW3) and run the regression:
 
@@ -165,7 +166,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_ot-uks-o2
-  ./build/regressions/reg_ot-uks-o2
+  reg_ot-uks-o2
 '
 ```
 
@@ -173,17 +174,16 @@ Relevant sources:
 
 | Piece | Path |
 | ----- | ---- |
-| Evaluator | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (`use_ot`, `n_alpha`/`n_beta`) |
-| Solver (UKS + OT) | `include/atomiverse/cpu/gpw/gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
-| OT manifold / preconds | `include/atomiverse/cpu/gpw/internal/ot.h` |
-| PADE LSD grid | `include/atomiverse/cpu/gpw/internal/xc_grid.h` |
+| Method / evaluator | `gpw_solver.h` (`use_ot`, `n_alpha`/`n_beta`), `gpw_evaluator.h` |
+| Solver (UKS + OT) | `gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
+| OT manifold / preconds | `ot.h` |
+| PADE LSD grid | `xc_grid.h` |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_ot.cpp` |
-| Regression | `regressions/gpw/ot-uks-o2/reg_ot-uks-o2.cpp` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/ot-uks-o2/o2_uks_ot_pade.inp` |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (vs CP2K)
 
-Source: [`regressions/gpw/ot-uks-o2/REFERENCE.md`](../../../regressions/gpw/ot-uks-o2/REFERENCE.md)
+Source: case `ot-uks-o2` pin
 (offline pin; **never** live CP2K in ctest). Engine: **CP2K 2026.1**
 (`cp2k.psmp`, git:5e54ba2), module `CP2K/2026.1` on Arrhenius. Re-pin date:
 **2026-07-26**.
@@ -232,14 +232,14 @@ module load buildtool-easybuild/5.2.1-hpca3ef7d197 GCC/14.3.0 MPICH/4.3.2 CP2K/2
 export CP2K_DATA_DIR=$EBROOTCP2K/share/cp2k/data
 export OMP_NUM_THREADS=4
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_MOLOPT,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/ot-uks-o2/o2_uks_ot_pade.inp
+# copy <CP2K oracle input for this case>
 mpirun -np 1 cp2k.psmp -i o2_uks_ot_pade.inp -o o2_uks_ot_pade.out
 ```
 
 ## Performance
 
 Source: fair wall table in
-`regressions/gpw/ot-uks-o2/REFERENCE.md` (2026-08-05). Queue / handoff record:
+case `ot-uks-o2` pin (2026-08-05). Queue / handoff record:
 ratio **~7.1** (fair energy-OT, OMP=4; CP2K-aligned algorithm).
 Gate \(r\le 10\) unless `perf_exempt`.
 
@@ -280,10 +280,10 @@ this foothold.
 
 ## References
 
-- Offline pin + fair wall: [`regressions/gpw/ot-uks-o2/REFERENCE.md`](../../../regressions/gpw/ot-uks-o2/REFERENCE.md)
-- Regression consumer: [`reg_ot-uks-o2.cpp`](../../../regressions/gpw/ot-uks-o2/reg_ot-uks-o2.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/ot-uks-o2/`](../../../tools/cp2k_oracle/inputs/ot-uks-o2/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin + fair wall: case `ot-uks-o2` pin
+- Regression consumer: `reg_ot-uks-o2.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Closed-shell OT twin: [`ot-minimizer-water.md`](ot-minimizer-water.md)
 - DIIS UKS 400 Ry twin: [`gpw-uks-o2-gamma.md`](gpw-uks-o2-gamma.md)
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)

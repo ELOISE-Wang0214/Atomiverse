@@ -7,7 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
+#include <utility>
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/evaluate/single_point.h"
@@ -49,19 +49,19 @@ cpu::gpw::GPWEvaluator make_eval(bool use_ot) {
                      cpu::gpw::GaussianBasis(molrs::Element::O, "SZV-GTH-PADE"),
                      cpu::gpw::GthPotential(molrs::Element::O, "GTH-PADE-q6")};
 
-    cpu::gpw::GPWEvaluator eval({Ni, O});
-    eval.cutoff_ry = 250.0;
-    eval.max_iter = 300;
-    eval.tol = 1e-5;
-    eval.mix = 0.35;
-    eval.xc = cpu::gpw::XcKind::PADE;
-    eval.nonperiodic = true;
-    eval.use_ot = use_ot;
+    cpu::gpw::GpwDft dft{{Ni, O}};
+    dft.cutoff_ry = 250.0;
+    dft.max_iter = 300;
+    dft.tol = 1e-5;
+    dft.mix = 0.35;
+    dft.xc = cpu::gpw::XcKind::PADE;
+    dft.nonperiodic = true;
+    dft.use_ot = use_ot;
     // multiplicity 3, 24 valence e⁻ → Nα=13, Nβ=11
-    eval.n_alpha = 13;
-    eval.n_beta = 11;
-    eval.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_ev=*/6.0});
-    return eval;
+    dft.n_alpha = 13;
+    dft.n_beta = 11;
+    dft.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_ev=*/6.0});
+    return cpu::gpw::GPWEvaluator(std::move(dft));
 }
 
 } // namespace
@@ -76,7 +76,6 @@ int main() {
     constexpr double kS2_cp2k = 2.019198;
     constexpr double kTolS2 = 0.25;
 
-    unsetenv("ATV_GPW_OT");
     using clock = std::chrono::steady_clock;
 
     cpu::Frame frame_ot = make_nio();

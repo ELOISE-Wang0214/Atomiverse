@@ -7,8 +7,9 @@ isolated electrostatics. Spin-resolved **PBE GGA**, GTH-PBE-q6 pseudopotential,
 DZVP-MOLOPT-GTH Gaussian basis. Analytic ionic forces (Hellmann–Feynman + Pulay
 with \(W_\alpha+W_\beta\) and spin-resolved grid \(V_\mathrm{eff}^{\alpha/\beta}\)).
 
-Atomiverse path: `cpu::gpw::GPWEvaluator` with `n_alpha=7`, `n_beta=5`,
-`compute_forces=true`, `XcKind::PBE` → `gpw_forces_analytic` UKS branch.
+Atomiverse path: `cpu::gpw::GpwDft` with `n_alpha=7`, `n_beta=5`,
+`XcKind::PBE`, moved into `cpu::gpw::GPWEvaluator` with
+`compute_forces=true` → analytic-force UKS branch.
 
 ## System
 

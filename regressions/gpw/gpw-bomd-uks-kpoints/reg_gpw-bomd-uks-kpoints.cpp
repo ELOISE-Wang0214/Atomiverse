@@ -10,6 +10,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -55,16 +56,20 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
-    cpu::gpw::GPWEvaluator gpw(
-        /*kinds*/ {H}, /*cutoff_ry*/ 300.0, /*max_iter*/ 60, /*tol*/ 1e-7,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-        /*compute_forces*/ true);
-    gpw.n_alpha = 1;
-    gpw.n_beta = 1;
-    gpw.k_mesh[0] = 1;
-    gpw.k_mesh[1] = 1;
-    gpw.k_mesh[2] = 2;
-    gpw.k_time_reversal = false; // two sampled k (CP2K FULL_GRID .TRUE.)
+    cpu::gpw::GpwDft dft{{H}};
+    dft.cutoff_ry = 300.0;
+    dft.max_iter = 60;
+    dft.tol = 1e-7;
+    dft.mix = 0.3;
+    dft.xc = cpu::gpw::XcKind::PADE;
+    dft.nonperiodic = false;
+    dft.n_alpha = 1;
+    dft.n_beta = 1;
+    dft.k_mesh[0] = 1;
+    dft.k_mesh[1] = 1;
+    dft.k_mesh[2] = 2;
+    dft.k_time_reversal = false; // two sampled k (CP2K FULL_GRID .TRUE.)
+    cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 
     // ── CP2K 2026.1 pins (offline oracle; tools/cp2k_oracle/inputs/
     //    gpw-bomd-uks-kpoints/h2_uks_bomd_kpoints_nve.inp at CUTOFF 300) ─

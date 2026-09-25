@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pw-spin-gga` |
-| Regression | `regressions/pw/pw-spin-gga/` |
 | Public API | `cpu::pw::PW` (`spin_polarized`, `multiplicity`, `xc = XCType::PBE`) → `PWResult::{energy_ha, magnetization}` |
 | Track | CP2K capability wave 4 () |
 | Roadmap | PW true collinear spin-GGA (`docs/roadmap/dft.md` §10; productized `reg_pw-spin-gga`) |
@@ -98,7 +97,7 @@ product surface (`gpw-uks-pbe`, `gpw-uks-blyp`).
 
 Public surface only: construct `cpu::pw::PW`, set members (no `*Config` bag,
 no `make_*` / `build_*` factory), `build(frame)` → `run(frame)`. Header:
-`include/atomiverse/cpu/planewave/pw_solver.h`. Internals
+`pw_solver.h`. Internals
 (`XCBuilder::step_spin`, density spin buffers) stay under
 `cpu/planewave/internal/`.
 
@@ -154,7 +153,7 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_PW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_pw-spin-gga -j$(nproc)
-  ./build/regressions/reg_pw-spin-gga
+  reg_pw-spin-gga
 '
 ```
 
@@ -162,19 +161,18 @@ bash -lc '
 
 | Role | Path |
 | ---- | ---- |
-| Public API | `include/atomiverse/cpu/planewave/pw_solver.h` |
+| Public API | `pw_solver.h` |
 | SCF / spin branch | `src/cpu/planewave/pw_solver.cpp` |
-| Spin-GGA XC | `include/atomiverse/cpu/planewave/internal/xc_builder.h`, `src/cpu/planewave/internal/xc_builder.cpp` |
+| Spin-GGA XC | `xc_builder.h`, `src/cpu/planewave/internal/xc_builder.cpp` |
 | Density spin | `src/cpu/planewave/internal/density_builder.cpp` |
 | Unit tests | `tests/cpu/planewave/` (spin / XC components as present) |
-| Regression | `regressions/pw/pw-spin-gga/reg_pw-spin-gga.cpp` |
-| Offline pin | `regressions/pw/pw-spin-gga/REFERENCE.md` |
-| Oracle note | `tools/cp2k_oracle/inputs/pw-spin-gga.note` |
+| Offline pin | case `pw-spin-gga` pin |
+| Oracle note | CP2K oracle |
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/pw/pw-spin-gga/REFERENCE.md`](../../../regressions/pw/pw-spin-gga/REFERENCE.md)
+case `pw-spin-gga` pin
 (offline only; **no live CP2K or Quantum ESPRESSO in ctest**).
 
 | Setting | Value |
@@ -189,7 +187,7 @@ Source:
 | Occupations | fixed \(N_\uparrow=7\), \(N_\downarrow=5\) |
 | SCF | density L2 tol \(5\times10^{-4}\), `max_iter=60`, `mix_beta=0.3` |
 | XC | PBE true collinear spin-GGA (`XCBuilder::step_spin`) |
-| Twin note | CP2K Quickstep is **GPW/GTH**, not NC-UPF PW; prefer QE `pw.x` + this UPF for absolute \(e_{\mathrm{tot}}\) re-pin when available (`tools/cp2k_oracle/inputs/pw-spin-gga.note`) |
+| Twin note | CP2K Quickstep is **GPW/GTH**, not NC-UPF PW; prefer QE `pw.x` + this UPF for absolute \(e_{\mathrm{tot}}\) re-pin when available (CP2K oracle) |
 
 ### Magnetization (literature + fixed occupations)
 
@@ -228,7 +226,7 @@ as elsewhere in PW.
 
 ## Performance
 
-Source: `REFERENCE.md` § Perf; queue/handoff mark this slug **perf_exempt**.
+Source: pin notes § Perf; queue/handoff mark this slug **perf_exempt**.
 
 | Field | Value |
 | ----- | ----- |
@@ -255,7 +253,7 @@ Dual gate: (1) mag + \(e_{\mathrm{tot}}\) + GGA activation + SCF converge;
   of this page.
 - **Energy twin debt:** absolute \(E_{\mathrm{tot}}\) is a frozen offline method
   pin (tol \(10^{-3}\) Ha), not a CP2K/QE re-pin — re-pin when `pw.x` or a fair
-  NC-UPF twin is available (`tools/cp2k_oracle/inputs/pw-spin-gga.note`).
+  NC-UPF twin is available (CP2K oracle).
 - **No spin-polarized forces/stress** in acceptance; analytic force/stress APIs
   are not dual-gated for nspin=2 + GGA on this slug.
 - **Modest ecut (12 Ry)** for wall budget; production O₂/ONCV needs higher
@@ -271,10 +269,10 @@ Dual gate: (1) mag + \(e_{\mathrm{tot}}\) + GGA activation + SCF converge;
 
 ## References
 
-- Offline pin: [`regressions/pw/pw-spin-gga/REFERENCE.md`](../../../regressions/pw/pw-spin-gga/REFERENCE.md)
-- Regression consumer: `regressions/pw/pw-spin-gga/reg_pw-spin-gga.cpp`
-- Oracle note: `tools/cp2k_oracle/inputs/pw-spin-gga.note`
-- Oracle rules: `tools/cp2k_oracle/README.md` (never live in ctest)
+- Offline pin: case `pw-spin-gga` pin
+- Regression consumer: `reg_pw-spin-gga.cpp`
+- Oracle note: CP2K oracle
+- Oracle rules: CP2K oracle (never live in ctest)
 - Roadmap: `docs/roadmap/dft.md` (CPU true collinear spin-GGA ✓)
 - Narrative PW / GPW chapters: [ch08-plane-wave.md](../ch08-plane-wave.md),
   [ch09-gpw.md](../ch09-gpw.md)

@@ -14,6 +14,9 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -67,9 +70,9 @@ int main() {
     using clock = std::chrono::steady_clock;
     using cpu::gpw::GaussianBasis;
     using cpu::gpw::gpw_stress;
-    using cpu::gpw::GpwAtom;
     using cpu::gpw::GpwDft;
     using cpu::gpw::GthPotential;
+    using cpu::gpw::Kind;
     using cpu::gpw::mbd_rsscs_pbe;
     using cpu::gpw::MbdResult;
     using cpu::gpw::ts_pbe;
@@ -187,20 +190,26 @@ int main() {
     }
 
     // ── C/D: multi-k product wiring on H₂ (1×1×2) ─────────────────────────
-    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
-    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
-    const double rA[3] = {5.5, 6.0, 6.0};
-    const double rB[3] = {6.5, 6.0, 6.0};
-    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
-                                  GpwAtom(rB, basis, pot, 1)};
+    const double rA[3] = {5.5, 6.0, 6.0}; // Bohr
+    const double rB[3] = {6.5, 6.0, 6.0}; // Bohr
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        const double* r = (i == 0) ? rA : rB;
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_x)[i] = r[0] * units::kBohrInAngstrom;
+        frame.span(kAtom_y)[i] = r[1] * units::kBohrInAngstrom;
+        frame.span(kAtom_z)[i] = r[2] * units::kBohrInAngstrom;
+    }
+    frame.box = cpu::Box::cubic(12.0 * units::kBohrInAngstrom);
     std::vector<int> Zh = {1, 1};
     std::vector<std::array<double, 3>> posh = {{rA[0], rA[1], rA[2]},
                                                {rB[0], rB[1], rB[2]}};
     const double cell_h2[3] = {12.0, 12.0, 12.0};
 
     auto make_cfg = [](bool with_ts, bool with_mbd, bool with_hirsh) {
-        GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        GpwDft m{{Kind{molrs::Element::H,
+                       GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                       GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
         m.cutoff_ry = 100.0;
         m.n_occ = 1;
         m.tol = 1e-8;
@@ -221,8 +230,8 @@ int main() {
     // C: multi-k TS + hirshfeld stress
     {
         GpwDft cfg = make_cfg(/*ts=*/true, /*mbd=*/false, /*hirsh=*/true);
-        cfg.build(atoms);
-        const auto& scf = cfg.run(atoms);
+        cfg.build(frame);
+        const auto& scf = cfg.run(frame);
         if (!scf.converged) {
             fail("multi-k TS+hirsh SCF did not converge");
         } else if (scf.n_kpts < 1 || scf.C_occ_k.empty()) {
@@ -233,8 +242,8 @@ int main() {
             fail("multi-k TS+hirsh e_disp non-finite or non-attractive");
         } else {
             GpwDft plain = make_cfg(false, false, false);
-            const auto sig_h = gpw_stress(atoms, cfg, scf, kStrainH);
-            const auto sig_plain = gpw_stress(atoms, plain, scf, kStrainH);
+            const auto sig_h = gpw_stress(frame, cfg, scf, kStrainH);
+            const auto sig_plain = gpw_stress(frame, plain, scf, kStrainH);
 
             auto ts_h = [&](const std::vector<std::array<double, 3>>& p,
                             const double c[3]) {
@@ -298,8 +307,8 @@ int main() {
     // D: multi-k MBD + hirshfeld stress (isolated MBD when mbd_k_mesh = 0)
     {
         GpwDft cfg = make_cfg(/*ts=*/false, /*mbd=*/true, /*hirsh=*/true);
-        cfg.build(atoms);
-        const auto& scf = cfg.run(atoms);
+        cfg.build(frame);
+        const auto& scf = cfg.run(frame);
         if (!scf.converged) {
             fail("multi-k MBD+hirsh SCF did not converge");
         } else if (scf.n_kpts < 1 || scf.C_occ_k.empty()) {
@@ -310,8 +319,8 @@ int main() {
             fail("multi-k MBD+hirsh e_disp non-finite or non-attractive");
         } else {
             GpwDft plain = make_cfg(false, false, false);
-            const auto sig_h = gpw_stress(atoms, cfg, scf, kStrainH);
-            const auto sig_plain = gpw_stress(atoms, plain, scf, kStrainH);
+            const auto sig_h = gpw_stress(frame, cfg, scf, kStrainH);
+            const auto sig_plain = gpw_stress(frame, plain, scf, kStrainH);
 
             auto mbd_h = [&](const std::vector<std::array<double, 3>>& p,
                              const double c[3]) {

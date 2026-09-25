@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dftb2-dftbplus-energy-pin` |
-| Regression | `regressions/semiempirical/dftb2-dftbplus-energy-pin/` |
 | Public API | `cpu::Evaluate` + `cpu::semiempirical::DFTB2` (`sk_set = MioSketch`, forces off) |
 | Roadmap / queue | `docs/roadmap/semiempirical.md` §2 SCC-DFTB2; queue done 2026-07-27 |
 | Oracle | **DFTB+ 24.1** only (family-locked; never OpenMOPAC / xtb) |
@@ -18,7 +17,7 @@ Self-consistent-charge DFTB2 (Elstner et al., *Phys. Rev. B* **58**, 7260
 Slater–Koster file. Atomiverse does **not** parse `.skf` at run time: the H–H
 grids (hopping + overlap + repulsive spline + H onsite / Hubbard \(U\)) are
 transcribed once into the static header
-`include/atomiverse/cpu/semiempirical/basis_data/dftb_mio_hh_sk.h` and selected
+`dftb_mio_hh_sk.h` and selected
 by the default `DftbSkSet::MioSketch` path. The regression asserts absolute
 energy identity on the public Evaluate surface (eV on `frame.meta[kEnergy]`).
 This is the absolute-energy hygiene pin for H–H; multi-element sketch tables
@@ -152,15 +151,14 @@ Relevant paths:
 
 | Role | Path |
 | ---- | ---- |
-| Method | `include/atomiverse/cpu/semiempirical/dftb2.h` |
+| Method | `dftb2.h` |
 | Impl | `src/cpu/semiempirical/dftb2.cpp` |
 | Static mio-1-1 H–H | `…/basis_data/dftb_mio_hh_sk.h` |
-| Regression | `regressions/semiempirical/dftb2-dftbplus-energy-pin/` |
-| Offline twin | `tools/tb_oracle/inputs/dftbplus/h2_mio_scc/` |
+| Offline twin | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 
 ## Validation (vs DFTB+)
 
-Source: `regressions/semiempirical/dftb2-dftbplus-energy-pin/REFERENCE.md`
+Source: case `dftb2-dftbplus-energy-pin` pin
 (offline pin; **never** live DFTB+ in ctest).
 
 ```text
@@ -180,8 +178,8 @@ oracle_version: 24.1
 
 DFTB+ inputs (reproducible offline only):
 
-- `tools/tb_oracle/inputs/dftbplus/h2_mio_scc/geo.gen` — H₂ at 0.74 Å
-- `tools/tb_oracle/inputs/dftbplus/h2_mio_scc/dftb_in.hsd` — `SCC = Yes`,
+- TB oracle (OpenMOPAC / DFTB+ / xtb) — H₂ at 0.74 Å
+- TB oracle (OpenMOPAC / DFTB+ / xtb) — `SCC = Yes`,
   `SCCTolerance = 1e-8`, `MaxAngularMomentum { H = "s" }`, Type2 SK names
 - SK: dftbparams/mio `H-H.skf` (operator host; not vendored as binary)
 
@@ -195,7 +193,7 @@ DFTB+ inputs (reproducible offline only):
 Tolerance is intentionally loose vs residual (mHa-scale hygiene for SK
 interpolation / unit conversion drift); measured residual is near machine
 identity for the transcribed tables + DFTB+ “new” SK interpolation + spline
-repulsive (see `tools/tb_oracle/pin_notes.md`).
+repulsive (see TB oracle (OpenMOPAC / DFTB+ / xtb)).
 
 ## Performance
 
@@ -226,9 +224,9 @@ the pin closes **absolute oracle identity for H–H**, not the full DFTB ladder.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/dftb2-dftbplus-energy-pin/REFERENCE.md`](../../../regressions/semiempirical/dftb2-dftbplus-energy-pin/REFERENCE.md)
-- Oracle twin: [`tools/tb_oracle/inputs/dftbplus/h2_mio_scc/`](../../../tools/tb_oracle/inputs/dftbplus/h2_mio_scc/)
-- Family rules: [`tools/tb_oracle/README.md`](../../../tools/tb_oracle/README.md)
+- Offline pin: case `dftb2-dftbplus-energy-pin` pin
+- Oracle twin: TB oracle (OpenMOPAC / DFTB+ / xtb)
+- Family rules: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: [`docs/roadmap/semiempirical.md`](../../roadmap/semiempirical.md) §2
 - M. Elstner et al., *Phys. Rev. B* **58**, 7260 (1998),
   DOI [10.1103/PhysRevB.58.7260](https://doi.org/10.1103/PhysRevB.58.7260)

@@ -18,7 +18,8 @@ fractional \(P_k\); force assembly uses full `C_k` + `f_k` (not integer
 \(n_{\mathrm{occ}}\) truncation).
 
 Public path: `GpwDft` members `smearing` / `degauss` / `extra_bands` +
-`gpw_forces_analytic` / `gpw_forces_from_scf`. No public `*Config`, no factories.
+`dft.forces(frame)` (SCF + analytic forces, Frame `kAtom_f*` in eV/Å) and
+`gpw_forces_fd(frame, dft, h_ang)`. No public `*Config`, no factories.
 
 ## System (ATV correctness pin)
 

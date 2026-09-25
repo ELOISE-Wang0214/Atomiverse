@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `uks-full-lr-o2-lsda` |
-| Regression | `regressions/scf/uks-full-lr-o2-lsda/` |
 | Public API | `cpu::scf::UKS` + `UKS::tddft` (not `UKS::tda`) |
 | Roadmap | [Excited states](../../roadmap/excited-states.md) — UKS full-LR TDDFT ✓ |
 
@@ -17,7 +16,7 @@ channels are retained; `ExcitedStatesResult::tda == false` and `alda == true`
 on the pure-LSDA path. Primary observables: five lowest spin-conserving
 excitation roots **ω [eV]**. Public surface is concrete `cpu::scf::UKS` with
 Frame I/O only — no `*Config` bags, no factories, no live PySCF in ctest.
-Offline oracle and gates: `regressions/scf/uks-full-lr-o2-lsda/REFERENCE.md`;
+Offline oracle and gates: case `uks-full-lr-o2-lsda` pin;
 binary `reg_uks-full-lr-o2-lsda`.
 
 ## Method
@@ -122,20 +121,20 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_uks-full-lr-o2-lsda -j$(nproc)
-  ./build/regressions/reg_uks-full-lr-o2-lsda
+  reg_uks-full-lr-o2-lsda
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/uks.h` | `UKS::tddft` / `UKS::tda` API |
-| `include/atomiverse/cpu/scf/tdhf.h` | `ExcitedStatesResult`, channels |
+| `uks.h` | `UKS::tddft` / `UKS::tda` API |
+| `tdhf.h` | `ExcitedStatesResult`, channels |
 | `src/cpu/scf/tdhf.cpp` | dense Hermitian RPA from A,B |
-| `regressions/scf/uks-full-lr-o2-lsda/reg_uks-full-lr-o2-lsda.cpp` | e2e consumer |
+| `reg_uks-full-lr-o2-lsda.cpp` | e2e consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/uks-full-lr-o2-lsda/REFERENCE.md`](../../../regressions/scf/uks-full-lr-o2-lsda/REFERENCE.md)
+Source: case `uks-full-lr-o2-lsda` pin
 (offline pin; PySCF never imported by CMake/ctest).
 
 | Setup | Value |
@@ -171,14 +170,14 @@ Geometry (Å):
 Oracle command (offline only):
 
 ```bash
-bash tools/setup_pyscf_env.sh   # once
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py uks-tddft \
+bash <pyscf env setup>   # once
+python <pyscf pin> uks-tddft \
   --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN --nstates 5 --conv-tol 1e-12
 ```
 
 ## Performance
 
-Source: `REFERENCE.md` fair-bench table (2026-07-23); ratio **2.937**.
+Source: pin notes fair-bench table (2026-07-23); ratio **2.937**.
 Twin class: UKS/LSDA + full RPA TDDFT (`uks_tddft`). Medians of 3 runs;
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}}\); gate \(r\le 10\); `perf_exempt=false`.
 
@@ -194,10 +193,10 @@ bash -lc '
   export OPENBLAS_ROOT=$OPENBLASDIR
   export RUSTUP_TOOLCHAIN=stable-x86_64-unknown-linux-gnu
   export LD_LIBRARY_PATH=$LIBRARY_PATH:$LD_LIBRARY_PATH
-  ~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+  python <pyscf fair-bench> \
     --method uks_tddft --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN \
     --nstates 5 --repeat 3 -- \
-    ./build/regressions/reg_uks-full-lr-o2-lsda
+    reg_uks-full-lr-o2-lsda
 '
 ```
 
@@ -218,15 +217,15 @@ dense RPA scaling at production molecular sizes.
   gate of this regression.
 - **Gradients/NACs:** analytic UKS full-LR TDDFT gradient / NAC is not the
   product path here.
-- **Oracle isolation:** PySCF is offline pin only (`tools/setup_pyscf_env.sh`,
-  `tools/pyscf_oracle/pin_scf.py`); never a ctest dependency.
+- **Oracle isolation:** PySCF is offline pin only (PySCF oracle,
+  PySCF oracle); never a ctest dependency.
 - **Related pins:** closed-shell pure full LR ([full-lr-tddft-h2-pbe](full-lr-tddft-h2-pbe.md));
   hybrid closed-shell RPA ([h2-b3lyp-rpa-tddft](h2-b3lyp-rpa-tddft.md));
   spin-flip full TDDFT ([sf-tddft-o2](sf-tddft-o2.md)).
 
 ## References
 
-- Offline pin: [`regressions/scf/uks-full-lr-o2-lsda/REFERENCE.md`](../../../regressions/scf/uks-full-lr-o2-lsda/REFERENCE.md)
+- Offline pin: case `uks-full-lr-o2-lsda` pin
 - Roadmap: [`docs/roadmap/excited-states.md`](../../roadmap/excited-states.md)
 - Related methods: [full-lr-tddft-h2-pbe](full-lr-tddft-h2-pbe.md) (RKS pure full LR),
   [h2-b3lyp-rpa-tddft](h2-b3lyp-rpa-tddft.md) (RKS hybrid RPA),

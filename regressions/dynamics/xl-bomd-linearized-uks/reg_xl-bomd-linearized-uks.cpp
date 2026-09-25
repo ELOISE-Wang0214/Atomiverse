@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -54,12 +55,16 @@ int main() {
 
     // xl-bomd-uks envelope settings (200 Ry / tol 1e-5 / mix 0.4 / PADE);
     // cold seed converges in ~23 dual-spin DIIS iterations.
-    cpu::gpw::GPWEvaluator gpw_base(
-        /*kinds*/ {O}, /*cutoff_ry*/ 200.0, /*max_iter*/ 80, /*tol*/ 1e-5,
-        /*mix*/ 0.4, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ true,
-        /*compute_forces*/ true);
-    gpw_base.n_alpha = 7; // multiplicity 3, 12 valence e⁻
-    gpw_base.n_beta = 5;
+    cpu::gpw::GpwDft gpw_base_dft{{O}};
+    gpw_base_dft.cutoff_ry = 200.0;
+    gpw_base_dft.max_iter = 80;
+    gpw_base_dft.tol = 1e-5;
+    gpw_base_dft.mix = 0.4;
+    gpw_base_dft.nonperiodic = true;
+    gpw_base_dft.n_alpha = 7; // multiplicity 3, 12 valence e⁻
+    gpw_base_dft.n_beta = 5;
+    cpu::gpw::GPWEvaluator gpw_base(std::move(gpw_base_dft),
+                                    /*compute_forces=*/true);
     cpu::electronic::XlBomdForce eval{std::move(gpw_base), 5,
                                       cpu::electronic::XlBomdLinearized{}};
     constexpr double dt = 0.5; // fs

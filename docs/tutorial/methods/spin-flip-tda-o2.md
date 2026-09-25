@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `spin-flip-tda-o2` |
-| Regression | `regressions/scf/spin-flip-tda-o2/` |
 | Public API | `cpu::scf::UHF::sf_tda(n_states)` after `UHF::run` |
 | Roadmap | [Excited states](../../roadmap/excited-states.md) — Spin-flip TDA ✓ |
 
@@ -18,7 +17,7 @@ exchange-only. Use for open-shell multiplet reconstruction and spin-flip roots
 when a product SF-TDDFT path is not required. API is the concrete method
 `cpu::scf::UHF` with members set in-place, then `sf_tda(n)` →
 `ExcitedStatesResult` (energies [eV], `tda=true`, `alda=false`). Textbook
-regression: `regressions/scf/spin-flip-tda-o2` (`reg_spin-flip-tda-o2`), O₂
+regression: `spin-flip-tda-o2` (`reg_spin-flip-tda-o2`), O₂
 triplet / STO-3G vs offline PySCF 2.14.0 pin.
 
 ## Method
@@ -109,7 +108,7 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_spin-flip-tda-o2 -j$(nproc)
-  ./build/regressions/reg_spin-flip-tda-o2
+  reg_spin-flip-tda-o2
 '
 ```
 
@@ -117,16 +116,15 @@ bash -lc '
 
 | Role | Path |
 | ---- | ---- |
-| Public API | `include/atomiverse/cpu/scf/uhf.h` (`UHF::sf_tda`) |
-| Result type | `include/atomiverse/cpu/scf/tdhf.h` (`ExcitedStatesResult`) |
+| Public API | `uhf.h` (`UHF::sf_tda`) |
+| Result type | `tdhf.h` (`ExcitedStatesResult`) |
 | Implementation | `src/cpu/scf/tdhf.cpp` (`UHF::sf_tda`) |
-| Regression | `regressions/scf/spin-flip-tda-o2/reg_spin-flip-tda-o2.cpp` |
-| Offline pin | `regressions/scf/spin-flip-tda-o2/REFERENCE.md` |
-| Oracle | `tools/pyscf_oracle/pin_scf.py sf-tda` (never in ctest) |
+| Offline pin | case `spin-flip-tda-o2` pin |
+| Oracle | PySCF oracle (never in ctest) |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/spin-flip-tda-o2/REFERENCE.md`](../../../regressions/scf/spin-flip-tda-o2/REFERENCE.md)
+Source: case `spin-flip-tda-o2` pin
 (offline pin only; **no live PySCF in ctest**).
 
 | Setting | Value |
@@ -159,15 +157,15 @@ five roots and UHF energy.
 
 ## Performance
 
-Source: `regressions/scf/spin-flip-tda-o2/REFERENCE.md` § Performance (also
+Source: case `spin-flip-tda-o2` pin § Performance (also
 handoff ratio **9.56**). Protocol: median of 5 walls; `OMP_NUM_THREADS=1`; fair
 twin = ROHF warm-start → UHF + dense SF-CIS \(A\), same geom/basis/method class.
 
 ```bash
 export OMP_NUM_THREADS=1 OMP_PROC_BIND=close
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
   --method sf_tda --geom o2 --basis sto-3g --spin 2 --nstates 5 --repeat 5 \
-  -- ./build/regressions/reg_spin-flip-tda-o2
+  -- reg_spin-flip-tda-o2
 ```
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r=T_{\mathrm{ATV}}/T_{\mathrm{PySCF}}\) | ≤10× | Caveat |
@@ -193,10 +191,10 @@ Gate: \(r\le 10\) unless exempted — **within_10x = true**.
 
 ## References
 
-- Offline pin: `regressions/scf/spin-flip-tda-o2/REFERENCE.md`
-- Perf numbers: same REFERENCE § Performance; rollup context the case `REFERENCE.md` (ratio 9.56)
-- Oracle: `tools/setup_pyscf_env.sh`, `tools/pyscf_oracle/pin_scf.py sf-tda`,
-  `tools/pyscf_oracle/fair_bench.py --method sf_tda`
+- Offline pin: case `spin-flip-tda-o2` pin
+- Perf numbers: same REFERENCE § Performance; rollup context the case pin notes (ratio 9.56)
+- Oracle: PySCF oracle, PySCF oracle,
+  PySCF oracle
 - Y. Shao, M. Head-Gordon, A. I. Krylov, *J. Chem. Phys.* **118**, 4807 (2003)
 - S. Hirata, M. Head-Gordon, *Chem. Phys. Lett.* **314**, 291 (1999) — TDA
 - A. Dreuw, M. Head-Gordon, *Chem. Rev.* **105**, 4009 (2005) — response review

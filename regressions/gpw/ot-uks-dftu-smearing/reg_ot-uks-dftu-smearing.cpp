@@ -19,6 +19,9 @@
 #include <stdexcept>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -40,22 +43,32 @@ void check(bool ok, const char* what) {
 // Equal-spin H₂ (DZV-GTH-PADE). Under FD smear, free occupations — equal
 // seed (nα=nβ=1) keeps DIIS and OT on the same Mermin minimum. High-spin
 // integer seed (nα=2/nβ=0) leaves DIIS metastable vs free-energy OT.
-std::vector<ATV::cpu::gpw::GpwAtom> h2_toy(double L_bohr) {
+ATV::cpu::Frame h2_toy(double L_bohr) {
     using namespace ATV;
-    const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-    const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-    const double r0[3] = {0.5 * L_bohr - 0.7, 0.5 * L_bohr, 0.5 * L_bohr};
-    const double r1[3] = {0.5 * L_bohr + 0.7, 0.5 * L_bohr, 0.5 * L_bohr};
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.emplace_back(r0, bH, pH, 1);
-    atoms.emplace_back(r1, bH, pH, 1);
-    return atoms;
+    constexpr double b2a = units::kBohrInAngstrom;
+    const double xs[2] = {0.5 * L_bohr - 0.7, 0.5 * L_bohr + 0.7};
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_x)[i] = xs[i] * b2a;
+        frame.span(kAtom_y)[i] = 0.5 * L_bohr * b2a;
+        frame.span(kAtom_z)[i] = 0.5 * L_bohr * b2a;
+    }
+    frame.box = cpu::Box::cubic(L_bohr * b2a);
+    return frame;
 }
 
-ATV::cpu::gpw::GpwDft base_method(double L, double u_ev, bool with_u) {
+std::vector<ATV::cpu::gpw::Kind> h_kinds() {
     using namespace ATV;
-    cpu::gpw::GpwDft m;
-    m.cell[0] = m.cell[1] = m.cell[2] = L;
+    return {cpu::gpw::Kind{
+        molrs::Element::H,
+        cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+        cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")}};
+}
+
+ATV::cpu::gpw::GpwDft base_method(double u_ev, bool with_u) {
+    using namespace ATV;
+    cpu::gpw::GpwDft m{h_kinds()};
     m.cutoff_ry = 100.0;
     m.n_occ = 0;
     m.n_alpha = 1;
@@ -84,16 +97,16 @@ int main() {
     const auto t0 = clock::now();
 
     const double L = 8.0;
-    auto atoms = h2_toy(L);
+    cpu::Frame frame = h2_toy(L);
     constexpr double kU_ev = 4.0;
     constexpr double kNe = 2.0;
 
     // ── A0: build accepts multi-k UKS OT + U + FD ──────────────────────────
     {
-        GpwDft m = base_method(L, kU_ev, true);
+        GpwDft m = base_method(kU_ev, true);
         m.use_ot = true;
         try {
-            m.build(atoms);
+            m.build(frame);
             check(true, "A0 build accepts UKS OT + U + FD");
         } catch (const std::exception& e) {
             std::fprintf(stderr, "A0 threw: %s\n", e.what());
@@ -106,19 +119,19 @@ int main() {
     double e_dftu_ot = 0.0;
     double wall_ot = 0.0;
     {
-        GpwDft diis = base_method(L, kU_ev, true);
+        GpwDft diis = base_method(kU_ev, true);
         diis.use_ot = false;
-        diis.build(atoms);
-        const GpwResult rd = diis.run(atoms);
+        diis.build(frame);
+        const GpwResult rd = diis.run(frame);
         check(rd.converged, "A1 DIIS+U+FD converged");
         check(std::fabs(rd.n_elec_occ - kNe) < 1e-5, "A4 DIIS Ne");
 
-        GpwDft ot = base_method(L, kU_ev, true);
+        GpwDft ot = base_method(kU_ev, true);
         ot.use_ot = true;
         ot.max_iter = 220;
-        ot.build(atoms);
+        ot.build(frame);
         const auto t2 = clock::now();
-        const GpwResult ro = ot.run(atoms);
+        const GpwResult ro = ot.run(frame);
         const auto t3 = clock::now();
         wall_ot = std::chrono::duration<double>(t3 - t2).count();
         check(ro.converged, "A1 OT+U+FD converged");
@@ -142,11 +155,11 @@ int main() {
 
     // ── A5: activation |F(U)−F(0)| under OT+FD ─────────────────────────────
     {
-        GpwDft m0 = base_method(L, kU_ev, false);
+        GpwDft m0 = base_method(kU_ev, false);
         m0.use_ot = true;
         m0.max_iter = 220;
-        m0.build(atoms);
-        const GpwResult r0 = m0.run(atoms);
+        m0.build(frame);
+        const GpwResult r0 = m0.run(frame);
         check(r0.converged, "A5 OT+FD (U=0) converged");
         const double dU = std::fabs(f_ot - r0.e_total);
         std::printf("A5: F(U=0)=%.12f  F(U=4)=%.12f  |Δ|=%.6e Ha\n", r0.e_total,

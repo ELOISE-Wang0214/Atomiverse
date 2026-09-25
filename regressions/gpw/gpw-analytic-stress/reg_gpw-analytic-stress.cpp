@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -59,10 +60,14 @@ int main() {
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
     // Product path: analytic fixed-P stress (default stress_use_fd=false).
-    cpu::gpw::GPWEvaluator eval(
-        /*kinds*/ {O, H}, /*cutoff_ry*/ 400.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-        /*compute_forces*/ false);
+    cpu::gpw::GpwDft dft{{O, H}};
+    dft.cutoff_ry = 400.0;
+    dft.max_iter = 200;
+    dft.tol = 1e-7;
+    dft.mix = 0.3;
+    dft.xc = cpu::gpw::XcKind::PBE;
+    dft.nonperiodic = true;
+    cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces*/ false);
     eval.compute_stress = true;
     eval.stress_use_fd = false;
     eval.stress_strain_h = 2e-3;
@@ -99,19 +104,9 @@ int main() {
         }
     }
 
-    // Multi-SCF strain-FD oracle twin (public free function).
-    // Rebuild atoms/solver state matching the evaluator geometry.
-    constexpr double kAng2Bohr = 1.8897259885789;
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(3);
-    for (int i = 0; i < 3; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double pos[3] = {x[i] * kAng2Bohr, y[i] * kAng2Bohr,
-                               zc[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(pos, k.basis, k.pot, z[i]));
-    }
-    cpu::gpw::GpwDft method;
-    method.cell[0] = method.cell[1] = method.cell[2] = 10.0 * kAng2Bohr;
+    // Multi-SCF strain-FD oracle twin (public free function) on the same
+    // Frame geometry and method parameters as the evaluator.
+    cpu::gpw::GpwDft method{{O, H}};
     method.cutoff_ry = 400.0;
     method.n_occ = 4; // H2O GTH: O q6 + 2×H q1 = 8 e → 4 doubly occupied
     method.max_iter = 200;
@@ -120,11 +115,10 @@ int main() {
     method.xc = cpu::gpw::XcKind::PBE;
     method.nonperiodic = true;
     method.local_pp_on_grid = true;
-    method.build(atoms);
+    method.build(frame);
 
-    const auto sfd = cpu::gpw::gpw_stress_fd(
-        atoms, method, /*h=*/2e-3, /*axes*/ {true, true, true},
-        eval.last_result().C.size() > 0 ? &eval.last_result().C : nullptr);
+    const auto sfd = cpu::gpw::gpw_stress_fd(frame, method, /*h=*/2e-3,
+                                             /*axes*/ {true, true, true});
 
     double max_diag_err = 0.0;
     const char* names[3] = {"xx", "yy", "zz"};

@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ot-dftu` |
-| Regression | `regressions/gpw/ot-dftu/` |
-| Public API | `cpu::gpw::GPWEvaluator` members `use_ot`, `plus_u`, `n_alpha`/`n_beta`; `cpu::single_point` |
+| Public API | `cpu::gpw::GpwDft` members `use_ot`, `plus_u`, `n_alpha`/`n_beta`, bound via `cpu::gpw::GPWEvaluator`; `cpu::single_point` |
 | Roadmap | `docs/roadmap/dft.md` §10 GPW — OT + DFT+U ✓ (`reg_ot-dftu`) |
 
 ## Summary
@@ -19,10 +18,11 @@ DFT+U (`reg_gpw-dftu-nio`) were already green; this slug closes the **combo**:
 `use_ot=true` with non-empty `plus_u` on UKS no longer throws, and energy /
 spin match the offline CP2K OT+`PLUS_U` twin.
 
-Public surface: construct `cpu::gpw::GPWEvaluator` with `Kind` rows (lookup
+Public surface: construct `cpu::gpw::GpwDft` with `Kind` rows (lookup
 `GaussianBasis` / `GthPotential`), set `use_ot = true`, UKS occupations, and
-`plus_u.push_back({Ni, 2, 6.0})` with \(U-J\) in **eV**, then
-`cpu::single_point(frame, eval)`. Total energy on Frame is **eV** (`kEnergy`);
+`plus_u.push_back({Ni, 2, 6.0})` with \(U-J\) in **eV**, move it into
+`cpu::gpw::GPWEvaluator`, then `cpu::single_point(frame, eval)`. Total energy
+on Frame is **eV** (`kEnergy`);
 Hartree total, DFT+U contribution, \(\langle S^2\rangle\), and Mulliken spin via
 `last_energy_hartree()` / `last_result().{e_dftu,s2,mulliken_spin}`. Product
 gate: `reg_ot-dftu`. Fair wall ratio
@@ -99,7 +99,7 @@ single-grid settings (regression dual check).
 
 ## Implementation
 
-Public surface only (`cpu::Frame` + evaluator members; **no** `*Config` bag,
+Public surface only (`cpu::Frame` + `GpwDft` members; **no** `*Config` bag,
 **no** `make_*` / `build_*`):
 
 ```cpp
@@ -136,17 +136,19 @@ cpu::gpw::Kind O{molrs::Element::O,
                  cpu::gpw::GaussianBasis(molrs::Element::O, "SZV-GTH-PADE"),
                  cpu::gpw::GthPotential(molrs::Element::O, "GTH-PADE-q6")};
 
-cpu::gpw::GPWEvaluator eval({Ni, O});
-eval.cutoff_ry = 250.0;
-eval.max_iter = 300;
-eval.tol = 1e-5;
-eval.mix = 0.35;              // DIIS path only; ignored when use_ot
-eval.xc = cpu::gpw::XcKind::PADE;
-eval.nonperiodic = true;
-eval.use_ot = true;           // product OT path (no ATV_GPW_OT env required)
-eval.n_alpha = 13;            // multiplicity 3, 24 valence e⁻
-eval.n_beta = 11;
-eval.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_minus_j_ev=*/6.0});
+cpu::gpw::GpwDft dft{{Ni, O}};
+dft.cutoff_ry = 250.0;
+dft.max_iter = 300;
+dft.tol = 1e-5;
+dft.mix = 0.35;               // DIIS path only; ignored when use_ot
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.nonperiodic = true;
+dft.use_ot = true;            // product OT path
+dft.n_alpha = 13;             // multiplicity 3, 24 valence e⁻
+dft.n_beta = 11;
+dft.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_minus_j_ev=*/6.0});
+
+cpu::gpw::GPWEvaluator eval(std::move(dft));
 
 cpu::single_point(frame, eval);
 
@@ -157,9 +159,6 @@ const double e_u = r.e_dftu;                             // [Ha]
 const double s2 = eval.last_s2();                        // Löwdin ⟨S²⟩
 const double m_Ni = r.mulliken_spin.empty() ? 0.0 : r.mulliken_spin[0];
 ```
-
-Diagnostic env `ATV_GPW_OT` may still force OT on (OR with the member); product
-code and the regression **must not** depend on it (`unsetenv` in the reg).
 
 Build (GPW needs FFTW3) and run the regression:
 
@@ -175,23 +174,22 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_ot-dftu -j$(nproc)
-  ./build/regressions/reg_ot-dftu
+  reg_ot-dftu
 '
 ```
 
 | Piece | Path |
 | ----- | ---- |
-| Public `use_ot` / `plus_u` | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| Public `PlusU` / `GpwResult::{e_dftu,mulliken_spin}` | `include/atomiverse/cpu/gpw/gpw_solver.h` |
-| OT parameterization (internal) | `include/atomiverse/cpu/gpw/internal/ot.h` |
-| Dudarev E/V (internal) | `include/atomiverse/cpu/gpw/internal/dft_plus_u.h` |
+| Public `use_ot` / `plus_u` | `gpw_evaluator.h` |
+| Public `PlusU` / `GpwResult::{e_dftu,mulliken_spin}` | `gpw_solver.h` |
+| OT parameterization (internal) | `ot.h` |
+| Dudarev E/V (internal) | `dft_plus_u.h` |
 | SCF wire-up (OT + \(V_U\)) | `src/cpu/gpw/gpw_solver.cpp` |
-| Regression | `regressions/gpw/ot-dftu/reg_ot-dftu.cpp` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/ot-dftu/nio_mol_pade_u_ot.inp` |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (vs CP2K)
 
-Source: [`regressions/gpw/ot-dftu/REFERENCE.md`](../../../regressions/gpw/ot-dftu/REFERENCE.md).
+Source: case `ot-dftu` pin.
 Oracle: offline **CP2K 2026.1** (`cp2k.psmp`); **never** live in ctest. Pin date:
 **2026-07-26**. Twin of `gpw-dftu-nio` chemistry with OT as the product path
 on both sides (CP2K always used `&OT` for this NiO mol pin).
@@ -240,13 +238,13 @@ Offline re-run (operator only; not ctest):
 export LD_LIBRARY_PATH=$CP2K_ROOT/lib:$LD_LIBRARY_PATH
 export CP2K_DATA_DIR=$CP2K_ROOT/share/cp2k/data
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_SET,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/ot-dftu/nio_mol_pade_u_ot.inp
+# copy <CP2K oracle input for this case>
 OMP_NUM_THREADS=8 cp2k.psmp -i nio_mol_pade_u_ot.inp -o ot_dftu.out
 ```
 
 ## Performance
 
-Source: fair wall table in `regressions/gpw/ot-dftu/REFERENCE.md` (2026-07-26).
+Source: fair wall table in case `ot-dftu` pin (2026-07-26).
 Handoff / queue: ratio **~0.26**. Gate \(r\le 10\) unless `perf_exempt`.
 
 Comparable settings: cutoff 250 Ry, PADE+U, MT, single rank, `OMP_NUM_THREADS=8`.
@@ -284,12 +282,12 @@ microcase; it does not forecast solid NiO, multigrid parity, or sparse OT.
 
 ## References
 
-- Offline pin + fair wall: [`regressions/gpw/ot-dftu/REFERENCE.md`](../../../regressions/gpw/ot-dftu/REFERENCE.md)
-- Regression consumer: [`reg_ot-dftu.cpp`](../../../regressions/gpw/ot-dftu/reg_ot-dftu.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/ot-dftu/`](../../../tools/cp2k_oracle/inputs/ot-dftu/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin + fair wall: case `ot-dftu` pin
+- Regression consumer: `reg_ot-dftu.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Related DIIS+U foothold: [`gpw-dftu-nio.md`](gpw-dftu-nio.md) /
-  [`regressions/gpw/gpw-dftu-nio/`](../../../regressions/gpw/gpw-dftu-nio/)
+  `gpw-dftu-nio`
 - Related OT RKS water: [`ot-minimizer-water.md`](ot-minimizer-water.md)
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md)

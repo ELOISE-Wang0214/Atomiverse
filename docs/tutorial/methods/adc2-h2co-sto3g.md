@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `adc2-h2co-sto3g` |
-| Regression | `regressions/scf/adc2-h2co-sto3g/` |
 | Public API | `cpu::scf::RHF::adc2(n_states)` → `ADC2Result` |
 | Twin | PySCF `adc.ADC`, `method='adc(2)'`, `method_type='ee'` |
 
@@ -17,7 +16,7 @@ intermediate-state representation of the polarization propagator. This page
 covers the formaldehyde / STO-3G product gate: the lowest singlet EE root
 (\(n\to\pi^*\)). Call path is Frame → `RHF` members → `run` → `adc2`; no public
 `*Config` bag. Offline pin and fair-bench numbers live in
-`regressions/scf/adc2-h2co-sto3g/REFERENCE.md`; the regression binary is
+case `adc2-h2co-sto3g` pin; the regression binary is
 `reg_adc2-h2co-sto3g`.
 
 ## Method
@@ -83,25 +82,25 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_adc2-h2co-sto3g -j$(nproc)
-  ./build/regressions/reg_adc2-h2co-sto3g
+  reg_adc2-h2co-sto3g
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/adc.h` | `ADC2Result` public result type |
-| `include/atomiverse/cpu/scf/rhf.h` | `RHF::adc2` declaration |
+| `adc.h` | `ADC2Result` public result type |
+| `rhf.h` | `RHF::adc2` declaration |
 | `src/cpu/scf/adc.cpp` | ISR intermediates, matvec Davidson, MP2 \(t_2\) |
-| `regressions/scf/adc2-h2co-sto3g/reg_adc2-h2co-sto3g.cpp` | product gate |
+| `reg_adc2-h2co-sto3g.cpp` | product gate |
 
 Requires `-DATV_BUILD_HF=ON`. Call `run(frame)` before `adc2`; throws if no
 SCF result, no virtuals, or `n_states` outside \([1,\,n_{\mathrm{occ}} n_{\mathrm{virt}}]\).
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/adc2-h2co-sto3g/REFERENCE.md`](../../../regressions/scf/adc2-h2co-sto3g/REFERENCE.md)
+Source: case `adc2-h2co-sto3g` pin
 (offline pin; **never** live PySCF in ctest). Oracle:
-`tools/setup_pyscf_env.sh` + `tools/pyscf_oracle/pin_scf.py`.
+PySCF oracle + PySCF oracle.
 
 | Setting | Value |
 | ------- | ----- |
@@ -125,8 +124,8 @@ Source: [`regressions/scf/adc2-h2co-sto3g/REFERENCE.md`](../../../regressions/sc
 Repro pin:
 
 ```bash
-bash tools/setup_pyscf_env.sh   # once
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py adc2 \
+bash <pyscf env setup>   # once
+python <pyscf pin> adc2 \
     --geom h2co --basis sto-3g --nstates 3 --conv-tol 1e-12
 ```
 
@@ -136,7 +135,7 @@ gate is the strict-ADC(2) PySCF root above, not experiment.
 ## Performance
 
 Source: fair-bench block in
-`regressions/scf/adc2-h2co-sto3g/REFERENCE.md` (2026-07-23, login node,
+case `adc2-h2co-sto3g` pin (2026-07-23, login node,
 `OMP_NUM_THREADS=8`, Release). Handoff also records ratio **0.267**.
 no offline comparison table is present in-tree; the numbers below are
 from REFERENCE / worker, not re-benched here.
@@ -146,9 +145,9 @@ from REFERENCE / worker, not re-benched here.
 | `adc2` EE, nstates=1 | 0.247 | 0.066 | **0.267** | ✓ | single login-node median (≥3); STO-3G toy |
 
 ```bash
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
   --method adc2 --geom h2co --basis sto-3g --nstates 1 --repeat 3 \
-  -- -- ./build/regressions/reg_adc2-h2co-sto3g
+  -- -- reg_adc2-h2co-sto3g
 # recorded: ratio_atv_over_pyscf=0.2669, within_10x=true
 ```
 
@@ -173,11 +172,11 @@ invalid for the 10× gate.
 ## References
 
 - Offline pin / gates / fair-bench:
-  `regressions/scf/adc2-h2co-sto3g/REFERENCE.md`
+  case `adc2-h2co-sto3g` pin
 - Regression consumer:
-  `regressions/scf/adc2-h2co-sto3g/reg_adc2-h2co-sto3g.cpp`
-- Public API: `include/atomiverse/cpu/scf/adc.h`,
-  `include/atomiverse/cpu/scf/rhf.h` (`RHF::adc2`)
+  `reg_adc2-h2co-sto3g.cpp`
+- Public API: `adc.h`,
+  `rhf.h` (`RHF::adc2`)
 - Implementation: `src/cpu/scf/adc.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - J. Schirmer, *Phys. Rev. A* **26**, 2395 (1982).

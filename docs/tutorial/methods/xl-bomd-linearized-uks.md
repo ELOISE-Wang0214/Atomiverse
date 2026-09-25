@@ -5,11 +5,10 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `xl-bomd-linearized-uks` |
-| Regression | `regressions/dynamics/xl-bomd-linearized-uks/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{…, n_alpha, n_beta}, k=5, cpu::electronic::XlBomdLinearized{}}` bound with `set_evaluator_ref`; dual α/β `cpu::electronic::XlBomd` propagators |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{cpu::gpw::GpwDft{…, n_alpha, n_beta}}, k=5, cpu::electronic::XlBomdLinearized{}}` bound with `set_evaluator_ref`; dual α/β `cpu::electronic::XlBomd` propagators |
 | Roadmap | follow-on of the `xl-bomd-linearized-forces` residual (UKS refused there at `build()`) |
 | Dual gate | Correctness A1–A3 unit (`test_cpu_gpw_xl_bomd`) + A4 e2e `reg_xl-bomd-linearized-uks`; speed **`perf_exempt`** |
-| Oracle | Offline CP2K twin sketch only (`tools/cp2k_oracle/inputs/xl-bomd-linearized-uks/`); never live in ctest |
+| Oracle | Offline CP2K twin sketch only (CP2K oracle); never live in ctest |
 
 ## Summary
 
@@ -18,7 +17,7 @@ forces of the Niklasson **shadow Born–Oppenheimer** potential are evaluated
 with **no iterative SCF** on warm MD steps, on collinear spin-polarized GPW
 (dual α/β densities). The outer loop is the MD preset (`cpu::md::MD` + NVE
 `VelocityVerlet`); the force slot binds a `cpu::electronic::XlBomdForce`
-built from a `cpu::gpw::GPWEvaluator` with UKS occupations
+built from a `cpu::gpw::GPWEvaluator` around a `GpwDft` with UKS occupations
 (`n_alpha = 7`, `n_beta = 5`), dissipation order \(K = 5\), and the
 **`XlBomdLinearized`** tag that selects the shadow-force path.
 
@@ -37,7 +36,7 @@ generalized diagonalization **per spin** \(D^\sigma = q^\sigma[n]\)
 
 and assemble Hellmann–Feynman forces of \(\mathcal{U}(R,n^\alpha,n^\beta)\)
 at \((D^\sigma, H^\sigma[n])\) via the dual-spin fixed-density overload of
-`gpw_forces_at_density`. Then `XlBomd::advance(D^σ)` per spin with Table-I
+`internal::gpw_forces_at_density`. Then `XlBomd::advance(D^σ)` per spin with Table-I
 \(K=5\). Public energy remains **eV** on `frame.meta`; internal Ha/Ry are
 method-private.
 
@@ -99,7 +98,7 @@ fixed-point identity is unit-pinned in `test_cpu_gpw_xl_bomd`.
 | 1. Fixed-\(n\) KS | `max_iter = 0` with `guess_P^σ = n^σ` → \(H^\sigma[n]\), \(E_{\mathrm{KS}}[n^\alpha,n^\beta]\) |
 | 2. Two diags | One generalized diagonalization per spin → \(D^\sigma = q^\sigma[n]\), \(C^\sigma_{\mathrm{occ}}\) |
 | 3. Shadow \(E\) | \(\mathcal{E}\) per the dual-spin formula → `kEnergy` [eV] |
-| 4. Forces | `gpw_forces_at_density(D^α, C^α, H^α, D^β, C^β, H^β)` → eV/Å |
+| 4. Forces | `internal::gpw_forces_at_density(D^α, C^α, H^α, D^β, C^β, H^β)` → eV/Å |
 | 5. ⟨S²⟩ | Löwdin at the shadow densities (Szabo & Ostlund §2.5) |
 | 6. XL advance | `advance(D^σ)` per spin; `last_result().iters = 0`, `converged = true` |
 
@@ -193,12 +192,16 @@ const cpu::gpw::Kind O{
     cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
     cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
-cpu::gpw::GPWEvaluator gpw(
-    /*kinds*/ {O}, /*cutoff_ry*/ 200.0, /*max_iter*/ 80, /*tol*/ 1e-5,
-    /*mix*/ 0.4, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
-gpw.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
-gpw.n_beta = 5;
+cpu::gpw::GpwDft dft{{O}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 80;
+dft.tol = 1e-5;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.nonperiodic = true;
+dft.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
+dft.n_beta = 5;
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // The tag type (not a bool) selects the zero-SCF shadow-BO force path.
 // With UKS occupations it allocates dual α/β XL propagators.
 cpu::electronic::XlBomdForce eval{std::move(gpw), /*k=*/5,
@@ -236,16 +239,16 @@ Relevant sources:
 
 | Layer | Path |
 | ----- | ---- |
-| Propagator (dual instances) | `include/atomiverse/cpu/electronic/xl_bomd.h` |
-| XL wrapper / tag | `include/atomiverse/cpu/electronic/xl_bomd_force.h` (`XlBomdForce`, `XlBomdLinearized`) |
+| Propagator (dual instances) | `xl_bomd.h` |
+| XL wrapper / tag | `xl_bomd_force.h` (`XlBomdForce`, `XlBomdLinearized`) |
 | Warm dual-spin shadow path | `src/cpu/gpw/gpw_evaluator.cpp` |
-| Forces at density (dual overload) | `src/cpu/gpw/internal/gpw_forces.cpp` (`gpw_forces_at_density`) |
+| Forces at density (dual overload) | `src/cpu/gpw/internal/gpw_forces.cpp` (`internal::gpw_forces_at_density`) |
 | Unit A1–A3 | `tests/cpu/gpw/test_gpw_xl_bomd.cpp` |
-| E2E A4 | `regressions/dynamics/xl-bomd-linearized-uks/` |
+| E2E A4 | `xl-bomd-linearized-uks` |
 
 ## Validation (vs CP2K / literature)
 
-Source: `regressions/dynamics/xl-bomd-linearized-uks/REFERENCE.md`
+Source: case `xl-bomd-linearized-uks` pin
 (offline pin; never live CP2K in ctest).
 
 ### Accuracy table
@@ -268,7 +271,7 @@ Source: `regressions/dynamics/xl-bomd-linearized-uks/REFERENCE.md`
 
 | Field | Value |
 | ----- | ----- |
-| Input | `tools/cp2k_oracle/inputs/xl-bomd-linearized-uks/o2_uks_xl_linearized_nve.inp` |
+| Input | CP2K oracle |
 | Intent | Short NVE Quickstep UKS MD, low `MAX_SCF` as a stand-in for one-shot per-spin KS; same O₂ / PADE / DZVP-MOLOPT-GTH / GTH-PBE-q6 / 200 Ry / MT / MULT 3 as ATV |
 | Status | **Unexecuted** on pin host 2026-07-31 (no `cp2k` binary / Lmod module — same as the whole XL/BOMD family) |
 | When binary available | Re-run offline; replace pin section with CP2K version + measured drift + fair wall |
@@ -281,7 +284,7 @@ total-energy digits or a CP2K trajectory series.
 
 ## Performance
 
-Source: `REFERENCE.md` Perf gate.
+Source: pin notes Perf gate.
 
 ### Speed table
 
@@ -321,10 +324,9 @@ measured fair-bench ratio.
 
 ## References
 
-- Offline pin: `regressions/dynamics/xl-bomd-linearized-uks/REFERENCE.md`
-- Regression: `regressions/dynamics/xl-bomd-linearized-uks/reg_xl-bomd-linearized-uks.cpp`
-- CP2K twin sketch: `tools/cp2k_oracle/inputs/xl-bomd-linearized-uks/o2_uks_xl_linearized_nve.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md`
+- Offline pin: case `xl-bomd-linearized-uks` pin
+- CP2K twin sketch: CP2K oracle
+- Oracle rules: CP2K oracle
 - Sibling paths: [xl-bomd-linearized-forces](xl-bomd-linearized-forces.md)
   (closed-shell zero-SCF foothold);
   [xl-bomd-uks](xl-bomd-uks.md) (SCF-converged open-shell A/B twin);

@@ -3,7 +3,7 @@
 *(Technical-report draft; narrative house style TBD — rewrite later.)*
 
 Unrestricted Møller–Plesset second-order correlation on a UHF reference.
-Regression: `regressions/scf/ump2-o2-sto3g`. Related narrative:
+Regression: `ump2-o2-sto3g`. Related narrative:
 [Ch. 7 Correlation](../ch07-correlation.md), [Ch. 3 Open shell](../ch03-open-shell.md).
 
 ## Theory
@@ -37,7 +37,7 @@ auto mp = uhf.mp2(frame);          // MP2Result: e_corr, e_tot [Ha]
 
 ```bash
 cmake --build build --target reg_ump2-o2-sto3g
-./build/regressions/reg_ump2-o2-sto3g
+reg_ump2-o2-sto3g
 ```
 
 ## Results

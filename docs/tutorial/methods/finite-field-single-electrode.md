@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `finite-field-single-electrode` |
-| Regression | `regressions/md/finite-field-single-electrode/` |
 | Public API | `cpu::md::ConstPotBO` (`Ex`/`Ey`/`Ez` on BO RHS) + `cpu::md::FixEfield` + `cpu::md::ClassicalPolarization` on `cpu::md::MD` |
 | Roadmap | map slice E3 |
 | Oracle | **MetalWalls / literature analytic** (Dufils et al. *PRL* **123**, 195501 (2019); Reed/Siepmann–Sprik Gaussian kernels) |
@@ -85,7 +84,7 @@ oracle priority rule.
 | \(xy\) images | `0` (primary cell only) |
 | Electrolyte | none (vacuum pin); dual-gate ion test is a separate one-atom frame |
 
-Analytic numbers (offline; `REFERENCE.md`):
+Analytic numbers (offline; pin notes):
 
 \[
 A_{ii} = 22.978508853084353\ \mathrm{V}/e,
@@ -193,26 +192,26 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_finite-field-single-electrode -j"$(nproc)"
-  ./build/regressions/reg_finite-field-single-electrode
+  reg_finite-field-single-electrode
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/const_pot_bo.h` | Public `ConstPotBO`, `Ex`/`Ey`/`Ez` members |
-| `include/atomiverse/cpu/dynamics/fix_efield.h` | `FixEfield` (LAMMPS-like constant field) |
-| `include/atomiverse/cpu/observe/classical_polarization.h` | \(\mathbf{P}\) observer |
-| `include/atomiverse/cpu/dynamics/md.h` | Host preset `cpu::md::MD` |
-| `regressions/md/finite-field-single-electrode/reg_finite-field-single-electrode.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/metalwalls/finite-field-single-electrode/` | Offline pin notes |
+| `const_pot_bo.h` | Public `ConstPotBO`, `Ex`/`Ey`/`Ez` members |
+| `fix_efield.h` | `FixEfield` (LAMMPS-like constant field) |
+| `classical_polarization.h` | \(\mathbf{P}\) observer |
+| `md.h` | Host preset `cpu::md::MD` |
+| `reg_finite-field-single-electrode.cpp` | Product gate |
+| MetalWalls oracle | Offline pin notes |
 
 ## Validation (vs MetalWalls / literature analytic)
 
 Source:
-[`regressions/md/finite-field-single-electrode/REFERENCE.md`](../../../regressions/md/finite-field-single-electrode/REFERENCE.md)
+case `finite-field-single-electrode` pin
 (offline pin; **never** live MetalWalls or LAMMPS in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md),
-[`tools/metalwalls_oracle/inputs/metalwalls/finite-field-single-electrode/README.md`](../../../tools/metalwalls_oracle/inputs/metalwalls/finite-field-single-electrode/README.md).
+MetalWalls oracle,
+MetalWalls oracle.
 
 **Oracle:** literature analytic — Dufils et al., *Phys. Rev. Lett.* **123**,
 195501 (2019) finite-field + single constant-potential electrode; Reed /
@@ -259,7 +258,7 @@ print(Aii, Q, Pz)
 ## Performance
 
 Source: REFERENCE.md dual-gate summary; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{MW}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ----------------------: | -----------------------: | ----: | ---- | ------ |
@@ -299,10 +298,9 @@ there is independent of this MW-only slug.
 
 ## References
 
-- Offline pin: [`regressions/md/finite-field-single-electrode/REFERENCE.md`](../../../regressions/md/finite-field-single-electrode/REFERENCE.md)
-- Product gate: [`regressions/md/finite-field-single-electrode/reg_finite-field-single-electrode.cpp`](../../../regressions/md/finite-field-single-electrode/reg_finite-field-single-electrode.cpp)
-- Public headers: [`include/atomiverse/cpu/dynamics/const_pot_bo.h`](../../../include/atomiverse/cpu/dynamics/const_pot_bo.h), [`include/atomiverse/cpu/dynamics/fix_efield.h`](../../../include/atomiverse/cpu/dynamics/fix_efield.h), [`include/atomiverse/cpu/observe/classical_polarization.h`](../../../include/atomiverse/cpu/observe/classical_polarization.h)
-- Capability map: [`.claude/notes/metalwalls-capability-map.md`](../../../.claude/notes/metalwalls-capability-map.md) (E3)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md), [`tools/metalwalls_oracle/inputs/metalwalls/finite-field-single-electrode/README.md`](../../../tools/metalwalls_oracle/inputs/metalwalls/finite-field-single-electrode/README.md)
+- Offline pin: case `finite-field-single-electrode` pin
+- Public headers: `const_pot_bo.h`, `fix_efield.h`, `classical_polarization.h`
+- Capability map: `.claude/notes/metalwalls-capability-map.md` (E3)
+- Oracle notes: MetalWalls oracle, MetalWalls oracle
 - Related E1 tutorial: [`const-pot-bo-parallel-plate`](const-pot-bo-parallel-plate.md)
 - Literature: Dufils et al., *Phys. Rev. Lett.* **123**, 195501 (2019); MetalWalls JOSS **5**, 2373 (2020); Reed / Siepmann–Sprik Gaussian electrode charges

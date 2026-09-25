@@ -21,10 +21,12 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
@@ -33,7 +35,6 @@
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/dftd3_params.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
 using namespace ATV;
@@ -84,6 +85,32 @@ constexpr double kFTotalTol = 1.0e-2; // Ha/Bohr
 constexpr double kNetForceTol = 3.0e-3; // Ha/Bohr
 constexpr double kWiringTol = 1.0e-7;   // Ha/Bohr — same code both sides
 constexpr double kWallBudget = 60.0;    // s
+
+/// Frame forces [eV/Å] → Ha/Bohr, one xyz triple per atom.
+std::vector<std::array<double, 3>> forces_ha_bohr(const ATV::cpu::Frame& f) {
+    const double c = ATV::units::kHartreePerBohrInEvPerAngstrom;
+    const int n = f.nlocal();
+    std::vector<std::array<double, 3>> out(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i)
+        out[static_cast<std::size_t>(i)] = {
+            static_cast<double>(f.span(ATV::kAtom_fx)[i]) / c,
+            static_cast<double>(f.span(ATV::kAtom_fy)[i]) / c,
+            static_cast<double>(f.span(ATV::kAtom_fz)[i]) / c};
+    return out;
+}
+
+/// Geometry-only copy (Z, positions, box) of `src` for a twin solve.
+ATV::cpu::Frame geometry_copy(const ATV::cpu::Frame& src) {
+    ATV::cpu::Frame f(src.nlocal());
+    for (int i = 0; i < src.nlocal(); ++i) {
+        f.span(ATV::kAtom_type)[i] = src.span(ATV::kAtom_type)[i];
+        f.span(ATV::kAtom_x)[i] = src.span(ATV::kAtom_x)[i];
+        f.span(ATV::kAtom_y)[i] = src.span(ATV::kAtom_y)[i];
+        f.span(ATV::kAtom_z)[i] = src.span(ATV::kAtom_z)[i];
+    }
+    f.box = src.box;
+    return f;
+}
 
 } // namespace
 
@@ -170,14 +197,15 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 300.0; // CP2K CUTOFF 300
-    eval.max_iter = 120;
-    eval.tol = 1e-7; // CP2K EPS_SCF 1e-7
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = false; // CP2K PERIODIC XYZ
-    eval.d3bj = true;
+    cpu::gpw::GpwDft eval_method{{O, H}};
+    eval_method.cutoff_ry = 300.0; // CP2K CUTOFF 300
+    eval_method.max_iter = 120;
+    eval_method.tol = 1e-7; // CP2K EPS_SCF 1e-7
+    eval_method.mix = 0.4;
+    eval_method.xc = cpu::gpw::XcKind::PBE;
+    eval_method.nonperiodic = false; // CP2K PERIODIC XYZ
+    eval_method.d3bj = true;
+    cpu::gpw::GPWEvaluator eval(std::move(eval_method));
     eval.compute_forces = true;
     eval.compute_stress = false;
 
@@ -204,32 +232,14 @@ int main() {
     }
 
     // ── (3) Wiring, total forces, translation invariance ──────────────────
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
-    for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double p[3] = {xs[i] * kAng2Bohr, ys[i] * kAng2Bohr,
-                             zs[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(p, k.basis, k.pot, z[i]));
-    }
 
-    cpu::gpw::GpwDft method_bj;
-    method_bj.cell[0] = method_bj.cell[1] = method_bj.cell[2] = L * kAng2Bohr;
-    method_bj.cutoff_ry = 300.0;
-    method_bj.n_occ = 8; // 2 x (q6 + q1 + q1) = 16 valence e-
-    method_bj.max_iter = 120;
-    method_bj.tol = 1e-7;
-    method_bj.mix = 0.4;
-    method_bj.xc = cpu::gpw::XcKind::PBE;
-    method_bj.nonperiodic = false;
-    method_bj.local_pp_on_grid = true;
-    method_bj.d3bj = true;
-    method_bj.build(atoms);
-    const auto F_on =
-        cpu::gpw::gpw_forces_from_scf(atoms, method_bj, eval.last_result());
+    // Product forces: the evaluator's Frame force (eV/Å → Ha/Bohr).
+    const auto F_on = forces_ha_bohr(frame);
 
-    cpu::gpw::GpwDft plain; // GpwDft is non-copyable — build the twin fresh
-    plain.cell[0] = plain.cell[1] = plain.cell[2] = L * kAng2Bohr;
+    // Twin: fresh SCF + analytic forces (dispersion is geometry-only, so
+    // the converged density matches the product run).
+    cpu::Frame frame_plain = geometry_copy(frame);
+    cpu::gpw::GpwDft plain{{O, H}};
     plain.cutoff_ry = 300.0;
     plain.n_occ = 8;
     plain.max_iter = 120;
@@ -239,8 +249,9 @@ int main() {
     plain.nonperiodic = false;
     plain.local_pp_on_grid = true;
     plain.d3bj = false;
-    plain.build(atoms);
-    const auto F_plain = cpu::gpw::gpw_forces_analytic(atoms, plain);
+    plain.build(frame_plain);
+    plain.forces(frame_plain);
+    const auto F_plain = forces_ha_bohr(frame_plain);
 
     double max_wire = 0.0;
     double max_total_err = 0.0;

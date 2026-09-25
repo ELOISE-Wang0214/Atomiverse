@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gfn2-xtb-forces` |
-| Regression | `regressions/semiempirical/gfn2-xtb-forces/` |
 | Public API | `cpu::semiempirical::GFN2` (`with_forces = true`); `cpu::Evaluate` |
 | Related narrative | [Ch. 17 Semiempirical AM1](../ch17-semiempirical-am1.md) (SE product surface; GFN-xTB is a sibling family) |
 | Queue | TB method loop — wave 9 done (`b8e86743`) |
@@ -118,7 +117,7 @@ ATV’s own \(E\) (\(h=10^{-4}\) Å) as an identity gate.
 | Conversion | \(a_0=1/1.8897261245650618\) Å (CODATA); \(1\,\mathrm{Ha}=27.211386245988\) eV |
 | Observable | Finite \(E\); net \(\sum_A\mathbf{F}_A=0\); analytic vs xtb \(\nabla E\) on \(F_{O,x}\); analytic vs energy FD |
 
-**Geometry [Å]** (`tools/tb_oracle/inputs/xtb/h2o_gfn2_offeq_grad/mol.xyz`):
+**Geometry [Å]** (TB oracle (OpenMOPAC / DFTB+ / xtb)):
 
 | Atom | \(Z\) | \(x\) | \(y\) | \(z\) |
 | ---- | ----: | ----: | ----: | ----: |
@@ -229,18 +228,18 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/gfn2.h` | Public `GFN2` (`scc_tol`, `charge`, `with_forces`) |
-| `include/atomiverse/cpu/semiempirical/basis_data/gfn2_xtb_tables.h` | Static H/C/N/O GFN2 rows + AES/D4 globals |
+| `gfn2.h` | Public `GFN2` (`scc_tol`, `charge`, `with_forces`) |
+| `gfn2_xtb_tables.h` | Static H/C/N/O GFN2 rows + AES/D4 globals |
 | `src/cpu/semiempirical/gfn2.cpp` | SCC + AES energy + analytic \(\nabla E\) (HF+Pulay, CN, IES, rep, D4, frozen-CAMM AES) |
-| `regressions/semiempirical/gfn2-xtb-forces/reg_gfn2-xtb-forces.cpp` | Product gate |
-| `regressions/semiempirical/gfn2-xtb-forces/REFERENCE.md` | Offline pins + oracle line |
-| `tools/tb_oracle/inputs/xtb/h2o_gfn2_offeq_grad/` | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `gradient.txt`) |
+| `reg_gfn2-xtb-forces.cpp` | Product gate |
+| case `gfn2-xtb-forces` pin | Offline pins + oracle line |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `gradient.txt`) |
 | `tests/cpu/semiempirical/test_gfn2_params.cpp` | Unit analytic-vs-FD + net-force invariance |
 
 ## Validation (xtb)
 
 Source:
-[`regressions/semiempirical/gfn2-xtb-forces/REFERENCE.md`](../../../regressions/semiempirical/gfn2-xtb-forces/REFERENCE.md).
+case `gfn2-xtb-forces` pin.
 Oracle: **`xtb`** `--gfn 2 --grad` (Bannwarth et al., *J. Chem. Theory Comput.*
 **15**, 1652 (2019); Bannwarth et al., *WIREs Comput. Mol. Sci.* **11**, e01493
 (2021)).
@@ -258,7 +257,7 @@ oracle_version: 6.7.1
 | ---- | ----- |
 | Engine (identity) | ATV GFN2-xTB closed shell, H/C/N/O tables |
 | Oracle family | xtb (not OpenMOPAC, not DFTB+) |
-| Offline twin | `tools/tb_oracle/inputs/xtb/h2o_gfn2_offeq_grad/` |
+| Offline twin | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 | Command | `xtb mol.xyz --gfn 2 --chrg 0 --uhf 0 --acc 1.0 --grad` (`OMP_NUM_THREADS=1`) |
 | Atomiverse path | `GFN2` + `Evaluate`, `with_forces=true` |
 | FD protocol | Central energy-only, \(h=10^{-4}\) Å (identity, not the product force) |
@@ -313,7 +312,7 @@ angular component against ATV’s own \(E\).
 
 ## Performance
 
-Source: `REFERENCE.md`. Fair wall asserted in `reg_gfn2-xtb-forces`
+Source: pin notes. Fair wall asserted in `reg_gfn2-xtb-forces`
 (\(r\le 10\)). Analytic path is one SCC + one gradient (replaces 18 energy
 solves of a \(6N\) FD).
 
@@ -355,13 +354,13 @@ wall; the regression fails if the ratio exceeds 10.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/gfn2-xtb-forces/REFERENCE.md`](../../../regressions/semiempirical/gfn2-xtb-forces/REFERENCE.md)
-- Twin: `tools/tb_oracle/inputs/xtb/h2o_gfn2_offeq_grad/` (`mol.xyz`,
+- Offline pin: case `gfn2-xtb-forces` pin
+- Twin: TB oracle (OpenMOPAC / DFTB+ / xtb) (`mol.xyz`,
   `xtb.out.txt`, `gradient.txt`)
-- Energy siblings: `regressions/semiempirical/gfn2-xtb-water/REFERENCE.md`,
-  `regressions/semiempirical/gfn2-quadrupole-aes/REFERENCE.md`
+- Energy siblings: case `gfn2-xtb-water` pin,
+  case `gfn2-quadrupole-aes` pin
 - Force siblings: `gfn0-xtb-forces`, `gfn1-xtb-forces` (xtb `--gfn 0/1 --grad`)
-- Oracle README: `tools/tb_oracle/README.md`
+- Oracle README: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: `docs/roadmap/semiempirical.md`
 - Spec history (closed, deleted at done): git `wf/gfn2-xtb-forces`
   (`b8e86743` / `37b9a008`)

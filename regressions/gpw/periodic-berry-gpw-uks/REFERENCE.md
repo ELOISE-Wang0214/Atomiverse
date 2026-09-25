@@ -21,13 +21,13 @@ AO-basis Bloch MOs and phased AO overlaps \(S\) carrying
 Public path:
 
 ```cpp
-cpu::gpw::GpwDft method;
+cpu::gpw::GpwDft method{{si_kind}};
 method.n_alpha = 8;
 method.n_beta = 8;               // multiplicity 1 for diamond Si
 method.n_occ = 0;
-method.build(atoms);
+method.build(frame);             // positions [Å], Z, orthorhombic box [Å]
 cpu::gpw::BerryPolarization berry; // k_perp, k_string, directions
-auto r = berry.compute(method, atoms);
+auto r = berry.compute(method, frame);
 ```
 
 No public `*Config` bag; no factories. Closed-shell RKS path

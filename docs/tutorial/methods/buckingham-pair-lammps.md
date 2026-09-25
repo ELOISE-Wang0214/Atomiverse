@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `buckingham-pair-lammps` |
-| Regression | `regressions/forcefield/buckingham-pair-lammps/` |
 | Public API | `cpu::PairBuck(A, rho, C, cutoff)` on `cpu::Evaluate` / MD force slot |
 | Roadmap / queue | `docs/roadmap/force-fields.md` → Buckingham **✓** (CPU); MetalWalls map **E8** wave 1; handoff **merged → done** |
 | Oracle | **LAMMPS** (not MetalWalls) — offline pin only; never in ctest |
@@ -134,26 +133,26 @@ bash -lc '
         -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_buckingham-pair-lammps -j$(nproc)
-  ./build/regressions/reg_buckingham-pair-lammps
+  reg_buckingham-pair-lammps
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/potentials/pair_buck.h` | Public `PairBuck` |
+| `pair_buck.h` | Public `PairBuck` |
 | `src/cpu/potentials/pair_buck.cpp` | Shifted energy + force kernel |
 | `tests/cpu/potentials/test_pair_buck.cpp` | Unit: analytic \(E,F\); zero at \(r_c\); invalid params |
-| `regressions/forcefield/buckingham-pair-lammps/reg_buckingham-pair-lammps.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/lammps/in.buckingham_dimer` | Offline LAMMPS twin (never ctest) |
+| `reg_buckingham-pair-lammps.cpp` | Product gate |
+| MetalWalls oracle | Offline LAMMPS twin (never ctest) |
 
 ## Validation (vs LAMMPS)
 
 Source:
-[`regressions/forcefield/buckingham-pair-lammps/REFERENCE.md`](../../../regressions/forcefield/buckingham-pair-lammps/REFERENCE.md).
+case `buckingham-pair-lammps` pin.
 Oracle: offline **LAMMPS** `pair_style buck` with `pair_modify shift yes`,
 **metal** units. External-engine pin — **not** a golden of Atomiverse’s own
 output; **never** launch LAMMPS from ctest. Twin input:
-`tools/metalwalls_oracle/inputs/lammps/in.buckingham_dimer`.
+MetalWalls oracle.
 
 ```text
 oracle: lammps
@@ -189,15 +188,15 @@ Offline re-pin (human only; never ctest):
 
 ```bash
 # when a LAMMPS binary is available (metal units twin)
-lmp -in tools/metalwalls_oracle/inputs/lammps/in.buckingham_dimer
+lmp -in <LAMMPS oracle input for this case>
 # record pe + forces.dump → REFERENCE.md pins
 ```
 
 ## Performance
 
 Source:
-[`REFERENCE.md`](../../../regressions/forcefield/buckingham-pair-lammps/REFERENCE.md)
-and the case `REFERENCE.md`
+pin notes
+and the case pin notes
 (wave 1, 2026-07-23).
 
 | Engine | Wall (single `run 0` / Evaluate) | Note |
@@ -233,10 +232,9 @@ lands, re-measure vs LAMMPS `pair_style buck` on the same lattice.
 
 ## References
 
-- Offline pin: `regressions/forcefield/buckingham-pair-lammps/REFERENCE.md`
-- Twin input: `tools/metalwalls_oracle/inputs/lammps/in.buckingham_dimer`
-- Oracle notes: `tools/metalwalls_oracle/README.md`
+- Offline pin: case `buckingham-pair-lammps` pin
+- Twin input: MetalWalls oracle
+- Oracle notes: MetalWalls oracle
 - Capability map: `.claude/notes/metalwalls-capability-map.md` (E8)
 - Roadmap: `docs/roadmap/force-fields.md` (Buckingham CPU ✓)
-- Public header: `include/atomiverse/cpu/potentials/pair_buck.h`
 - LAMMPS docs: `pair_style buck` / `pair_modify shift` (metal units)

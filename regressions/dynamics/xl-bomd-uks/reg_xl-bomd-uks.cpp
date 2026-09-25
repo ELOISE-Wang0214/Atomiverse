@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -55,12 +56,15 @@ int main() {
     // Envelope run: 200 Ry / tol 1e-5 keeps multi-step UKS inside ≤60 s.
     // Absolute E/F parity is gpw-uks-forces / gpw-uks-o2-gamma's job.
     // XL-BOMD K=5 (Niklasson 2009 Table I); dual α/β propagators.
-    cpu::gpw::GPWEvaluator gpw(
-        /*kinds*/ {O}, /*cutoff_ry*/ 200.0, /*max_iter*/ 80, /*tol*/ 1e-5,
-        /*mix*/ 0.4, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ true,
-        /*compute_forces*/ true);
-    gpw.n_alpha = 7; // multiplicity 3, 12 valence e⁻
-    gpw.n_beta = 5;
+    cpu::gpw::GpwDft dft{{O}};
+    dft.cutoff_ry = 200.0;
+    dft.max_iter = 80;
+    dft.tol = 1e-5;
+    dft.mix = 0.4;
+    dft.nonperiodic = true;
+    dft.n_alpha = 7; // multiplicity 3, 12 valence e⁻
+    dft.n_beta = 5;
+    cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
     cpu::electronic::XlBomdForce eval{std::move(gpw), 5};
 
     constexpr double dt = 0.5; // fs

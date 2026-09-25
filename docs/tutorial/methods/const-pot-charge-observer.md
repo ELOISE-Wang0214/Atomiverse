@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `const-pot-charge-observer` |
-| Regression | `regressions/md/const-pot-charge-observer/` |
 | Public API | `cpu::ElectrodeChargeObserver` (`Observer`); Frame meta `kElectrodeCharge` |
 | Roadmap | MetalWalls map E1 observe |
 
@@ -77,7 +76,7 @@ electrodes packed into `MetaF64x3` for thermo / write-back).
 
 Public surface only (`cpu::Frame` + ctor args / members; no `*Config` bag, no
 `make_*` / `build_*` factories). Header:
-`include/atomiverse/cpu/observe/electrode_charge.h`; implementation
+`electrode_charge.h`; implementation
 `src/cpu/observe/electrode_charge.cpp`.
 
 Minimal sequence (matches `reg_const-pot-charge-observer.cpp`). Frame is the
@@ -132,22 +131,22 @@ bash -lc '
         -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_const-pot-charge-observer -j$(nproc)
-  ./build/regressions/reg_const-pot-charge-observer
+  reg_const-pot-charge-observer
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/observe/electrode_charge.h` | Public `ElectrodeChargeObserver` |
+| `electrode_charge.h` | Public `ElectrodeChargeObserver` |
 | `src/cpu/observe/electrode_charge.cpp` | Owned-atom sum + optional MPI allreduce |
-| `include/atomiverse/core/frame_schema.h` | `kElectrodeCharge` meta key |
-| `regressions/md/const-pot-charge-observer/reg_const-pot-charge-observer.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/lammps/const_pot_charge_observer.in` | Offline LAMMPS twin (never ctest) |
+| `frame_schema.h` | `kElectrodeCharge` meta key |
+| `reg_const-pot-charge-observer.cpp` | Product gate |
+| MetalWalls oracle | Offline LAMMPS twin (never ctest) |
 
 ## Validation (oracle: LAMMPS)
 
 Source:
-[`regressions/md/const-pot-charge-observer/REFERENCE.md`](../../../regressions/md/const-pot-charge-observer/REFERENCE.md).
+case `const-pot-charge-observer` pin.
 
 **Oracle is LAMMPS, not MetalWalls.** Summing group charge is core LAMMPS
 (`variable atom q` + `compute reduce sum`). The ELECTRODE package is not
@@ -159,7 +158,7 @@ from ctest.
 | ---- | ----- |
 | Oracle | `lammps` |
 | Oracle version | LAMMPS (30 Mar 2026 - Development - `patch_30Mar2026-1074-g7f680de296`) |
-| Twin input | `tools/metalwalls_oracle/inputs/lammps/const_pot_charge_observer.in` |
+| Twin input | MetalWalls oracle |
 | Units | metal → charge in elementary charges [e] |
 | Dynamics | `run 0` (no pair/kspace on the pin) |
 
@@ -184,7 +183,7 @@ double-counting, or unit mistakes — not a golden of Atomiverse-only output.
 Offline re-pin (developer host; not ctest):
 
 ```bash
-lmp -in tools/metalwalls_oracle/inputs/lammps/const_pot_charge_observer.in
+lmp -in <LAMMPS oracle input for this case>
 ```
 
 ## Performance
@@ -216,10 +215,9 @@ invented wall times on this page.
 
 ## References
 
-- Offline pin: `regressions/md/const-pot-charge-observer/REFERENCE.md`
-- Regression: `regressions/md/const-pot-charge-observer/reg_const-pot-charge-observer.cpp`
-- LAMMPS twin: `tools/metalwalls_oracle/inputs/lammps/const_pot_charge_observer.in`
-- Oracle notes: `tools/metalwalls_oracle/README.md`
+- Offline pin: case `const-pot-charge-observer` pin
+- LAMMPS twin: MetalWalls oracle
+- Oracle notes: MetalWalls oracle
 - Related E1: `const-pot-bo-parallel-plate`, `freeze-electrode-atoms`,
   `charging-work-energy`, `const-pot-md-nvt-short`
 - Literature / context: MetalWalls electrode diagnostics (JOSS

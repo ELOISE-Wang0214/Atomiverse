@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ipea-xtb-forces` |
-| Regression | `regressions/semiempirical/ipea-xtb-forces/` |
 | Public API | `cpu::semiempirical::IPEA` (`with_forces = true`); `cpu::Evaluate` |
 | Related narrative | [Ch. 17 Semiempirical AM1](../ch17-semiempirical-am1.md) (SE product surface; IPEA is a GFN-xTB sibling) |
 | Queue | TB method loop — wave 11 done (`b7388af2` / `ae6b48df`) |
@@ -139,7 +138,7 @@ energy-only** FD of ATV’s own \(E\) (\(h=10^{-4}\) Å) as an identity gate.
 | Conversion | CODATA via `units::kHartreeInEv`, `units::kHartreePerBohrInEvPerAngstrom` |
 | Observable | Finite \(E\); net \(\sum_A\mathbf{F}_A=0\); analytic vs xtb \(\nabla E\); analytic vs energy FD |
 
-**Geometry [Å]** (`tools/tb_oracle/inputs/xtb/ch4_ipea_offeq_grad/mol.xyz`):
+**Geometry [Å]** (TB oracle (OpenMOPAC / DFTB+ / xtb)):
 same tetrahedral CH₄ as `reg_ipea-xtb-small` (\(s=1.09/\sqrt{3}\)) except H1
 scaled so \(r(\mathrm{C{-}H1})=1.20\) Å.
 
@@ -252,18 +251,18 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/ipea.h` | Public `IPEA` (`charge`, `scc_tol`, `with_forces`) |
-| `include/atomiverse/cpu/semiempirical/basis_data/ipea_tables.h` | Static H/C/N/O IPEA rows + global scales |
+| `ipea.h` | Public `IPEA` (`charge`, `scc_tol`, `with_forces`) |
+| `ipea_tables.h` | Static H/C/N/O IPEA rows + global scales |
 | `src/cpu/semiempirical/ipea.cpp` | Stewart overlap / extra 3s / EHT+SCC / analytic \(\nabla E\) (HF+Pulay, CN/\(\gamma\), rep, D3) |
-| `regressions/semiempirical/ipea-xtb-forces/reg_ipea-xtb-forces.cpp` | Product gate |
-| `regressions/semiempirical/ipea-xtb-forces/REFERENCE.md` | Offline pins + oracle line |
-| `tools/tb_oracle/inputs/xtb/ch4_ipea_offeq_grad/` | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `gradient.txt`) |
+| `reg_ipea-xtb-forces.cpp` | Product gate |
+| case `ipea-xtb-forces` pin | Offline pins + oracle line |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `gradient.txt`) |
 | `tests/cpu/semiempirical/test_xtb_ipea.cpp` | Unit analytic-vs-FD (water) + net-force invariance |
 
 ## Validation (xtb)
 
 Source:
-[`regressions/semiempirical/ipea-xtb-forces/REFERENCE.md`](../../../regressions/semiempirical/ipea-xtb-forces/REFERENCE.md).
+case `ipea-xtb-forces` pin.
 Oracle: **`xtb`** IPEA (`param_ipea-xtb.txt` as GFN1) `--grad` (Ásgeirsson,
 Bauer, Grimme, *Chem. Sci.* **8**, 4879 (2017); Bannwarth et al., *WIREs
 Comput. Mol. Sci.* **11**, e01493 (2021)).
@@ -281,7 +280,7 @@ oracle_version: 6.7.1 (compiled 2026-06-09)
 | ---- | ----- |
 | Engine (identity) | ATV IPEA-xTB closed shell, H/C/N/O tables |
 | Oracle family | xtb (not OpenMOPAC, not DFTB+) |
-| Offline twin | `tools/tb_oracle/inputs/xtb/ch4_ipea_offeq_grad/` |
+| Offline twin | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 | Command | `XTBPATH=… xtb mol.xyz --gfn 1 --chrg 0 --uhf 0 --acc 0.01 --grad` (`OMP_NUM_THREADS=1`; `param_gfn1-xtb.txt` ← `param_ipea-xtb.txt`; banner `I P E A - x T B`) |
 | Atomiverse path | `IPEA` + `Evaluate`, `with_forces=true` |
 | FD protocol | Central energy-only, \(h=10^{-4}\) Å (identity, not the product force) |
@@ -343,7 +342,7 @@ Discriminates IPEA from GFN1: eq CH4 GFN1 is −4.274232224875 Eh vs IPEA
 Offline re-pin (human only; never ctest):
 
 ```bash
-# when xtb 6.7.1 is available; see tools/tb_oracle/inputs/xtb/ch4_ipea_offeq_grad/
+# when xtb is available — see the TB oracle notes for this case
 # XTBPATH with param_ipea as GFN1; --gfn 1 --chrg 0 --uhf 0 --acc 0.01 --grad
 # off-eq CH4 (one C–H = 1.20 Å); record TOTAL ENERGY [Eh] and gradient.txt
 # → F via units::kHartreePerBohrInEvPerAngstrom
@@ -351,7 +350,7 @@ Offline re-pin (human only; never ctest):
 
 ## Performance
 
-Source: `REFERENCE.md`. Fair wall asserted in `reg_ipea-xtb-forces`
+Source: pin notes. Fair wall asserted in `reg_ipea-xtb-forces`
 (\(r\le 10\)). Analytic path is one SCC + one gradient (replaces 30 energy
 solves of a \(6N\) FD on 5 atoms).
 
@@ -387,14 +386,14 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{oracle}} \le 10\) when a twin exists.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/ipea-xtb-forces/REFERENCE.md`](../../../regressions/semiempirical/ipea-xtb-forces/REFERENCE.md)
-- Twin: `tools/tb_oracle/inputs/xtb/ch4_ipea_offeq_grad/` (`mol.xyz`,
+- Offline pin: case `ipea-xtb-forces` pin
+- Twin: TB oracle (OpenMOPAC / DFTB+ / xtb) (`mol.xyz`,
   `xtb.out.txt`, `gradient.txt`)
-- Energy sibling: `regressions/semiempirical/ipea-xtb-small/REFERENCE.md`
+- Energy sibling: case `ipea-xtb-small` pin
 - Hessian sibling: [`ipea-xtb-analytic-hessian.md`](ipea-xtb-analytic-hessian.md)
 - VIP/VEA sibling: [`ipea-xtb-vip.md`](ipea-xtb-vip.md) /
-  `regressions/semiempirical/ipea-xtb-vip/REFERENCE.md`
-- Oracle README: `tools/tb_oracle/README.md`
+  case `ipea-xtb-vip` pin
+- Oracle README: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: `docs/roadmap/semiempirical.md`
 - Spec history (closed, deleted at done): git `wf/ipea-xtb-forces`
 - V. Ásgeirsson, C. Bauer, S. Grimme, *Chem. Sci.* **8**, 4879 (2017),

@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-ugw-si` |
-| Regression | `regressions/gpw/periodic-ugw-si/` |
-| Public API | `cpu::gpw::GpwDft::g0w0(atoms)` → `cpu::gpw::G0W0Result` (`cpu/gpw/g0w0.h`); UKS via members `n_alpha` / `n_beta` |
+| Public API | `cpu::gpw::GpwDft::g0w0()` → `cpu::gpw::G0W0Result` (`cpu/gpw/g0w0.h`); UKS via members `n_alpha` / `n_beta` |
 | Roadmap | `docs/roadmap/dft.md` §10 — Γ UGW@UKS product (`reg_periodic-ugw-si`) |
 
 ## Summary
@@ -24,11 +23,11 @@ QP gap [eV].
 When \(C^\alpha \approx C^\beta\), **UGW ≡ RGW** — the product dual-gates the
 QP gap against the closed-shell first-green pin of `periodic-gw-si`
 (\(5.719545\) eV). Public path: `GpwDft` members → `build` → `run` →
-`g0w0(atoms)` — **no** public `*Config`, **no** `make_*` / `build_*` factory.
+`g0w0()` — **no** public `*Config`, **no** `make_*` / `build_*` factory.
 Regression binary: `reg_periodic-ugw-si`. Fair wall vs CP2K is
 **`perf_exempt`** (algorithm mismatch — see Performance).
 
-Related closed-shell spectral twin: `regressions/gpw/periodic-gw-si`.
+Related closed-shell spectral twin: `periodic-gw-si`.
 Molecular RHF G0W0 is a separate PySCF-loop concern (`g0w0-h2-sto3g`).
 
 ## Method
@@ -90,31 +89,35 @@ setup-integrity gate used by the regression.
 
 ## Implementation
 
-Public surface only (`GpwDft` members; Frame is not required for this low-level
-GPW path — the regression uses `GpwAtom` + `GpwDft` like other periodic GPW
-post-SCF footholds). **No** `*Config` bag, **no** factory:
+Public surface only (`GpwDft` members; geometry from a `cpu::Frame` —
+positions [Å], Z in `kAtom_type`, orthorhombic `box` — like every GPW run).
+**No** `*Config` bag, **no** factory:
 
 ```cpp
 #include "atomiverse/cpu/gpw/g0w0.h"
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
-constexpr double kA2B = 1.8897259885789;
-const double a_bohr = 5.43 * kA2B;
 
-const double pos0[3] = {0.0, 0.0, 0.0};
-const double pos1[3] = {a_bohr / 4.0, a_bohr / 4.0, a_bohr / 4.0};
-const GaussianBasis bas(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-const GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
-std::vector<GpwAtom> atoms;
-atoms.emplace_back(pos0, bas, pot, 14);
-atoms.emplace_back(pos1, bas, pot, 14);
+constexpr double a = 5.43;                    // cubic cell [Å]
 
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = a_bohr;  // Bohr
+cpu::Frame frame(2);                          // sc-Si₂, positions [Å]
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 14;
+    frame.span(kAtom_x)[i] = frame.span(kAtom_y)[i] =
+        frame.span(kAtom_z)[i] = i * a / 4.0;
+}
+frame.box = cpu::Box::cubic(a);
+
+GpwDft m{{Kind{molrs::Element::Si,
+               GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+               GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 30.0;
 m.n_alpha = 4;
 m.n_beta = 4;              // UKS closed-shell occupations
@@ -124,11 +127,11 @@ m.mix = 0.3;
 m.level_shift = 0.3;       // Ha; small-gap artificial sc-Si₂
 m.xc = XcKind::PBE;
 m.mp2_ri = true;
-m.build(atoms);
+m.build(frame);
 
-const GpwResult& scf = m.run(atoms);   // converged Γ UKS-PBE
+const GpwResult& scf = m.run(frame);   // converged Γ UKS-PBE
 m.mp2_n_virt = 0;                      // 0 = all kept virtuals per spin
-const G0W0Result& gw = m.g0w0(atoms);
+const G0W0Result& gw = m.g0w0();
 // gw.gap_ev [eV]  — α HOMO→LUMO QP gap (primary gate)
 // gw.qp_energy_ha — α spectrum [Ha]; gw.ip_ev / gw.ea_ev [eV]
 // gw.converged, gw.ri, gw.n_occ (= n_α), gw.n_virt (= n_vα + n_vβ)
@@ -154,7 +157,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_periodic-ugw-si
-  ./build/regressions/reg_periodic-ugw-si
+  reg_periodic-ugw-si
 '
 ```
 
@@ -162,20 +165,19 @@ Relevant sources:
 
 | Piece | Path |
 | ----- | ---- |
-| Result type | `include/atomiverse/cpu/gpw/g0w0.h` |
-| Solver entry | `GpwDft::g0w0` in `include/atomiverse/cpu/gpw/gpw_solver.h` |
+| Result type | `g0w0.h` |
+| Solver entry | `GpwDft::g0w0` in `gpw_solver.h` |
 | Impl (UGW branch) | `src/cpu/gpw/g0w0.cpp` |
-| RI/MO-ERI kernels | `include/atomiverse/cpu/gpw/internal/mp2_kernels.h` |
+| RI/MO-ERI kernels | `mp2_kernels.h` |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_g0w0.cpp` |
-| Regression | `regressions/gpw/periodic-ugw-si/reg_periodic-ugw-si.cpp` |
-| Offline pin | `regressions/gpw/periodic-ugw-si/REFERENCE.md` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/periodic-ugw-si.inp` |
+| Offline pin | case `periodic-ugw-si` pin |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (CP2K / dual-gate)
 
-Source: [`regressions/gpw/periodic-ugw-si/REFERENCE.md`](../../../regressions/gpw/periodic-ugw-si/REFERENCE.md)
+Source: case `periodic-ugw-si` pin
 (offline pin only; **never** live CP2K in ctest). Oracle contract:
-[`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md).
+CP2K oracle.
 
 **Product gates (hard-coded in `reg_periodic-ugw-si`).**
 
@@ -205,7 +207,7 @@ Source: [`regressions/gpw/periodic-ugw-si/REFERENCE.md`](../../../regressions/gp
 | G0W0 | all kept virtuals per spin for dRPA; `mp2_ri = true` |
 
 **Offline CP2K status.** Twin input
-`tools/cp2k_oracle/inputs/periodic-ugw-si.inp` (UKS `MULTIPLICITY 1` +
+CP2K oracle (UKS `MULTIPLICITY 1` +
 `&RI_G0W0`). CP2K’s default path is **frequency-integrated RI-GW** with
 Gaussian RI_AUX and periodic HF in the GW step — **not** spectral plasmon UGW
 with MT exchange. Absolute CP2K QP digits are therefore **not invented** as a
@@ -225,14 +227,14 @@ Operator-only re-run of the CP2K input (not ctest):
 ```bash
 module load buildtool-easybuild/5.2.1-hpca3ef7d197 GCC/14.3.0 MPICH/4.3.2 CP2K/2026.1
 export CP2K_DATA_DIR=$EBROOTCP2K/share/cp2k/data
-# copy tools/cp2k_oracle/inputs/periodic-ugw-si.inp; link BASIS_MOLOPT, BASIS_RI_MOLOPT, GTH_POTENTIALS
+# copy <CP2K oracle input for this case>
 mpirun -np 1 cp2k.psmp -i periodic-ugw-si.inp -o periodic-ugw-si.out
 ```
 
 ## Performance
 
-Source: `REFERENCE.md` + handoff
-the case `REFERENCE.md`
+Source: pin notes + handoff
+the case pin notes
 (wave 6, 2026-07-26). Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \le 10\)
 or **`perf_exempt`**.
 
@@ -264,13 +266,13 @@ well under the ≤ 60 s e2e cap. Never launch CP2K from ctest.
 
 ## References
 
-- Offline pin: [`regressions/gpw/periodic-ugw-si/REFERENCE.md`](../../../regressions/gpw/periodic-ugw-si/REFERENCE.md)
-- Regression consumer: [`reg_periodic-ugw-si.cpp`](../../../regressions/gpw/periodic-ugw-si/reg_periodic-ugw-si.cpp)
-- Closed-shell dual-gate twin: [`regressions/gpw/periodic-gw-si/REFERENCE.md`](../../../regressions/gpw/periodic-gw-si/REFERENCE.md)
-- CP2K twin input: [`tools/cp2k_oracle/inputs/periodic-ugw-si.inp`](../../../tools/cp2k_oracle/inputs/periodic-ugw-si.inp)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin: case `periodic-ugw-si` pin
+- Regression consumer: `reg_periodic-ugw-si.cpp`
+- Closed-shell dual-gate twin: case `periodic-gw-si` pin
+- CP2K twin input: CP2K oracle
+- Oracle contract: CP2K oracle
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md) (Periodic GW + UGW)
-- Public headers: `include/atomiverse/cpu/gpw/g0w0.h`, `gpw_solver.h`
+- Public headers: `g0w0.h`, `gpw_solver.h`
 - Impl: `src/cpu/gpw/g0w0.cpp`
 - Molecular spectral twin (PySCF loop): [`g0w0-h2-sto3g.md`](g0w0-h2-sto3g.md)
 - M. S. Hybertsen, S. G. Louie, *Phys. Rev. B* **34**, 5390 (1986), DOI

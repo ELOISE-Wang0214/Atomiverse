@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-hirshfeld-uks` |
-| Regression | `regressions/gpw/gpw-hirshfeld-uks/` |
-| Public API | `cpu::gpw::GpwDft` / `cpu::gpw::GPWEvaluator`: `n_alpha`/`n_beta`, `mbd`, `hirshfeld`; `GpwResult::e_disp` [Ha], `volume_ratios` |
+| Public API | `cpu::gpw::GpwDft` members `n_alpha`/`n_beta`, `mbd`, `hirshfeld` (bind via `cpu::gpw::GPWEvaluator` for drivers); `GpwResult::e_disp` [Ha], `volume_ratios` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion — Hirshfeld-scaled MBD (Γ-UKS product) |
 
 ## Summary
@@ -19,10 +18,10 @@ O₂** under Martyna–Tuckerman isolation: same centered geometry as
 `gpw-uks-pbe` / `gpw-uks-o2-gamma`, with post-SCF MBD on the UKS density
 path rather than free-atom volumes.
 
-Public path: construct `cpu::gpw::GpwDft` (or `GPWEvaluator`) with one
-`Kind` / `GpwAtom` per site via lookup constructors `GaussianBasis` /
-`GthPotential`, set members (`n_alpha`, `n_beta`, `mbd`, `hirshfeld`,
-`cutoff_ry`, `xc`, `nonperiodic`, …), `build` → `run`. Dispersion lands on
+Public path: construct `cpu::gpw::GpwDft` with one `Kind` per element via
+lookup constructors `GaussianBasis` / `GthPotential`, set members (`n_alpha`,
+`n_beta`, `mbd`, `hirshfeld`, `cutoff_ry`, `xc`, `nonperiodic`, …), then
+`build(frame)` → `run(frame)`. Dispersion lands on
 `GpwResult::e_disp` [Hartree] and is folded into `e_total`; ratios on
 `volume_ratios`. **No** public `*Config` bag and **no** `make_*` /
 `build_*` factories. Product gate: `reg_gpw-hirshfeld-uks`. Fair wall is
@@ -82,7 +81,7 @@ periodic Ewald MBD is a separate product (`gpw-mbd-periodic`).
 `DFTD2|DFTD3|DFTD3(BJ)|DFTD4` — no stock TS/MBD. The offline pin is the
 **ATV product** under fixed UKS settings, cross-checked vs free-atom MBD
 and the dual in-tree Hirshfeld kernel. Notes live under
-`tools/cp2k_oracle/inputs/gpw-hirshfeld-uks/` (not a live oracle).
+CP2K oracle (not a live oracle).
 
 **Key exclusions (product scope).**
 
@@ -97,41 +96,40 @@ and the dual in-tree Hirshfeld kernel. Notes live under
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; **no** `*Config`,
+Public surface only (`GpwDft` members, Frame in / Frame out; **no** `*Config`,
 **no** `make_*` / `build_*`). Regression uses the concrete solver:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::XcKind;
 
-constexpr double kA2B = 1.0 / 0.52917720859;
 // O₂, R = 1.2075 Å, centered in 12 Å cubic cell (MT / nonperiodic)
-constexpr double L_ang = 12.0;
-constexpr double R_ang = 1.2075;
-const double L = L_ang * kA2B;
-const double z0 = 0.5 * L - 0.5 * R_ang * kA2B;
-const double z1 = 0.5 * L + 0.5 * R_ang * kA2B;
-
-const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-GTH");
-const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
-std::vector<GpwAtom> atoms;
-{
-    const double p0[3] = {0.5 * L, 0.5 * L, z0};
-    const double p1[3] = {0.5 * L, 0.5 * L, z1};
-    atoms.emplace_back(p0, bO, pO, 8);
-    atoms.emplace_back(p1, bO, pO, 8);
+constexpr double L = 12.0;   // Å
+constexpr double R = 1.2075; // Å
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 8;
+    frame.span(kAtom_x)[i] = 0.5 * L;
+    frame.span(kAtom_y)[i] = 0.5 * L;
 }
+frame.span(kAtom_z)[0] = 0.5 * L - 0.5 * R;
+frame.span(kAtom_z)[1] = 0.5 * L + 0.5 * R;
+frame.box = cpu::Box::cubic(L);
 
-GpwDft gpw;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+GpwDft gpw{{Kind{molrs::Element::O,
+                 GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
+                 GthPotential(molrs::Element::O, "GTH-PBE-q6")}}};
 gpw.cutoff_ry = 200.0;
 gpw.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
 gpw.n_beta = 5;
@@ -144,13 +142,14 @@ gpw.nonperiodic = true;
 gpw.mbd = true;
 gpw.hirshfeld = true;
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp [Ha], res.volume_ratios, res.e_total, res.s2, res.converged
 ```
 
-Equivalent evaluator members: `eval.mbd = true; eval.hirshfeld = true;`
-with `eval.n_alpha` / `eval.n_beta` (Frame path via `cpu::single_point`).
+Driver path: move the same configured `GpwDft` into
+`cpu::gpw::GPWEvaluator(std::move(gpw))` and bind it into `cpu::Evaluate`
+(the evaluator carries no method parameters of its own).
 
 Build (GPW needs FFTW3) and run the regression:
 
@@ -166,7 +165,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-hirshfeld-uks
-  ./build/regressions/reg_gpw-hirshfeld-uks
+  reg_gpw-hirshfeld-uks
   # or: cmake --build build --target run_reg_gpw-hirshfeld-uks
 '
 ```
@@ -175,19 +174,18 @@ Relevant sources:
 
 | Piece | Path |
 | ----- | ---- |
-| Solver members | `include/atomiverse/cpu/gpw/gpw_solver.h` (`mbd`, `hirshfeld`, `GpwResult`) |
-| Evaluator mirror | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| Hirshfeld volumes | `include/atomiverse/cpu/gpw/internal/hirshfeld_volumes.h`, `src/cpu/gpw/internal/hirshfeld_volumes.cpp` |
-| Free-atom tables | `include/atomiverse/cpu/gpw/basis_data/hirshfeld_tables.h` |
-| MBD kernel | `include/atomiverse/cpu/gpw/internal/mbd_dispersion.h` |
+| Solver members | `gpw_solver.h` (`mbd`, `hirshfeld`, `GpwResult`) |
+| Evaluator mirror | `gpw_evaluator.h` |
+| Hirshfeld volumes | `hirshfeld_volumes.h`, `src/cpu/gpw/internal/hirshfeld_volumes.cpp` |
+| Free-atom tables | `hirshfeld_tables.h` |
+| MBD kernel | `mbd_dispersion.h` |
 | UKS SCF + post-SCF fold | `src/cpu/gpw/gpw_solver.cpp` |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_hirshfeld.cpp` |
-| Regression | `regressions/gpw/gpw-hirshfeld-uks/reg_gpw-hirshfeld-uks.cpp` |
-| Oracle notes | `tools/cp2k_oracle/inputs/gpw-hirshfeld-uks/o2_uks_hirshfeld.note` |
+| Oracle notes | CP2K oracle |
 
 ## Validation (offline product pin)
 
-Source: `regressions/gpw/gpw-hirshfeld-uks/REFERENCE.md` (hard-coded;
+Source: case `gpw-hirshfeld-uks` pin (hard-coded;
 **never** live CP2K/libMBD in ctest). Free-atom MBD tables already pinned
 vs libMBD Fortran on `gpw-mbd-ice`; this slug gates the **UKS volume-ratio
 layer**.
@@ -227,7 +225,7 @@ Cross-checks (offline operator notes only):
 
 ## Performance
 
-Source: closed-spec / handoff policy (the case `REFERENCE.md`,
+Source: closed-spec / handoff policy (the case pin notes,
 wave 7 2026-07-26). **Not** a ctest gate.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -259,13 +257,13 @@ Gate: `perf_exempt = true` (same policy as `gpw-mbd-hirshfeld` /
 
 ## References
 
-- Offline pin: [`regressions/gpw/gpw-hirshfeld-uks/REFERENCE.md`](../../../regressions/gpw/gpw-hirshfeld-uks/REFERENCE.md)
-- Regression consumer: [`reg_gpw-hirshfeld-uks.cpp`](../../../regressions/gpw/gpw-hirshfeld-uks/reg_gpw-hirshfeld-uks.cpp)
-- Oracle notes: [`tools/cp2k_oracle/inputs/gpw-hirshfeld-uks/`](../../../tools/cp2k_oracle/inputs/gpw-hirshfeld-uks/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
-- Related regressions: RKS Hirshfeld `regressions/gpw/gpw-mbd-hirshfeld/`,
-  multi-k RKS Hirshfeld `regressions/gpw/gpw-hirshfeld-kpoints/`,
-  free-atom MBD `regressions/gpw/gpw-mbd-ice/`;
+- Offline pin: case `gpw-hirshfeld-uks` pin
+- Regression consumer: `reg_gpw-hirshfeld-uks.cpp`
+- Oracle notes: CP2K oracle
+- Oracle contract: CP2K oracle
+- Related regressions: RKS Hirshfeld `gpw-mbd-hirshfeld`,
+  multi-k RKS Hirshfeld `gpw-hirshfeld-kpoints`,
+  free-atom MBD `gpw-mbd-ice`;
   Γ-UKS energy tutorial [`gpw-uks-o2-gamma.md`](gpw-uks-o2-gamma.md)
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md) §8

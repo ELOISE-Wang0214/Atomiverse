@@ -8,7 +8,7 @@ pass over Bloch-phased \(S_k/T_k/V_\mathrm{nl}\), dual \(P_\alpha^k/P_\beta^k\),
 and spin-resolved \(V_\mathrm{eff}^{\alpha/\beta}\) on complex \(\chi^k\)).
 
 Public path: `cpu::gpw::GpwDft` with `n_alpha=2`, `n_beta=0`,
-`k_mesh = {1,1,2}` + `gpw_forces_analytic(atoms, cfg)`. No public `*Config`,
+`k_mesh = {1,1,2}` + `dft.forces(frame)`. No public `*Config`,
 no factories.
 
 ## System

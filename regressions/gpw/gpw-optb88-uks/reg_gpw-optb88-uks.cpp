@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/evaluate/single_point.h"
@@ -87,20 +88,20 @@ int main() {
         cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
     auto make_o2_eval = [&](cpu::gpw::XcKind xc) {
-        cpu::gpw::GPWEvaluator eval({O});
-        eval.cutoff_ry = 400.0;
+        cpu::gpw::GpwDft dft{{O}};
+        dft.cutoff_ry = 400.0;
         // Match CP2K MGRID (NGRIDS 4 / REL_CUTOFF 60) — fair twin for E_tot
         // and wall (same product path as gpw-vdw-uks-multigrid).
-        eval.ngrids = 4;
-        eval.rel_cutoff = 60.0;
-        eval.max_iter = 200;
-        eval.tol = 1e-7;
-        eval.mix = 0.4;
-        eval.xc = xc;
-        eval.n_alpha = 7; // multiplicity 3, 12 valence e⁻
-        eval.n_beta = 5;
-        eval.vdw_df = true;
-        return eval;
+        dft.ngrids = 4;
+        dft.rel_cutoff = 60.0;
+        dft.max_iter = 200;
+        dft.tol = 1e-7;
+        dft.mix = 0.4;
+        dft.xc = xc;
+        dft.n_alpha = 7; // multiplicity 3, 12 valence e⁻
+        dft.n_beta = 5;
+        dft.vdw_df = true;
+        return cpu::gpw::GPWEvaluator(std::move(dft));
     };
 
     cpu::Frame frame_opt = make_o2();
@@ -160,14 +161,14 @@ int main() {
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
     auto make_dimer_eval = [&]() {
-        cpu::gpw::GPWEvaluator ev({Osr, Hsr});
-        ev.cutoff_ry = 200.0;
-        ev.max_iter = 120;
-        ev.tol = 1e-7;
-        ev.mix = 0.4;
-        ev.xc = cpu::gpw::XcKind::OptB88VdW;
-        ev.vdw_df = true;
-        return ev;
+        cpu::gpw::GpwDft dft{{Osr, Hsr}};
+        dft.cutoff_ry = 200.0;
+        dft.max_iter = 120;
+        dft.tol = 1e-7;
+        dft.mix = 0.4;
+        dft.xc = cpu::gpw::XcKind::OptB88VdW;
+        dft.vdw_df = true;
+        return cpu::gpw::GPWEvaluator(std::move(dft));
     };
 
     cpu::Frame frame_rks = make_water_dimer();
@@ -176,8 +177,8 @@ int main() {
 
     cpu::Frame frame_uks = make_water_dimer();
     cpu::gpw::GPWEvaluator eval_uks = make_dimer_eval();
-    eval_uks.n_alpha = 8;
-    eval_uks.n_beta = 8;
+    eval_uks.method().n_alpha = 8;
+    eval_uks.method().n_beta = 8;
     cpu::single_point(frame_uks, eval_uks);
     const auto t2 = clock::now();
 

@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `second-gen-cpmd-ot` |
-| Regression | `regressions/dynamics/second-gen-cpmd-ot/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{…, use_ot=true}, aspc_k, corrector_max_iter}` bound with `set_evaluator_ref` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{cpu::gpw::GpwDft{…, use_ot=true}}, aspc_k, corrector_max_iter}` bound with `set_evaluator_ref` |
 | Roadmap | MD roadmap SGCP OT corrector |
 | Dual gate | Correctness: NVE drift + method-identity (partial OT budget); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — wave 9 (2026-07-26) |
@@ -111,7 +110,7 @@ production steps. There is **no** classical CP \(T_e\) term.
 
 ## Implementation
 
-Public surface only (`cpu::Frame` + `GPWEvaluator` members; **no** `*Config`
+Public surface only (`cpu::Frame` + `GpwDft` members; **no** `*Config`
 bags, **no** factories). Match the regression:
 
 ```cpp
@@ -160,11 +159,15 @@ const cpu::gpw::Kind H{
 
 constexpr double dt = 0.5; // fs — BOMD-class step (vs classical CP ~0.1)
 constexpr int corrector_budget = 5;
-cpu::gpw::GPWEvaluator gpw(
-    /*kinds*/ {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-    /*mix*/ 0.3, cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
-gpw.use_ot = true;                        // OT partial-SCF corrector
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 60;
+dft.tol = 1e-5;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = true;
+dft.use_ot = true;                        // OT partial-SCF corrector
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // SGCP is the wrapper type; ASPC order K (needs K+1 seeds) and the corrector
 // budget are its constructor arguments.
 cpu::electronic::SecondGenCp eval{std::move(gpw), /*aspc_k=*/1,
@@ -201,19 +204,19 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/electronic/second_gen_cp.h` | `SecondGenCp` wrapper (ASPC order + corrector budget) |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | Public `use_ot`; private SGCP mode bits |
+| `second_gen_cp.h` | `SecondGenCp` wrapper (ASPC order + corrector budget) |
+| `gpw_evaluator.h` | Public `use_ot`; private SGCP mode bits |
 | `src/cpu/gpw/gpw_evaluator.cpp` | ASPC predict/correct, OT force path, guards |
-| `include/atomiverse/cpu/electronic/aspc_predictor.h` | Kolafa ASPC primitive |
-| `include/atomiverse/cpu/gpw/internal/ot.h` | OT parameterization (internal) |
+| `aspc_predictor.h` | Kolafa ASPC primitive |
+| `ot.h` | OT parameterization (internal) |
 | `tests/cpu/gpw/test_gpw_second_gen_cpmd.cpp` | Unit: RKS OT accepted; UKS+OT rejected; mutex with the CP / XL wrappers |
-| `regressions/dynamics/second-gen-cpmd-ot/` | E2E NVE gate + `REFERENCE.md` |
-| `tools/cp2k_oracle/inputs/second-gen-cpmd-ot/h2o_sgcp_ot_nve.inp` | Offline CP2K twin sketch |
+| `second-gen-cpmd-ot` | E2E NVE gate + pin notes |
+| CP2K oracle | Offline CP2K twin sketch |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/dynamics/second-gen-cpmd-ot/REFERENCE.md`](../../../regressions/dynamics/second-gen-cpmd-ot/REFERENCE.md).
+case `second-gen-cpmd-ot` pin.
 Oracle: offline **CP2K** input sketch (`EXTRAPOLATION ASPC`,
 `EXTRAPOLATION_ORDER 1`, `&OT`, tight `MAX_SCF`); **never** live in ctest.
 No `cp2k` binary required on the pin host (same class as
@@ -248,8 +251,8 @@ No `cp2k` binary required on the pin host (same class as
 Offline oracle sketch (host with CP2K module; **not** ctest):
 
 ```bash
-# See tools/cp2k_oracle/README.md — never invoke from ctest
-cp2k.psmp -i tools/cp2k_oracle/inputs/second-gen-cpmd-ot/h2o_sgcp_ot_nve.inp \
+# See the CP2K oracle notes — never invoke from ctest
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o /tmp/cp2k_oracle_h2o_sgcp_ot_nve.out
 # Record version + .ener drift + fair wall when available
 ```
@@ -282,9 +285,8 @@ MD binary against a static SCF twin.
 
 ## References
 
-- Offline pin: `regressions/dynamics/second-gen-cpmd-ot/REFERENCE.md`
-- Regression: `regressions/dynamics/second-gen-cpmd-ot/reg_second-gen-cpmd-ot.cpp`
-- CP2K oracle sketch: `tools/cp2k_oracle/inputs/second-gen-cpmd-ot/h2o_sgcp_ot_nve.inp`
+- Offline pin: case `second-gen-cpmd-ot` pin
+- CP2K oracle sketch: CP2K oracle
 - Roadmap: `docs/roadmap/molecular-dynamics.md` (SGCP OT corrector product)
 - Sibling pages: [ot-minimizer-water](ot-minimizer-water.md),
   [cpmd-water](cpmd-water.md), [xl-bomd-water](xl-bomd-water.md),

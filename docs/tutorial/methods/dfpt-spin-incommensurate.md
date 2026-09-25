@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-spin-incommensurate` |
-| Regression | `regressions/response/dfpt-spin-incommensurate/` |
 | Public API | `cpu::pw::DfptPhonon` (`q_frac`, response members) + `cpu::pw::PW` (`spin_polarized`, `multiplicity`) + `DfptPhononResult` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — collinear spin at incommensurate \(q\) ✓ |
 | Dep | `dfpt-spin-si` ✓ (Γ collinear); `dfpt-incommensurate-si` ✓ (restricted finite \(q\)) |
@@ -21,7 +20,7 @@ occupations) and **direct** finite-\(q\) assembly on the primitive cell
 NC-UPF and pure LSDA (or pure GGA kernel). This page pins diamond Si at
 \(\mathbf{q}=(0.3,0,0)\) with closed-shell collinear \(M=0\)
 (`multiplicity = 1`). Offline pins only — oracle family **CP2K** when a
-binary is present (`tools/cp2k_oracle/inputs/dfpt-spin-incommensurate.note`);
+binary is present (CP2K oracle);
 never live CP2K in ctest. Performance: **`perf_exempt`** (no fair CP2K
 DFPT wall on the pin host). Regression: `reg_dfpt-spin-incommensurate`.
 
@@ -103,7 +102,7 @@ Mass-weighted Hermitian diagonalization of \(C(\mathbf{q})\) yields
 
 Public surface only: construct `cpu::pw::PW` and `cpu::pw::DfptPhonon`, set
 **members** (no `DfptConfig`, no factories), call `compute(method, frame)`.
-Headers: `include/atomiverse/cpu/planewave/dfpt_phonon.h`,
+Headers: `dfpt_phonon.h`,
 `pw_solver.h`. Frame in / result out; Frame not mutated.
 
 ```cpp
@@ -158,7 +157,7 @@ const DfptPhononResult r = dfpt.compute(method, frame);
 ```bash
 # After configure with -DATV_BUILD_PW=ON -DATV_BUILD_REGRESSIONS=ON
 cmake --build build -j$(nproc) --target atomiverse reg_dfpt-spin-incommensurate
-./build/regressions/reg_dfpt-spin-incommensurate
+reg_dfpt-spin-incommensurate
 # or: cmake --build build --target run_reg_dfpt-spin-incommensurate
 ```
 
@@ -168,10 +167,10 @@ UPF I/O; empty UPF still throws).
 
 ## Validation (vs offline CP2K / twin pins)
 
-Source: `regressions/response/dfpt-spin-incommensurate/REFERENCE.md`
+Source: case `dfpt-spin-incommensurate` pin
 (measured 2026-07-26, Release, OMP=8). CP2K binary **not** on pin host —
 spectrum windows + closed-shell identity to the restricted incommensurate
-twin. Oracle note: `tools/cp2k_oracle/inputs/dfpt-spin-incommensurate.note`.
+twin. Oracle note: CP2K oracle.
 
 | Quantity | Atomiverse / pin | Oracle / twin | Tol / gate | Notes |
 | -------- | ---------------: | ------------: | ---------- | ----- |
@@ -188,8 +187,8 @@ spectra live only on `DfptPhononResult`.
 
 ## Performance
 
-Source: `REFERENCE.md` +
-the case `REFERENCE.md` (wave 8 staff table).
+Source: pin notes +
+the case pin notes (wave 8 staff table).
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | ----: | ---- | ------ |
@@ -218,15 +217,15 @@ the oracle note.
 - No LO–TO splitting / \(\mathbf{Z}^*\) path on this page.
 - CPU only; CUDA ports are out of the CP2K capability loop scope.
 - When a CP2K binary becomes available, re-record \(\omega(q)\) + wall in
-  `tools/cp2k_oracle/inputs/dfpt-spin-incommensurate.note` and lift
+  CP2K oracle and lift
   `perf_exempt` if a fair ratio is measurable.
 
 ## References
 
-- Offline pin: `regressions/response/dfpt-spin-incommensurate/REFERENCE.md`
-- Oracle note: `tools/cp2k_oracle/inputs/dfpt-spin-incommensurate.note`
-- Oracle rules: `tools/cp2k_oracle/README.md` (never live in ctest)
-- API: `include/atomiverse/cpu/planewave/dfpt_phonon.h`
+- Offline pin: case `dfpt-spin-incommensurate` pin
+- Oracle note: CP2K oracle
+- Oracle rules: CP2K oracle (never live in ctest)
+- API: `dfpt_phonon.h`
 - Siblings: `docs/tutorial/methods/dfpt-phonon-si.md` (Γ restricted);
   regressions `dfpt-spin-si`, `dfpt-incommensurate-si`, `dfpt-metallic-si`
 - Baroni et al., *Rev. Mod. Phys.* **73**, 515 (2001)

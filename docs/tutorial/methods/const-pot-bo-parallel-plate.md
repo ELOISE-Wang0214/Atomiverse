@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `const-pot-bo-parallel-plate` |
-| Regression | `regressions/md/const-pot-bo-parallel-plate/` |
 | Public API | `cpu::md::ConstPotBO` (Component on `cpu::md::MD`, default `pre_force`) |
 | Roadmap | map slice E1 |
 | Oracle | **LAMMPS** ELECTRODE package (`fix electrode/conp`, madelung example) |
@@ -163,26 +162,26 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_const-pot-bo-parallel-plate -j"$(nproc)"
-  ./build/regressions/reg_const-pot-bo-parallel-plate
+  reg_const-pot-bo-parallel-plate
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/const_pot_bo.h` | Public `ConstPotBO`, `ElectrodeGroup` |
+| `const_pot_bo.h` | Public `ConstPotBO`, `ElectrodeGroup` |
 | `src/cpu/dynamics/const_pot_bo.cpp` | Dense \(A\), neutrality projector, write-back |
-| `include/atomiverse/cpu/dynamics/md.h` | Host preset `cpu::md::MD` |
-| `regressions/md/const-pot-bo-parallel-plate/reg_const-pot-bo-parallel-plate.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/lammps/const-pot-bo-parallel-plate.notes.md` | Offline pin provenance |
+| `md.h` | Host preset `cpu::md::MD` |
+| `reg_const-pot-bo-parallel-plate.cpp` | Product gate |
+| MetalWalls oracle | Offline pin provenance |
 
 ## Validation (vs LAMMPS)
 
 Source:
-[`regressions/md/const-pot-bo-parallel-plate/REFERENCE.md`](../../../regressions/md/const-pot-bo-parallel-plate/REFERENCE.md)
+case `const-pot-bo-parallel-plate` pin
 (offline pin; **never** live LAMMPS in ctest). Oracle tooling notes:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md),
+MetalWalls oracle,
 LAMMPS notes under
-`tools/metalwalls_oracle/inputs/lammps/const-pot-bo-parallel-plate.notes.md`.
+MetalWalls oracle.
 
 **Oracle:** LAMMPS **3 Nov 2022**, ELECTRODE package example
 `examples/PACKAGES/electrode/madelung`, log
@@ -231,7 +230,7 @@ lmp -in in.ewald-ew3dc
 ## Performance
 
 Source: REFERENCE.md dual-gate summary; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{LAMMPS}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -269,9 +268,7 @@ available, re-run offline fair bench, record version + walls, and replace
 
 ## References
 
-- Offline pin: [`regressions/md/const-pot-bo-parallel-plate/REFERENCE.md`](../../../regressions/md/const-pot-bo-parallel-plate/REFERENCE.md)
-- Product gate: [`regressions/md/const-pot-bo-parallel-plate/reg_const-pot-bo-parallel-plate.cpp`](../../../regressions/md/const-pot-bo-parallel-plate/reg_const-pot-bo-parallel-plate.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/const_pot_bo.h`](../../../include/atomiverse/cpu/dynamics/const_pot_bo.h)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md), [`tools/metalwalls_oracle/inputs/lammps/const-pot-bo-parallel-plate.notes.md`](../../../tools/metalwalls_oracle/inputs/lammps/const-pot-bo-parallel-plate.notes.md)
+- Offline pin: case `const-pot-bo-parallel-plate` pin
+- Oracle notes: MetalWalls oracle, MetalWalls oracle
 - Literature: Ahrens-Iwers et al., *J. Chem. Phys.* **157**, 084801 (2022), DOI [10.1063/5.0099239](https://doi.org/10.1063/5.0099239) (LAMMPS ELECTRODE); Siepmann–Sprik Gaussian electrode charges (method basis of `plate_cap` / BO matrix)
 - LAMMPS example: `examples/PACKAGES/electrode/madelung` (`in.ewald-ew3dc`, `plate_cap.py`)

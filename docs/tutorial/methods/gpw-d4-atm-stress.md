@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d4-atm-stress` |
-| Regression | `regressions/gpw/gpw-d4-atm-stress/` |
-| Public API | `cpu::gpw::GPWEvaluator{d4 = true, d4_atm = true, compute_stress = true}` |
+| Public API | `cpu::gpw::GpwDft{d4 = true, d4_atm = true}` bound by `cpu::gpw::GPWEvaluator{compute_stress = true}` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -33,7 +32,7 @@ samples**, not a stress-tensor diff.
 CP2K 2026.1 on Arrhenius is built **without** the DFTD4 library
 (`TYPE DFTD4` aborts). The hard pin is **dftd4 3.7.0 printed energies** —
 the same libdftd4 backend CP2K calls when DFTD4 is linked; the QS input
-family is retained under `tools/cp2k_oracle/inputs/gpw-d4-atm/`. Same policy
+family is retained under CP2K oracle. Same policy
 as `gpw-d4-atm` / `gpw-d4-atm-forces` / `gpw-d4-stress`.
 
 All gates are on the oracle's **printed energies**, never its gradient:
@@ -94,19 +93,23 @@ bash -lc '
         -DATV_BUILD_HF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-d4-atm-stress -j$(nproc)
-  ./build/regressions/reg_gpw-d4-atm-stress
+  reg_gpw-d4-atm-stress
 '
 ```
 
 Public surface (no `*Config`, no factories; Frame is the only token):
 
 ```cpp
-cpu::gpw::GPWEvaluator eval({O_kind, H_kind});
-eval.cutoff_ry = 200.0;
-eval.xc = cpu::gpw::XcKind::PBE;
-eval.nonperiodic = false;
-eval.d4 = true;             // exclusive vs d3 / d3bj
-eval.d4_atm = true;         // s9 = 1 in energy AND strained stress rebuild
+cpu::gpw::GpwDft dft{{O_kind, H_kind}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = false;
+dft.d4 = true;              // exclusive vs d3 / d3bj
+dft.d4_atm = true;          // s9 = 1 in energy AND strained stress rebuild
+cpu::gpw::GPWEvaluator eval(std::move(dft));
 eval.compute_stress = true; // analytic fixed-P path
 eval.stress_strain_h = 2e-3;
 cpu::Evaluate driver;
@@ -141,8 +144,8 @@ regression budget.
 
 ## References
 
-- Offline pins: `regressions/gpw/gpw-d4-atm-stress/REFERENCE.md`;
-  `tools/cp2k_oracle/inputs/gpw-d4-atm/pin_strain_*_{atm,2b}.json`
+- Offline pins: case `gpw-d4-atm-stress` pin;
+  CP2K oracle
 - Related: [gpw-d4-atm](gpw-d4-atm.md) (energy),
   [gpw-d4-atm-forces](gpw-d4-atm-forces.md) (ATM forces),
   [gpw-d4-stress](gpw-d4-stress.md) (two-body stress),

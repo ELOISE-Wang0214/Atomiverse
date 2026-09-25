@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `four-site-tip4p-foothold` |
-| Regression | `regressions/md/four-site-tip4p-foothold/` |
 | Public API | `cpu::PairLJCutTip4pCut` + `cpu::Evaluate` + `cpu::md::NeighborList` |
 | Roadmap | MetalWalls map **E9** |
 | Oracle | **LAMMPS** `pair_style lj/cut/tip4p/cut` (not MetalWalls) |
@@ -136,24 +135,23 @@ bash -lc '
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_four-site-tip4p-foothold -j$(nproc)
 '
-./build/regressions/reg_four-site-tip4p-foothold
+reg_four-site-tip4p-foothold
 ```
 
 Relevant headers:
 
-- `include/atomiverse/cpu/potentials/pair_lj_cut_tip4p_cut.h`
-- `include/atomiverse/cpu/evaluate/evaluate.h`
-- `include/atomiverse/cpu/neighbor/neighbor_list.h`
-- Regression: `regressions/md/four-site-tip4p-foothold/reg_four-site-tip4p-foothold.cpp`
+- `pair_lj_cut_tip4p_cut.h`
+- `evaluate.h`
+- `neighbor_list.h`
 
 ## Validation (vs LAMMPS)
 
 **Oracle: LAMMPS**, not MetalWalls. Offline pin only; never live `lmp` in ctest.
 
-Source: `regressions/md/four-site-tip4p-foothold/REFERENCE.md`
+Source: case `four-site-tip4p-foothold` pin
 Oracle version: **30 Mar 2026 - Development** (`develop` /
 `patch_30Mar2026-1074-g7f680de296`)
-Inputs: `tools/metalwalls_oracle/inputs/lammps/four-site-tip4p-foothold/`
+Inputs: MetalWalls oracle
 (`in.tip4p_dimer_metal`, `data.tip4p_dimer_metal`, `log.metal`)
 
 | Quantity | Atomiverse / pin | LAMMPS pin | Tol | Notes |
@@ -178,13 +176,13 @@ Pin forces (atom order O1 H1 H2 O2 H3 H4), \(f_y = 0\):
 Regenerate pin (operator host with LAMMPS):
 
 ```bash
-cd tools/metalwalls_oracle/inputs/lammps/four-site-tip4p-foothold
+cd <LAMMPS oracle input dir for this case>
 lmp -in in.tip4p_dimer_metal -log log.metal
 ```
 
 ## Performance
 
-Source: `regressions/md/four-site-tip4p-foothold/REFERENCE.md` (Perf result).
+Source: case `four-site-tip4p-foothold` pin (Perf result).
 
 Fair wall: same dimer single-point — ATV `reg_four-site-tip4p-foothold` vs
 LAMMPS `in.tip4p_dimer_metal` / `run 0`. Both **serial**
@@ -214,9 +212,9 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{oracle}} \le 10\) unless exempted — **
 
 ## References
 
-- Offline pin: `regressions/md/four-site-tip4p-foothold/REFERENCE.md`
-- Pin notes: `tools/metalwalls_oracle/pin_notes.md` (`four-site-tip4p-foothold`)
-- Oracle inputs: `tools/metalwalls_oracle/inputs/lammps/four-site-tip4p-foothold/`
+- Offline pin: case `four-site-tip4p-foothold` pin
+- Pin notes: MetalWalls oracle (`four-site-tip4p-foothold`)
+- Oracle inputs: MetalWalls oracle
 - Map: `.claude/notes/metalwalls-capability-map.md` (E9)
 - W. L. Jorgensen *et al.*, *J. Chem. Phys.* **79**, 926 (1983); TIP4P
   geometry/parameters as used by LAMMPS `lj/cut/tip4p/cut`

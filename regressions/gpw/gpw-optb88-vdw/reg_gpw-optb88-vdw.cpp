@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -16,11 +18,7 @@
 
 namespace {
 
-std::vector<ATV::cpu::gpw::GpwAtom> water_dimer_atoms() {
-    using ATV::cpu::gpw::GaussianBasis;
-    using ATV::cpu::gpw::GpwAtom;
-    using ATV::cpu::gpw::GthPotential;
-    constexpr double kA2B = 1.0 / 0.52917720859;
+ATV::cpu::Frame water_dimer_frame() {
     const double ang[6][3] = {
         {0.000000, 0.000000, 0.000000},  // O
         {0.758602, 0.000000, 0.504284},  // H
@@ -30,31 +28,29 @@ std::vector<ATV::cpu::gpw::GpwAtom> water_dimer_atoms() {
         {3.758602, 0.000000, -0.504284}, // H
     };
     const int Z[6] = {8, 1, 1, 8, 1, 1};
-    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
-    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
-    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
-    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
-
-    std::vector<GpwAtom> atoms;
-    atoms.reserve(6);
+    ATV::cpu::Frame frame(6);
     for (int i = 0; i < 6; ++i) {
-        const double pos[3] = {ang[i][0] * kA2B, ang[i][1] * kA2B,
-                               ang[i][2] * kA2B};
-        if (Z[i] == 8)
-            atoms.emplace_back(pos, bO, pO, 8);
-        else
-            atoms.emplace_back(pos, bH, pH, 1);
+        frame.span(ATV::kAtom_type)[i] = Z[i];
+        frame.span(ATV::kAtom_x)[i] = ang[i][0];
+        frame.span(ATV::kAtom_y)[i] = ang[i][1];
+        frame.span(ATV::kAtom_z)[i] = ang[i][2];
     }
-    return atoms;
+    frame.box = ATV::cpu::Box::cubic(12.0); // [Å]
+    return frame;
 }
 
 ATV::cpu::gpw::GpwResult run_gpw(ATV::cpu::gpw::XcKind xc, bool vdw_df,
-                                 std::vector<ATV::cpu::gpw::GpwAtom>& atoms) {
+                                 ATV::cpu::Frame& frame) {
+    using ATV::cpu::gpw::GaussianBasis;
     using ATV::cpu::gpw::GpwDft;
-    constexpr double kA2B = 1.0 / 0.52917720859;
-    GpwDft gpw;
-    const double L = 12.0 * kA2B;
-    gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+    using ATV::cpu::gpw::GthPotential;
+    using ATV::cpu::gpw::Kind;
+    GpwDft gpw{{Kind{molrs::Element::O,
+                     GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH"),
+                     GthPotential(molrs::Element::O, "GTH-PBE-q6")},
+                Kind{molrs::Element::H,
+                     GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
+                     GthPotential(molrs::Element::H, "GTH-PBE-q1")}}};
     gpw.cutoff_ry = 200.0;
     gpw.n_occ = 8;
     gpw.max_iter = 40;
@@ -63,8 +59,8 @@ ATV::cpu::gpw::GpwResult run_gpw(ATV::cpu::gpw::XcKind xc, bool vdw_df,
     gpw.xc = xc;
     gpw.nonperiodic = false;
     gpw.vdw_df = vdw_df;
-    gpw.build(atoms);
-    return gpw.run(atoms);
+    gpw.build(frame);
+    return gpw.run(frame);
 }
 
 } // namespace
@@ -84,11 +80,11 @@ int main() {
     constexpr double kTolTot = 1.0e-3;    // Ha (setup integrity until CP2K)
     constexpr double kDualFloor = 1.0e-4; // Ha |E_opt - E_pbe|
 
-    auto atoms = water_dimer_atoms();
+    auto frame = water_dimer_frame();
 
     // Dual gate: semi-local OptB88VdW (no nonlocal) must shift vs PBE.
-    const auto res_pbe = run_gpw(XcKind::PBE, /*vdw_df=*/false, atoms);
-    const auto res_opt = run_gpw(XcKind::OptB88VdW, /*vdw_df=*/false, atoms);
+    const auto res_pbe = run_gpw(XcKind::PBE, /*vdw_df=*/false, frame);
+    const auto res_opt = run_gpw(XcKind::OptB88VdW, /*vdw_df=*/false, frame);
     if (!std::isfinite(res_pbe.e_total) || !std::isfinite(res_opt.e_total)) {
         std::fprintf(stderr,
                      "FAIL: non-finite semi-local totals "
@@ -106,7 +102,7 @@ int main() {
     }
 
     // Full optB88-vdW: OptB88VdW + DRSLL.
-    const auto res = run_gpw(XcKind::OptB88VdW, /*vdw_df=*/true, atoms);
+    const auto res = run_gpw(XcKind::OptB88VdW, /*vdw_df=*/true, frame);
     if (!std::isfinite(res.e_disp) || !std::isfinite(res.e_total)) {
         std::fprintf(stderr,
                      "FAIL: non-finite optB88-vdW E_disp=%.14e "

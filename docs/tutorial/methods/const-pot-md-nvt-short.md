@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `const-pot-md-nvt-short` |
-| Regression | `regressions/md/const-pot-md-nvt-short/` |
 | Public API | `cpu::ConstPotentialBO` + `cpu::md::FixFreeze` on `cpu::md::MD` (with `CoulLong` / `KSpacePME`, `NoseHoover`, `VelocityVerlet`) |
 | Roadmap | map E1 P0 |
 
@@ -149,32 +148,32 @@ bash -lc '
         -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_const-pot-md-nvt-short -j$(nproc)
-  ./build/regressions/reg_const-pot-md-nvt-short
+  reg_const-pot-md-nvt-short
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/const_potential.h` | Public `ConstPotentialBO` |
-| `include/atomiverse/cpu/dynamics/fix_freeze.h` | Public `FixFreeze` |
-| `include/atomiverse/cpu/dynamics/md.h` | `cpu::md::MD` preset |
-| `include/atomiverse/cpu/potentials/coul_long.h` | Real-space long Coulomb |
-| `include/atomiverse/cpu/longrange/pme.h` | `KSpacePME` |
+| `const_potential.h` | Public `ConstPotentialBO` |
+| `fix_freeze.h` | Public `FixFreeze` |
+| `md.h` | `cpu::md::MD` preset |
+| `coul_long.h` | Real-space long Coulomb |
+| `pme.h` | `KSpacePME` |
 | `src/cpu/dynamics/` | BO solve + freeze impl (private workspace) |
-| `regressions/md/const-pot-md-nvt-short/reg_const-pot-md-nvt-short.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/metalwalls/const-pot-md-nvt-short/` | Offline twin notes (no live dump yet) |
+| `reg_const-pot-md-nvt-short.cpp` | Product gate |
+| MetalWalls oracle | Offline twin notes (no live dump yet) |
 
 ## Validation (vs MetalWalls algorithm pin)
 
 Source:
-[`regressions/md/const-pot-md-nvt-short/REFERENCE.md`](../../../regressions/md/const-pot-md-nvt-short/REFERENCE.md).
+case `const-pot-md-nvt-short` pin.
 Oracle: **MetalWalls-class** constant-potential BO (Siepmann–Sprik / Reed /
 Scalfi). **No MetalWalls binary** and **no LAMMPS ELECTRODE package** on the
 offline worker (LAMMPS 30 Mar 2026 packages on host: EXTRA-*, KSPACE, MANYBODY —
 no ELECTRODE). Pins are **algorithm + continuum polarity / neutrality /
 freeze**, not a live energy or \(Q\) dump. Never launch MetalWalls or LAMMPS
 from ctest. Twin notes:
-`tools/metalwalls_oracle/inputs/metalwalls/const-pot-md-nvt-short/README.md`.
+MetalWalls oracle.
 
 **Setup (regression consumer; authoritative for numbers):**
 
@@ -214,14 +213,14 @@ the product gate does **not** assert a numeric \(Q\) column against a live
 MetalWalls dump.
 
 When a MetalWalls (or LAMMPS ELECTRODE) build is available offline, place a
-runtime twin under `tools/metalwalls_oracle/inputs/metalwalls/const-pot-md-nvt-short/`
+runtime twin under MetalWalls oracle
 and refresh `oracle_version` plus numeric \(Q\) columns in REFERENCE — do not
 invent them here.
 
 ## Performance
 
 Source:
-[`REFERENCE.md`](../../../regressions/md/const-pot-md-nvt-short/REFERENCE.md)
+pin notes
 (2026-07-23).
 
 | Item | Value |
@@ -259,13 +258,13 @@ Source:
 
 ## References
 
-- Offline pin: `regressions/md/const-pot-md-nvt-short/REFERENCE.md`
-- Regression consumer: `regressions/md/const-pot-md-nvt-short/reg_const-pot-md-nvt-short.cpp`
-- Oracle notes: `tools/metalwalls_oracle/inputs/metalwalls/const-pot-md-nvt-short/README.md`,
-  `tools/metalwalls_oracle/README.md`
+- Offline pin: case `const-pot-md-nvt-short` pin
+- Regression consumer: `reg_const-pot-md-nvt-short.cpp`
+- Oracle notes: MetalWalls oracle,
+  MetalWalls oracle
 - Capability map: `.claude/notes/metalwalls-capability-map.md` (E1)
-- Public API: `include/atomiverse/cpu/dynamics/const_potential.h`,
-  `include/atomiverse/cpu/dynamics/fix_freeze.h`
+- Public API: `const_potential.h`,
+  `fix_freeze.h`
 - J. I. Siepmann, M. Sprik, *J. Chem. Phys.* **102**, 511 (1995) — Gaussian
   fluctuating electrode charges at fixed potential.
 - S. K. Reed, O. J. Lanning, P. A. Madden, *J. Chem. Phys.* **126**, 084704

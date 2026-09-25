@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dftb2-kpoints` |
-| Regression | `regressions/semiempirical/dftb2-kpoints/` |
 | Public API | `cpu::semiempirical::DFTB2` (`k_mesh`, `k_time_reversal` members) + `cpu::Evaluate` |
 | Roadmap | [`semiempirical.md`](../../roadmap/semiempirical.md) — multi-k energy ✓; multi-k F/stress ○ |
 | Family oracle | **DFTB+** only (never OpenMOPAC / xtb) |
@@ -147,7 +146,7 @@ mio-1-1 for C–C.
 - **DFTB3** third-order γ, **TD-DFTB**, noncollinear spin.
 - **Dispersion** D3 under multi-k electronic path (D3 is geometry-only when
   enabled on molecular paths; this reg does not set `d3`).
-- Live **DFTB+** at ctest time (offline pins only; `tools/tb_oracle/`).
+- Live **DFTB+** at ctest time (offline pins only; TB oracle (OpenMOPAC / DFTB+ / xtb)).
 - OpenMOPAC as reference (**forbidden** for the DFTB family).
 - GFN-xTB as a “DFTB3 successor” (**forbidden** framing).
 
@@ -155,12 +154,12 @@ mio-1-1 for C–C.
 
 Public surface only (`cpu::Frame` + concrete method members; **no** `*Config`
 bag, **no** `make_*` / `build_*` factories). Headers:
-`include/atomiverse/cpu/semiempirical/dftb2.h`,
-`include/atomiverse/cpu/evaluate/evaluate.h`,
-`include/atomiverse/cpu/frame/frame.h`. Implementation:
+`dftb2.h`,
+`evaluate.h`,
+`frame.h`. Implementation:
 `src/cpu/semiempirical/dftb2.cpp` (`monkhorst_pack_mesh`, Bloch-phased
 `fill_sk_block_phased`, k-weighted SCC). Static tables:
-`include/atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h`.
+`dftb_mio_tables.h`.
 
 Minimal sequence (matches `reg_dftb2-kpoints.cpp`):
 
@@ -233,7 +232,7 @@ for Γ chain finiteness; multi-k product gate is the regression only.
 
 ## Validation (vs offline pin)
 
-Source: `regressions/semiempirical/dftb2-kpoints/REFERENCE.md`
+Source: case `dftb2-kpoints` pin
 (offline pin; **never** live DFTB+ in ctest).
 
 ```text
@@ -251,7 +250,7 @@ family_oracle: dftb+
 | C | 1.40 | 0.00 | 0.00 |
 
 **k-mesh.** \(4\times1\times1\) Monkhorst–Pack along \(x\); time-reversal on.
-Offline twin: `tools/tb_oracle/inputs/dftbplus/dftb2-kpoints/`.
+Offline twin: TB oracle (OpenMOPAC / DFTB+ / xtb).
 
 | Quantity | Atomiverse / pin | Oracle | Tol | Notes |
 | -------- | ---------------: | ------ | --- | ----- |
@@ -268,7 +267,7 @@ mesh until bit-identical C–C SK tables ship.
 
 ## Performance
 
-Source: `REFERENCE.md`.
+Source: pin notes.
 
 ```text
 perf_exempt: true
@@ -300,11 +299,10 @@ remain open ladder tips.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/dftb2-kpoints/REFERENCE.md`](../../../regressions/semiempirical/dftb2-kpoints/REFERENCE.md)
-- Regression: [`reg_dftb2-kpoints.cpp`](../../../regressions/semiempirical/dftb2-kpoints/reg_dftb2-kpoints.cpp)
-- Public API: [`include/atomiverse/cpu/semiempirical/dftb2.h`](../../../include/atomiverse/cpu/semiempirical/dftb2.h)
-- Offline twin: [`tools/tb_oracle/inputs/dftbplus/dftb2-kpoints/`](../../../tools/tb_oracle/inputs/dftbplus/dftb2-kpoints/)
-- Family rules: [`tools/tb_oracle/README.md`](../../../tools/tb_oracle/README.md)
+- Offline pin: case `dftb2-kpoints` pin
+- Public API: `dftb2.h`
+- Offline twin: TB oracle (OpenMOPAC / DFTB+ / xtb)
+- Family rules: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: [`docs/roadmap/semiempirical.md`](../../roadmap/semiempirical.md)
 - Sibling Γ-point page: [`dftb2-periodic-gamma.md`](dftb2-periodic-gamma.md)
 - Sibling absolute DFTB+ pin: [`dftb2-dftbplus-energy-pin.md`](dftb2-dftbplus-energy-pin.md)

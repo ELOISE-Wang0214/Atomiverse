@@ -12,7 +12,8 @@
 - Independent spin densities \(P^\alpha, P^\beta\) use dual Kolafa ASPC
   predictors; after ASPC is warm, each MD force step runs a **partial**
   SCF with iteration budget `second_gen_cp_max_iter` (not full BOMD)
-- Analytic forces at the post-corrector density (`gpw_forces_from_scf`)
+- Analytic forces at the post-corrector density
+  (`internal::gpw_forces_from_scf`)
 - Fixed cubic cell; MT / nonperiodic
 - Units on the public surface: energy eV, length Å, time fs, force eV/Å
 

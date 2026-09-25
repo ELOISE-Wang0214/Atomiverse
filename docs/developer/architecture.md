@@ -33,7 +33,7 @@ The easiest way to understand the codebase is as three layers.
 
 ### 1. Core — the shared contract
 
-The files under [`include/atomiverse/core`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core)
+The core contracts live under [`core`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core)
 define the smallest shared concepts:
 
 - role-specific numeric tiers such as `StorageReal`, `AccReal`, and `TagInt`
@@ -63,8 +63,7 @@ run the algorithm itself.
 
 ### 2. CPU backend and CPU analysis layer
 
-The CPU side lives under [`include/atomiverse/cpu`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu)
-and [`src/cpu`](https://github.com/MolCrafts/Atomiverse/blob/dev/src/cpu). It contains three distinct roles.
+The CPU side lives under [`cpu`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu) (headers) and [`src/cpu`](https://github.com/MolCrafts/Atomiverse/blob/dev/src/cpu). It contains three distinct roles.
 
 First, it defines the user-facing host data model through
 [`cpu::Frame`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/frame.h). This is the structure that
@@ -81,7 +80,7 @@ and trajectory writing.
 
 ### 3. CUDA backend and staged components
 
-The CUDA side lives under [`include/atomiverse/cuda`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda)
+The CUDA side lives under [`cuda`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda)
 and [`src/cuda`](https://github.com/MolCrafts/Atomiverse/blob/dev/src/cuda). This layer owns:
 
 - the device-side frame representation
@@ -282,7 +281,7 @@ mid-solve — and falls back to the host path outside that coverage.
 
 So the duplication is not accidental: one emphasizes breadth and
 reference-quality clarity, the other device-resident execution. Their
-agreement is what the dual-device regressions in `regressions/scf/` pin.
+agreement is what the dual-device SCF end-to-end cases pin.
 
 ## Where To Make Changes
 
@@ -297,5 +296,5 @@ audit the transfer path and the device frame.
 If you are adding new host-only analysis or a reference chemistry algorithm,
 start in `cpu`.
 
-If you are adding a new staged GPU component, start in `include/atomiverse/cuda`
+If you are adding a new staged GPU component, start in the CUDA public headers
 and `src/cuda`, then add a matching example or test.

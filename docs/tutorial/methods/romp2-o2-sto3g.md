@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `romp2-o2-sto3g` |
-| Regression | `regressions/scf/romp2-o2-sto3g/` |
 | Public API | `cpu::scf::ROHF::mp2` → `MP2Result` |
 | Roadmap | [post-hf.md](../../roadmap/post-hf.md) — Restricted open-shell MP2 |
 
@@ -18,7 +17,7 @@ semi-canonical spin-Fock orbital energies in the UMP2 doubles sum (PySCF
 reference matters (triplet O₂ here) and a full UHF/UMP2 path is not required.
 Public path: construct `cpu::scf::ROHF`, set members, call `mp2(frame)` —
 Frame in, `MP2Result` out; no `*Config` bag. Product gate lives at
-`regressions/scf/romp2-o2-sto3g` (`reg_romp2-o2-sto3g`).
+`romp2-o2-sto3g` (`reg_romp2-o2-sto3g`).
 
 ## Method
 
@@ -73,22 +72,22 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release \
   -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
 cmake --build build --target reg_romp2-o2-sto3g -j"$(nproc)"
 export LD_LIBRARY_PATH="${LIBRARY_PATH}:${LD_LIBRARY_PATH}"
-./build/regressions/reg_romp2-o2-sto3g
+reg_romp2-o2-sto3g
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/rohf.h` | concrete ROHF method |
-| `include/atomiverse/cpu/scf/mp2.h` | `MP2Result`; documents `ROHF::mp2` |
-| `include/atomiverse/cpu/scf/mean_field_method.h` | `mp2(Frame&)` CRTP entry |
-| `include/atomiverse/cpu/scf/internal/mp2_pack.h` | private `romp2_energy` |
-| `regressions/scf/romp2-o2-sto3g/reg_romp2-o2-sto3g.cpp` | e2e consumer |
+| `rohf.h` | concrete ROHF method |
+| `mp2.h` | `MP2Result`; documents `ROHF::mp2` |
+| `mean_field_method.h` | `mp2(Frame&)` CRTP entry |
+| `mp2_pack.h` | private `romp2_energy` |
+| `reg_romp2-o2-sto3g.cpp` | e2e consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/romp2-o2-sto3g/REFERENCE.md`](../../../regressions/scf/romp2-o2-sto3g/REFERENCE.md)
+Source: case `romp2-o2-sto3g` pin
 (offline pin; **never** live PySCF in ctest). Oracle:
-`tools/pyscf_oracle/pin_scf.py romp2`; env `tools/setup_pyscf_env.sh`.
+PySCF oracle; env PySCF oracle.
 
 | Field | Value |
 | ----- | ----- |
@@ -112,13 +111,13 @@ because reference orbitals/energies differ.
 
 ## Performance
 
-Source: `REFERENCE.md` fair-bench block (2026-07-23); worker / handoff
+Source: pin notes fair-bench block (2026-07-23); worker / handoff
 ratio **1.37**.
 ```bash
 export LD_LIBRARY_PATH="${LIBRARY_PATH}:${LD_LIBRARY_PATH}"
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
     --method romp2 --geom o2 --basis sto-3g --spin 2 --repeat 3 -- \
-    ./build/regressions/reg_romp2-o2-sto3g
+    reg_romp2-o2-sto3g
 ```
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -142,11 +141,11 @@ scaling claim.
 
 ## References
 
-- Offline pin: `regressions/scf/romp2-o2-sto3g/REFERENCE.md`
+- Offline pin: case `romp2-o2-sto3g` pin
 - Roadmap: `docs/roadmap/post-hf.md` (ROMP2 row)
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Related handbook: [ump2-o2-sto3g](ump2-o2-sto3g.md)
 - C. Møller, M. S. Plesset, *Phys. Rev.* **46**, 618 (1934)
 - PySCF ROHF→UMP2 path: `pyscf.mp.UMP2` on `scf.ROHF` (v2.14.0)
 - Guest–Saunders ROHF projectors / constrained-UHF view: see ROHF stage docs
-  (`include/atomiverse/cpu/scf/stages/rohf_couple_stage.h`)
+  (`rohf_couple_stage.h`)

@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-kpoint-uks-forces` |
-| Regression | `regressions/gpw/gpw-kpoint-uks-forces/` |
-| Public API | `cpu::gpw::GpwDft` (`n_alpha`/`n_beta`, `k_mesh`, `XcKind::PADE`); `gpw_forces_analytic` |
+| Public API | `cpu::gpw::GpwDft` (`n_alpha`/`n_beta`, `k_mesh`, `XcKind::PADE`); `GpwDft::forces(frame)` |
 | Roadmap | `docs/roadmap/dft.md` — k-point UKS analytic ionic forces |
 
 ## Summary
@@ -21,20 +20,20 @@ This page pins **periodic high-spin H₂** (\(N_\alpha=2\), \(N_\beta=0\)) at
 **1×1×2** k-points against frozen first-green Atomiverse numbers (energy +
 bond forces + Newton-3 / \(\lvert\sum\mathbf{F}\rvert\)) and the closed-shell
 identity multi-k UKS ≡ multi-k RKS. Offline **CP2K** twin input ships under
-`tools/cp2k_oracle/inputs/gpw-kpoint-uks-forces/` (exploratory SZV-MOLOPT basis;
+CP2K oracle (exploratory SZV-MOLOPT basis;
 absolute same-basis twin pending DZV-GTH-PADE on the CP2K data path).
 
 Public path: construct `cpu::gpw::GpwDft`, set members (`n_alpha`, `n_beta`,
-`k_mesh`, `cutoff_ry`, `xc`, `local_pp_on_grid`, …), `build`/`run` for energy,
-`gpw_forces_analytic(atoms, cfg)` for forces [Ha/Bohr]. **No** public `*Config`
+`k_mesh`, `cutoff_ry`, `xc`, `local_pp_on_grid`, …), `build(frame)`, then
+`run(frame)` for energy or `forces(frame)` for energy + forces [eV/Å]. **No** public `*Config`
 bag, **no** `make_*` / `build_*` factories. Product gate:
 `reg_gpw-kpoint-uks-forces`. Performance: **`perf_exempt`** (no same-basis
 CP2K fair wall on the pin host).
 
 Related: Γ-UKS energy [`gpw-uks-o2-gamma`](gpw-uks-o2-gamma.md); Γ-UKS forces
-`regressions/gpw/gpw-uks-forces`; multi-k RKS forces
-`regressions/gpw/gpw-kpoint-forces`; multi-k UKS energy
-`regressions/gpw/gpw-kpoints-uks`. Narrative: [Ch. 9 GPW](../ch09-gpw.md).
+`gpw-uks-forces`; multi-k RKS forces
+`gpw-kpoint-forces`; multi-k UKS energy
+`gpw-kpoints-uks`. Narrative: [Ch. 9 GPW](../ch09-gpw.md).
 
 ## Method
 
@@ -73,8 +72,8 @@ k-summed over occupied Bloch states. Hellmann–Feynman collects explicit
 dual \(P_k^\sigma\); Pulay uses \(W_k = W_k^\alpha + W_k^\beta\) (occupancy-1 spin
 channels) contracted with \(\partial S_k/\partial R_A\); the grid term holds
 converged spin-resolved \(V_\mathrm{eff}^{\sigma}\) fixed. Implementation:
-`gpw_forces_analytic` → optional `gpw_forces_from_scf` after a prior energy
-SCF (`include/atomiverse/cpu/gpw/internal/gpw_forces.h`).
+`GpwDft::forces(frame)` — one SCF, then the gradient pass at the converged
+density.
 
 **Valence bookkeeping (this pin).** H with GTH-PADE-q1 → 1 valence e⁻ per H →
 2 valence e⁻ total. Multiplicity 3 ⇒ \(N_\alpha=2\), \(N_\beta=0\).
@@ -93,29 +92,37 @@ SCF (`include/atomiverse/cpu/gpw/internal/gpw_forces.h`).
 ## Implementation
 
 Public surface only (`GpwDft` members + lookup constructors +
-`gpw_forces_analytic`; **no** `*Config`, **no** factories). Matches
+`forces(frame)`; **no** `*Config`, **no** factories). Matches
 `reg_gpw-kpoint-uks-forces.cpp`:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
-const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
-const auto pot   = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+// Compressed H–H = 1.0 Bohr in 12 Bohr cubic cell (PERIODIC XYZ);
+// the Frame is in Å, so Bohr values are scaled by kBohrInAngstrom.
+constexpr double b2a = units::kBohrInAngstrom;
+const double xA[2] = {5.5, 6.5};           // Bohr
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 1;
+    frame.span(kAtom_x)[i] = xA[i] * b2a;
+    frame.span(kAtom_y)[i] = 6.0 * b2a;
+    frame.span(kAtom_z)[i] = 6.0 * b2a;
+}
+frame.box = cpu::Box::cubic(12.0 * b2a);   // [Å]
 
-// Compressed H–H = 1.0 Bohr in 12 Bohr cubic cell (PERIODIC XYZ)
-const double rA[3] = {5.5, 6.0, 6.0};
-const double rB[3] = {6.5, 6.0, 6.0};
-std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
-                              GpwAtom(rB, basis, pot, 1)};
-
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = 12.0;  // Bohr
+GpwDft m{{Kind{molrs::Element::H,
+               GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+               GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
 m.cutoff_ry = 100.0;
 m.n_alpha = 2;                             // multiplicity 3, 2 valence e⁻
 m.n_beta  = 0;
@@ -129,10 +136,10 @@ m.k_mesh[0] = 1;
 m.k_mesh[1] = 1;
 m.k_mesh[2] = 2;                           // MONKHORST-PACK 1×1×2
 
-m.build(atoms);
-const GpwResult& er = m.run(atoms);        // e_total [Ha], C_occ_k / C_occ_k_beta
-const auto F = gpw_forces_analytic(atoms, m);  // [Ha/Bohr] per atom
-// F[0][0] < 0 < F[1][0]  (restoring bond); |F[0]+F[1]| ~ machine eps
+m.build(frame);
+const GpwResult& er = m.forces(frame);     // e_total [Ha], C_occ_k / C_occ_k_beta
+// Forces on kAtom_fx/fy/fz [eV/Å]; ÷ units::kHartreePerBohrInEvPerAngstrom → Ha/Bohr
+// fx[0] < 0 < fx[1]  (restoring bond); |F[0]+F[1]| ~ machine eps
 ```
 
 Build (GPW needs FFTW3 + HF/PW) and run the regression:
@@ -149,7 +156,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target reg_gpw-kpoint-uks-forces
-  ./build/regressions/reg_gpw-kpoint-uks-forces
+  reg_gpw-kpoint-uks-forces
 '
 ```
 
@@ -157,16 +164,15 @@ Relevant sources:
 
 | Piece | Path |
 | ----- | ---- |
-| Method / SCF | `include/atomiverse/cpu/gpw/gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
-| Analytic forces | `include/atomiverse/cpu/gpw/internal/gpw_forces.h` |
-| k-point Bloch | `include/atomiverse/cpu/gpw/internal/kpoints.h` |
-| Frame-facing evaluator (optional) | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| Regression | `regressions/gpw/gpw-kpoint-uks-forces/reg_gpw-kpoint-uks-forces.cpp` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/gpw-kpoint-uks-forces/h2_uks_kpoint_forces.inp` |
+| Method / SCF | `gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
+| Analytic forces | `gpw_forces.h` |
+| k-point Bloch | `kpoints.h` |
+| Frame-facing evaluator (optional) | `gpw_evaluator.h` |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (CP2K / product pin)
 
-Source: `regressions/gpw/gpw-kpoint-uks-forces/REFERENCE.md` (offline pin;
+Source: case `gpw-kpoint-uks-forces` pin (offline pin;
 **never** live CP2K in ctest). Primary product numbers are **frozen
 Atomiverse first-green** (2026-07-25, Release, OMP=8). CP2K 2026.1 input is a
 protocol / documentation twin (SZV-MOLOPT-GTH, not DZV-GTH-PADE).
@@ -205,7 +211,7 @@ protocol / documentation twin (SZV-MOLOPT-GTH, not DZV-GTH-PADE).
 module load buildtool-easybuild/5.2.1-hpca3ef7d197 GCC/14.3.0 MPICH/4.3.2 CP2K/2026.1
 export CP2K_DATA_DIR=$EBROOTCP2K/share/cp2k/data
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_MOLOPT,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/gpw-kpoint-uks-forces/h2_uks_kpoint_forces.inp
+# copy <CP2K oracle input for this case>
 mpirun -np 1 cp2k.psmp -i h2_uks_kpoint_forces.inp -o h2_uks_kpoint_forces.out
 ```
 
@@ -221,7 +227,7 @@ the regression budget for this UKS slug as well.
 
 ## Performance
 
-Source: `REFERENCE.md` / the case `REFERENCE.md` (wave 3).
+Source: pin notes / the case pin notes (wave 3).
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | ---------------------------------------: | ---- | ------ |
@@ -238,18 +244,17 @@ Gate: \(r \le 10\) or `perf_exempt` + reason. This slug is **perf_exempt**.
 - **Grid twin:** single density grid at 100 Ry vs CP2K multigrid options in
   other GPW pins; this slug uses `NGRIDS 1` to stay close to the product path.
 - **Multi-k UKS stress** remains a residual (forces productized; stress not).
-- **UKS warm-start** of `gpw_forces_analytic` ignores optional `guess_C` (same
-  as the energy path); XL-BOMD / CPMD fixed-density UKS is out of scope.
+- XL-BOMD / CPMD fixed-density UKS is out of scope.
 - **CUDA-GPW** blocked; plane-wave multi-k UKS is a separate PW surface
   (`pw-uks-kmesh-fe`).
 - **ROKS / spin projection** not provided.
 
 ## References
 
-- Offline pin: [`regressions/gpw/gpw-kpoint-uks-forces/REFERENCE.md`](../../../regressions/gpw/gpw-kpoint-uks-forces/REFERENCE.md)
-- Regression consumer: [`reg_gpw-kpoint-uks-forces.cpp`](../../../regressions/gpw/gpw-kpoint-uks-forces/reg_gpw-kpoint-uks-forces.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/gpw-kpoint-uks-forces/`](../../../tools/cp2k_oracle/inputs/gpw-kpoint-uks-forces/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin: case `gpw-kpoint-uks-forces` pin
+- Regression consumer: `reg_gpw-kpoint-uks-forces.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md)
 - Deps (landed): `gpw-kpoints-uks`, `gpw-kpoint-forces`, `gpw-uks-forces`

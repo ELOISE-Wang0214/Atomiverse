@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-hirshfeld-kpoints` |
-| Regression | `regressions/gpw/gpw-hirshfeld-kpoints/` |
-| Public API | `cpu::gpw::GpwDft::hirshfeld` + `mbd` + `k_mesh`; `GpwResult::e_disp` [Ha], `GpwResult::volume_ratios`; same members on `GPWEvaluator` |
+| Public API | `cpu::gpw::GpwDft::hirshfeld` + `mbd` + `k_mesh`; `GpwResult::e_disp` [Ha], `GpwResult::volume_ratios`; bound by `GPWEvaluator` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -19,10 +18,10 @@ path: \(\rho=\sum_k w_k\rho_k\), then the same in-tree Hirshfeld kernel and
 libMBD free-atom tables as the Γ product.
 
 Public surface: bool members `mbd` / `ts` and `hirshfeld` on
-`cpu::gpw::GpwDft` and `cpu::gpw::GPWEvaluator`, plus integer `k_mesh[3]` and
+`cpu::gpw::GpwDft`, plus integer `k_mesh[3]` and
 optional `k_time_reversal` (no `*Config` bag). Dispersion lands on
 `GpwResult::e_disp` [Hartree]; per-atom ratios on `GpwResult::volume_ratios`.
-Product gate: `regressions/gpw/gpw-hirshfeld-kpoints`
+Product gate: `gpw-hirshfeld-kpoints`
 (`reg_gpw-hirshfeld-kpoints`). Wall ratio is **perf_exempt** (E_disp +
 volume-ratio pin; SCF dominates wall — same policy as free-atom / Γ Hirshfeld
 MBD).
@@ -83,28 +82,29 @@ engine is **out of scope**.
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
+Public surface only (`GpwDft` members + `GPWEvaluator`; no `*Config`, no
 `make_*` / `build_*` factories). Regression uses the concrete solver:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
 
-// Geometry [Å] → Bohr — same water dimer as gpw-mbd-ice / gpw-mbd-hirshfeld.
-constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// Geometry [Å] — same water dimer as gpw-mbd-ice / gpw-mbd-hirshfeld.
+// … fill ATV::cpu::Frame frame(6): positions [Å], Z (8 / 1) in kAtom_type …
+frame.box = ATV::cpu::Box::cubic(12.0);   // [Å]
+// Kind O / H: DZVP-MOLOPT-SR-GTH + GTH-PBE-q6 / GTH-PBE-q1
 
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+GpwDft gpw{{O, H}};
 gpw.cutoff_ry = 200.0;
 gpw.n_occ = 8;          // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 16;
@@ -117,26 +117,26 @@ gpw.hirshfeld = true;   // requires ts or mbd; RKS only
 gpw.k_mesh[0] = gpw.k_mesh[1] = gpw.k_mesh[2] = 2;
 gpw.k_time_reversal = true;
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.n_kpts >= 2 (product: 4 with TR fold)
 // res.e_disp [Ha] within 1e-8 of offline multi-k Hirshfeld-MBD pin
 // res.volume_ratios size 6, each in (0.3, 1.5)
 // res.e_total includes e_disp
 ```
 
-Driver / Frame path (component; same members):
+Driver path (component binding the same method):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/200.0, /*max_iter=*/16,
-                                 /*tol=*/1e-6, /*mix=*/0.4,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false);
-eval.mbd = true;
-eval.hirshfeld = true;
-// set k-mesh on the owned GpwDft path used by the evaluator when multi-k is
-// configured for the run (same product members as GpwDft)
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 200.0;  dft.max_iter = 16;  dft.tol = 1e-6;  dft.mix = 0.4;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;
+dft.nonperiodic = false;
+dft.mbd = true;
+dft.hirshfeld = true;
+dft.k_mesh[0] = dft.k_mesh[1] = dft.k_mesh[2] = 2;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft));
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 // eval.last_result().volume_ratios
@@ -156,27 +156,27 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-hirshfeld-kpoints
-  ./build/regressions/reg_gpw-hirshfeld-kpoints
+  reg_gpw-hirshfeld-kpoints
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::{mbd,hirshfeld,k_mesh}`, `GpwResult::{e_disp,volume_ratios,n_kpts}` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::hirshfeld` / `mbd` |
-| `include/atomiverse/cpu/gpw/internal/hirshfeld_volumes.h` | \(V/V_{\mathrm{free}}\) kernel (private) |
-| `include/atomiverse/cpu/gpw/basis_data/hirshfeld_tables.h` | Free-atom exponential tables |
-| `regressions/gpw/gpw-hirshfeld-kpoints/reg_gpw-hirshfeld-kpoints.cpp` | Product gate |
-| `regressions/gpw/gpw-hirshfeld-kpoints/REFERENCE.md` | Offline pin + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-hirshfeld-kpoints/` | Oracle note (no stock CP2K TS/MBD) |
+| `gpw_solver.h` | `GpwDft::{mbd,hirshfeld,k_mesh}`, `GpwResult::{e_disp,volume_ratios,n_kpts}` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds the configured `GpwDft`) |
+| `hirshfeld_volumes.h` | \(V/V_{\mathrm{free}}\) kernel (private) |
+| `hirshfeld_tables.h` | Free-atom exponential tables |
+| `reg_gpw-hirshfeld-kpoints.cpp` | Product gate |
+| case `gpw-hirshfeld-kpoints` pin | Offline pin + perf_exempt |
+| CP2K oracle | Oracle note (no stock CP2K TS/MBD) |
 | `tests/cpu/gpw/test_cpu_gpw_hirshfeld.cpp` | Unit gates (volumes + UKS throw) |
 
 ## Validation (CP2K capability / offline product pin)
 
 Source:
-[`regressions/gpw/gpw-hirshfeld-kpoints/REFERENCE.md`](../../../regressions/gpw/gpw-hirshfeld-kpoints/REFERENCE.md).
+case `gpw-hirshfeld-kpoints` pin.
 Oracle notes:
-[`tools/cp2k_oracle/inputs/gpw-hirshfeld-kpoints/water_dimer_k_hirshfeld.note`](../../../tools/cp2k_oracle/inputs/gpw-hirshfeld-kpoints/water_dimer_k_hirshfeld.note).
+CP2K oracle.
 **Never** launch live CP2K (or recompute pins) from ctest. Because stock
 CP2K 2026.1 has no TS/MBD `PAIR_POTENTIAL`, the hard gate freezes the **ATV
 product** under fixed settings and cross-checks against free-atom MBD and the
@@ -214,7 +214,7 @@ UKS + `hirshfeld` still throws.
 
 ## Performance
 
-Source: `REFERENCE.md` / handoff harness wave 6 — **perf_exempt**.
+Source: pin notes / handoff harness wave 6 — **perf_exempt**.
 
 Hirshfeld volumes are a single post-SCF grid integral; MBD is \(O(N^3)\) over
 a 6-atom cell. Full multi-k GPW SCF wall dominates. A fair
@@ -228,7 +228,7 @@ in CP2K 2026.1); a full twin QS ratio is not the product gate.
 
 **perf_exempt = true.** Reason: primary deliverable is multi-k \(E_{\mathrm{disp}}\)
 + volume-ratio parity under fixed product settings; SCF dominates wall. Handoff:
-the case `REFERENCE.md` (wave 6 row `gpw-hirshfeld-kpoints`).
+the case pin notes (wave 6 row `gpw-hirshfeld-kpoints`).
 
 ## Limitations
 
@@ -237,7 +237,7 @@ the case `REFERENCE.md` (wave 6 row `gpw-hirshfeld-kpoints`).
 - **E_disp hard gate only** — absolute GPW \(e_{\mathrm{tot}}\) vs external QS
   is not asserted.
 - **No stock CP2K TS/MBD twin** — pin is ATV product dual-gated vs free-atom /
-  Γ Hirshfeld paths (oracle note under `tools/cp2k_oracle/`).
+  Γ Hirshfeld paths (oracle note under CP2K oracle).
 - **RKS only** — UKS + `hirshfeld` throws by design.
 - **Isolated MBD geometry** on this pin (`mbd_k_mesh = {0,0,0}`); periodic
   Ewald MBD is `reg_gpw-mbd-periodic`.
@@ -250,12 +250,12 @@ the case `REFERENCE.md` (wave 6 row `gpw-hirshfeld-kpoints`).
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-hirshfeld-kpoints/REFERENCE.md`
-- Oracle note: `tools/cp2k_oracle/inputs/gpw-hirshfeld-kpoints/water_dimer_k_hirshfeld.note`
-- Related pins: `regressions/gpw/gpw-mbd-hirshfeld/REFERENCE.md` (Γ Hirshfeld),
-  `regressions/gpw/gpw-mbd-ice/REFERENCE.md` (free-atom MBD),
-  `regressions/gpw/gpw-mbd-periodic/REFERENCE.md` (Ewald MBD)
-- Oracle rules: `tools/cp2k_oracle/README.md` (offline pins only; never live
+- Offline pin: case `gpw-hirshfeld-kpoints` pin
+- Oracle note: CP2K oracle
+- Related pins: case `gpw-mbd-hirshfeld` pin (Γ Hirshfeld),
+  case `gpw-mbd-ice` pin (free-atom MBD),
+  case `gpw-mbd-periodic` pin (Ewald MBD)
+- Oracle rules: CP2K oracle (offline pins only; never live
   in ctest)
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
 - GPW narrative chapter: `docs/tutorial/ch09-gpw.md`

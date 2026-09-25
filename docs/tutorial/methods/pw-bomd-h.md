@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pw-bomd-h` |
-| Regression | `regressions/pw/pw-bomd-h/` |
 | Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::pw::PWEvaluator{PW}.with_gradient(true)` at `md::Phase::force` |
 | Roadmap | MD product path in [ch08-plane-wave.md](../ch08-plane-wave.md) / [ch10-classical-md.md](../ch10-classical-md.md) |
 | Dual gate | Correctness A4–A6; speed **`perf_exempt`** (no CP2K twin wall) |
@@ -106,9 +105,9 @@ bags / `make_*` factories; changes to analytic force math.
 
 Public surface only: `cpu::Frame`, concrete `cpu::pw::PW` members, MD preset,
 explicit force-phase binding. Headers:
-`include/atomiverse/cpu/dynamics/md.h`,
+`md.h`,
 `velocity_verlet.h`,
-`include/atomiverse/cpu/planewave/pw_solver.h`,
+`pw_solver.h`,
 `pw_evaluator.h`. Unit gate (not e2e):
 `tests/cpu/planewave/test_pw_bomd.cpp`.
 
@@ -167,21 +166,21 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release \
   -DATV_BUILD_TESTS=ON -DATV_BUILD_PW=ON -DATV_BUILD_CUDA=OFF \
   -DATV_BUILD_REGRESSIONS=ON -DBLA_VENDOR=OpenBLAS
 cmake --build build --target reg_pw-bomd-h -j"$(nproc)"
-./build/regressions/reg_pw-bomd-h
+reg_pw-bomd-h
 ```
 
 ## Validation (CP2K)
 
-Source: [`regressions/pw/pw-bomd-h/REFERENCE.md`](../../../regressions/pw/pw-bomd-h/REFERENCE.md)
+Source: case `pw-bomd-h` pin
 (offline pin; **never** live CP2K in ctest). Oracle tooling:
-[`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md).
+CP2K oracle.
 
 ### Offline CP2K status
 
 | Field | Value |
 | ----- | ----- |
 | CP2K binary on pin host | **unavailable** (no `cp2k` / `cp2k.psmp` / `cp2k.sopt`, no CP2K Lmod module on Arrhenius login-class inventory 2026-07-23) |
-| Twin design (when available) | Short NVE AIMD for single H (or H₂ with a real PP) in a comparable cell; re-run offline via `tools/cp2k_oracle/`; record version + measured drift envelope |
+| Twin design (when available) | Short NVE AIMD for single H (or H₂ with a real PP) in a comparable cell; re-run offline via CP2K oracle; record version + measured drift envelope |
 | Current pin basis | Literature NVE/BOMD energy conservation + symmetry force residual |
 
 Do **not** invent absolute total-energy digits. When a CP2K twin is recorded,
@@ -207,8 +206,8 @@ Related unit surface (not the e2e pin): `tests/cpu/planewave/test_pw_bomd.cpp`
 ## Performance
 
 Source: REFERENCE.md dual-gate summary; queue/handoff
-``,
-``.
+`,
+`.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -245,11 +244,11 @@ one optimize pass.
 
 ## References
 
-- Offline pin: [`regressions/pw/pw-bomd-h/REFERENCE.md`](../../../regressions/pw/pw-bomd-h/REFERENCE.md)
-- Regression source: [`regressions/pw/pw-bomd-h/reg_pw-bomd-h.cpp`](../../../regressions/pw/pw-bomd-h/reg_pw-bomd-h.cpp)
-- Force symmetry foothold: `regressions/pw/h_force_analytic/`
+- Offline pin: case `pw-bomd-h` pin
+- Regression source: `reg_pw-bomd-h.cpp`
+- Force symmetry foothold: `h_force_analytic`
 - Unit bind test: `tests/cpu/planewave/test_pw_bomd.cpp`
-- Oracle: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Oracle: CP2K oracle
 - Narrative PW / MD: [ch08-plane-wave.md](../ch08-plane-wave.md),
   [ch10-classical-md.md](../ch10-classical-md.md)
 - Frenkel & Smit, *Understanding Molecular Simulation*, 2nd ed., §4.3.4

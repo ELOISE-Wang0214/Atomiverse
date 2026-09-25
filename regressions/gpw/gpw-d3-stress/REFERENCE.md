@@ -37,7 +37,8 @@ isolates exactly the quantity this capability adds, with the (much larger,
 grid-noise-limited) electronic stress cancelling — the stress analogue of the
 `gpw-d3-forces` force pin. Atomiverse isolates its own dispersion stress the
 same way: analytic product with `d3=true` minus analytic product with
-`d3=false` (warm-started; same density fixed point).
+`d3=false` evaluated at the `d3=true` run's converged state
+(`gpw_stress(frame, method, state)` overload — same density).
 
 ## System
 

@@ -5,13 +5,12 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `uks-hessian-o2-sto3g` |
-| Regression | `regressions/scf/uks-hessian-o2-sto3g/` |
 | Public API | `cpu::scf::UKS{9,7,XCType::LSDA}.hessian(frame, &guess)` |
 | Roadmap | `docs/roadmap/dft.md` (UKS nuclear Hessian — product foothold via FD) |
 
 ## Summary
 
-Computes the Cartesian nuclear Hessian \(\partial^2 E_{\mathrm{UKS}}/\partial R_i\partial R_j\) for unrestricted Kohn–Sham DFT by central finite difference of **analytic** UKS nuclear forces (KS gradient with grid-response XC), not a full UCPKS closed form. Target system is gas-phase triplet O₂ (\(2S=2\), \(n_\alpha=9\), \(n_\beta=7\)), LSDA (Slater–VWN5) / STO-3G. Public surface: construct `cpu::scf::UKS` with spin counts and XC, set members (`basis`, `tol`, `grid_level`, …), call `hessian(frame, &guess)` → dense \(3N\times 3N\) matrix in eV/Å² (`cpu::vib::HessianResult`). Multi-minima O₂ needs a ROKS density warm-start (same path as `uks-tda-o2-lsda`). Offline accuracy pin is PySCF 2.14.0 FD of analytic UKS gradients (same algorithm class as Atomiverse). End-to-end gate: `regressions/scf/uks-hessian-o2-sto3g` (`reg_uks-hessian-o2-sto3g`). Fair wall vs the FD twin: \(r = 2.13\) (≤10×).
+Computes the Cartesian nuclear Hessian \(\partial^2 E_{\mathrm{UKS}}/\partial R_i\partial R_j\) for unrestricted Kohn–Sham DFT by central finite difference of **analytic** UKS nuclear forces (KS gradient with grid-response XC), not a full UCPKS closed form. Target system is gas-phase triplet O₂ (\(2S=2\), \(n_\alpha=9\), \(n_\beta=7\)), LSDA (Slater–VWN5) / STO-3G. Public surface: construct `cpu::scf::UKS` with spin counts and XC, set members (`basis`, `tol`, `grid_level`, …), call `hessian(frame, &guess)` → dense \(3N\times 3N\) matrix in eV/Å² (`cpu::vib::HessianResult`). Multi-minima O₂ needs a ROKS density warm-start (same path as `uks-tda-o2-lsda`). Offline accuracy pin is PySCF 2.14.0 FD of analytic UKS gradients (same algorithm class as Atomiverse). End-to-end gate: `uks-hessian-o2-sto3g` (`reg_uks-hessian-o2-sto3g`). Fair wall vs the FD twin: \(r = 2.13\) (≤10×).
 
 ## Method
 
@@ -87,21 +86,21 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_uks-hessian-o2-sto3g -j$(nproc)
-  ./build/regressions/reg_uks-hessian-o2-sto3g
+  reg_uks-hessian-o2-sto3g
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/uks.h` | Public `UKS` / `hessian` |
+| `uks.h` | Public `UKS` / `hessian` |
 | `src/cpu/scf/uks.cpp` | FD-of-forces implementation |
-| `include/atomiverse/cpu/vibration/hessian_result.h` | `HessianResult` contract |
-| `regressions/scf/uks-hessian-o2-sto3g/reg_uks-hessian-o2-sto3g.cpp` | Product gate |
-| `regressions/scf/uks-hessian-o2-sto3g/REFERENCE.md` | Offline pins |
+| `hessian_result.h` | `HessianResult` contract |
+| `reg_uks-hessian-o2-sto3g.cpp` | Product gate |
+| case `uks-hessian-o2-sto3g` pin | Offline pins |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/uks-hessian-o2-sto3g/REFERENCE.md`](../../../regressions/scf/uks-hessian-o2-sto3g/REFERENCE.md)
+Source: case `uks-hessian-o2-sto3g` pin
 Oracle class: offline central FD of PySCF **2.14.0** analytic UKS nuclear gradient (`mf.nuc_grad_method().kernel()`), \(h=10^{-4}\) Bohr, symmetrized; units via Atomiverse CODATA factors (`kHartreeInEv = 27.211386245988`, `kBohrInAngstrom = 0.529177210903`). PySCF analytic `hessian.uks.Hessian(mf).kernel()` is a **different** algorithm (closed form) and is recorded only as a cross-check (max element abs vs FD twin \(\lesssim 3.44\cdot 10^{-2}\) eV/Å²; analytic stretch \(H_{zz}(0,0)\approx 128.490\) vs FD \(128.456\) eV/Å²). Never live-import PySCF in ctest.
 
 **Setup (from REFERENCE):**
@@ -141,7 +140,7 @@ Off-axis elements are numerically zero on this collinear geometry (\(\lesssim 10
 
 Fair twin: Atomiverse `UKS::hessian` (12 force evaluations after ROKS warm-start + reference) vs a PySCF loop of 12 UKS analytic gradients (same FD skeleton, \(h=10^{-4}\) Bohr). Analytic `hessian.UKS` is a different algorithm and is **not** the fair wall twin for this product path.
 
-Source: `regressions/scf/uks-hessian-o2-sto3g/REFERENCE.md` (recorded 2026-07-24, `OMP_NUM_THREADS=8`, `OMP_PROC_BIND=close`, Release; median of 3 runs). Also rolled into the case `REFERENCE.md` / queue notes as ratio **2.13**.
+Source: case `uks-hessian-o2-sto3g` pin (recorded 2026-07-24, `OMP_NUM_THREADS=8`, `OMP_PROC_BIND=close`, Release; median of 3 runs). Also rolled into the case pin notes / queue notes as ratio **2.13**.
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}}\) | ≤10× | Caveat |
 | ---- | -------------------------: | -----------------------: | ----------------------------------------: | ---- | ------ |
@@ -152,8 +151,8 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\) on the **FD twin** (sat
 
 ```bash
 # Fair FD twin (same work class as UKS::hessian); not a UCPKS analytic twin.
-python tools/pyscf_oracle/fair_bench.py --method uks -- \
-  ./build/regressions/reg_uks-hessian-o2-sto3g
+python <pyscf fair-bench> --method uks -- \
+  reg_uks-hessian-o2-sto3g
 ```
 
 ## Limitations
@@ -164,14 +163,14 @@ python tools/pyscf_oracle/fair_bench.py --method uks -- \
 - **Multi-minima:** cold UKS on O₂ needs ROKS (or equivalent) density warm-start to hit the pin minimum.
 - **Scope gaps:** no RI Hessian; no frequencies/IR from this path; hybrids not gated here (LSDA only).
 - **Roadmap:** full UCPKS closed-form UKS Hessian (nuclear XC second-derivative grid response) is the natural follow-up — see `docs/roadmap/dft.md`. Related product paths: `rks-hessian-h2o-sto3g`, `rohf-hessian-o2`, `uhf-hessian-o2`.
-- **Unit tests:** product accuracy lives only under `regressions/`; do not place e2e Hessian solves in `tests/`.
+- **Unit tests:** Product accuracy is gated by end-to-end cases, not by the unit-test suite.
 
 ## References
 
-- Offline pin: `regressions/scf/uks-hessian-o2-sto3g/REFERENCE.md`
+- Offline pin: case `uks-hessian-o2-sto3g` pin
 - Roadmap: `docs/roadmap/dft.md`
 - Related product paths: `docs/tutorial/methods/rks-hessian-h2o-sto3g.md` (RKS FD Hessian), `docs/tutorial/methods/rohf-hessian-o2.md` (ROHF FD Hessian)
-- Oracle tooling: `tools/setup_pyscf_env.sh`, `tools/pyscf_oracle/pin_scf.py`
+- Oracle tooling: PySCF oracle, PySCF oracle
 - B. G. Johnson, J. A. Pople, P. M. W. Gill, M. J. Frisch, *Chem. Phys. Lett.* **220**, 377 (1994) — analytic DFT second derivatives (target closed form; this product ships FD of analytic forces).
 - Y. Yamaguchi et al., *A New Dimension to Quantum Chemistry* (Oxford, 1994) — unrestricted Hessian framework.
 - PySCF `hessian.uks` / `grad.uks` — external oracle engines.

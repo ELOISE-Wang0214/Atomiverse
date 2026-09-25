@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `cpmd-electronic-thermostat` |
-| Regression | `regressions/dynamics/cpmd-electronic-thermostat/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{…, compute_forces=true}, mu_au, cpu::electronic::ElectronicThermostat{ekin_target_ha, tau_e_fs}}` bound with `set_evaluator_ref`; propagator `cpu::electronic::Cpmd` (RATTLE + NH). The thermostat is the **three-argument wrapper constructor**, not a set of evaluator flags. The nuclear dt is pushed from the integrator into the wrapper by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{GpwDft{…}, compute_forces=true}, mu_au, cpu::electronic::ElectronicThermostat{ekin_target_ha, tau_e_fs}}` bound with `set_evaluator_ref`; propagator `cpu::electronic::Cpmd` (RATTLE + NH). The thermostat is the **three-argument wrapper constructor**, not a set of evaluator flags. The nuclear dt is pushed from the integrator into the wrapper by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
 | Roadmap | MD AIMD electronic thermostat residual closed |
 | Dual gate | Correctness from REFERENCE (E_ext drift, Te ceiling, fixed-density); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — wave 11 **done** (merged 2026-07-26) |
@@ -108,7 +107,7 @@ keeping \(T_e\) cool relative to nuclear KE, not by nuclear NVT.
 - BOMD full SCF each step; XL-BOMD; second-generation CP (ASPC + partial SCF)
 - Live CP2K classical fictitious-mass CPMD+e-T energy twin (not a stock QS
   ensemble) — geometry/basis twin only at
-  `tools/cp2k_oracle/inputs/cpmd_electronic_thermostat_h2o.inp`
+  CP2K oracle
 - OT seed path, k-points, hybrid / GAPW / PW CP
 - Public `*Config` bags / `make_*` factories
 
@@ -118,10 +117,10 @@ Public surface only (`cpu::Frame`, constructor arguments; no `*Config`).
 
 ```cpp
 constexpr double dt = 0.1; // fs — nuclear and electronic share one step
-cpu::gpw::GPWEvaluator gpw(
-    {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-    /*mix*/ 0.3, cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 200.0;  dft.max_iter = 60;  dft.tol = 1e-5;  dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;  dft.nonperiodic = true;
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // Thermostatted CP is the three-argument wrapper constructor: fictitious mass
 // mu [a.u. electron mass], then the Nosé–Hoover setpoint. The evaluator has no
 // public cpmd_* flags to keep in sync.
@@ -144,7 +143,7 @@ const double e_ext = frame.meta.get(kKinetic)
                    + eval.last_electronic_thermostat_ev();
 ```
 
-Propagator primitive (`include/atomiverse/cpu/electronic/cpmd.h`):
+Propagator primitive (`cpmd.h`):
 
 ```cpp
 cpu::electronic::Cpmd cp(2000.0);   // throws if mu <= 0
@@ -168,7 +167,7 @@ ctest --test-dir build -R '^(test_cpu_gpw_cpmd)$' --output-on-failure
 cmake --build build --target run_reg_cpmd-electronic-thermostat
 ```
 
-Headers / sources: `include/atomiverse/cpu/electronic/cpmd.h`,
+Headers / sources: `cpmd.h`,
 `cpu/gpw/gpw_evaluator.h`; `src/cpu/electronic/cpmd.cpp`,
 `src/cpu/gpw/gpw_evaluator.cpp`.
 Unit: `tests/cpu/gpw/test_gpw_cpmd.cpp` (NH param guards, Te regulation,
@@ -176,7 +175,7 @@ evaluator build accept/reject).
 
 ## Validation (vs offline CP2K / literature)
 
-Source: `regressions/dynamics/cpmd-electronic-thermostat/REFERENCE.md`
+Source: case `cpmd-electronic-thermostat` pin
 (offline pin; never live CP2K in ctest).
 
 | Quantity | Atomiverse / pin | Oracle / literature | Tol / gate | Notes |
@@ -213,10 +212,9 @@ Gate: literature envelope + structural gates (same inventory class as
 
 ## References
 
-- Offline pin: `regressions/dynamics/cpmd-electronic-thermostat/REFERENCE.md`
-- Regression: `regressions/dynamics/cpmd-electronic-thermostat/reg_cpmd-electronic-thermostat.cpp`
-- CP2K twin input: `tools/cp2k_oracle/inputs/cpmd_electronic_thermostat_h2o.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md`
+- Offline pin: case `cpmd-electronic-thermostat` pin
+- CP2K twin input: CP2K oracle
+- Oracle rules: CP2K oracle
 - Sibling footholds: [cpmd-water](cpmd-water.md),
   [cpmd-rattle-water](cpmd-rattle-water.md)
 - Car & Parrinello, *Phys. Rev. Lett.* **55**, 2471 (1985)

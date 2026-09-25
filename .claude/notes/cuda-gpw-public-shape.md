@@ -22,29 +22,33 @@ footholds.
 | CUDA stages | `cuda/gpw/internal/`: Poisson, XC LDA/GGA, product collocate/integrate (PBC sphere-window), weight pack, `KsChainDevice` / `KsMultiGridChainDevice`, `AoDiisEigenDevice`, multi-k collocate/integrate/STVnl/DIIS |
 | CUDA public method | **product landed** — `cuda::gpw::GpwDft` members + `build`/`run`/`last_result` + free-fn forces/stress. Slice: Γ RKS (SG + MG monom device KS, PADE/PBE) + Γ UKS PADE + multi-k RKS H₂ spine; mid-SCF device H/DIIS/payload (RKS+UKS); Si dual-gates green. Depth residual: multi-k χ/orth/vnl/payload, cold-start, free-fn AO Pulay/stress device, MG F/σ, `cuda::Driver<gpw::Phase>` nest (same class as CUDA SCF fold residual) |
 
+**Open shape gap:** the CUDA product still takes `internal::GpwAtom` lists
+and a public `cell[3]`, while the CPU twin is Frame-in — ledger row
+`es-cuda-gpw-frame-io` in [es-architecture-debt.md](es-architecture-debt.md).
+CUDA regressions/tests reach the CPU oracle through
+`cpu::gpw::internal::GpwDftAccess` until that closes.
+
 ## Frozen public shape (CUDA product must match)
 
-When `cuda-gpw-full-product` lands, the user-facing method is the CPU twin:
+The user-facing CUDA method is the CPU twin, Frame in / Frame out:
 
 ```text
-// Construction → members → build → run → last_result
-// Forces/stress free functions or Frame evaluator — same idea as CPU
-cuda::gpw::GpwDft method;          // name may match; namespace cuda::gpw
+cuda::gpw::GpwDft method{kinds};   // Kind = element + basis + GTH, ctor arg
 method.cutoff_ry = …;              // members, not *Config
-method.build(/* reference system */);
-auto& res = method.run(/* geometry */);
+method.build(frame);               // cell from frame.box, Z → kinds
+auto& res = method.run(frame);     // eV on kEnergy; Hartree on GpwResult
+method.forces(frame);              // eV/Å on kAtom_f*
 const auto& last = method.last_result();
-// forces: free function or GPWEvaluator-class Frame path (not a second solver)
+// stress: gpw_stress(frame, method[, state]) free-fn family, as CPU
 ```
 
-### Required (first method product)
+### Required
 
 - Concrete method type under `ATV::cuda::gpw` (not freestanding `SCFSolver`)
 - Parameters as public members / ctor args — **no** public `*Config` bags
-- `build` fail-fast; re-entrant `run`; `last_result`
-- Forces path present for the shipped capability slice (analytic free function
-  and/or Frame evaluator writing `kAtom_f*` / energy meta) — same shape family
-  as CPU `gpw_forces_analytic` / `GPWEvaluator`
+- `build(frame)` fail-fast; re-entrant `run(frame)` / `forces(frame)`;
+  `last_result`; geometry never a member (no public `cell`), never an
+  atom list (`internal::GpwAtom` is engine-private)
 - Stage kernels stay under `cuda/gpw/internal/`; product **composes** them
 - No `make_*` / `build_*` factories returning constructed methods
 - Users never define Context or hand-drive Component lifecycle

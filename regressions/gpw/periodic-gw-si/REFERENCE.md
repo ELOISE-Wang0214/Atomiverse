@@ -12,9 +12,9 @@ the frequency-exact spectral sum over RPA poles (same form as molecular
 product path. Local \(v_{\mathrm{xc}}\) is PBE on the closed-shell density.
 
 ```cpp
-cpu::gpw::GpwDft m;
-// ... members; build(); run(atoms);
-const cpu::gpw::G0W0Result& gw = m.g0w0(atoms);
+cpu::gpw::GpwDft m{{si_kind}};
+// ... members; build(frame); run(frame);  // frame: Å positions, Z, box
+const cpu::gpw::G0W0Result& gw = m.g0w0();
 // gw.gap_ev [eV]; gw.qp_energy_ha [Ha]; gw.converged
 ```
 

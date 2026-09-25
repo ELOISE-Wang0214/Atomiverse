@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gfn2-aes-fock` |
-| Regression | `regressions/semiempirical/gfn2-aes-fock/` |
 | Public API | `cpu::semiempirical::GFN2` (`with_forces = true`); `cpu::Evaluate` |
 | Related narrative | [Ch. 17 Semiempirical AM1](../ch17-semiempirical-am1.md) (SE product surface; GFN-xTB is a sibling family) |
 | Queue | TB method loop — wave 11 done (`93c334cb` / `979ba707`) |
@@ -27,7 +26,7 @@ boundary: CAMM moments \(\to\) AES potential \(\{v, \mathbf{v}^\mu, v^Q\}\)
 `cpu::semiempirical::GFN2` members (`charge`, `scc_tol`, `with_forces`);
 no public `*Config`, no `make_*` / `build_*`. Product gate:
 `reg_gfn2-aes-fock`. Same off-eq H₂O twin as the force sibling
-(`tools/tb_oracle/inputs/xtb/h2o_gfn2_offeq_grad/`). Fair wall asserted
+(TB oracle (OpenMOPAC / DFTB+ / xtb)). Fair wall asserted
 \(T_{\mathrm{ATV}}/T_{\mathrm{xtb}}\le 10\) (xtb archived wall 0.018 s).
 
 AES-in-Fock does **not** close angular \(F_{H1,y}\). ATV energy FD of its
@@ -194,7 +193,7 @@ kernel. xtb prints \(\nabla E\) [Eh/\(a_0\)]; ATV stores
 | Conversion | \(a_0=1/1.8897261245650618\) Å (CODATA); \(1\,\mathrm{Ha}=27.211386245988\) eV |
 | Observable | Finite \(E\); net \(\sum_A\mathbf{F}_A=0\); analytic vs xtb \(\nabla E\) on \(F_{O,x}\); analytic vs energy FD |
 
-**Geometry [Å]** (`tools/tb_oracle/inputs/xtb/h2o_gfn2_offeq_grad/mol.xyz`):
+**Geometry [Å]** (TB oracle (OpenMOPAC / DFTB+ / xtb)):
 
 | Atom | \(Z\) | \(x\) | \(y\) | \(z\) |
 | ---- | ----: | ----: | ----: | ----: |
@@ -314,18 +313,18 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/gfn2.h` | Public `GFN2` (`scc_tol`, `charge`, `with_forces`); AES-in-Fock documented |
-| `include/atomiverse/cpu/semiempirical/basis_data/gfn2_xtb_tables.h` | Static H/C/N/O GFN2 rows + AES/D4 globals |
+| `gfn2.h` | Public `GFN2` (`scc_tol`, `charge`, `with_forces`); AES-in-Fock documented |
+| `gfn2_xtb_tables.h` | Static H/C/N/O GFN2 rows + AES/D4 globals |
 | `src/cpu/semiempirical/gfn2.cpp` | `fill_aes_pot` inside the SCC loop; `aes_energy`; analytic \(\nabla E\) at frozen CAMM |
-| `regressions/semiempirical/gfn2-aes-fock/reg_gfn2-aes-fock.cpp` | Product gate |
-| `regressions/semiempirical/gfn2-aes-fock/REFERENCE.md` | Offline pins + oracle line |
-| `tools/tb_oracle/inputs/xtb/h2o_gfn2_offeq_grad/` | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `gradient.txt`) |
+| `reg_gfn2-aes-fock.cpp` | Product gate |
+| case `gfn2-aes-fock` pin | Offline pins + oracle line |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `gradient.txt`) |
 | `tests/cpu/semiempirical/test_gfn2_params.cpp` | Unit analytic-vs-FD (tol 0.25 eV/Å; quadrupole \(\partial Q/\partial R\)) + net-force invariance |
 
 ## Validation (xtb)
 
 Source:
-[`regressions/semiempirical/gfn2-aes-fock/REFERENCE.md`](../../../regressions/semiempirical/gfn2-aes-fock/REFERENCE.md).
+case `gfn2-aes-fock` pin.
 Oracle: **`xtb`** `--gfn 2 --grad` (Bannwarth et al., *J. Chem. Theory Comput.*
 **15**, 1652 (2019); Bannwarth et al., *WIREs Comput. Mol. Sci.* **11**, e01493
 (2021)). Formula twin: tblite `get_potential`, `add_vmp_to_h1`.
@@ -343,7 +342,7 @@ oracle_version: 6.7.1
 | ---- | ----- |
 | Engine (identity) | ATV GFN2-xTB closed shell, H/C/N/O tables, AES in Fock |
 | Oracle family | xtb (not OpenMOPAC, not DFTB+) |
-| Offline twin | `tools/tb_oracle/inputs/xtb/h2o_gfn2_offeq_grad/` |
+| Offline twin | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 | Command | `xtb mol.xyz --gfn 2 --chrg 0 --uhf 0 --acc 1.0 --grad` (`OMP_NUM_THREADS=1`) |
 | Atomiverse path | `GFN2` + `Evaluate`, `with_forces=true` |
 | FD protocol | Central energy-only, \(h=10^{-4}\) Å (identity, not the product force) |
@@ -392,7 +391,7 @@ not a Fock bug. Product \(F_{O,x}\) tol \(0.35\) eV/Å sits above the
 
 ## Performance
 
-Source: `REFERENCE.md`. Fair wall asserted in `reg_gfn2-aes-fock`
+Source: pin notes. Fair wall asserted in `reg_gfn2-aes-fock`
 (\(r\le 10\)). AES-in-Fock is one extra potential fill per SCC iteration
 on the same closed-form gradient (replaces 18 energy solves of a \(6N\)
 FD).
@@ -437,17 +436,17 @@ wall; the regression fails if the ratio exceeds 10.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/gfn2-aes-fock/REFERENCE.md`](../../../regressions/semiempirical/gfn2-aes-fock/REFERENCE.md)
-- Twin: `tools/tb_oracle/inputs/xtb/h2o_gfn2_offeq_grad/` (`mol.xyz`,
+- Offline pin: case `gfn2-aes-fock` pin
+- Twin: TB oracle (OpenMOPAC / DFTB+ / xtb) (`mol.xyz`,
   `xtb.out.txt`, `gradient.txt`)
-- Energy siblings: `regressions/semiempirical/gfn2-xtb-water/REFERENCE.md`,
-  `regressions/semiempirical/gfn2-quadrupole-aes/REFERENCE.md`
+- Energy siblings: case `gfn2-xtb-water` pin,
+  case `gfn2-quadrupole-aes` pin
 - Force sibling: [`gfn2-xtb-forces`](gfn2-xtb-forces.md) (same geometry;
   AES was post-SCC there)
 - Hessian sibling: [`gfn-xtb-analytic-hessian`](gfn-xtb-analytic-hessian.md)
 - IPEA Hessian sibling: [`ipea-xtb-analytic-hessian`](ipea-xtb-analytic-hessian.md)
 - IPEA VIP/VEA sibling: [`ipea-xtb-vip`](ipea-xtb-vip.md)
-- Oracle README: `tools/tb_oracle/README.md`
+- Oracle README: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: `docs/roadmap/semiempirical.md`
 - Spec history (closed, deleted at done): git `wf/gfn2-aes-fock`
   (`93c334cb` / `979ba707`)

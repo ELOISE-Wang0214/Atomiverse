@@ -8,13 +8,13 @@ complex Bloch products; Coulomb via linear real Poisson on Re/Im (RI-GPW /
 Del Ben 2012; CP2K `METHOD MP2_GPW` + `&KPOINTS`). Public path:
 
 ```cpp
-cpu::gpw::GpwDft m;
+cpu::gpw::GpwDft m{{si_kind}};
 m.k_mesh[0] = 2; m.k_mesh[1] = 1; m.k_mesh[2] = 1;
 m.k_time_reversal = false;   // equal weights
 m.mp2_ri = true;
 m.mp2_n_virt = 2;
-// build(); run(atoms);
-const cpu::gpw::Mp2Result& r = m.mp2(atoms);  // multi-k, no throw
+// build(frame); run(frame);  // frame: Å positions, Z, box
+const cpu::gpw::Mp2Result& r = m.mp2();  // multi-k, no throw
 ```
 
 Multi-k SCF stores complex Bloch `GpwResult::C_k`. Kernel Γ recovery

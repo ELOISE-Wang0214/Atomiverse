@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-gw-kpoints` |
-| Regression | `regressions/gpw/periodic-gw-kpoints/` |
-| Public API | `cpu::gpw::GpwDft::g0w0(atoms)` → `cpu::gpw::G0W0Result` (`cpu/gpw/g0w0.h`); members `k_mesh`, `k_time_reversal`, `mp2_ri`, `mp2_n_virt` |
+| Public API | `cpu::gpw::GpwDft::g0w0()` → `cpu::gpw::G0W0Result` (`cpu/gpw/g0w0.h`); members `k_mesh`, `k_time_reversal`, `mp2_ri`, `mp2_n_virt` |
 | Roadmap | `docs/roadmap/dft.md` §10 **Periodic GW** ✓ (multi-k residual); handoff ratio **perf_exempt** |
 
 ## Summary
@@ -20,9 +19,9 @@ self-energy is the frequency-exact spectral sum over those poles; exact-exchange
 diagonals use **truncated (Martyna–Tuckerman) Coulomb** so the product is G=0-safe
 without a full periodic-HF path. The primary product observable is the
 **minimum direct QP gap [eV]** over the sampled mesh. Public path:
-`GpwDft` members → `build` → `run` → `g0w0` — no `*Config` bag, no factory.
+`GpwDft` members → `build(frame)` → `run(frame)` → `g0w0()` — no `*Config` bag, no factory.
 Regression: `reg_periodic-gw-kpoints`. Offline twin:
-`tools/cp2k_oracle/inputs/periodic-gw-kpoints.inp` (CP2K never in ctest).
+CP2K oracle (CP2K never in ctest).
 Closes the multi-\(k\) residual after the Γ foothold `periodic-gw-si`.
 
 ## Method
@@ -91,10 +90,12 @@ converged MO spectrum at the \(k\) that realises the **minimum direct** QP gap.
 ## Implementation
 
 Public surface only — matches `reg_periodic-gw-kpoints.cpp`. Headers:
-`include/atomiverse/cpu/gpw/gpw_solver.h`, `g0w0.h`, `gaussian_basis.h`,
+`gpw_solver.h`, `g0w0.h`, `gaussian_basis.h`,
 `gth_potential.h`.
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/g0w0.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
@@ -103,24 +104,23 @@ Public surface only — matches `reg_periodic-gw-kpoints.cpp`. Headers:
 
 using namespace ATV::cpu::gpw;
 
-constexpr double kA2B = 1.0 / 0.52917720859;
-const double a_bohr = 5.43 * kA2B;
-const double at = a_bohr / std::sqrt(2.0);  // bct a_t = a/√2
+const double a = 5.43;                  // Å
+const double at = a / std::sqrt(2.0);   // bct a_t = a/√2
 
-const GaussianBasis bas(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-const GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
 const double frac[4][3] = {
     {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}, {0.5, 0.0, 0.25}, {0.0, 0.5, 0.75}};
-std::vector<GpwAtom> atoms;
+ATV::cpu::Frame frame(4);
 for (int i = 0; i < 4; ++i) {
-    const double pos[3] = {frac[i][0] * at, frac[i][1] * at,
-                           frac[i][2] * a_bohr};
-    atoms.emplace_back(pos, bas, pot, 14);
+    frame.span(ATV::kAtom_type)[i] = 14;
+    frame.span(ATV::kAtom_x)[i] = frac[i][0] * at;
+    frame.span(ATV::kAtom_y)[i] = frac[i][1] * at;
+    frame.span(ATV::kAtom_z)[i] = frac[i][2] * a;
 }
+frame.box = ATV::cpu::Box::orthorhombic(at, at, a);
 
-GpwDft m;
-m.cell[0] = m.cell[1] = at;
-m.cell[2] = a_bohr;
+GpwDft m{{Kind{molrs::Element::Si,
+               GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+               GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 80.0;
 m.n_occ = 8;                 // 4 Si × zion 4 → 16 e⁻
 m.max_iter = 60;
@@ -136,10 +136,10 @@ m.k_mesh[1] = 1;
 m.k_mesh[2] = 1;
 m.k_time_reversal = false;   // FULL_GRID / no symmetry twin
 m.diis_depth = 6;
-m.build(atoms);
+m.build(frame);
 
-const GpwResult& scf = m.run(atoms);           // scf.n_kpts == 2
-const G0W0Result& gw = m.g0w0(atoms);          // multi-k, no throw
+const GpwResult& scf = m.run(frame);           // scf.n_kpts == 2
+const G0W0Result& gw = m.g0w0();               // multi-k, no throw
 // gw.gap_ev [eV]  — min direct QP gap (primary product)
 // gw.mf_gap_ev, gw.ip_ev, gw.ea_ev, gw.qp_energy_ha, gw.converged, gw.n_kpts
 ```
@@ -160,20 +160,20 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target reg_periodic-gw-kpoints
-  ./build/regressions/reg_periodic-gw-kpoints
+  reg_periodic-gw-kpoints
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/g0w0.h` | `G0W0Result` public value type |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::g0w0`, `k_mesh`, `mp2_ri`, `mp2_n_virt` |
-| `include/atomiverse/cpu/gpw/gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
-| `include/atomiverse/cpu/gpw/gth_potential.h` | `GthPotential(Element, name)` lookup |
+| `g0w0.h` | `G0W0Result` public value type |
+| `gpw_solver.h` | `GpwDft::g0w0`, `k_mesh`, `mp2_ri`, `mp2_n_virt` |
+| `gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
+| `gth_potential.h` | `GthPotential(Element, name)` lookup |
 | `src/cpu/gpw/internal/` (G0W0 / RI-GPW kernels) | private spectral + RI machinery |
 | `tests/cpu/gpw/test_cpu_gpw_g0w0.cpp` | unit: multi-\(k\) kernel at \(N_k=1\) ≡ real spectral QP |
-| `regressions/gpw/periodic-gw-kpoints/reg_periodic-gw-kpoints.cpp` | product gate |
-| `tools/cp2k_oracle/inputs/periodic-gw-kpoints.inp` | offline CP2K twin (never ctest) |
+| `reg_periodic-gw-kpoints.cpp` | product gate |
+| CP2K oracle | offline CP2K twin (never ctest) |
 
 Related product path: Γ-only spectral G0W0 on sc-Si₂ —
 `docs/tutorial/methods/` companion regression `periodic-gw-si`
@@ -182,7 +182,7 @@ Related product path: Γ-only spectral G0W0 on sc-Si₂ —
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/periodic-gw-kpoints/REFERENCE.md`](../../../regressions/gpw/periodic-gw-kpoints/REFERENCE.md).
+case `periodic-gw-kpoints` pin.
 Oracle status at pin time (**2026-07-26**): **no CP2K binary / module** on the
 worker host. Absolute CP2K QP digits are **not invented**. CP2K’s default
 `&RI_G0W0` path is **frequency-integrated** RI-GW with Gaussian `RI_AUX`, not
@@ -231,7 +231,7 @@ Wall (SCF + G0W0, OMP=4, EPYC login at pin): **~34 s** (≤ 60 s e2e budget).
 Twin input (for offline re-pin / diagnostic only):
 
 ```text
-tools/cp2k_oracle/inputs/periodic-gw-kpoints.inp
+<CP2K oracle input for this case>
 ```
 
 CP2K deck mirrors geometry, PBE, 80 Ry, MONKHORST-PACK 2 1 1 with
@@ -242,7 +242,7 @@ parity.
 
 ## Performance
 
-Source: the case `REFERENCE.md` / REFERENCE **perf_exempt**.
+Source: the case pin notes / REFERENCE **perf_exempt**.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | ----: | ---- | ------ |
@@ -273,12 +273,12 @@ launch CP2K from ctest.
 
 ## References
 
-- Offline pin: `regressions/gpw/periodic-gw-kpoints/REFERENCE.md`
-- Regression consumer: `regressions/gpw/periodic-gw-kpoints/reg_periodic-gw-kpoints.cpp`
-- Offline CP2K twin: `tools/cp2k_oracle/inputs/periodic-gw-kpoints.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md` (offline pins only)
+- Offline pin: case `periodic-gw-kpoints` pin
+- Regression consumer: `reg_periodic-gw-kpoints.cpp`
+- Offline CP2K twin: CP2K oracle
+- Oracle rules: CP2K oracle (offline pins only)
 - Roadmap: `docs/roadmap/dft.md` §10 Periodic GW
-- Γ foothold sibling: `regressions/gpw/periodic-gw-si/`
+- Γ foothold sibling: `periodic-gw-si`
 - Molecular spectral twin (PySCF campaign, separate loop):
   `docs/tutorial/methods/g0w0-h2-sto3g.md`
 - Hybertsen & Louie, *Phys. Rev. B* **34**, 5390 (1986)

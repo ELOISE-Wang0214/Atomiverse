@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `mpi-gpw-scaling-4rank` |
-| Regression | `regressions/gpw/mpi-gpw-scaling-4rank/` |
 | Public API | `cpu::gpw::GpwDft` multi-k (`k_mesh` / `k_points`); `GpwResult::{n_kpts, n_kpts_local, e_total}` |
 | Unit | `tests/mpi/test_gpw_kpoint.cpp` (CTest `mpiexec` n=1/2/4) |
 | Dual gate | Rank-count energy invariance; speed **`perf_exempt`** (k-RR foothold only) |
@@ -42,16 +41,16 @@ domain decomposition is a later industrial step). Fair wall vs CP2K is
 ## Usage
 
 ```cpp
-cpu::gpw::GpwDft gpw;
-gpw.cell[0] = gpw.cell[1] = a / std::sqrt(2.0); // bct Si
-gpw.cell[2] = a;
+// frame: 4-atom bct Si, a = 5.43 Å, positions [Å], Z = 14 in kAtom_type
+frame.box = cpu::Box::orthorhombic(a / std::sqrt(2.0), a / std::sqrt(2.0), a);
+cpu::gpw::GpwDft gpw{{si_kind}};  // one Kind: Si basis + GTH potential
 gpw.cutoff_ry = 150.0;
 gpw.n_occ = 8;
 gpw.k_mesh[0] = gpw.k_mesh[1] = gpw.k_mesh[2] = 2;
 gpw.k_time_reversal = true;
 gpw.xc = cpu::gpw::XcKind::PBE;
-gpw.build(atoms);
-const auto& r = gpw.run(atoms);
+gpw.build(frame);
+const auto& r = gpw.run(frame);
 // r.e_total identical on every rank under mpiexec
 // r.n_kpts == 4 (TR-folded 2×2×2); r.n_kpts_local = ceil partition
 ```
@@ -71,7 +70,7 @@ mpiexec -n 4 ./your_gpw_app
 - **E2E:** `reg_mpi-gpw-scaling-4rank` — parent serial energy vs self-launched
   `mpiexec -n 4` worker; \(|E_1 - E_4| \le 10^{-8}\) Ha; wall ratio recorded.
 
-See `regressions/gpw/mpi-gpw-scaling-4rank/REFERENCE.md`.
+See case `mpi-gpw-scaling-4rank` pin.
 
 ## Performance
 

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gfn2-quadrupole-aes` |
-| Regression | `regressions/semiempirical/gfn2-quadrupole-aes/` |
 | Public API | `cpu::Evaluate` + `cpu::semiempirical::GFN2` (`with_forces = false`) |
 | Roadmap / queue | `docs/roadmap/semiempirical.md` §3 GFN2-xTB; queue **done** 2026-08-25 (`a48f0ee3` / `e6a06026`) |
 | Oracle | **xtb 6.7.1** (`edcfbbe`) only (family-locked; never OpenMOPAC / DFTB+) |
@@ -261,16 +260,15 @@ Relevant paths:
 
 | Role | Path |
 | ---- | ---- |
-| Method | `include/atomiverse/cpu/semiempirical/gfn2.h` |
+| Method | `gfn2.h` |
 | Impl (AES in `aes_energy`) | `src/cpu/semiempirical/gfn2.cpp` |
 | Static H/C/N/O + AES globals | `…/basis_data/gfn2_xtb_tables.h` |
 | Unit tests | `tests/cpu/semiempirical/test_gfn2_params.cpp` |
-| Regression | `regressions/semiempirical/gfn2-quadrupole-aes/` |
-| Offline twin | `tools/tb_oracle/inputs/xtb/h2o_gfn2/` |
+| Offline twin | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 
 ## Validation (vs xtb)
 
-Source: `regressions/semiempirical/gfn2-quadrupole-aes/REFERENCE.md`
+Source: case `gfn2-quadrupole-aes` pin
 (offline pin; **never** live xtb in ctest).
 
 ```text
@@ -293,9 +291,9 @@ oracle_version: 6.7.1 (edcfbbe)
 
 xtb inputs (reproducible offline only):
 
-- `tools/tb_oracle/inputs/xtb/h2o_gfn2/mol.xyz` — off-eq H₂O (Å)
+- TB oracle (OpenMOPAC / DFTB+ / xtb) — off-eq H₂O (Å)
 - Command: `xtb mol.xyz --gfn 2 --chrg 0 --uhf 0`
-- Archived stdout: `tools/tb_oracle/inputs/xtb/h2o_gfn2/xtb.out`
+- Archived stdout: TB oracle (OpenMOPAC / DFTB+ / xtb)
 
 ### Accuracy gate (ctest)
 
@@ -344,10 +342,10 @@ all-element tables remain ○.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/gfn2-quadrupole-aes/REFERENCE.md`](../../../regressions/semiempirical/gfn2-quadrupole-aes/REFERENCE.md)
-- Water foothold: [`regressions/semiempirical/gfn2-xtb-water/REFERENCE.md`](../../../regressions/semiempirical/gfn2-xtb-water/REFERENCE.md)
-- Oracle twin: [`tools/tb_oracle/inputs/xtb/h2o_gfn2/`](../../../tools/tb_oracle/inputs/xtb/h2o_gfn2/)
-- Family rules: [`tools/tb_oracle/README.md`](../../../tools/tb_oracle/README.md)
+- Offline pin: case `gfn2-quadrupole-aes` pin
+- Water foothold: case `gfn2-xtb-water` pin
+- Oracle twin: TB oracle (OpenMOPAC / DFTB+ / xtb)
+- Family rules: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: [`docs/roadmap/semiempirical.md`](../../roadmap/semiempirical.md) §3
 - C. Bannwarth, S. Ehlert, S. Grimme, *J. Chem. Theory Comput.* **15**, 1652
   (2019), DOI [10.1021/acs.jctc.8b01176](https://doi.org/10.1021/acs.jctc.8b01176)

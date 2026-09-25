@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pw-variable-cell-si` |
-| Regression | `regressions/pw/pw-variable-cell-si/` |
 | Roadmap | [optimization.md](../../roadmap/optimization.md) § cell relax; [dft.md](../../roadmap/dft.md) § PW CELL_OPT|
 
 ## Summary
@@ -19,7 +18,7 @@ hydrostatic stress (mechanical / CP2K convention). Twin is diamond Si
 (\(E_\mathrm{cut}=15\) Ry, \(2\times2\times2\) MP). Expanded start
 \(a_0=5.58\) Å shrinks toward the ATV zero-stress basin
 \(a^\*=5.510\) Å. Absolute \(a^\*\) / energy are **not** a CP2K Quickstep
-GTH twin — methodology input only under `tools/cp2k_oracle/inputs/pw-variable-cell-si/`.
+GTH twin — methodology input only under CP2K oracle.
 Product gate: `reg_pw-variable-cell-si`. Performance: **`perf_exempt`**.
 
 ## Method
@@ -97,9 +96,9 @@ smearing.
 
 Public surface only (`cpu::Frame` + concrete method members; no `*Config`, no
 `make_*` / `build_*`). Headers:
-`include/atomiverse/cpu/minimize/minimize.h`, `cell_relax.h`,
-`include/atomiverse/cpu/driver/criteria.h` (`StressConverged`),
-`include/atomiverse/cpu/planewave/pw_evaluator.h`, `pw_solver.h`.
+`minimize.h`, `cell_relax.h`,
+`criteria.h` (`StressConverged`),
+`pw_evaluator.h`, `pw_solver.h`.
 
 Minimal sequence (matches `reg_pw-variable-cell-si.cpp`):
 
@@ -180,7 +179,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_pw-variable-cell-si -j$(nproc)
-  ./build/regressions/reg_pw-variable-cell-si
+  reg_pw-variable-cell-si
 '
 ```
 
@@ -189,18 +188,18 @@ UPF path is injected at compile time as `ATV_PW_UPF_PATH` →
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/minimize/cell_relax.h` | `IsotropicCellRelax` |
-| `include/atomiverse/cpu/driver/criteria.h` | `StressConverged` |
-| `include/atomiverse/cpu/planewave/pw_evaluator.h` | `with_stress` → `kStress` |
-| `include/atomiverse/cpu/planewave/pw_solver.h` | `PW`, analytic stress helpers |
-| `regressions/pw/pw-variable-cell-si/reg_pw-variable-cell-si.cpp` | Product gate |
-| `regressions/pw/pw-variable-cell-si/REFERENCE.md` | Offline \(a^\*\) pin + perf |
-| `tools/cp2k_oracle/inputs/pw-variable-cell-si/si_cellopt.inp` | Optional CP2K CELL_OPT methodology twin (not absolute \(a^\*\)) |
+| `cell_relax.h` | `IsotropicCellRelax` |
+| `criteria.h` | `StressConverged` |
+| `pw_evaluator.h` | `with_stress` → `kStress` |
+| `pw_solver.h` | `PW`, analytic stress helpers |
+| `reg_pw-variable-cell-si.cpp` | Product gate |
+| case `pw-variable-cell-si` pin | Offline \(a^\*\) pin + perf |
+| CP2K oracle | Optional CP2K CELL_OPT methodology twin (not absolute \(a^\*\)) |
 
 ## Validation (CP2K methodology; ATV zero-stress pin)
 
 Source:
-[`regressions/pw/pw-variable-cell-si/REFERENCE.md`](../../../regressions/pw/pw-variable-cell-si/REFERENCE.md).
+case `pw-variable-cell-si` pin.
 Primary science gate is the **ATV residual-stress basin** on the same NC-UPF
 twin (incomplete ecut/k), hard-coded in the regression binary — **never** a live
 third-party oracle from ctest. CP2K Quickstep supplies an offline **CELL_OPT
@@ -246,7 +245,7 @@ methodology** twin only (GTH ≠ ONCV).
 ONCV plane-wave. Absolute \(a^\*\) / energy are **not** comparable to this
 NC-UPF twin. Optional methodology input (KEEP_ANGLES / KEEP_SYMMETRY /
 FIXED_ATOMS, \(2\times2\times2\), start \(a_0=5.55\) Å):
-`tools/cp2k_oracle/inputs/pw-variable-cell-si/si_cellopt.inp` — offline wall /
+CP2K oracle — offline wall /
 workflow only.
 
 **Literature / PseudoDojo context (EOS, not the hard \(a^\*\) pin).**
@@ -269,7 +268,7 @@ workflow only.
 
 ## Performance
 
-Source: `regressions/pw/pw-variable-cell-si/REFERENCE.md`. Queue / handoff:
+Source: case `pw-variable-cell-si` pin. Queue / handoff:
 **`perf_exempt`** (no fair CP2K NC-UPF PW CELL_OPT twin; CP2K GTH ≠ ONCV —
 same class as `pw-analytic-stress-si` / `pw-lda-si`).
 
@@ -295,7 +294,7 @@ export CP2KROOT=…/CP2K/2026.1-…   # site install
 export CP2K_DATA_DIR=$CP2KROOT/share/cp2k/data
 export PATH=$CP2KROOT/bin:$PATH
 export OMP_NUM_THREADS=4
-cd tools/cp2k_oracle/inputs/pw-variable-cell-si
+cd <CP2K oracle input dir for this case>
 mpirun -np 1 cp2k.psmp -i si_cellopt.inp -o cellopt.out
 # wall only — absolute a* not comparable to NC-UPF
 ```
@@ -319,13 +318,12 @@ mpirun -np 1 cp2k.psmp -i si_cellopt.inp -o cellopt.out
 
 ## References
 
-- Offline pin: [`regressions/pw/pw-variable-cell-si/REFERENCE.md`](../../../regressions/pw/pw-variable-cell-si/REFERENCE.md)
-- Regression: [`regressions/pw/pw-variable-cell-si/reg_pw-variable-cell-si.cpp`](../../../regressions/pw/pw-variable-cell-si/reg_pw-variable-cell-si.cpp)
+- Offline pin: case `pw-variable-cell-si` pin
 - Analytic stress foothold: [pw-analytic-stress-si](pw-analytic-stress-si.md)
 - Energy foothold twin: [pw-lda-si](pw-lda-si.md)
 - Optional CP2K CELL_OPT methodology input:
-  `tools/cp2k_oracle/inputs/pw-variable-cell-si/si_cellopt.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md` (offline pins only)
+  CP2K oracle
+- Oracle rules: CP2K oracle (offline pins only)
 - Narrative style ref: [Chapter 8 — Plane-Wave DFT](../ch08-plane-wave.md),
   [Chapter 12 — Geometry optimization](../ch12-geometry-optimization.md)
 - O. H. Nielsen and R. M. Martin, *Phys. Rev. B* **32**, 3780 (1985)

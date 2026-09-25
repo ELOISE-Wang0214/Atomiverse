@@ -22,10 +22,12 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/molrs.hpp"
@@ -34,11 +36,10 @@ int main() {
     using namespace ATV;
     using clock = std::chrono::steady_clock;
     using cpu::gpw::GaussianBasis;
-    using cpu::gpw::gpw_forces_from_scf;
     using cpu::gpw::gpw_stress;
-    using cpu::gpw::GpwAtom;
     using cpu::gpw::GpwDft;
     using cpu::gpw::GthPotential;
+    using cpu::gpw::Kind;
     using cpu::gpw::mbd_rsscs_pbe;
     using cpu::gpw::MbdResult;
     using cpu::gpw::ts_pbe;
@@ -188,26 +189,23 @@ int main() {
     // ── C/D: product GPW SCF (ts+hirshfeld) force wiring ──────────────────
     // One SCF only: stress gate reuses the same payload via at-state overload.
     // CUTOFF 120 Ry (sibling TS-stress class) keeps wall under 60 s.
-    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
-    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
-    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
-    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
-    std::vector<GpwAtom> atoms;
-    atoms.reserve(6);
+    cpu::Frame frame(6);
     for (int i = 0; i < 6; ++i) {
-        const double p[3] = {pos[static_cast<std::size_t>(i)][0],
-                             pos[static_cast<std::size_t>(i)][1],
-                             pos[static_cast<std::size_t>(i)][2]};
-        if (Zarr[i] == 8)
-            atoms.emplace_back(p, bO, pO, 8);
-        else
-            atoms.emplace_back(p, bH, pH, 1);
+        frame.span(kAtom_type)[i] = Zarr[i];
+        frame.span(kAtom_x)[i] = ang[i][0];
+        frame.span(kAtom_y)[i] = ang[i][1];
+        frame.span(kAtom_z)[i] = ang[i][2];
     }
+    frame.box = cpu::Box::cubic(12.0); // Å
 
-    const double L = 12.0 * kA2B;
+    const double L = 12.0 * kA2B; // Bohr, for the standalone TS kernel
     auto make_cfg = [&](bool with_ts, bool with_hirsh) {
-        GpwDft cfg;
-        cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = L;
+        GpwDft cfg{{Kind{molrs::Element::O,
+                         GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH"),
+                         GthPotential(molrs::Element::O, "GTH-PBE-q6")},
+                    Kind{molrs::Element::H,
+                         GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
+                         GthPotential(molrs::Element::H, "GTH-PBE-q1")}}};
         cfg.cutoff_ry = 120.0;
         cfg.n_occ = 8;
         cfg.max_iter = 80;
@@ -218,12 +216,24 @@ int main() {
         cfg.local_pp_on_grid = true;
         cfg.ts = with_ts;
         cfg.hirshfeld = with_hirsh;
-        cfg.build(atoms);
+        cfg.build(frame);
         return cfg;
     };
 
     GpwDft gpw = make_cfg(/*ts=*/true, /*hirsh=*/true);
-    const auto& res = gpw.run(atoms);
+    // SCF + analytic forces (TS+Hirshfeld); Frame forces are eV/Å.
+    const auto& res = gpw.forces(frame);
+    auto frame_forces_ha_bohr = [&]() {
+        std::vector<std::array<double, 3>> F(6);
+        for (int i = 0; i < 6; ++i)
+            F[static_cast<std::size_t>(i)] = {
+                frame.span(kAtom_fx)[i] / units::kHartreePerBohrInEvPerAngstrom,
+                frame.span(kAtom_fy)[i] / units::kHartreePerBohrInEvPerAngstrom,
+                frame.span(kAtom_fz)[i]
+                    / units::kHartreePerBohrInEvPerAngstrom};
+        return F;
+    };
+    const auto F_h = frame_forces_ha_bohr();
     if (!res.converged) {
         fail("GPW SCF (ts+hirshfeld) did not converge");
     } else if (res.volume_ratios.size() != 6) {
@@ -247,10 +257,12 @@ int main() {
             fail("product e_disp matches free-atom (hirshfeld not applied)");
         }
 
-        const auto F_h = gpw_forces_from_scf(atoms, gpw, res);
         GpwDft plain = make_cfg(false, false);
-        // Reuse the same electronic state (plain cfg only changes disp flags).
-        const auto F_plain = gpw_forces_from_scf(atoms, plain, res);
+        // Same electronic state: with hirshfeld=true the TS term is deferred
+        // post-SCF, so the plain SCF walks the identical iteration path and
+        // lands on the same density as `res`.
+        plain.forces(frame);
+        const auto F_plain = frame_forces_ha_bohr();
         if (F_h.size() != 6 || F_plain.size() != 6) {
             fail("force size mismatch");
         } else {
@@ -288,9 +300,9 @@ int main() {
         GpwDft cfg_free = make_cfg(true, false);
         // One diagonal axis is enough to prove the fold moves σ.
         const std::array<bool, 3> axes = {true, false, false};
-        const auto sig_h = gpw_stress(atoms, cfg_h, res, /*h=*/2e-3, axes);
+        const auto sig_h = gpw_stress(frame, cfg_h, res, /*h=*/2e-3, axes);
         const auto sig_free =
-            gpw_stress(atoms, cfg_free, res, /*h=*/2e-3, axes);
+            gpw_stress(frame, cfg_free, res, /*h=*/2e-3, axes);
         const double dsig = std::abs(sig_h[0] - sig_free[0]);
         if (!(dsig > 1e-12)) {
             std::fprintf(stderr,

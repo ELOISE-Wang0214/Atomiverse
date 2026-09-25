@@ -21,13 +21,13 @@ blocked). This supersedes the multi-k **k-diagonal** foothold of
 Public path:
 
 ```cpp
-cpu::gpw::GpwDft m;
+cpu::gpw::GpwDft m{{si_kind}};
 m.k_mesh[0] = 2; m.k_mesh[1] = 1; m.k_mesh[2] = 1;
 m.k_time_reversal = false;
 m.mp2_ri = true;
 m.mp2_n_virt = 2;
-// build(); run(atoms);
-const cpu::gpw::RpaResult& r = m.direct_rpa(atoms);
+// build(frame); run(frame);  // frame: Å positions, Z, box
+const cpu::gpw::RpaResult& r = m.direct_rpa();
 ```
 
 Kernel Γ recovery (\(N_k=1\), real-valued complex MOs ≡ real plasmon) is

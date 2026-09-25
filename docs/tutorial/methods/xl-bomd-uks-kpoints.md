@@ -5,12 +5,11 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `xl-bomd-uks-kpoints` |
-| Regression | `regressions/dynamics/xl-bomd-uks-kpoints/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{…, n_alpha, n_beta, k_mesh}, k}` bound with `set_evaluator_ref`; propagator class `cpu::electronic::XlBomdCplx` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{cpu::gpw::GpwDft{…, n_alpha, n_beta, k_mesh}}, k}` bound with `set_evaluator_ref`; propagator class `cpu::electronic::XlBomdCplx` |
 | Roadmap | MD AIMD XL multi-k UKS residual closed 2026-07-26 |
 | Dual gate | Correctness A6 (e2e NVE drift) + unit A1–A5 (`test_cpu_gpw_xl_bomd`); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — harness wave 11 (2026-07-26) |
-| Oracle | Offline CP2K twin sketch only (`tools/cp2k_oracle/inputs/xl-bomd-uks-kpoints/`); never live in ctest |
+| Oracle | Offline CP2K twin sketch only (CP2K oracle); never live in ctest |
 
 ## Summary
 
@@ -18,8 +17,8 @@
 Niklasson form, on **multi-k collinear UKS** Gaussian-and-plane-waves (GPW)
 forces. The outer loop is the MD preset (`cpu::md::MD` + NVE
 `VelocityVerlet`); the force slot binds a `cpu::electronic::XlBomdForce`
-wrapping a `cpu::gpw::GPWEvaluator` with `compute_forces = true`, integer
-occupations `n_alpha` / `n_beta`, and a
+wrapping a `cpu::gpw::GPWEvaluator` (`compute_forces = true`) around a
+`GpwDft` with integer occupations `n_alpha` / `n_beta` and a
 non-Γ `k_mesh`. Independent auxiliary **complex**
 densities \(P_k^\alpha\) and \(P_k^\beta\) are propagated per sampled \(k\)
 and used as the multi-k UKS SCF initial densities each ionic step.
@@ -34,7 +33,7 @@ envelope** plus multi-k dual-spin payload diagnostics. Public energy stays
 
 Related: [xl-bomd-water](xl-bomd-water.md) (Γ RKS foothold),
 [gpw-uks-o2-gamma](gpw-uks-o2-gamma.md) (Γ UKS energy),
-`regressions/gpw/gpw-kpoint-uks-forces` (multi-k UKS force math).
+`gpw-kpoint-uks-forces` (multi-k UKS force math).
 
 ## Method
 
@@ -133,7 +132,7 @@ Additional gates (regression `reg_xl-bomd-uks-kpoints`):
 
 ## Implementation
 
-Public surface only (`cpu::Frame`, concrete evaluator members; **no**
+Public surface only (`cpu::Frame`, concrete `GpwDft` members; **no**
 `*Config` bag, **no** `make_*` / `build_*` factories):
 
 ```cpp
@@ -163,16 +162,19 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
-cpu::gpw::GPWEvaluator gpw(
-    {H}, /*cutoff_ry*/ 100.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-    /*mix*/ 0.3, cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-    /*compute_forces*/ true);
-gpw.n_alpha = 1;               // closed-shell fillings on UKS path
-gpw.n_beta  = 1;
-gpw.k_mesh[0] = 1;
-gpw.k_mesh[1] = 1;
-gpw.k_mesh[2] = 2;
-gpw.k_time_reversal = false;   // n_k = 2
+cpu::gpw::GpwDft dft{{H}};
+dft.cutoff_ry = 100.0;
+dft.max_iter = 60;
+dft.tol = 1e-5;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.n_alpha = 1;               // closed-shell fillings on UKS path
+dft.n_beta  = 1;
+dft.k_mesh[0] = 1;
+dft.k_mesh[1] = 1;
+dft.k_mesh[2] = 2;
+dft.k_time_reversal = false;   // n_k = 2
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // The wrapper engages the dual XlBomdCplx per k (α + β); K = 5 is the
 // Niklasson 2009 Table-I order.
 cpu::electronic::XlBomdForce eval{std::move(gpw), /*k=*/5};
@@ -186,7 +188,7 @@ sim.run(frame, 1);              // warm-up: seed XL histories
 ```
 
 The complex multi-k propagator is also a public primitive
-(`include/atomiverse/cpu/electronic/xl_bomd.h`):
+(`xl_bomd.h`):
 
 ```cpp
 cpu::electronic::XlBomdCplx xl(5);   // throws unless 3 <= K <= 9
@@ -211,16 +213,16 @@ Relevant sources:
 
 | Layer | Path |
 | ----- | ---- |
-| Propagator | `include/atomiverse/cpu/electronic/xl_bomd.h`, `src/cpu/electronic/xl_bomd.cpp` |
-| XL wrapper | `include/atomiverse/cpu/electronic/xl_bomd_force.h` (dissipation order \(K\)) |
-| Evaluator | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (`k_mesh`, `n_alpha`/`n_beta`; private XL mode bits) |
+| Propagator | `xl_bomd.h`, `src/cpu/electronic/xl_bomd.cpp` |
+| XL wrapper | `xl_bomd_force.h` (dissipation order \(K\)) |
+| Evaluator | `gpw_evaluator.h` (`k_mesh`, `n_alpha`/`n_beta`; private XL mode bits) |
 | Multi-k UKS SCF + XL payload | `src/cpu/gpw/gpw_solver.cpp` (`run_gpw_scf_kpoints_uks`) |
 | Unit Table-I / dual-spin | `tests/cpu/gpw/` (`test_cpu_gpw_xl_bomd`) |
-| E2E | `regressions/dynamics/xl-bomd-uks-kpoints/` |
+| E2E | `xl-bomd-uks-kpoints` |
 
 ## Validation (vs CP2K / literature)
 
-Source: `regressions/dynamics/xl-bomd-uks-kpoints/REFERENCE.md` (offline pin;
+Source: case `xl-bomd-uks-kpoints` pin (offline pin;
 never live CP2K in ctest).
 
 ### System
@@ -260,7 +262,7 @@ never live CP2K in ctest).
 
 | Field | Value |
 | ----- | ----- |
-| Input | `tools/cp2k_oracle/inputs/xl-bomd-uks-kpoints/h2_uks_xl_bomd_kpoints_nve.inp` |
+| Input | CP2K oracle |
 | Intent | Short NVE Quickstep UKS MD with `&KPOINTS` MONKHORST-PACK \(1\,1\,2\), ASPC density-guess extrapolation (CP2K MD default analogue of ATV multi-k UKS XL) |
 | Status | **Unexecuted** on pin host 2026-07-26 (no `cp2k` binary / Lmod module) |
 | When binary available | Re-run offline; replace pin section with CP2K version + measured drift + fair wall |
@@ -271,8 +273,8 @@ bit-identical density history.
 
 ## Performance
 
-Source: the case `REFERENCE.md` (wave 11),
-`REFERENCE.md` Perf gate.
+Source: the case pin notes (wave 11),
+pin notes Perf gate.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | -----------------------------------------: | ---- | ------ |
@@ -301,13 +303,12 @@ the NVE drift envelope, not a wall-clock ratio.
 
 ## References
 
-- Offline pin: `regressions/dynamics/xl-bomd-uks-kpoints/REFERENCE.md`
-- Regression: `regressions/dynamics/xl-bomd-uks-kpoints/reg_xl-bomd-uks-kpoints.cpp`
-- CP2K twin sketch: `tools/cp2k_oracle/inputs/xl-bomd-uks-kpoints/h2_uks_xl_bomd_kpoints_nve.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md`
+- Offline pin: case `xl-bomd-uks-kpoints` pin
+- CP2K twin sketch: CP2K oracle
+- Oracle rules: CP2K oracle
 - Prior product paths: [xl-bomd-water](xl-bomd-water.md);
-  `regressions/dynamics/xl-bomd-uks`; `regressions/dynamics/xl-bomd-kpoints`;
-  multi-k UKS forces `regressions/gpw/gpw-kpoint-uks-forces`
+  `xl-bomd-uks`; `xl-bomd-kpoints`;
+  multi-k UKS forces `gpw-kpoint-uks-forces`
 - A. M. N. Niklasson, *Phys. Rev. Lett.* **100**, 123004 (2008)
 - A. M. N. Niklasson et al., *J. Chem. Phys.* **130**, 214109 (2009) — Table I
 - G. Lippert, J. Hutter, M. Parrinello, *Mol. Phys.* **92**, 477 (1997)

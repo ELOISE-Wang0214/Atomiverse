@@ -15,13 +15,13 @@ using ATV::cpu::gpw::XcKind;
 
 namespace {
 
-std::vector<ATV::cpu::gpw::GpwAtom> h2_atoms() {
+std::vector<ATV::cpu::gpw::internal::GpwAtom> h2_atoms() {
     const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
     const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
     const double rA[3] = {5.5, 6.0, 6.0};
     const double rB[3] = {6.5, 6.0, 6.0};
-    return {ATV::cpu::gpw::GpwAtom(rA, basis, pot, 1),
-            ATV::cpu::gpw::GpwAtom(rB, basis, pot, 1)};
+    return {ATV::cpu::gpw::internal::GpwAtom(rA, basis, pot, 1),
+            ATV::cpu::gpw::internal::GpwAtom(rB, basis, pot, 1)};
 }
 
 } // namespace

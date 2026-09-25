@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-metallic-si` |
-| Regression | `regressions/response/dfpt-metallic-si/` |
 | Public API | `cpu::pw::DfptPhonon` / `DfptPhononResult` + `PW` members `smearing`, `degauss` [Ry], `extra_bands` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — metallic occupation smearing ✓ |
 | Dep | `dfpt-phonon-si` ✓ (Γ fixed-occ); `pw-smearing-al` ✓ (Mermin GS); siblings: GGA / spin / finite-\(q\) DFPT |
@@ -84,8 +83,8 @@ negative \(\omega\)). Acoustic sum rule is **emergent**, never projected.
 Public surface only: construct `cpu::pw::PW` and `cpu::pw::DfptPhonon`, set
 members, call `compute(method, frame)`. **No** public `*Config` bag, **no**
 `make_*` / `build_*` factory. Headers:
-`include/atomiverse/cpu/planewave/dfpt_phonon.h`,
-`include/atomiverse/cpu/planewave/pw_solver.h`. Spectra and force constants
+`dfpt_phonon.h`,
+`pw_solver.h`. Spectra and force constants
 live on `DfptPhononResult` (Frame purity — Frame is geometry I/O only).
 
 Minimal sequence (matches `reg_dfpt-metallic-si.cpp`):
@@ -145,20 +144,20 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_dfpt-metallic-si
-  ./build/regressions/reg_dfpt-metallic-si
+  reg_dfpt-metallic-si
 '
 # or: cmake --build build --target run_reg_dfpt-metallic-si
 ```
 
 Source consumer:
-`regressions/response/dfpt-metallic-si/reg_dfpt-metallic-si.cpp`.
+`reg_dfpt-metallic-si.cpp`.
 Unit surface for DFPT primitives stays under `tests/cpu/planewave/` (no e2e
 SCF under `tests/`).
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/response/dfpt-metallic-si/REFERENCE.md`](../../../regressions/response/dfpt-metallic-si/REFERENCE.md)
+case `dfpt-metallic-si` pin
 (offline pins only; **never** live CP2K in ctest).
 
 ### ATV system (regression twin)
@@ -205,9 +204,9 @@ ATV free-energy FD Hessian.
 | Preferred oracle | CP2K `VIBRATIONAL_ANALYSIS` + `&SMEAR METHOD FERMI_DIRAC` |
 | Host status | CP2K module/binary **not available** on the Arrhenius login node used for this pin (`module avail cp2k` empty) |
 | Sketch | diamond Si primitive, a ≈ 5.43 Å; GPW PADE + GTH-PADE + DZVP-MOLOPT-SR-GTH (Si q4); \(T_e\) ≈ 3158 K for `degauss ≈ 0.02` Ry; `ADDED_MOS` ≥ 4; MP \(2\times2\times2\) |
-| Note path | `tools/cp2k_oracle/inputs/dfpt-metallic-si.note` |
+| Note path | CP2K oracle |
 
-Oracle path: `tools/cp2k_oracle/README.md` (offline only). When a CP2K binary
+Oracle path: CP2K oracle (offline only). When a CP2K binary
 is available, record \(\omega(\Gamma)\) [cm⁻¹] + wall + optional fair ratio
 \(r = T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) (require \(\le 10\)).
 
@@ -229,7 +228,7 @@ Source: same REFERENCE + handoff. Gate:
 | `ratio_atv_over_cp2k` | n/a (exempt) |
 | `within_10x` | n/a (exempt; correctness gates only) |
 
-Handoff: the case `REFERENCE.md` (`dfpt-metallic-si` →
+Handoff: the case pin notes (`dfpt-metallic-si` →
 **perf_exempt**).
 
 ## Limitations
@@ -253,13 +252,12 @@ Handoff: the case `REFERENCE.md` (`dfpt-metallic-si` →
 
 ## References
 
-- Offline pin: `regressions/response/dfpt-metallic-si/REFERENCE.md`
-- Regression: `regressions/response/dfpt-metallic-si/reg_dfpt-metallic-si.cpp`
-- CP2K twin note: `tools/cp2k_oracle/inputs/dfpt-metallic-si.note`
-- Oracle rules: `tools/cp2k_oracle/README.md`
-- Handoff (**perf_exempt**): the case `REFERENCE.md`
+- Offline pin: case `dfpt-metallic-si` pin
+- CP2K twin note: CP2K oracle
+- Oracle rules: CP2K oracle
+- Handoff (**perf_exempt**): the case pin notes
 - Roadmap: `docs/roadmap/dft.md` §11 metallic DFPT ✓
-- Public headers: `include/atomiverse/cpu/planewave/dfpt_phonon.h`,
+- Public headers: `dfpt_phonon.h`,
   `pw_solver.h`
 - Fixed-occ sibling: [`dfpt-phonon-si`](dfpt-phonon-si.md)
 - Metallic GS sibling: [`pw-smearing-al`](pw-smearing-al.md)

@@ -6,7 +6,6 @@
 | ----- | ----- |
 | Slug | `periodic-berry-gpw-uks` |
 | Domain | response / GPW |
-| Regression | `regressions/gpw/periodic-berry-gpw-uks` |
 | Oracle | CP2K 2026.1 Quickstep `&MOMENTS PERIODIC` + `LSD` (Γ) |
 | Ratio | \(T_\mathrm{atv}/T_\mathrm{cp2k} \approx 0.214\) |
 
@@ -26,16 +25,17 @@ wrap quantum 1. Insulator only (metallic smear rejected).
 ## Implementation
 
 ```cpp
-GpwDft m; m.n_alpha = 8; m.n_beta = 8; m.n_occ = 0; m.build(atoms);
+// frame: Si positions [Å], Z = 14 in kAtom_type, orthorhombic box [Å]
+GpwDft m{{Si}}; m.n_alpha = 8; m.n_beta = 8; m.n_occ = 0; m.build(frame);
 BerryPolarization berry; // k_perp, k_string, directions
-auto r = berry.compute(m, atoms);
+auto r = berry.compute(m, frame);
 ```
 
 Run: `cmake --build build --target run_reg_periodic-berry-gpw-uks`.
 
 ## Validation
 
-See `REFERENCE.md`. Measured \(Z^*=+0.0026\); ideal \(p=(0,0,0)\).
+See pin notes. Measured \(Z^*=+0.0026\); ideal \(p=(0,0,0)\).
 
 ## Performance
 
@@ -50,6 +50,6 @@ scope.
 
 ## References
 
-- `regressions/gpw/periodic-berry-gpw-uks/REFERENCE.md`
+- case `periodic-berry-gpw-uks` pin
 - King-Smith & Vanderbilt, *Phys. Rev. B* **47**, 1651 (1993)
 - Spaldin, *J. Solid State Chem.* **195**, 2 (2012)

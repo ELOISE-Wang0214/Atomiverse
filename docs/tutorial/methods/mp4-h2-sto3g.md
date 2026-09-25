@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `mp4-h2-sto3g` |
-| Regression | `regressions/scf/mp4-h2-sto3g/` |
 | Public API | `cpu::scf::RHF::mp4` → `MP4Result` |
 | Roadmap | post-HF / MPn (canonical closed-shell) |
 
@@ -20,7 +19,7 @@ on H₂ / STO-3G. Public path: construct `cpu::scf::RHF`, set members
 (`basis`, `tol`, …), call `mp4(frame)` — Frame in, `MP4Result` out; no
 `*Config` bag. Offline pin rebuilds intermediate-normalization RSPT through
 order 4 on PySCF RHF orbitals (PySCF 2.14 has no `mp.MP4`). Product regression:
-`regressions/scf/mp4-h2-sto3g` (`reg_mp4-h2-sto3g`).
+`mp4-h2-sto3g` (`reg_mp4-h2-sto3g`).
 
 ## Method
 
@@ -67,7 +66,7 @@ $$
   `frozen=0`.
 
 PySCF 2.14.0 does **not** ship `mp.MP4`. Oracle: rebuild RSPT-4 on `scf.RHF` +
-`ao2mo` MO ERIs (`tools/pyscf_oracle/pin_scf.py mp4`); \(E^{(2)}\) matches
+`ao2mo` MO ERIs (PySCF oracle); \(E^{(2)}\) matches
 `mp.MP2` to machine precision; \(E^{(2)}+E^{(3)}\) matches the offline MP3 pin.
 
 ## Implementation
@@ -101,23 +100,23 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release \
   -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
 cmake --build build --target reg_mp4-h2-sto3g -j"$(nproc)"
 export LD_LIBRARY_PATH="${LIBRARY_PATH}:${LD_LIBRARY_PATH}"
-./build/regressions/reg_mp4-h2-sto3g
+reg_mp4-h2-sto3g
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/mp4.h` | `MP4Result` public POD |
-| `include/atomiverse/cpu/scf/mean_field_method.h` | `RHF::mp4(Frame&)` CRTP entry |
-| `include/atomiverse/cpu/scf/internal/mp4_pack.h` | private `mp4_energy` |
+| `mp4.h` | `MP4Result` public POD |
+| `mean_field_method.h` | `RHF::mp4(Frame&)` CRTP entry |
+| `mp4_pack.h` | private `mp4_energy` |
 | `src/cpu/scf/mp4.cpp` | spin-orbital SDTQ residual kernel |
 | `src/cpu/scf/mean_field_method.cpp` | public `mp4` (fresh RHF + ERI + call pack) |
-| `regressions/scf/mp4-h2-sto3g/reg_mp4-h2-sto3g.cpp` | e2e consumer |
+| `reg_mp4-h2-sto3g.cpp` | e2e consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/mp4-h2-sto3g/REFERENCE.md`](../../../regressions/scf/mp4-h2-sto3g/REFERENCE.md)
+Source: case `mp4-h2-sto3g` pin
 (offline pin; **never** live PySCF in ctest). Oracle:
-`tools/pyscf_oracle/pin_scf.py mp4`; env `tools/setup_pyscf_env.sh`.
+PySCF oracle; env PySCF oracle.
 
 | Field | Value |
 | ----- | ----- |
@@ -147,14 +146,14 @@ renormalization \(E_Q^{(4)}\).
 
 ## Performance
 
-Source: `REFERENCE.md` fair-bench block (2026-07-23); worker / queue ratio
+Source: pin notes fair-bench block (2026-07-23); worker / queue ratio
 **0.031**.
 ```bash
 export OMP_NUM_THREADS=1
 export LD_LIBRARY_PATH="${LIBRARY_PATH}:${LD_LIBRARY_PATH}"
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
     --method mp4 --geom h2 --basis sto-3g --repeat 3 -- \
-    ./build/regressions/reg_mp4-h2-sto3g
+    reg_mp4-h2-sto3g
 ```
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -184,9 +183,9 @@ includes RHF + MP4 + regression asserts. `perf_exempt=false`.
 
 ## References
 
-- Offline pin: `regressions/scf/mp4-h2-sto3g/REFERENCE.md`
+- Offline pin: case `mp4-h2-sto3g` pin
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
-- Pin helper: `tools/pyscf_oracle/pin_scf.py` (`mp4`)
+- Pin helper: PySCF oracle (`mp4`)
 - A. Szabo, N. S. Ostlund, *Modern Quantum Chemistry*, Dover (MPn / PT through
   fourth order)
 - R. J. Bartlett, *Ann. Rev. Phys. Chem.* **32**, 359 (1981) (many-body PT /

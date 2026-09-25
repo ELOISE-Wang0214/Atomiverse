@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -177,15 +178,16 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 200.0;
-    eval.max_iter = 120;
-    eval.tol = 1e-6;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = false;
-    eval.d4 = true;
-    eval.d4_atm = true;
+    cpu::gpw::GpwDft eval_method{{O, H}};
+    eval_method.cutoff_ry = 200.0;
+    eval_method.max_iter = 120;
+    eval_method.tol = 1e-6;
+    eval_method.mix = 0.4;
+    eval_method.xc = cpu::gpw::XcKind::PBE;
+    eval_method.nonperiodic = false;
+    eval_method.d4 = true;
+    eval_method.d4_atm = true;
+    cpu::gpw::GPWEvaluator eval(std::move(eval_method));
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
@@ -252,17 +254,9 @@ int main() {
                     san[static_cast<std::size_t>(a)]);
 
     // ── 4+5. FD twin (dual gate) + two-body twin (ATM fold wiring), x-axis,
-    //          warm-started from the converged MOs ───────────────────────
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
-    for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double pos[3] = {x[i] * kAng2Bohr, y[i] * kAng2Bohr,
-                               zc[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(pos, k.basis, k.pot, z[i]));
-    }
-    cpu::gpw::GpwDft method;
-    method.cell[0] = method.cell[1] = method.cell[2] = L * kAng2Bohr;
+    //          FD twin cold-starts each strained SCF; the two-body twin is
+    //          evaluated at the product run's converged state ────────────
+    cpu::gpw::GpwDft method{{O, H}};
     method.cutoff_ry = 200.0;
     method.n_occ = 8; // 2×O q6 + 4×H q1 = 16 e → 8 doubly occupied
     method.max_iter = 120;
@@ -273,14 +267,11 @@ int main() {
     method.local_pp_on_grid = true;
     method.d4 = true;
     method.d4_atm = true;
-    method.build(atoms);
-
-    const cpu::linalg::RealMatrix* guess =
-        eval.last_result().C.size() > 0 ? &eval.last_result().C : nullptr;
+    method.build(frame);
 
     const auto t2 = clock::now();
-    const auto sfd = cpu::gpw::gpw_stress_fd(atoms, method, kStrainH,
-                                             {true, false, false}, guess);
+    const auto sfd =
+        cpu::gpw::gpw_stress_fd(frame, method, kStrainH, {true, false, false});
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -293,8 +284,7 @@ int main() {
         return 1;
     }
 
-    cpu::gpw::GpwDft method2b;
-    method2b.cell[0] = method2b.cell[1] = method2b.cell[2] = L * kAng2Bohr;
+    cpu::gpw::GpwDft method2b{{O, H}};
     method2b.cutoff_ry = 200.0;
     method2b.n_occ = 8;
     method2b.max_iter = 120;
@@ -305,11 +295,11 @@ int main() {
     method2b.local_pp_on_grid = true;
     method2b.d4 = true;
     method2b.d4_atm = false; // two-body only
-    method2b.build(atoms);
+    method2b.build(frame);
 
     const auto t4 = clock::now();
-    const auto s2b = cpu::gpw::gpw_stress(atoms, method2b, kStrainH,
-                                          {true, false, false}, guess);
+    const auto s2b = cpu::gpw::gpw_stress(frame, method2b, eval.last_result(),
+                                          kStrainH, {true, false, false});
     const auto t5 = clock::now();
     const double wall_2b_s = std::chrono::duration<double>(t5 - t4).count();
 

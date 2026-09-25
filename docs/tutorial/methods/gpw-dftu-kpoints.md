@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-dftu-kpoints` |
-| Regression | `regressions/gpw/gpw-dftu-kpoints/` |
 | Public API | `cpu::gpw::GpwDft` members `k_mesh` / `k_points` + `k_point_weights`, `k_time_reversal`, `n_alpha`/`n_beta`, `std::vector<PlusU> plus_u` |
 | Roadmap | `docs/roadmap/dft.md` — multi-k Dudarev DFT+U SCF (`reg_gpw-dftu-kpoints`) ✓ |
 | Perf | **`perf_exempt`** (no fair absolute CP2K energy twin on the H₂ toy) |
@@ -24,7 +23,7 @@ high-spin **H₂** (DZV-GTH-PADE) with PADE LSD, periodic 8 Bohr cell, and
 Monkhorst–Pack \(2\times 2\times 2\) (time-reversal → 4 k). Decisive gates are
 **internal identities** (Γ-limit complex vs real Γ-UKS+U; U-activation floor;
 absolute ATV energy pin). An offline CP2K 2026.1 twin input ships under
-`tools/cp2k_oracle/inputs/gpw-dftu-kpoints/` but reports **unphysical
+CP2K oracle but reports **unphysical
 Mulliken charges** on this toy (pathological \(E_U\)) — **not** an absolute
 energy twin. Literature-facing PLUS_U numbers remain the Γ NiO molecule pin
 (`gpw-dftu-nio`). Product gate: `reg_gpw-dftu-kpoints`. Fair wall:
@@ -96,13 +95,15 @@ matrix eigenvalues outside \([0,1]\)); the regression only requires
 ## Implementation
 
 Public surface: concrete `cpu::gpw::GpwDft` members only (**no** `*Config`
-bag, **no** `make_*` / `build_*`). The regression uses the solver API
-directly (`build` + `run` on `GpwAtom` rows). Frame-level
-`GPWEvaluator` exposes `plus_u` for Γ PLUS_U product paths; multi-k members
-(`k_mesh`, `k_points`, …) live on `GpwDft` as documented on the roadmap
-product surface for this slug.
+bag, **no** `make_*` / `build_*`). The regression uses the method API
+directly (`build(frame)` + `run(frame)`). `plus_u` and the multi-k members
+(`k_mesh`, `k_points`, …) all live on `GpwDft`; `GPWEvaluator` binds the
+configured method into a driver slot.
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -115,17 +116,21 @@ using cpu::gpw::PlusU;
 using cpu::gpw::XcKind;
 
 // High-spin H2 toy — 8 Bohr cubic cell, DZV-GTH-PADE, periodic
-const double L = 8.0; // Bohr
-const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-const double r0[3] = {0.5 * L - 0.7, 0.5 * L, 0.5 * L};
-const double r1[3] = {0.5 * L + 0.7, 0.5 * L, 0.5 * L};
-std::vector<cpu::gpw::GpwAtom> atoms;
-atoms.emplace_back(r0, bH, pH, 1);
-atoms.emplace_back(r1, bH, pH, 1);
+const double L = 8.0 * units::kBohrInAngstrom;   // 8 Bohr [Å]
+const double d = 0.7 * units::kBohrInAngstrom;   // ±0.7 Bohr [Å]
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 1;
+    frame.span(kAtom_x)[i] = 0.5 * L + (i == 0 ? -d : d);
+    frame.span(kAtom_y)[i] = 0.5 * L;
+    frame.span(kAtom_z)[i] = 0.5 * L;
+}
+frame.box = cpu::Box::cubic(L);
 
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = L;
+GpwDft m{{cpu::gpw::Kind{
+    molrs::Element::H,
+    cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+    cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
 m.cutoff_ry = 120.0;
 m.n_alpha = 2;   // high-spin: both e− α
 m.n_beta = 0;
@@ -136,11 +141,10 @@ m.xc = XcKind::PADE;
 m.k_mesh[0] = m.k_mesh[1] = m.k_mesh[2] = 2;  // MP 2×2×2
 m.k_time_reversal = true;                      // → n_kpts == 4
 m.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_minus_j_ev=*/4.0});
-m.build(atoms);
-const GpwResult r = m.run(atoms);
+m.build(frame);
+const GpwResult r = m.run(frame);   // also frame.meta[kEnergy] [eV]
 
 // r.e_total [Ha], r.e_dftu [Ha], r.n_kpts, r.converged
-// Public Frame energy (eV) remains the GPWEvaluator / single_point path;
 // this regression pins Hartree totals on GpwResult.
 ```
 
@@ -162,23 +166,22 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-dftu-kpoints -j$(nproc)
-  ./build/regressions/reg_gpw-dftu-kpoints
+  reg_gpw-dftu-kpoints
 '
 ```
 
 | Piece | Path |
 | ----- | ---- |
-| Public `GpwDft::{k_mesh,plus_u,…}` / `GpwResult::{e_dftu,n_kpts}` | `include/atomiverse/cpu/gpw/gpw_solver.h` |
-| Dudarev multi-k E/V (internal) | `include/atomiverse/cpu/gpw/internal/dft_plus_u.h` (`apply_dft_plus_u_k`) |
+| Public `GpwDft::{k_mesh,plus_u,…}` / `GpwResult::{e_dftu,n_kpts}` | `gpw_solver.h` |
+| Dudarev multi-k E/V (internal) | `dft_plus_u.h` (`apply_dft_plus_u_k`) |
 | SCF wire-up (`run_gpw_scf_kpoints` / `_uks`) | `src/cpu/gpw/gpw_solver.cpp` |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_dftu.cpp` |
-| Regression | `regressions/gpw/gpw-dftu-kpoints/reg_gpw-dftu-kpoints.cpp` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/gpw-dftu-kpoints/h2_uks_dftu_kpoints.inp` |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (vs CP2K + internal identities)
 
-Source: [`regressions/gpw/gpw-dftu-kpoints/REFERENCE.md`](../../../regressions/gpw/gpw-dftu-kpoints/REFERENCE.md).
-Oracle: offline **CP2K 2026.1** twin **ships** under `tools/cp2k_oracle/` but is
+Source: case `gpw-dftu-kpoints` pin.
+Oracle: offline **CP2K 2026.1** twin **ships** under CP2K oracle but is
 **pathology-noted** (not absolute energy gate). **Never** live in ctest. Pin
 date: **2026-07-26**.
 
@@ -213,7 +216,7 @@ date: **2026-07-26**.
 
 | Item | Value |
 | ---- | ----- |
-| Input | `tools/cp2k_oracle/inputs/gpw-dftu-kpoints/h2_uks_dftu_kpoints.inp` |
+| Input | CP2K oracle |
 | Twin settings | same H₂ / DZV / PADE / U=4 eV / MP 2×2×2 / cutoff 120 Ry |
 | SCF | converged in **42** steps |
 | Reported \(E_U\) | **−158.76078199959053** Ha (unphysical Mulliken) |
@@ -241,15 +244,15 @@ Offline re-run (operator only; not ctest):
 export LD_LIBRARY_PATH=$CP2K_ROOT/lib:$LD_LIBRARY_PATH
 export CP2K_DATA_DIR=$CP2K_ROOT/share/cp2k/data
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_SET,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/gpw-dftu-kpoints/h2_uks_dftu_kpoints.inp
+# copy <CP2K oracle input for this case>
 OMP_NUM_THREADS=8 cp2k.psmp -i h2_uks_dftu_kpoints.inp -o h2_uks_dftu_kpoints.out
 ```
 
 ## Performance
 
 Source: fair wall table in
-`regressions/gpw/gpw-dftu-kpoints/REFERENCE.md` (2026-07-26). Handoff:
-the case `REFERENCE.md` — **`perf_exempt`**. Same pattern as
+case `gpw-dftu-kpoints` pin (2026-07-26). Handoff:
+the case pin notes — **`perf_exempt`**. Same pattern as
 `gpw-kpoints-uks`: decisive gates are internal identities, not
 \(T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) against a fair absolute energy twin.
 
@@ -269,8 +272,8 @@ bulk NiO multi-k PLUS_U wall or multigrid parity.
   absolute \(\lvert\Delta E\rvert\) vs CP2K on this system; use A1–A3.
 - **No multi-k DFT+U forces / stress** on this regression; stress PLUS_U is
   Γ-scoped (`gpw-dftu-stress`).
-- **`GPWEvaluator` multi-k members** are not the regression entry point —
-  `GpwDft` carries `k_mesh` / `k_points` for this capability.
+- **`GPWEvaluator`** is not the regression entry point — `GpwDft` carries
+  `k_mesh` / `k_points` / `plus_u` and is run on the Frame directly.
 - **OT + multi-k + DFT+U** unsupported; multigrid / nonperiodic k-path throw.
 - **UKS + GGA DFT+U** out of scope (PADE LSD only here).
 - **Liechtenstein full \(U,J\)** and PAW/GAPW projectors out of scope.
@@ -279,12 +282,12 @@ bulk NiO multi-k PLUS_U wall or multigrid parity.
 
 ## References
 
-- Offline pin + fair wall: [`regressions/gpw/gpw-dftu-kpoints/REFERENCE.md`](../../../regressions/gpw/gpw-dftu-kpoints/REFERENCE.md)
-- Regression consumer: [`reg_gpw-dftu-kpoints.cpp`](../../../regressions/gpw/gpw-dftu-kpoints/reg_gpw-dftu-kpoints.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/gpw-dftu-kpoints/`](../../../tools/cp2k_oracle/inputs/gpw-dftu-kpoints/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin + fair wall: case `gpw-dftu-kpoints` pin
+- Regression consumer: `reg_gpw-dftu-kpoints.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Γ DFT+U product twin: [gpw-dftu-nio](gpw-dftu-nio.md),
-  [`regressions/gpw/gpw-dftu-nio/REFERENCE.md`](../../../regressions/gpw/gpw-dftu-nio/REFERENCE.md)
+  case `gpw-dftu-nio` pin
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md)
 - V. I. Anisimov, J. Zaanen, O. K. Andersen, *Phys. Rev. B* **44**, 943 (1991) — DFT+U

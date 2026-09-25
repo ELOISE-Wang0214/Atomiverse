@@ -36,15 +36,17 @@
 #include <vector>
 
 #include "atomiverse/core/stage.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/g0w0.h"           // G0W0Result
 #include "atomiverse/cpu/gpw/gaussian_basis.h" // GaussianBasis
 #include "atomiverse/cpu/gpw/gth_potential.h" // GthPotential, GthNonlocalChannel
 #include "atomiverse/cpu/gpw/internal/collocate.h"
-#include "atomiverse/cpu/gpw/internal/dftd3.h" // kD3Cp2kPairCutoffBohr
-#include "atomiverse/cpu/gpw/mp2.h"            // Mp2Result
-#include "atomiverse/cpu/gpw/rpa.h"            // RpaResult
+#include "atomiverse/cpu/gpw/internal/dftd3.h"    // kD3Cp2kPairCutoffBohr
+#include "atomiverse/cpu/gpw/internal/gpw_atom.h" // internal::GpwAtom
+#include "atomiverse/cpu/gpw/mp2.h"               // Mp2Result
+#include "atomiverse/cpu/gpw/rpa.h"               // RpaResult
 #include "atomiverse/cpu/gpw/stages/density_stage.h"
 #include "atomiverse/cpu/gpw/stages/diagonalize_stage.h"
 #include "atomiverse/cpu/gpw/stages/gpw_converged.h"
@@ -77,37 +79,22 @@ struct PlusU {
         : element(element), l(l), u_minus_j_ev(u_minus_j_ev) {}
 };
 
-/// @brief One atom's GPW data: valence charge, basis, and GTH pseudopotential.
-struct GpwAtom {
-    double z_val = 0.0;        ///< valence charge (electrons it contributes).
-    int z = 0;                 ///< atomic number Z (for DFT-D3; 0 = unset).
-    double pos[3] = {0, 0, 0}; ///< position [Bohr].
-    std::vector<GridBasisFunction>
-        basis; ///< contracted GTOs, already centered at pos.
-    /// @brief Angular momentum ℓ of each entry in `basis` (same length; for DFT+U).
-    std::vector<int> basis_l;
-    double rloc = 0.0;        ///< GTH local radius.
-    std::vector<double> cloc; ///< GTH local short-range C coefficients.
-    std::vector<GthNonlocalChannel>
-        nonlocal; ///< GTH nonlocal projector channels.
+/// @brief Per-element GPW inputs: contracted Gaussian basis + GTH potential.
+///
+/// The method maps every atom's Z (`kAtom_type`) onto the matching entry of
+/// `GpwDft::kinds`; a Z with no entry throws at `build()` / `run()`.
+struct Kind {
+    molrs::Element element; ///< Element this entry applies to.
+    GaussianBasis
+        basis;        ///< Contracted Gaussian basis (e.g. DZVP-MOLOPT-SR-GTH).
+    GthPotential pot; ///< GTH pseudopotential (e.g. GTH-PADE-q1).
 
-    GpwAtom() = default;
-
-    /// @brief Construct from a contracted basis + GTH potential.
-    ///
-    /// Converts each contracted shell of `basis` into Cartesian
-    /// GridBasisFunctions centered at `pos`, folding the per-primitive Gaussian
-    /// normalization N(alpha,L) = (2 alpha/pi)^{3/4} (4 alpha)^{L/2} into the
-    /// coefficient (the L alpha-power is what fixes the spanned space to match
-    /// CP2K; the constant factor is irrelevant to the energy). Angular
-    /// functions are the (2L+1) pure-spherical real solid harmonics from
-    /// real_solid_harmonics(L), for any L.
-    /// @param pos   Atom position [Bohr]; z_val is taken from `pot.zion`.
-    /// @param basis Contracted Gaussian basis to center at `pos`.
-    /// @param pot   GTH pseudopotential (local + nonlocal channels).
-    /// @param z     Atomic number Z (needed only for DFT-D3, GpwDft.d3).
-    GpwAtom(const double pos[3], const GaussianBasis& basis,
-            const GthPotential& pot, int z = 0);
+    /// @brief Bind one element to its basis and pseudopotential.
+    /// @param element Element (Z) the entry applies to.
+    /// @param basis Contracted Gaussian basis for that element.
+    /// @param pot GTH pseudopotential for that element.
+    Kind(molrs::Element element, GaussianBasis basis, GthPotential pot)
+        : element(element), basis(std::move(basis)), pot(std::move(pot)) {}
 };
 
 /// @brief Exchange-correlation functional choice.
@@ -289,14 +276,27 @@ struct GpwResult {
 
 /// @brief Concrete GPW DFT method — `cpu::Driver<gpw::Phase>` loop node.
 ///
-/// Construction fixes the configuration; `build()` runs one-time fail-fast
-/// validation against a reference atom set (no-fallback); `run()` is
-/// re-entrant and rebuilds geometry-dependent structures per call (grids,
-/// lattice images, S/T/Vpp — same policy as `PW`). All **DIIS** / linear-mix
-/// self-consistency paths (Γ RKS, Γ UKS, multi-k RKS, multi-k UKS) are owned
-/// as Driver stages (`ks_build → mix → diagonalize → density → check`) with
-/// path-local stage Ops. **OT** free loops remain residual (different control
-/// flow). Move-only. Public surface is members + `run`/`build` — no `*Config`.
+/// Frame in / Frame out, same shape as `cpu::scf::RHF`:
+///
+/// ```cpp
+/// cpu::gpw::GpwDft dft{{{molrs::Element::H,
+///                        cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
+///                        cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
+/// dft.cutoff_ry = 280.0;
+/// dft.build(frame);                  // fail-fast validation
+/// dft.run(frame);                    // eV on frame.meta[kEnergy]
+/// dft.forces(frame);                 // eV/Å on kAtom_f*, eV on kEnergy
+/// ```
+///
+/// Geometry (positions [Å], Z in `kAtom_type`, orthorhombic `box`) comes from
+/// the Frame; per-element basis + GTH from `kinds`; algorithm parameters are
+/// public members (no `*Config`). `build()` runs one-time fail-fast validation
+/// (no-fallback); `run()` is re-entrant and rebuilds geometry-dependent
+/// structures per call (grids, lattice images, S/T/Vpp — same policy as
+/// `PW`). All **DIIS** / linear-mix self-consistency paths (Γ RKS, Γ UKS,
+/// multi-k RKS, multi-k UKS) are owned as Driver stages (`ks_build → mix →
+/// diagonalize → density → check`) with path-local stage Ops. **OT** free
+/// loops remain residual (different control flow). Move-only.
 ///
 /// **CUDA product freeze:** a full CUDA GPW method must present this same
 /// public shape (members + `build`/`run`/`last_result` + forces/stress family);
@@ -304,15 +304,19 @@ struct GpwResult {
 /// the user API. Contract: `.claude/notes/cuda-gpw-public-shape.md`.
 class GpwDft : public cpu::Driver<ATV::gpw::Phase> {
   public:
-    /// Un-hide `cpu::Driver::build()` (Plan compile) alongside `build(atoms)`.
+    /// Un-hide `cpu::Driver::build()` (Plan compile) alongside `build(frame)`.
     using cpu::Driver<ATV::gpw::Phase>::build;
 
-    // ── Method parameters (were GpwConfig fields) ─────────────────────
-    double cell[3] = {0, 0, 0}; ///< orthorhombic box lengths [Bohr].
-    double cutoff_ry = 300.0;   ///< density grid cutoff [Ry].
-    int ngrids = 1;             ///< CP2K multigrid levels.
-    double rel_cutoff = 0.0;    ///< CP2K REL_CUTOFF [Ry].
-    int n_occ = 0;              ///< RKS: doubly-occupied orbitals (N_elec / 2).
+    // ── Method parameters ─────────────────────────────────────────────
+    /// @brief Per-element basis + GTH potential, matched on Z (`kAtom_type`).
+    std::vector<Kind> kinds;
+    double cutoff_ry = 300.0; ///< density grid cutoff [Ry].
+    int ngrids = 1;           ///< CP2K multigrid levels.
+    double rel_cutoff = 0.0;  ///< CP2K REL_CUTOFF [Ry].
+    /// @brief RKS doubly-occupied orbitals. 0 (default) derives
+    ///        \(N_{\mathrm{val}}/2\) from the kinds' GTH valence charges at
+    ///        `build()` (odd valence count throws — set `n_alpha`/`n_beta`).
+    int n_occ = 0;
     /// UKS occupations (valence electrons per spin). When
     /// `n_alpha + n_beta > 0`, the unrestricted path is used and `n_occ` is
     /// ignored. High-spin O₂ (GTH-q6, 12 valence e⁻, multiplicity 3) → (7, 5).
@@ -458,105 +462,64 @@ class GpwDft : public cpu::Driver<ATV::gpw::Phase> {
     ///        full AO spectrum; this is API parity.
     int extra_bands = 0;
 
+    /// @brief Empty method; fill `kinds` before `build()`.
     GpwDft() = default;
+    /// @brief Method over the given per-element basis + GTH entries.
+    /// @param kinds One entry per element present in the Frames to solve.
+    explicit GpwDft(std::vector<Kind> kinds) : kinds(std::move(kinds)) {}
     GpwDft(const GpwDft&) = delete;
     GpwDft& operator=(const GpwDft&) = delete;
     GpwDft(GpwDft&&) noexcept = default;
     GpwDft& operator=(GpwDft&&) noexcept = default;
 
-    /// @brief One-time fail-fast validation against a reference system.
+    /// @brief One-time fail-fast validation against a reference Frame.
     ///
-    /// @param reference Atoms the solver will be run on (used for
-    ///        structural validation only; `run()` takes the live set).
-    /// @throws std::invalid_argument when the atom set is empty, when
-    ///         neither RKS (`n_occ >= 1`) nor UKS (`n_alpha+n_beta >= 1`) is
-    ///         set, or a periodic cell edge is non-positive.
-    void build(const std::vector<GpwAtom>& reference);
+    /// Reads the cell from `reference.box` (orthorhombic; Å → Bohr), maps
+    /// every Z onto `kinds`, and derives `n_occ` from the valence count when
+    /// RKS and `n_occ == 0`.
+    /// @param reference Frame the method will be run on (positions [Å], Z in
+    ///        `kAtom_type`, orthorhombic `box` [Å]).
+    /// @throws std::invalid_argument when the Frame is empty, a Z has no
+    ///         `Kind`, the box is sheared, the RKS valence count is odd with
+    ///         `n_occ == 0`, or a parameter combination is unsupported.
+    void build(const Frame& reference);
 
     /// @return true when this method is configured for UKS (`n_alpha+n_beta>0`).
     bool is_uks() const { return n_alpha + n_beta > 0; }
 
-    /// @brief Run the GPW SCF (RKS or UKS) at the given geometry.
+    /// @brief Run the GPW SCF (RKS or UKS) at the Frame's geometry.
     ///
-    /// Re-entrant: geometry-dependent structures are rebuilt per call.
-    /// @param atoms Atom set at the current geometry [Bohr].
-    /// @param guess_C Optional warm-start MO coefficients from an earlier run.
-    /// @param guess_P Optional initial-density override (n_ao × n_ao) —
-    ///        XL-BOMD auxiliary density or SGCP ASPC prediction. RKS:
-    ///        total closed-shell \(P\). UKS: \(P_\alpha\) (requires
-    ///        non-null `guess_P_beta`). On the DIIS path the density
-    ///        replaces the C0-derived \(P\). On the **OT** path the
-    ///        density is purified to natural orbitals that seed the OT
-    ///        manifold (RKS: total \(P\) → \(C_0\); UKS: dual-spin
-    ///        \(P_\alpha/P_\beta\) → \(C_a/C_b\) — SGCP OT corrector).
-    ///        **Γ path only** for real `guess_P` — multi-k uses
-    ///        `guess_P_k`. Shape mismatch throws inside the solve.
-    /// @param guess_P_beta Optional UKS \(P_\beta\) initial density
-    ///        (n_ao × n_ao). Must be null for RKS. For UKS both spin
-    ///        guesses are required together (no silent cold start of one
-    ///        channel).
-    /// @param guess_P_k Optional multi-k initial densities (one complex
-    ///        Hermitian matrix per sampled k, size == `n_kpts` after mesh /
-    ///        TR fold). RKS: total \(P_k\). UKS: α-spin \(P_k^\alpha\)
-    ///        (requires matching `guess_P_k_beta`). On the **OT** path
-    ///        each \(P_k\) (RKS total) or \(P_k^\sigma\) (UKS dual-spin)
-    ///        is purified to natural orbitals that seed the per-k OT
-    ///        manifold(s) (complex mirror of the Γ `guess_P` warm start —
-    ///        multi-k SGCP OT corrector). Real `guess_P` with a
-    ///        multi-k mesh throws (no silent Γ guess on the k path).
-    /// @param guess_P_k_beta Optional multi-k UKS β densities \(P_k^\beta\)
-    ///        (size == `n_kpts`; UKS-only — RKS + non-null throws).
-    /// @return The owned result of this run (valid until the next `run()`).
+    /// Re-entrant: geometry and cell are re-read from `frame` on every call,
+    /// so a Frame whose atoms or box moved since `build()` is solved as is.
+    /// Writes the total energy [eV] (Mermin free energy under smearing) to
+    /// `frame.meta[kEnergy]`.
+    /// @param frame Positions [Å], Z in `kAtom_type`, orthorhombic box [Å].
+    /// @return The owned result of this run [Hartree] (valid until the next
+    ///         `run()` / `forces()`).
     /// @throws std::logic_error when called before `build()`.
-    /// @throws std::invalid_argument for UKS with only one spin guess,
-    ///         RKS + non-null `guess_P_beta` / `guess_P_k_beta`, multi-k +
-    ///         real-only density guess, multi-k UKS partial k-spin guess,
-    ///         or shape / count mismatch.
-    GpwResult&
-    run(const std::vector<GpwAtom>& atoms,
-        const linalg::RealMatrix* guess_C = nullptr,
-        const linalg::RealMatrix* guess_P = nullptr,
-        const linalg::RealMatrix* guess_P_beta = nullptr,
-        const std::vector<linalg::CplxMatrix>* guess_P_k = nullptr,
-        const std::vector<linalg::CplxMatrix>* guess_P_k_beta = nullptr);
+    /// @throws std::invalid_argument when a Z has no `Kind` or the box is
+    ///         sheared.
+    GpwResult& run(Frame& frame);
+
+    /// @brief SCF + analytic ionic forces at the Frame's geometry.
+    ///
+    /// One SCF (as `run`), then Hellmann–Feynman + Pulay forces at the
+    /// converged density (Γ/multi-k, RKS/UKS, smearing, DFT+U, dispersion as
+    /// configured). Writes `kAtom_fx/fy/fz` [eV/Å] (overwritten, not
+    /// accumulated) and `frame.meta[kEnergy]` [eV].
+    /// @param frame Positions [Å], Z in `kAtom_type`, orthorhombic box [Å].
+    /// @return The owned SCF result of this call [Hartree].
+    /// @throws std::logic_error when called before `build()`.
+    /// @throws std::runtime_error when the SCF did not converge (forces at an
+    ///         unconverged density are not a gradient of anything).
+    GpwResult& forces(Frame& frame);
 
     /// @brief Result of the most recent `run()` (default-constructed —
     ///        `converged == false` — before the first run).
     const GpwResult& last_result() const { return result_; }
 
-    /// @brief Standalone Γ overlap \(S\) at the given geometry — basis
-    ///        assembly only, no collocation / Poisson / XC.
-    ///
-    /// Bit-identical to the `GpwResult::S` a fixed-density `run()` produces at
-    /// the same geometry: the same flattened basis, the same Gaussian-tail
-    /// radii, the same pair-image counts and the same summation order (one
-    /// shared assembly routine, not a re-implementation). Car–Parrinello uses
-    /// it to align the propagated coefficients against \(S\) **before** the
-    /// step's single KS evaluation, so the step evaluates the KS matrix once
-    /// instead of twice.
-    ///
-    /// @param atoms Atom set at the current geometry [Bohr] (as for `run`).
-    /// @return Overlap matrix \(S\) [nb × nb], dimensionless.
-    /// @throws std::logic_error when called before `build()`.
-    /// @throws std::invalid_argument when this method is configured for the
-    ///         k-point path (non-Γ `k_mesh`, explicit `k_points`, or metallic
-    ///         `smearing`) — that path has no real Γ overlap; use
-    ///         `overlap_k()`.
-    linalg::RealMatrix overlap(const std::vector<GpwAtom>& atoms) const;
-
-    /// @brief Standalone multi-k Bloch overlaps \(S_k\) at the given geometry.
-    ///
-    /// The k-point twin of `overlap()`: Hermitian nb × nb per sampled k, in
-    /// the same k order and bit-identical to the `GpwResult::S_k` a
-    /// fixed-density multi-k `run()` produces (same shared phased assembly).
-    ///
-    /// @param atoms Atom set at the current geometry [Bohr] (as for `run`).
-    /// @return One \(S_k\) [nb × nb] per sampled k (size == `n_kpts`).
-    /// @throws std::logic_error when called before `build()`.
-    /// @throws std::invalid_argument when this method is configured for the Γ
-    ///         path (no k mesh / list / smearing) — use `overlap()`.
-    std::vector<linalg::CplxMatrix>
-    overlap_k(const std::vector<GpwAtom>& atoms) const;
+    /// @brief Orthorhombic cell [Bohr] of the most recent `build()` / `run()`.
+    const std::array<double, 3>& cell_bohr() const { return cell_; }
 
     /// @brief GPW MP2 correlation on the converged orbitals of the last
     ///        `run()` — RKS Γ/multi-k or UKS Γ/multi-k (UMP2).
@@ -583,14 +546,14 @@ class GpwDft : public cpu::Driver<ATV::gpw::Phase> {
     ///
     /// Virtual space capped by `mp2_n_virt` (per spin for UMP2); `e_corr`
     /// applies `mp2_os_scale` / `mp2_ss_scale`.
-    /// @param atoms Same geometry [Bohr] the last `run()` converged on.
+    /// Runs at the geometry the last `run()` converged on.
     /// @return The owned MP2 result (valid until the next `mp2()`).
     /// @throws std::logic_error before `build()` or a converged `run()`.
     /// @throws std::invalid_argument for `use_ot` (no canonical virtuals),
     ///         when multi-k `C_k` / `C_k_beta` is missing, when multi-k
     ///         and `!mp2_ri`, when no virtuals remain, or for a vanishing
     ///         min HOMO–LUMO gap (< 1e-6 Ha).
-    const Mp2Result& mp2(const std::vector<GpwAtom>& atoms);
+    const Mp2Result& mp2();
 
     /// @brief GPW direct RPA (dRPA) correlation on the converged orbitals of
     ///        the last `run()` — Γ/multi-k RKS, or **Γ/multi-k UKS (URPA)**.
@@ -625,7 +588,7 @@ class GpwDft : public cpu::Driver<ATV::gpw::Phase> {
     ///
     /// Virtual space capped by `mp2_n_virt`. Total energy is dRPA@KS
     /// (\(E_{\mathrm{SCF}}+E_c\); no EXX replacement).
-    /// @param atoms Same geometry [Bohr] the last `run()` converged on.
+    /// Runs at the geometry the last `run()` converged on.
     /// @return The owned RPA result (valid until the next `direct_rpa()`).
     /// @throws std::logic_error before `build()` or a converged `run()`,
     ///         or when UKS β orbitals are missing.
@@ -633,7 +596,7 @@ class GpwDft : public cpu::Driver<ATV::gpw::Phase> {
     ///         `C_k_beta` is missing, when multi-k and `!mp2_ri`, when no
     ///         virtuals remain, or for a vanishing HOMO–LUMO gap (< 1e-6 Ha).
     /// @throws std::runtime_error when the dRPA reduction is ill-conditioned.
-    const RpaResult& direct_rpa(const std::vector<GpwAtom>& atoms);
+    const RpaResult& direct_rpa();
 
     /// @brief Spectral G0W0 quasiparticle energies on the converged KS
     ///        orbitals of the last `run()` — Γ/multi-k RKS, or **Γ/multi-k
@@ -655,7 +618,7 @@ class GpwDft : public cpu::Driver<ATV::gpw::Phase> {
     ///
     /// Virtual space for screening capped by `mp2_n_virt` (0 = all kept
     /// virtuals); QP levels cover every MO of the reported spectrum.
-    /// @param atoms Same geometry [Bohr] the last `run()` converged on.
+    /// Runs at the geometry the last `run()` converged on.
     /// @return The owned G0W0 result (valid until the next `g0w0()`).
     /// @throws std::logic_error before `build()` or a converged `run()`,
     ///         or when UKS β orbitals are missing.
@@ -664,11 +627,54 @@ class GpwDft : public cpu::Driver<ATV::gpw::Phase> {
     ///         virtuals remain, or for a vanishing HOMO–LUMO gap
     ///         (< 1e-6 Ha).
     /// @throws std::runtime_error when the dRPA reduction is ill-conditioned.
-    const G0W0Result& g0w0(const std::vector<GpwAtom>& atoms);
+    const G0W0Result& g0w0();
 
   private:
+    friend struct internal::GpwDftAccess;
+
+    /// @brief Atom-level validation behind `build(frame)` (cell already set).
+    void build_atoms_(const std::vector<internal::GpwAtom>& reference);
+
+    /// @brief Atom-level SCF behind `run(frame)`.
+    ///
+    /// @param atoms Atom set at the current geometry [Bohr].
+    /// @param guess_C Optional warm-start MO coefficients from an earlier run.
+    /// @param guess_P Optional initial-density override (n_ao × n_ao) —
+    ///        XL-BOMD auxiliary density or SGCP ASPC prediction. RKS: total
+    ///        closed-shell \(P\). UKS: \(P_\alpha\) (requires non-null
+    ///        `guess_P_beta`). DIIS replaces the C0-derived \(P\); OT purifies
+    ///        it to natural orbitals seeding the manifold. Γ path only.
+    /// @param guess_P_beta Optional UKS \(P_\beta\) (null for RKS; both spin
+    ///        guesses are required together).
+    /// @param guess_P_k Optional multi-k initial densities (size == `n_kpts`;
+    ///        RKS total / UKS α). Real `guess_P` with a k mesh throws.
+    /// @param guess_P_k_beta Optional multi-k UKS β densities.
+    /// @return The owned result of this run.
+    /// @throws std::logic_error when called before `build()`.
+    /// @throws std::invalid_argument for partial / wrong-spin / wrong-path
+    ///         guesses or shape / count mismatch.
+    GpwResult&
+    run_atoms_(const std::vector<internal::GpwAtom>& atoms,
+               const linalg::RealMatrix* guess_C = nullptr,
+               const linalg::RealMatrix* guess_P = nullptr,
+               const linalg::RealMatrix* guess_P_beta = nullptr,
+               const std::vector<linalg::CplxMatrix>* guess_P_k = nullptr,
+               const std::vector<linalg::CplxMatrix>* guess_P_k_beta = nullptr);
+
+    /// @brief Γ overlap \(S\) at `atoms` — basis assembly only; bit-identical
+    ///        to the `GpwResult::S` of a fixed-density run at that geometry.
+    /// @throws std::invalid_argument on the k-point path.
+    linalg::RealMatrix
+    overlap_atoms_(const std::vector<internal::GpwAtom>& atoms) const;
+
+    /// @brief Multi-k Bloch overlaps \(S_k\) at `atoms` (k-point twin of
+    ///        `overlap_atoms_`).
+    /// @throws std::invalid_argument on the Γ path.
+    std::vector<linalg::CplxMatrix>
+    overlap_k_atoms_(const std::vector<internal::GpwAtom>& atoms) const;
+
     /// @brief Full SCF body (was free `run_gpw_scf_impl`); owns path dispatch.
-    GpwResult run_impl_(const std::vector<GpwAtom>& atoms,
+    GpwResult run_impl_(const std::vector<internal::GpwAtom>& atoms,
                         const linalg::RealMatrix* guess_C,
                         const linalg::RealMatrix* guess_P,
                         const linalg::RealMatrix* guess_P_beta,
@@ -737,6 +743,9 @@ class GpwDft : public cpu::Driver<ATV::gpw::Phase> {
             build_uks_H,
         GpwResult& res);
 
+    std::array<double, 3>
+        cell_{}; ///< Orthorhombic cell [Bohr] (from Frame box).
+    std::vector<internal::GpwAtom> last_atoms_; ///< Geometry of the last run.
     GpwResult result_;       ///< Owned result buffer (last run).
     Mp2Result mp2_result_;   ///< Owned MP2 result buffer (last mp2()).
     RpaResult rpa_result_;   ///< Owned RPA result buffer (last direct_rpa()).
@@ -765,15 +774,19 @@ class GpwDft : public cpu::Driver<ATV::gpw::Phase> {
     std::unique_ptr<GpwConverged> converged_stage_;
 };
 
-/// @brief Finite-difference forces F_a = -dE/dR_a via central differences.
+/// @brief Finite-difference forces F_a = -dE/dR_a via central differences
+///        (oracle / twin of `GpwDft::forces`).
 ///
-/// Runs a `GpwDft` at +/- h displacements of each atom along each axis
-/// (6*N_atoms SCF solves). Correct but expensive; product path is
-/// `gpw_forces_analytic`. Returns forces [Hartree/Bohr], one xyz triple per atom.
-/// @param h Displacement step [Bohr].
+/// Runs a fresh copy of `method` at ±h displacements of each atom along each
+/// axis (6·N SCF solves). Correct but expensive — the product path is
+/// `GpwDft::forces`. `frame` is not modified.
+/// @param frame Geometry (positions [Å], Z in `kAtom_type`, orthorhombic box).
+/// @param method Configured method (parameters + kinds; need not be built).
+/// @param h Displacement step [Å] (default 10⁻³ Bohr).
+/// @return Forces [eV/Å], one xyz triple per atom.
 std::vector<std::array<double, 3>>
-gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
-              double h = 1e-3);
+gpw_forces_fd(const Frame& frame, const GpwDft& method,
+              double h = 1e-3 * units::kBohrInAngstrom);
 
 /// @brief Analytic cell stress σ [Hartree/Bohr³], Voigt order xx,yy,zz,xy,xz,yz.
 ///
@@ -789,18 +802,15 @@ gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
 /// `ts` / `xdm` / `mbd`) rebuilt under strain. Off-diagonal shear is 0
 /// (orthorhombic cell only). Multi-SCF oracle: `gpw_stress_fd`.
 ///
-/// @param atoms Geometry [Bohr] + basis/PP (as for `GpwDft::run`).
-/// @param method SCF configuration; `cell` must match the atom box [Bohr].
+/// @param frame Geometry (positions [Å], Z, orthorhombic box [Å]); unchanged.
+/// @param method Configured method (parameters + kinds; need not be built).
 /// @param h Dimensionless strain step for the fixed-\(P\) energy FD (default 2e-3).
 /// @param axes Per-axis mask (x,y,z); a masked axis skips samples and reports
 ///        exactly 0 — for variable-cell relaxation of constrained box edges.
-/// @param guess_C Optional warm-start MO coefficients for the reference SCF.
 /// @return Voigt stress [Hartree/Bohr³].
-std::array<double, 6> gpw_stress(const std::vector<GpwAtom>& atoms,
-                                 const GpwDft& method, double h = 2e-3,
-                                 const std::array<bool, 3>& axes = {true, true,
-                                                                    true},
-                                 const linalg::RealMatrix* guess_C = nullptr);
+std::array<double, 6>
+gpw_stress(const Frame& frame, const GpwDft& method, double h = 2e-3,
+           const std::array<bool, 3>& axes = {true, true, true});
 
 /// @brief Analytic cell stress σ [Hartree/Bohr³] at a **supplied** state —
 ///        no reference SCF.
@@ -810,24 +820,20 @@ std::array<double, 6> gpw_stress(const std::vector<GpwAtom>& atoms,
 /// `state.P` / `state.C` / `state.eps` (+ β fields for UKS); multi-k fixed
 /// occupations need `state.C_occ_k` / `state.eps_k` (+ β for UKS); multi-k
 /// metallic smear needs `state.C_k` / `state.eps_k` (+ `f_k` or
-/// `e_fermi`+method smear knobs). `state.converged` must be true (a
-/// stationary payload — a converged SCF result, or the zero-SCF linearized
-/// XL-BOMD shadow payload). This is the cell analogue of
-/// `gpw_forces_at_density`: the stress of the energy surface at the density
-/// you already have, used by `GPWEvaluator` for the shadow-density stress
-/// on linearized XL warm steps.
+/// `e_fermi`+method smear knobs). `state.converged` must be true — typically
+/// `method.last_result()` after `method.run(frame)`.
 ///
-/// @param atoms Geometry [Bohr] + basis/PP (as for `GpwDft::run`).
-/// @param method SCF configuration; `cell` must match the atom box [Bohr].
+/// @param frame Geometry the state was converged at (positions [Å], Z, box).
+/// @param method Method that produced `state`.
 /// @param state Stationary payload (see above); `converged` must be true.
 /// @param h Dimensionless strain step for the fixed-\(P\) energy FD (default 2e-3).
 /// @param axes Per-axis mask (x,y,z); a masked axis skips samples and reports
 ///        exactly 0.
 /// @return Voigt stress [Hartree/Bohr³], order xx,yy,zz,xy,xz,yz.
-std::array<double, 6>
-gpw_stress(const std::vector<GpwAtom>& atoms, const GpwDft& method,
-           const GpwResult& state, double h = 2e-3,
-           const std::array<bool, 3>& axes = {true, true, true});
+std::array<double, 6> gpw_stress(const Frame& frame, const GpwDft& method,
+                                 const GpwResult& state, double h = 2e-3,
+                                 const std::array<bool, 3>& axes = {true, true,
+                                                                    true});
 
 /// @brief Multi-SCF strain-FD cell stress σ [Hartree/Bohr³] (oracle / twin).
 ///
@@ -835,17 +841,14 @@ gpw_stress(const std::vector<GpwAtom>& atoms, const GpwDft& method,
 /// Same sign convention and orthorhombic scope as `gpw_stress`. Use only for
 /// dual-gate tests and finite-difference twins — not the product hot path.
 ///
-/// @param atoms Geometry [Bohr] + basis/PP (as for `GpwDft::run`).
-/// @param method SCF configuration; `cell` must match the atom box [Bohr].
+/// @param frame Geometry (positions [Å], Z, orthorhombic box [Å]); unchanged.
+/// @param method Configured method (parameters + kinds; need not be built).
 /// @param h Dimensionless strain step (default 2e-3).
 /// @param axes Per-axis mask (x,y,z); masked axes report exactly 0.
-/// @param guess_C Optional warm-start MO coefficients for every strained SCF.
 /// @return Voigt stress [Hartree/Bohr³].
 std::array<double, 6>
-gpw_stress_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
-              double h = 2e-3,
-              const std::array<bool, 3>& axes = {true, true, true},
-              const linalg::RealMatrix* guess_C = nullptr);
+gpw_stress_fd(const Frame& frame, const GpwDft& method, double h = 2e-3,
+              const std::array<bool, 3>& axes = {true, true, true});
 
 } // namespace gpw
 } // namespace cpu

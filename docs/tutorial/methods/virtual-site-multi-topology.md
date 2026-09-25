@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `virtual-site-multi-topology` |
-| Regression | `regressions/md/virtual-site-multi-topology/` |
 | Public API | `cpu::md::VirtualSites` (+ nested `Place` / `Redistribute` Components); ordinary `PairLJCut` + `PairCoulCut` |
 | Roadmap | map slice E9 molecular water |
 | Oracle | **LAMMPS** `pair_style lj/cut/tip4p/cut` (metal units; offline pin). TIP5P dual-gated by geometry only |
@@ -206,36 +205,36 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_virtual-site-multi-topology -j"$(nproc)"
-  ./build/regressions/reg_virtual-site-multi-topology
+  reg_virtual-site-multi-topology
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/virtual_sites.h` | Public `VirtualSites`, `Place`, `Redistribute` |
+| `virtual_sites.h` | Public `VirtualSites`, `Place`, `Redistribute` |
 | `src/cpu/dynamics/virtual_sites.cpp` | place / Feenstra redistribute / TIP4P α / TIP5P coeffs |
-| `regressions/md/virtual-site-multi-topology/reg_virtual-site-multi-topology.cpp` | Product gate |
+| `reg_virtual-site-multi-topology.cpp` | Product gate |
 | `tests/cpu/dynamics/test_virtual_sites.cpp` | Unit coverage |
 
 Offline LAMMPS twin (never in ctest):
 
 ```bash
-# tools/metalwalls_oracle/inputs/lammps/virtual-site-multi-topology/
+# <MetalWalls oracle input for this case>
 lmp -in in.tip4p_dimer_metal
 ```
 
 ## Validation (vs LAMMPS)
 
 Source:
-[`regressions/md/virtual-site-multi-topology/REFERENCE.md`](../../../regressions/md/virtual-site-multi-topology/REFERENCE.md)
+case `virtual-site-multi-topology` pin
 (offline pin; **ctest never launches LAMMPS**). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
+MetalWalls oracle.
 
 | Field | Value |
 | ----- | ----- |
 | Oracle | **LAMMPS** |
 | `oracle_version` | 30 Mar 2026 - Development (`develop` / `patch_30Mar2026-1074-g7f680de296`) |
-| Twin | `tools/metalwalls_oracle/inputs/lammps/virtual-site-multi-topology/` (`in.tip4p_dimer_metal`, `data.tip4p_dimer_metal`, `log.metal`) |
+| Twin | MetalWalls oracle (`in.tip4p_dimer_metal`, `data.tip4p_dimer_metal`, `log.metal`) |
 | Units | metal (eV, eV/Å) |
 | Command | `lmp -in in.tip4p_dimer_metal` (`run 0`) |
 
@@ -267,8 +266,8 @@ Parent force pin (LAMMPS metal; atoms 1–6 = O1 H1 H2 O2 H3 H4):
 
 ## Performance
 
-Source: `regressions/md/virtual-site-multi-topology/REFERENCE.md`,
-the case `REFERENCE.md` (handoff rounds ratio to **0.084**).
+Source: case `virtual-site-multi-topology` pin,
+the case pin notes (handoff rounds ratio to **0.084**).
 
 Fair wall: ATV `reg_virtual-site-multi-topology` vs LAMMPS
 `in.tip4p_dimer_metal` / `run 0`, serial `OMP_NUM_THREADS=1`, 50 process
@@ -307,12 +306,11 @@ satisfied (\(r \approx 0.084\)).
 
 ## References
 
-- Offline pin: [`regressions/md/virtual-site-multi-topology/REFERENCE.md`](../../../regressions/md/virtual-site-multi-topology/REFERENCE.md)
-- Regression: `regressions/md/virtual-site-multi-topology/reg_virtual-site-multi-topology.cpp`
-- LAMMPS twin: `tools/metalwalls_oracle/inputs/lammps/virtual-site-multi-topology/`
-- Related foothold: `regressions/md/four-site-tip4p-foothold/` (same physics pin, earlier ATV path)
+- Offline pin: case `virtual-site-multi-topology` pin
+- LAMMPS twin: MetalWalls oracle
+- Related foothold: `four-site-tip4p-foothold` (same physics pin, earlier ATV path)
 - Roadmap: `docs/roadmap/molecular-dynamics.md` (virtual sites / TIP4P–TIP5P)
-- Public API: `include/atomiverse/cpu/dynamics/virtual_sites.h`
+- Public API: `virtual_sites.h`
 - Capability map: `.claude/notes/metalwalls-capability-map.md` → **E9**
 - LAMMPS: `pair_style lj/cut/tip4p/cut` (metal)
 - TIP4P: Jorgensen et al., *J. Chem. Phys.* **79**, 926 (1983); *J. Chem. Phys.* **103**, 10252 (1985 context)

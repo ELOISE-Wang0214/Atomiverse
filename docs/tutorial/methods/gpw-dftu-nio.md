@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-dftu-nio` |
-| Regression | `regressions/gpw/gpw-dftu-nio/` |
-| Public API | `cpu::gpw::GPWEvaluator` + `std::vector<PlusU> plus_u`; `n_alpha`/`n_beta`; `cpu::single_point` |
+| Public API | `cpu::gpw::GpwDft` (`std::vector<PlusU> plus_u`; `n_alpha`/`n_beta`) bound by `cpu::gpw::GPWEvaluator`; `cpu::single_point` |
 | Roadmap | `docs/roadmap/dft.md` — GPW Dudarev DFT+U (`plus_u`; `reg_gpw-dftu-nio`) ✓ |
 
 ## Summary
@@ -18,9 +17,10 @@ potential. This page is the product foothold for that path: a **NiO molecule**
 (not solid AFM rocksalt — see Limitations) with PADE LSD, SZV GTH bases, and
 Martyna–Tuckerman isolation, pinned offline against **CP2K 2026.1** Quickstep.
 
-Public surface: construct `cpu::gpw::GPWEvaluator` with `Kind` rows (lookup
+Public surface: construct `cpu::gpw::GpwDft` with `Kind` rows (lookup
 `GaussianBasis` / `GthPotential`), set UKS occupations and
-`plus_u.push_back({Ni, 2, 6.0})` with \(U-J\) in **eV**, run
+`plus_u.push_back({Ni, 2, 6.0})` with \(U-J\) in **eV**, bind it with
+`cpu::gpw::GPWEvaluator(std::move(dft))`, run
 `cpu::single_point(frame, eval)`. Total energy on Frame is **eV** (`kEnergy`);
 Hartree total, DFT+U contribution, \(\langle S^2\rangle\), and Mulliken spin via
 `last_energy_hartree()` / `last_result().{e_dftu,s2,mulliken_spin}`. Product
@@ -123,16 +123,17 @@ cpu::gpw::Kind O{molrs::Element::O,
                  cpu::gpw::GaussianBasis(molrs::Element::O, "SZV-GTH-PADE"),
                  cpu::gpw::GthPotential(molrs::Element::O, "GTH-PADE-q6")};
 
-cpu::gpw::GPWEvaluator eval({Ni, O});
-eval.cutoff_ry = 250.0;
-eval.max_iter = 300;
-eval.tol = 1e-5;
-eval.mix = 0.35;
-eval.xc = cpu::gpw::XcKind::PADE;
-eval.nonperiodic = true;
-eval.n_alpha = 13;  // multiplicity 3, 24 valence e⁻
-eval.n_beta = 11;
-eval.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_minus_j_ev=*/6.0});
+cpu::gpw::GpwDft dft{{Ni, O}};
+dft.cutoff_ry = 250.0;
+dft.max_iter = 300;
+dft.tol = 1e-5;
+dft.mix = 0.35;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.nonperiodic = true;
+dft.n_alpha = 13;  // multiplicity 3, 24 valence e⁻
+dft.n_beta = 11;
+dft.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_minus_j_ev=*/6.0});
+cpu::gpw::GPWEvaluator eval(std::move(dft));
 
 cpu::single_point(frame, eval);
 
@@ -158,24 +159,23 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-dftu-nio -j$(nproc)
-  ./build/regressions/reg_gpw-dftu-nio
+  reg_gpw-dftu-nio
 '
 ```
 
 | Piece | Path |
 | ----- | ---- |
-| Public `PlusU` / `GpwResult::{e_dftu,mulliken_spin}` | `include/atomiverse/cpu/gpw/gpw_solver.h` |
-| Evaluator member `plus_u` | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| Dudarev E/V (internal) | `include/atomiverse/cpu/gpw/internal/dft_plus_u.h` |
+| Public `PlusU` / `GpwResult::{e_dftu,mulliken_spin}` | `gpw_solver.h` |
+| Evaluator member `plus_u` | `gpw_evaluator.h` |
+| Dudarev E/V (internal) | `dft_plus_u.h` |
 | SCF wire-up | `src/cpu/gpw/gpw_solver.cpp` |
-| Ni/O PADE SZV + GTH tables | `include/atomiverse/cpu/gpw/basis_data/gpw_tables.h` |
+| Ni/O PADE SZV + GTH tables | `gpw_tables.h` |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_dftu.cpp` |
-| Regression | `regressions/gpw/gpw-dftu-nio/reg_gpw-dftu-nio.cpp` |
-| CP2K twin inputs | `tools/cp2k_oracle/inputs/gpw-dftu-nio/` |
+| CP2K twin inputs | CP2K oracle |
 
 ## Validation (vs CP2K)
 
-Source: [`regressions/gpw/gpw-dftu-nio/REFERENCE.md`](../../../regressions/gpw/gpw-dftu-nio/REFERENCE.md).
+Source: case `gpw-dftu-nio` pin.
 Oracle: offline **CP2K 2026.1** (`cp2k.psmp`, revision 85b8a9b49c); **never** live
 in ctest. Pin date: **2026-07-24**. Closed-spec gates A3–A5 / A7.
 
@@ -224,7 +224,7 @@ Offline re-run (operator only; not ctest):
 export LD_LIBRARY_PATH=$CP2K_ROOT/lib:$LD_LIBRARY_PATH
 export CP2K_DATA_DIR=$CP2K_ROOT/share/cp2k/data
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_SET,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/gpw-dftu-nio/nio_mol_pade_u.inp
+# copy <CP2K oracle input for this case>
 OMP_NUM_THREADS=8 cp2k.psmp -i nio_mol_pade_u.inp -o nio_mol.out
 ```
 
@@ -236,8 +236,8 @@ artifacts; the **molecule** is the first-green PLUS_U foothold.
 ## Performance
 
 Source: fair wall table in
-`regressions/gpw/gpw-dftu-nio/REFERENCE.md` (2026-07-24). Handoff:
-the case `REFERENCE.md` ratio **0.21**. Gate \(r\le 10\) or
+case `gpw-dftu-nio` pin (2026-07-24). Handoff:
+the case pin notes ratio **0.21**. Gate \(r\le 10\) or
 `perf_exempt` (closed-spec A8).
 
 Comparable settings: cutoff 250 Ry, PADE+U, MT, single rank, `OMP_NUM_THREADS=8`.
@@ -272,10 +272,10 @@ on identical algorithms.
 
 ## References
 
-- Offline pin + fair wall: [`regressions/gpw/gpw-dftu-nio/REFERENCE.md`](../../../regressions/gpw/gpw-dftu-nio/REFERENCE.md)
-- Regression consumer: [`reg_gpw-dftu-nio.cpp`](../../../regressions/gpw/gpw-dftu-nio/reg_gpw-dftu-nio.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/gpw-dftu-nio/`](../../../tools/cp2k_oracle/inputs/gpw-dftu-nio/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin + fair wall: case `gpw-dftu-nio` pin
+- Regression consumer: `reg_gpw-dftu-nio.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Closed spec (git history): `.claude/specs/gpw-dftu-nio/` (deleted at done;
   commit `feat(gpw): Dudarev DFT+U for NiO (gpw-dftu-nio)`)
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)

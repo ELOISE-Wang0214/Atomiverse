@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `delta-scf-n2` |
-| Regression | `regressions/scf/delta-scf-n2/` |
 | Public API | `cpu::scf::UHF::delta_scf(frame, from, to, MomStyle)` |
 | Roadmap | [Excited states](../../roadmap/excited-states.md) — Delta-SCF / MOM / IMOM ✓ |
 
@@ -18,7 +17,7 @@ difference is enough (MOM/IMOM foothold), not linear-response CIS/TDDFT roots.
 API is concrete `cpu::scf::UHF` with members set in-place, then
 `delta_scf(frame, 6, 7, MomStyle::IMOM)` → `DeltaScfResult` (`e_ground` /
 `e_excited` [Ha], `delta_e_ev` [eV]). Textbook regression:
-`regressions/scf/delta-scf-n2` (`reg_delta-scf-n2`), N₂ experimental \(r\),
+`delta-scf-n2` (`reg_delta-scf-n2`), N₂ experimental \(r\),
 STO-3G, vs offline PySCF 2.14.0 `scf.addons.mom_occ_`.
 
 ## Method
@@ -102,7 +101,7 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_delta-scf-n2 -j$(nproc)
-  ./build/regressions/reg_delta-scf-n2
+  reg_delta-scf-n2
 '
 ```
 
@@ -110,17 +109,16 @@ bash -lc '
 
 | Role | Path |
 | ---- | ---- |
-| Public API | `include/atomiverse/cpu/scf/uhf.h` (`UHF::delta_scf`) |
-| Result type | `include/atomiverse/cpu/scf/delta_scf.h` (`DeltaScfResult`) |
-| `MomStyle` | `include/atomiverse/cpu/scf/scf_enums.h` |
+| Public API | `uhf.h` (`UHF::delta_scf`) |
+| Result type | `delta_scf.h` (`DeltaScfResult`) |
+| `MomStyle` | `scf_enums.h` |
 | Implementation | `src/cpu/scf/uhf.cpp` (`UHF::delta_scf`); MOM in `src/cpu/scf/stages/density_stage.cpp` |
-| Regression | `regressions/scf/delta-scf-n2/reg_delta-scf-n2.cpp` |
-| Offline pin | `regressions/scf/delta-scf-n2/REFERENCE.md` |
-| Oracle | `tools/pyscf_oracle/pin_scf.py delta-scf` (never in ctest) |
+| Offline pin | case `delta-scf-n2` pin |
+| Oracle | PySCF oracle (never in ctest) |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/delta-scf-n2/REFERENCE.md`](../../../regressions/scf/delta-scf-n2/REFERENCE.md)
+Source: case `delta-scf-n2` pin
 (offline pin only; **no live PySCF in ctest**).
 
 | Setting | Value |
@@ -151,16 +149,16 @@ three energy checks.
 **Oracle repro (offline only):**
 
 ```bash
-bash tools/setup_pyscf_env.sh   # once
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py delta-scf \
+bash <pyscf env setup>   # once
+python <pyscf pin> delta-scf \
     --geom n2 --basis sto-3g --conv-tol 1e-12
 # optional: --from-mo 6 --to-mo 7  (defaults = HOMO/LUMO)
 ```
 
 ## Performance
 
-Source: `regressions/scf/delta-scf-n2/REFERENCE.md` § Performance (handoff /
-queue ratio **7.83**). Protocol: `tools/pyscf_oracle/fair_bench.py`; same
+Source: case `delta-scf-n2` pin § Performance (handoff /
+queue ratio **7.83**). Protocol: PySCF oracle; same
 geom/basis; median of ≥3 runs; `OMP_NUM_THREADS=1`; gate
 \(r=T_{\mathrm{ATV}}/T_{\mathrm{PySCF}}\le 10\).
 
@@ -171,9 +169,9 @@ bash -lc '
   export RUSTUP_TOOLCHAIN=stable-x86_64-unknown-linux-gnu
   export LD_LIBRARY_PATH=$LIBRARY_PATH:$LD_LIBRARY_PATH
   export OMP_NUM_THREADS=1
-  ~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+  python <pyscf fair-bench> \
     --method delta_scf --geom n2 --basis sto-3g --repeat 3 \
-    -- -- ./build/regressions/reg_delta-scf-n2
+    -- -- reg_delta-scf-n2
 '
 ```
 
@@ -204,11 +202,11 @@ from the regression REFERENCE and handoff rollup.
 
 ## References
 
-- Offline pin: `regressions/scf/delta-scf-n2/REFERENCE.md`
+- Offline pin: case `delta-scf-n2` pin
 - Perf numbers: same REFERENCE § Performance; handoff
-  the case `REFERENCE.md` (ratio 7.83); queue note
-- Oracle: `tools/setup_pyscf_env.sh`, `tools/pyscf_oracle/pin_scf.py delta-scf`,
-  `tools/pyscf_oracle/fair_bench.py --method delta_scf`
+  the case pin notes (ratio 7.83); queue note
+- Oracle: PySCF oracle, PySCF oracle,
+  PySCF oracle
 - A. T. B. Gilbert, N. A. Besley, P. M. W. Gill, *J. Phys. Chem. A* **112**,
   13164 (2008) — MOM. DOI [10.1021/jp801738f](https://doi.org/10.1021/jp801738f)
 - G. M. J. Barca, A. T. B. Gilbert, P. M. W. Gill, *J. Chem. Theory Comput.*

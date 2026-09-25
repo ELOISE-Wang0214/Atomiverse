@@ -19,9 +19,9 @@
 #include "atomiverse/cuda/gpw/gpw_solver.cuh"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
+using ATV::cpu::gpw::internal::GpwAtom;
 
 namespace {
 
@@ -53,10 +53,21 @@ std::vector<GpwAtom> si_bct(double a_bohr) {
     return atoms;
 }
 
+// Orthorhombic cell [Bohr]. The CPU oracle is driven at the atom level
+// through the engine-private door; the CUDA product keeps its `cell` member.
+void set_cell_bohr(ATV::cpu::gpw::GpwDft& m, double a, double b, double c) {
+    ATV::cpu::gpw::internal::GpwDftAccess::set_cell(m, {a, b, c});
+}
+
+void set_cell_bohr(ATV::cuda::gpw::GpwDft& m, double a, double b, double c) {
+    m.cell[0] = a;
+    m.cell[1] = b;
+    m.cell[2] = c;
+}
+
 template <typename Method>
 void set_si_mg(Method& m, double a_bohr) {
-    m.cell[0] = m.cell[1] = a_bohr / std::sqrt(2.0);
-    m.cell[2] = a_bohr;
+    set_cell_bohr(m, a_bohr / std::sqrt(2.0), a_bohr / std::sqrt(2.0), a_bohr);
     m.cutoff_ry = 40.0;
     m.ngrids = 4;
     m.rel_cutoff = 20.0; // < cutoff → true multi-level (make_multigrid gate)
@@ -102,8 +113,8 @@ int main(int argc, char** argv) {
     if (run_cpu) {
         ATV::cpu::gpw::GpwDft m;
         set_si_mg(m, a);
-        m.build(atoms);
-        const auto& r = m.run(atoms);
+        ATV::cpu::gpw::internal::GpwDftAccess::build(m, atoms);
+        const auto& r = ATV::cpu::gpw::internal::GpwDftAccess::run(m, atoms);
         if (!r.converged) {
             std::fprintf(
                 stderr,

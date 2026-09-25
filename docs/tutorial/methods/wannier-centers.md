@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `wannier-centers` |
-| Regression | `regressions/scf/wannier-centers/` |
 | Public API | `cpu::scf::WannierCenters` + `WannierResult` (`cpu/scf/wannier.h`) |
 | Roadmap / queue | [dft.md](../../roadmap/dft.md) §11 MLWF; queue row `wannier-centers` |
 | Dual gate | Geometric + unit-algebra pins (REFERENCE.md); speed **`perf_exempt`** |
@@ -80,5 +79,5 @@ Throws `std::invalid_argument` for open-shell / GHF / not-ready results
     two OH-bond + two opposite-\(x\) lone pairs (rabbit ears); C₂ᵥ sum of
     \(x,y\) components ≈ 0.
 
-See `regressions/scf/wannier-centers/REFERENCE.md`. CP2K `LOCALIZE` numerical
+See case `wannier-centers` pin. CP2K `LOCALIZE` numerical
 oracle is offline-only when a binary is available.

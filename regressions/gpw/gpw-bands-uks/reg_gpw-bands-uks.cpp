@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/bands_dos.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
@@ -17,7 +19,6 @@
 
 namespace {
 
-constexpr double kA2B = 1.0 / 0.52917720859;
 constexpr double kHa2Ev = 27.211386245988;
 
 int g_fail = 0;
@@ -37,20 +38,21 @@ bool near_k(const std::array<double, 3>& a, const std::array<double, 3>& b,
            && std::abs(a[2] - b[2]) < tol;
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> si_bct(double a_bohr) {
+/// Diamond Si as the 4-atom bct cell of cubic lattice constant `a_ang` [Å].
+ATV::cpu::Frame si_bct(double a_ang) {
     using namespace ATV;
-    const double at = a_bohr / std::sqrt(2.0);
-    const cpu::gpw::GaussianBasis bSi(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-    const cpu::gpw::GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
+    const double at = a_ang / std::sqrt(2.0);
     const double frac[4][3] = {
         {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}, {0.5, 0.0, 0.25}, {0.0, 0.5, 0.75}};
-    std::vector<cpu::gpw::GpwAtom> atoms;
+    cpu::Frame frame(4);
     for (int i = 0; i < 4; ++i) {
-        const double pos[3] = {frac[i][0] * at, frac[i][1] * at,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bSi, pSi, 14);
+        frame.span(kAtom_type)[i] = 14;
+        frame.span(kAtom_x)[i] = frac[i][0] * at;
+        frame.span(kAtom_y)[i] = frac[i][1] * at;
+        frame.span(kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = cpu::Box::orthorhombic(at, at, a_ang);
+    return frame;
 }
 
 } // namespace
@@ -65,12 +67,11 @@ int main() {
     constexpr double kCp2kGapEv = 0.893516;
     constexpr double kGapTolEv = 0.08;
 
-    const double a = 5.43 * kA2B;
-    auto atoms = si_bct(a);
+    ATV::cpu::Frame frame = si_bct(5.43);
 
-    GpwDft method;
-    method.cell[0] = method.cell[1] = a / std::sqrt(2.0);
-    method.cell[2] = a;
+    GpwDft method{{Kind{molrs::Element::Si,
+                        GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+                        GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
     method.cutoff_ry = 150.0;
     method.n_alpha = 8;
     method.n_beta = 8;
@@ -81,14 +82,14 @@ int main() {
     method.k_mesh[0] = method.k_mesh[1] = method.k_mesh[2] = 2;
     method.k_time_reversal = true;
     method.local_pp_on_grid = true;
-    method.build(atoms);
+    method.build(frame);
 
     Bands bands;
     bands.n_bands = 12;
     bands.set_diamond_path(4);
 
     const auto t0 = std::chrono::steady_clock::now();
-    const BandsResult br = bands.compute(method, atoms);
+    const BandsResult br = bands.compute(method, frame);
     const auto t1 = std::chrono::steady_clock::now();
     const double wall_s = std::chrono::duration<double>(t1 - t0).count();
 

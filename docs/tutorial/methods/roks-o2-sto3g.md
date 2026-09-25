@@ -4,7 +4,7 @@
 
 Restricted open-shell Kohn–Sham: Roothaan single effective Fock for open shells
 with exact \(\langle S^2\rangle = S(S+1)\) for high-spin.
-Regression: `regressions/scf/roks-o2-sto3g`. Related: ROHF energy/grad chapters.
+Regression: `roks-o2-sto3g`. Related: ROHF energy/grad chapters.
 
 ## Theory
 
@@ -23,7 +23,7 @@ roks.run(frame);   // O₂ r = 1.2075 Å
 ```
 
 ```bash
-./build/regressions/reg_roks-o2-sto3g
+reg_roks-o2-sto3g
 ```
 
 ## Results

@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d4-water` |
-| Regression | `regressions/gpw/gpw-d4-water/` |
-| Public API | `cpu::gpw::GpwDft::d4` / `cpu::gpw::GPWEvaluator::d4`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::GpwDft::d4` (bound by `cpu::gpw::GPWEvaluator`); `GpwResult::e_disp` [Ha] |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -21,15 +20,15 @@ and gates the **dispersion energy** against offline **dftd4 3.7.0**
 **Why dftd4 rather than live CP2K QS?** CP2K 2026.1 on Arrhenius was built
 **without** the DFTD4 library (`TYPE DFTD4` aborts:
 `CP2K build without DFTD4`). The twin input is retained under
-`tools/cp2k_oracle/inputs/gpw-d4-water/` for hosts that link libdftd4. The hard
+CP2K oracle for hosts that link libdftd4. The hard
 pin is **libdftd4 / dftd4 3.7.0** — the same backend CP2K calls when DFTD4 is
 enabled.
 
-Public surface: bool members `d4` on `cpu::gpw::GpwDft` and
+Public surface: bool member `d4` on `cpu::gpw::GpwDft`, bound into drivers by
 `cpu::gpw::GPWEvaluator` (no `*Config` bag). Dispersion is reported on
 `GpwResult::e_disp` [Hartree] and folded into `e_total`. Mutually exclusive
 with zero-damping `d3` and BJ `d3bj` (any two true throws at run). Product
-gate: `regressions/gpw/gpw-d4-water` (`reg_gpw-d4-water`). Wall ratio is
+gate: `gpw-d4-water` (`reg_gpw-d4-water`). Wall ratio is
 **perf_exempt** (E_disp pin; full QS twin wall unfair / unavailable — see
 Performance).
 
@@ -92,28 +91,28 @@ Isolated two-body on the dimer nuclei (context only):
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
+Public surface only (`GpwDft` members + `GPWEvaluator`; no `*Config`, no
 `make_*` / `build_*` factories). Regression uses the concrete solver:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
 
-// Geometry [Å] → Bohr — water dimer (REFERENCE.md / same as D3(BJ) pin).
-constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// Frame [Å] — water dimer (REFERENCE.md / same as D3(BJ) pin).
+// … fill 6 rows (2×O + 4×H): kAtom_x/y/z [Å], Z in kAtom_type …
+frame.box = ATV::cpu::Box::cubic(12.0); // Å
 
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+// kinds O, H: DZVP-MOLOPT-SR-GTH + GTH-PBE-q6 / GTH-PBE-q1
+GpwDft gpw{{O, H}};
 gpw.cutoff_ry = 200.0; // e_disp is geometry-only; SCF only needs to run
 gpw.n_occ = 8;         // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 8;
@@ -123,8 +122,8 @@ gpw.xc = XcKind::PBE;
 gpw.nonperiodic = false;
 gpw.d4 = true;         // exclusive vs gpw.d3 / gpw.d3bj
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp [Ha] within 1e-8 of offline dftd4 3.7.0 pin
 // res.e_total includes e_disp
 ```
@@ -133,11 +132,11 @@ Driver / Frame path (component; same member):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/300.0, /*max_iter=*/200,
-                                 /*tol=*/1e-7, /*mix=*/0.3,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false);
-eval.d4 = true;
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 300.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;  dft.nonperiodic = false;
+dft.d4 = true;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft));
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 ```
@@ -156,26 +155,26 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-d4-water -j$(nproc)
-  ./build/regressions/reg_gpw-d4-water
+  reg_gpw-d4-water
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `d4` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::d4` |
-| `include/atomiverse/cpu/scf/dftd4.h` / tables | Molecular D4 + shared parameter tables |
+| `gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `d4` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds `GpwDft` into a driver) |
+| `dftd4.h` / tables | Molecular D4 + shared parameter tables |
 | `tests/cpu/gpw/test_cpu_gpw_dftd4.cpp` | Unit gate (periodic + isolated two-body) |
-| `regressions/gpw/gpw-d4-water/reg_gpw-d4-water.cpp` | Product gate |
-| `regressions/gpw/gpw-d4-water/REFERENCE.md` | Offline pin + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-d4-water/` | POSCAR + CP2K twin (DFTD4 when linked) |
+| `reg_gpw-d4-water.cpp` | Product gate |
+| case `gpw-d4-water` pin | Offline pin + perf_exempt |
+| CP2K oracle | POSCAR + CP2K twin (DFTD4 when linked) |
 
 ## Validation (CP2K / dftd4)
 
 Source:
-[`regressions/gpw/gpw-d4-water/REFERENCE.md`](../../../regressions/gpw/gpw-d4-water/REFERENCE.md).
+case `gpw-d4-water` pin.
 Oracle: offline **dftd4 3.7.0** (`/software/.../dftd4/3.7.0-gfbf-2025b` on
-Arrhenius), CLI twin on `tools/cp2k_oracle/inputs/gpw-d4-water/POSCAR`.
+Arrhenius), CLI twin on CP2K oracle.
 External engine pin — not a golden of Atomiverse’s own output; **never**
 launch live dftd4 or CP2K from ctest.
 
@@ -208,14 +207,14 @@ Offline re-pin (human only; never ctest):
 export PATH=/software/sse2/el9_epyc9005/easybuild/prefix/software/dftd4/3.7.0-gfbf-2025b/bin:$PATH
 export LD_LIBRARY_PATH=/software/sse2/el9_epyc9005/easybuild/prefix/software/dftd4/3.7.0-gfbf-2025b/lib:$LD_LIBRARY_PATH
 # + FlexiBLAS / GCCcore from buildenv-gcc module
-cd tools/cp2k_oracle/inputs/gpw-d4-water
+cd <CP2K oracle input dir for this case>
 dftd4 -f pbe --mbdscale 0.0 --json pin.json POSCAR
 # Dispersion energy: -9.9458842745847E-04 Eh
 ```
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 D4 evaluation itself is \(O(N^2 \times N_{\mathrm{images}})\) over a 6-atom
 cell (microseconds–milliseconds). Full GPW SCF wall is dominated by the
@@ -253,9 +252,9 @@ host with libdftd4-linked CP2K.
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-d4-water/REFERENCE.md`
-- Oracle inputs: `tools/cp2k_oracle/inputs/gpw-d4-water/`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-d4-water` pin
+- Oracle inputs: CP2K oracle
+- Oracle notes: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
 - Related D3(BJ) GPW pin: [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice.md)
 - Related molecular D4: [dft-d4-h2o-pbe](dft-d4-h2o-pbe.md)

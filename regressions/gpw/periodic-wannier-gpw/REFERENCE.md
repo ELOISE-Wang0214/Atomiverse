@@ -13,7 +13,7 @@ Public API:
 
 ```cpp
 cpu::gpw::PeriodicWannier mlwf;   // members: k_mesh, max_iter, tol, …
-auto r = mlwf.compute(method, atoms);
+auto r = mlwf.compute(method, frame);  // frame: positions [Å], Z, box [Å]
 // r.centers[i] [Å], r.spreads[i] [Å²]
 ```
 

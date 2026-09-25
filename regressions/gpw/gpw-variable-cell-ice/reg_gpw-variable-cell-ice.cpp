@@ -9,6 +9,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -69,10 +70,14 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
-    cpu::gpw::GPWEvaluator eval(
-        /*kinds*/ {O, H}, /*cutoff_ry*/ 300.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-        /*compute_forces*/ false);
+    cpu::gpw::GpwDft dft({O, H});
+    dft.cutoff_ry = 300.0;
+    dft.max_iter = 200;
+    dft.tol = 1e-7;
+    dft.mix = 0.3;
+    dft.xc = cpu::gpw::XcKind::PADE;
+    dft.nonperiodic = false;
+    cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces*/ false);
     eval.compute_stress = true;
     eval.stress_strain_h = 2e-3;
     eval.stress_axes = {true, false, false}; // only the chain axis relaxes

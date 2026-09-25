@@ -11,6 +11,8 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -19,8 +21,7 @@
 
 int main() {
     using namespace ATV::cpu::gpw;
-    constexpr double kA2B = 1.8897259885789;
-    constexpr double a_bohr = 5.43 * kA2B;
+    constexpr double a_ang = 5.43;
 
     // Offline CP2K 2026.1 MP2_GPW pin (REFERENCE.md). Identity RI≡canonical
     // is 1e-10 Ha (same Poisson kernel); CP2K band is 1e-3 Ha (grid/SCF twin).
@@ -29,16 +30,19 @@ int main() {
     constexpr double kRiCanonTol = 1.0e-10;         // Ha  RI vs Poisson path
     constexpr double kIdTol = 1.0e-12;
 
-    const double pos0[3] = {0.0, 0.0, 0.0};
-    const double pos1[3] = {a_bohr / 4.0, a_bohr / 4.0, a_bohr / 4.0};
-    const GaussianBasis bas(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-    const GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
-    std::vector<GpwAtom> atoms;
-    atoms.emplace_back(pos0, bas, pot, 14);
-    atoms.emplace_back(pos1, bas, pot, 14);
+    ATV::cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        const double q = (i == 0) ? 0.0 : a_ang / 4.0;
+        frame.span(ATV::kAtom_type)[i] = 14;
+        frame.span(ATV::kAtom_x)[i] = q;
+        frame.span(ATV::kAtom_y)[i] = q;
+        frame.span(ATV::kAtom_z)[i] = q;
+    }
+    frame.box = ATV::cpu::Box::cubic(a_ang);
 
-    GpwDft m;
-    m.cell[0] = m.cell[1] = m.cell[2] = a_bohr;
+    GpwDft m{{Kind{molrs::Element::Si,
+                   GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+                   GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
     m.cutoff_ry = 30.0;
     m.n_occ = 4;
     m.max_iter = 80;
@@ -47,10 +51,10 @@ int main() {
     m.level_shift = 0.3;
     m.xc = XcKind::PBE;
     m.mp2_ri = true; // product default
-    m.build(atoms);
+    m.build(frame);
 
     const auto t0 = std::chrono::steady_clock::now();
-    const GpwResult& scf = m.run(atoms);
+    const GpwResult& scf = m.run(frame);
     const auto t1 = std::chrono::steady_clock::now();
     if (!scf.converged || !std::isfinite(scf.e_total)) {
         std::fprintf(stderr,
@@ -63,12 +67,12 @@ int main() {
     // Product RI-GPW path (full virtual space).
     m.mp2_n_virt = 0;
     m.mp2_ri = true;
-    const Mp2Result r_ri = m.mp2(atoms);
+    const Mp2Result r_ri = m.mp2();
     const auto t2 = std::chrono::steady_clock::now();
 
     // Foothold Poisson path on the same orbitals — must match to 1e-6 Ha.
     m.mp2_ri = false;
-    const Mp2Result r_can = m.mp2(atoms);
+    const Mp2Result r_can = m.mp2();
     const auto t3 = std::chrono::steady_clock::now();
 
     const double wall_scf = std::chrono::duration<double>(t1 - t0).count();

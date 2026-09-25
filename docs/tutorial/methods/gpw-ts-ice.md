@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-ts-ice` |
-| Regression | `regressions/gpw/gpw-ts-ice/` |
-| Public API | `cpu::gpw::GpwDft::ts` / `cpu::gpw::GPWEvaluator::ts`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::GpwDft::ts` (bound by `cpu::gpw::GPWEvaluator`); `GpwResult::e_disp` [Ha] |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -22,15 +21,15 @@ energy** against an offline **libMBD-class pure real-space** pin.
 `PAIR_POTENTIAL TYPE` is only `DFTD2|DFTD3|DFTD3(BJ)|DFTD4` — there is **no**
 `TYPE TS`. libMBD is the canonical offline TS/MBD oracle (also the backend
 FHI-aims / Quantum ESPRESSO / DFTB+ use). Twin notes are retained under
-`tools/cp2k_oracle/inputs/gpw-ts-ice/` for hosts that may later expose TS via
+CP2K oracle for hosts that may later expose TS via
 an external library. The hard pin is **libMBD free-atom TS + pure-RS lattice
 sum** — never launched from ctest.
 
-Public surface: bool member `ts` on `cpu::gpw::GpwDft` and
+Public surface: bool member `ts` on `cpu::gpw::GpwDft`, bound by
 `cpu::gpw::GPWEvaluator` (no `*Config` bag). Dispersion is reported on
 `GpwResult::e_disp` [Hartree] and folded into `e_total`. Mutually exclusive
 with zero-damping `d3`, BJ `d3bj`, and `d4` (any two true throws at run).
-Product gate: `regressions/gpw/gpw-ts-ice` (`reg_gpw-ts-ice`). Wall ratio is
+Product gate: `gpw-ts-ice` (`reg_gpw-ts-ice`). Wall ratio is
 **perf_exempt** (E_disp pin; full QS twin wall unfair / unavailable — see
 Performance).
 
@@ -109,18 +108,18 @@ Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
 
-// Geometry [Å] → Bohr — water dimer (REFERENCE.md / same as D3(BJ) / D4).
-constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// Geometry [Å] — water dimer (REFERENCE.md / same as D3(BJ) / D4).
+// … fill a 6-atom cpu::Frame (2×O + 4×H; positions [Å], Z in kAtom_type)
+//   and kinds = {O, H}: Kind{Element, DZVP-MOLOPT-SR-GTH, GTH-PBE-q*} …
 
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+frame.box = ATV::cpu::Box::cubic(12.0);  // Å
+
+GpwDft gpw{kinds};
 gpw.cutoff_ry = 200.0; // e_disp is geometry-only; SCF only needs to run
 gpw.n_occ = 8;         // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 8;
@@ -130,8 +129,8 @@ gpw.xc = XcKind::PBE;
 gpw.nonperiodic = false;
 gpw.ts = true;         // exclusive vs gpw.d3 / d3bj / d4
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp [Ha] within 1e-8 of offline pure-RS / libMBD-class pin
 // res.e_total includes e_disp
 ```
@@ -140,11 +139,11 @@ Driver / Frame path (component; same member):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/300.0, /*max_iter=*/200,
-                                 /*tol=*/1e-7, /*mix=*/0.3,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false);
-eval.ts = true;
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 300.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;  dft.nonperiodic = false;
+dft.ts = true;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft));
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 ```
@@ -163,25 +162,25 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-ts-ice -j$(nproc)
-  ./build/regressions/reg_gpw-ts-ice
+  reg_gpw-ts-ice
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `ts` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::ts` |
-| `include/atomiverse/cpu/gpw/internal/ts_dispersion.h` | `ts_pbe` kernel (private) |
-| `include/atomiverse/cpu/gpw/basis_data/ts_tables.h` | Free-atom libMBD `ts_vdw_params` |
+| `gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `ts` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds the `GpwDft`) |
+| `ts_dispersion.h` | `ts_pbe` kernel (private) |
+| `ts_tables.h` | Free-atom libMBD `ts_vdw_params` |
 | `tests/cpu/gpw/test_cpu_gpw_ts.cpp` | Unit gate (isolated libMBD + periodic pure-RS + FD forces) |
-| `regressions/gpw/gpw-ts-ice/reg_gpw-ts-ice.cpp` | Product gate |
-| `regressions/gpw/gpw-ts-ice/REFERENCE.md` | Offline pin + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-ts-ice/` | Twin notes (no stock CP2K `TYPE TS`) |
+| `reg_gpw-ts-ice.cpp` | Product gate |
+| case `gpw-ts-ice` pin | Offline pin + perf_exempt |
+| CP2K oracle | Twin notes (no stock CP2K `TYPE TS`) |
 
 ## Validation (libMBD / pure-RS)
 
 Source:
-[`regressions/gpw/gpw-ts-ice/REFERENCE.md`](../../../regressions/gpw/gpw-ts-ice/REFERENCE.md).
+case `gpw-ts-ice` pin.
 Oracle: offline **libMBD** (git `88069c6`, built 2026-07-25) for the isolated
 dimer, plus dual pure-Python lattice sum / Atomiverse `ts_pbe` for the periodic
 hard gate. External engine pin — not a golden of Atomiverse’s own output;
@@ -217,14 +216,14 @@ Offline re-pin (human only; never ctest):
 
 ```bash
 # Build libmbd (once); pin isolated free-atom TS on the water dimer
-# (see tools/cp2k_oracle/inputs/gpw-ts-ice/water_dimer_ts.note).
+# (see <CP2K oracle input for this case>
 # Isolated: Dispersion energy = -5.9764872295816794e-04 Eh
 # Periodic pure-RS hard gate: -6.099630773386013e-04 Ha (REFERENCE.md).
 ```
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 TS evaluation itself is \(O(N^2 \times N_{\mathrm{images}})\) over a 6-atom
 cell (microseconds). Full GPW SCF wall is dominated by the electronic
@@ -234,7 +233,7 @@ not the product gate; a full twin SCF ratio vs CP2K is unavailable (no stock
 
 | Twin | \(T_{\mathrm{oracle}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | ----------------------: | ----: | ---- | ------ |
-| Full QS (context) | n/a (CP2K lacks stock TS) | — (not fair-twinned) | **perf_exempt** | — | Twin notes retained under `tools/cp2k_oracle/inputs/gpw-ts-ice/` |
+| Full QS (context) | n/a (CP2K lacks stock TS) | — (not fair-twinned) | **perf_exempt** | — | Twin notes retained under CP2K oracle |
 | E_disp product gate | n/a | short SCF + TS (reg) | **perf_exempt** | — | Geometry-only deliverable |
 
 **perf_exempt = true.** Reason (from REFERENCE / handoff): primary deliverable
@@ -263,9 +262,9 @@ host with an external TS-capable engine.
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-ts-ice/REFERENCE.md`
-- Oracle notes: `tools/cp2k_oracle/inputs/gpw-ts-ice/water_dimer_ts.note`
-- Oracle rules: `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-ts-ice` pin
+- Oracle notes: CP2K oracle
+- Oracle rules: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
 - Related D3(BJ) GPW pin: [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice.md)
 - Related D4 GPW pin: [gpw-d4-water](gpw-d4-water.md)

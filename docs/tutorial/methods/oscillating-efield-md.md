@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `oscillating-efield-md` |
-| Regression | `regressions/md/oscillating-efield-md/` |
 | Public API | `cpu::md::FixOscillatingEfield` (`Bias`) on `cpu::md::MD` (default `post_force` +100) |
 | Roadmap | map slice E3 oscillating residual |
 | Oracle | **LAMMPS** (`oracle: lammps`; `oracle_version: 30 Mar 2026 - Development`, patch `30Mar2026-1074-g7f680de296`) |
@@ -76,7 +75,7 @@ F_{z,i}(t) = q_i E_z(t).
 \]
 
 Offline pin table (LAMMPS `run 0` at selected steps; full table in
-`REFERENCE.md`):
+pin notes):
 
 | step \(n\) | \(t\) (metal ps / ATV fs) | \(E_z\) [V/Å] | \(U\) [eV] | \(F_{z,1}\) | \(F_{z,2}\) | \(F_{z,3}\) |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -169,27 +168,27 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_oscillating-efield-md -j"$(nproc)"
-  ./build/regressions/reg_oscillating-efield-md
+  reg_oscillating-efield-md
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/fix_oscillating_efield.h` | Public `FixOscillatingEfield` |
+| `fix_oscillating_efield.h` | Public `FixOscillatingEfield` |
 | `src/cpu/dynamics/fix_oscillating_efield.cpp` | Force / energy launch |
-| `include/atomiverse/cpu/dynamics/fix_efield.h` | Sibling constant-field `FixEfield` |
-| `include/atomiverse/cpu/dynamics/md.h` | Host preset `cpu::md::MD` |
-| `regressions/md/oscillating-efield-md/reg_oscillating-efield-md.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/lammps/oscillating-efield-md/in.oscillating_efield` | Offline LAMMPS twin |
+| `fix_efield.h` | Sibling constant-field `FixEfield` |
+| `md.h` | Host preset `cpu::md::MD` |
+| `reg_oscillating-efield-md.cpp` | Product gate |
+| MetalWalls oracle | Offline LAMMPS twin |
 
 ## Validation (vs LAMMPS)
 
 Source:
-[`regressions/md/oscillating-efield-md/REFERENCE.md`](../../../regressions/md/oscillating-efield-md/REFERENCE.md)
+case `oscillating-efield-md` pin
 (offline pin; **never** live LAMMPS or MetalWalls in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md),
+MetalWalls oracle,
 input
-[`tools/metalwalls_oracle/inputs/lammps/oscillating-efield-md/in.oscillating_efield`](../../../tools/metalwalls_oracle/inputs/lammps/oscillating-efield-md/in.oscillating_efield).
+MetalWalls oracle.
 
 **Oracle:** LAMMPS variable `fix efield` equal-style cosine
 (`docs.lammps.org/fix_efield.html`; `src/fix_efield.cpp`).
@@ -222,13 +221,13 @@ the three high-signal steps above at \(10^{-12}\).
 Related unit surface (not the e2e pin):
 `tests/cpu/dynamics/test_fix_oscillating_efield.cpp`. Constant DC sibling:
 `tests/cpu/dynamics/test_fix_efield.cpp`,
-`regressions/md/external-efield-md/`.
+`external-efield-md`.
 
 ### Offline pin repro (never ctest)
 
 ```bash
 # With a matching LAMMPS binary on PATH:
-lmp -in tools/metalwalls_oracle/inputs/lammps/oscillating-efield-md/in.oscillating_efield
+lmp -in <LAMMPS oracle input for this case>
 # PIN lines: step, time, Ez, Ufield from fix scalar + potential v_phi
 ```
 
@@ -238,9 +237,9 @@ same integer step index \(n\).
 
 ## Performance
 
-Source: [`regressions/md/oscillating-efield-md/REFERENCE.md`](../../../regressions/md/oscillating-efield-md/REFERENCE.md)
+Source: case `oscillating-efield-md` pin
 fair-wall section; handoff
-the case `REFERENCE.md`
+the case pin notes
 (`ratio` **2.12**).
 
 Comparable pure oscillating-efield workload (pair zero / inert, NVE, AC field
@@ -284,10 +283,9 @@ Sibling constant-field MD fair wall (when documented under
 
 ## References
 
-- Offline pin: [`regressions/md/oscillating-efield-md/REFERENCE.md`](../../../regressions/md/oscillating-efield-md/REFERENCE.md)
-- Product gate: [`regressions/md/oscillating-efield-md/reg_oscillating-efield-md.cpp`](../../../regressions/md/oscillating-efield-md/reg_oscillating-efield-md.cpp)
-- Public header / impl: [`include/atomiverse/cpu/dynamics/fix_oscillating_efield.h`](../../../include/atomiverse/cpu/dynamics/fix_oscillating_efield.h), [`src/cpu/dynamics/fix_oscillating_efield.cpp`](../../../src/cpu/dynamics/fix_oscillating_efield.cpp)
-- Capability map: [`.claude/notes/metalwalls-capability-map.md`](../../../.claude/notes/metalwalls-capability-map.md) (E3)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md), [`tools/metalwalls_oracle/inputs/lammps/oscillating-efield-md/in.oscillating_efield`](../../../tools/metalwalls_oracle/inputs/lammps/oscillating-efield-md/in.oscillating_efield)
+- Offline pin: case `oscillating-efield-md` pin
+- Public header / impl: `fix_oscillating_efield.h`, `src/cpu/dynamics/fix_oscillating_efield.cpp`
+- Capability map: `.claude/notes/metalwalls-capability-map.md` (E3)
+- Oracle notes: MetalWalls oracle, MetalWalls oracle
 - Related: constant field `external-efield-md` / `FixEfield`; finite-field single electrode [`finite-field-single-electrode`](finite-field-single-electrode.md)
 - LAMMPS docs: <https://docs.lammps.org/fix_efield.html> (equal-style variable path)

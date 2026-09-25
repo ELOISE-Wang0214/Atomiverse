@@ -17,8 +17,8 @@ Product path:
    `mbd_rsscs_pbe` is **added** on the multi-k path (identical switch as Γ:
    isolated when `mbd_k_mesh={0,0,0}`; Ewald + MBD k-mesh when non-zero).
 
-Public API: `GpwDft::mbd = true` + multi-k mesh + `gpw_forces_*` /
-`GPWEvaluator(compute_forces=true)`. No new symbols.
+Public API: `GpwDft::mbd = true` + multi-k mesh + `GpwDft::forces(frame)` /
+`GPWEvaluator(std::move(dft), /*compute_forces=*/true)`. No new symbols.
 
 PBE MBD: \(\beta = 0.83\), Fermi \(a = 6\). Free-atom \(\alpha_0\), \(C_6\),
 \(R_{\mathrm{vdW}}\) from `basis_data/ts_tables.h` (libMBD `ts_vdw_params`).

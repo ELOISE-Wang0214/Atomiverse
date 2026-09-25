@@ -18,9 +18,9 @@
 #include "atomiverse/cuda/gpw/gpw_solver.cuh"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
+using ATV::cpu::gpw::internal::GpwAtom;
 
 namespace {
 
@@ -48,9 +48,21 @@ std::vector<GpwAtom> o2_atoms() {
     return {GpwAtom(rA, basis, pot, 8), GpwAtom(rB, basis, pot, 8)};
 }
 
+// Orthorhombic cell [Bohr]. The CPU oracle is driven at the atom level
+// through the engine-private door; the CUDA product keeps its `cell` member.
+void set_cell_bohr(ATV::cpu::gpw::GpwDft& m, double a, double b, double c) {
+    ATV::cpu::gpw::internal::GpwDftAccess::set_cell(m, {a, b, c});
+}
+
+void set_cell_bohr(ATV::cuda::gpw::GpwDft& m, double a, double b, double c) {
+    m.cell[0] = a;
+    m.cell[1] = b;
+    m.cell[2] = c;
+}
+
 template <typename Method>
 void set_uks(Method& m) {
-    m.cell[0] = m.cell[1] = m.cell[2] = kCellBohr;
+    set_cell_bohr(m, kCellBohr, kCellBohr, kCellBohr);
     m.cutoff_ry = 100.0;
     m.n_occ = 0;
     m.n_alpha = 7; // multiplicity 3, 12 valence e⁻
@@ -97,8 +109,8 @@ int main(int argc, char** argv) {
     if (run_cpu) {
         ATV::cpu::gpw::GpwDft m;
         set_uks(m);
-        m.build(atoms);
-        const auto& r = m.run(atoms);
+        ATV::cpu::gpw::internal::GpwDftAccess::build(m, atoms);
+        const auto& r = ATV::cpu::gpw::internal::GpwDftAccess::run(m, atoms);
         if (!r.converged) {
             std::fprintf(stderr, "FAIL: CPU UKS SCF not converged (iters=%d)\n",
                          r.iters);

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `xl-bomd-rhf-water` |
-| Regression | `regressions/dynamics/xl-bomd-rhf-water/` |
 | Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdMethod<cpu::scf::{RHF,UHF,RKS,UKS,…}>{method, k}` bound with `set_evaluator_ref`; witness `xl_advances()`; propagator `cpu::electronic::XlBomd` |
 | Spec | `esmm-cpmd-05-scf-xlbomd` (ac-001 ladder, ac-002 exclusivity, ac-003 history integrity, ac-004 the XL signature) |
 | Dual gate | Correctness = `test_cpu_scf_xl_bomd` + `reg_xl-bomd-rhf-water`; speed **`perf_exempt`** |
@@ -130,7 +129,7 @@ The auxiliary density is a harmonic oscillator whose Verlet coupling
 \(\Delta t\) does not "cost accuracy" gradually — it moves the auxiliary
 oscillator toward the nuclear frequency and the guess stops tracking. Measured
 on H₂O/STO-3G (guess error = one-shot energy minus the converged energy at the
-same geometry [Ha]; full table in the regression's `REFERENCE.md`):
+same geometry [Ha]; full table in the regression's pin notes):
 
 | Δt (fs) | steps per O–H period | err(XL) / err(last-P reuse) |
 | --- | --- | --- |
@@ -169,7 +168,7 @@ saturates. Warm-step mean over steps 9–20 at Δt = 0.25 fs, `tol` = 1e-6 Ha:
   ≥ 0.40 vs reuse (measured 0.92); relative energy-drift envelope ≤ 2.0e-5
   (measured 1.955e-6); `xl_advances() == 20` and the twin's `== 0`; the two MD
   legs stay within 1e-6 Å. See
-  `regressions/dynamics/xl-bomd-rhf-water/REFERENCE.md` for the full measured
+  case `xl-bomd-rhf-water` pin for the full measured
   landscape (dt scan, tol scan, guess-error table) and why each margin was
   frozen where it is.
 
@@ -177,11 +176,10 @@ saturates. Warm-step mean over steps 9–20 at Δt = 0.25 fs, `tol` = 1e-6 Ha:
 
 | What | Path |
 | ---- | ---- |
-| XL wrapper (`XlBomdMethod`) | `include/atomiverse/cpu/electronic/aimd_method.h` |
-| Mode storage, ladder, advance hook, exclusivity gates | `include/atomiverse/cpu/scf/mean_field_method.h`, `src/cpu/scf/mean_field_method.cpp` |
-| Propagator | `include/atomiverse/cpu/electronic/xl_bomd.h` |
+| XL wrapper (`XlBomdMethod`) | `aimd_method.h` |
+| Mode storage, ladder, advance hook, exclusivity gates | `mean_field_method.h`, `src/cpu/scf/mean_field_method.cpp` |
+| Propagator | `xl_bomd.h` |
 | Unit tests | `tests/cpu/scf/test_scf_xl_bomd.cpp` |
-| Regression | `regressions/dynamics/xl-bomd-rhf-water/` |
 
 ## Honest non-goals
 

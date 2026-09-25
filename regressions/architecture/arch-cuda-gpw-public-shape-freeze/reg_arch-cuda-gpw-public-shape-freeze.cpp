@@ -5,7 +5,8 @@
 /// Freezes the **target** public contract for `cuda-gpw-full-product` by
 /// asserting the CPU oracle surface that the CUDA method must mirror:
 ///   - concrete `GpwDft : cpu::Driver<gpw::Phase>` (multi-path DIIS stages)
-///   - members + `build` / `run` / `last_result` / `is_uks` (no *Config)
+///   - members + Frame-native `build(frame)` / `run(frame)` /
+///     `forces(frame)` / `last_result` / `is_uks` (no *Config)
 /// Stage footholds under `cuda/gpw/internal/` are not the product API.
 /// OT free-loop residual on CPU does not change this contract.
 ///
@@ -15,10 +16,10 @@
 #include <cstdio>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/driver/driver.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 
 namespace {
@@ -29,14 +30,18 @@ static_assert(
     "CUDA product must mirror GpwDft as Driver<gpw::Phase>, not a "
     "free-loop SCFSolver bag");
 
-// Detect the frozen entry points (members + build/run/last_result).
+// Detect the frozen entry points (members + build/run/forces/last_result).
 template <typename T>
-using build_t = decltype(std::declval<T&>().build(
-    std::declval<const std::vector<ATV::cpu::gpw::GpwAtom>&>()));
+using build_t =
+    decltype(std::declval<T&>().build(std::declval<const ATV::cpu::Frame&>()));
 
 template <typename T>
-using run_t = decltype(std::declval<T&>().run(
-    std::declval<const std::vector<ATV::cpu::gpw::GpwAtom>&>()));
+using run_t =
+    decltype(std::declval<T&>().run(std::declval<ATV::cpu::Frame&>()));
+
+template <typename T>
+using forces_t =
+    decltype(std::declval<T&>().forces(std::declval<ATV::cpu::Frame&>()));
 
 template <typename T>
 using last_result_t = decltype(std::declval<const T&>().last_result());
@@ -55,6 +60,11 @@ template <typename T>
 struct has_run<T, std::void_t<run_t<T>>> : std::true_type {};
 
 template <typename, typename = void>
+struct has_forces : std::false_type {};
+template <typename T>
+struct has_forces<T, std::void_t<forces_t<T>>> : std::true_type {};
+
+template <typename, typename = void>
 struct has_last_result : std::false_type {};
 template <typename T>
 struct has_last_result<T, std::void_t<last_result_t<T>>> : std::true_type {};
@@ -65,9 +75,11 @@ template <typename T>
 struct has_is_uks<T, std::void_t<is_uks_t<T>>> : std::true_type {};
 
 static_assert(has_build<ATV::cpu::gpw::GpwDft>::value,
-              "frozen public shape requires build(atoms)");
+              "frozen public shape requires build(frame)");
 static_assert(has_run<ATV::cpu::gpw::GpwDft>::value,
-              "frozen public shape requires run(atoms, …)");
+              "frozen public shape requires run(frame)");
+static_assert(has_forces<ATV::cpu::gpw::GpwDft>::value,
+              "frozen public shape requires forces(frame)");
 static_assert(has_last_result<ATV::cpu::gpw::GpwDft>::value,
               "frozen public shape requires last_result()");
 static_assert(has_is_uks<ATV::cpu::gpw::GpwDft>::value,
@@ -128,6 +140,6 @@ int main() {
     // them under a GpwDft-shaped public surface (see note).
     std::printf(
         "PASS arch-cuda-gpw-public-shape-freeze: GpwDft public shape frozen "
-        "for CUDA product (Driver + build/run/last_result; no SCF)\n");
+        "for CUDA product (Driver + build/run/forces/last_result; no SCF)\n");
     return 0;
 }

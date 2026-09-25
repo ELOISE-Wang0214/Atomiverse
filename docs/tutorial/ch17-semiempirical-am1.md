@@ -1,23 +1,41 @@
-# Chapter 17. Semiempirical AM1
+# Semiempirical Models
 
-Gaussian SCF and GPW give transferable electronic structure at a price.
-Classical force fields are fast but parameterized. **Semiempirical** methods
-sit in the middle: a minimal valence electronic Hamiltonian with element
-parameters fitted once, then reused for organic chemistry at a cost between
-classical MD and RHF.
+Status tables: [Semiempirical roadmap](../roadmap/semiempirical.md).
 
-Reference: MOPAC / openmopac AM1 \(\Delta H_f(\mathrm{H_2O})\approx -57.8\) kcal/mol.
+A less expensive electronic model can be valuable when its domain is clear.
+Semiempirical methods simplify parts of an electronic Hamiltonian and fit
+selected terms to reference data. They save effort by making an explicit
+trade between generality and cost, not by avoiding physical assumptions.
 
-## Architecture
+**Learning goals.** Explain the role of parameterization, distinguish energy
+conventions, and use AM1 for a controlled exploratory geometry calculation.
 
-```text
-Preset (Evaluate / MD / Minimize / Hessian)
-  └── AM1Evaluator  :  cpu::Semiempirical   (kind)
-         └── AM1Solver : NDDOSolver         (inner SCF + forces)
-```
+**Before you begin.** The electronic mean-field picture in
+[Hartree–Fock Theory](ch02-rhf.md).
 
-There is **no** `SemiempiricalDriver`. DFTB and xTB, if added later, get their
-own Solver + Evaluator + kind — not a seat on `NDDOSolver`.
+## An approximate electronic Hamiltonian
+
+AM1 belongs to the NDDO family. It uses a minimal valence description,
+selected electronic interactions, and parameterized core terms. Its SCF
+algebra resembles HF, but it solves a different approximate Hamiltonian.
+Increasing a Gaussian basis is not a systematic AM1 improvement procedure.
+Parameter availability also does not establish accuracy for every charge,
+bonding pattern, or environment of that element.
+
+A model total energy differs from a reported heat of formation. The latter
+uses atomic reference quantities, schematically
+
+$$\Delta H_f^{\mathrm{model}}=E_{\mathrm{mol}}^{\mathrm{model}}
+-\sum_A E_A^{\mathrm{model}}+\sum_A\Delta H_{f,A}^{\mathrm{ref}}.$$
+
+Record the convention before comparing programs. Neither value should be
+subtracted indiscriminately from an ab initio energy with a different zero.
+
+Forces must differentiate the actual parameterized energy. A central
+difference remains a numerical derivative with truncation and round-off
+error, even if electronic stationarity eliminates explicit orbital response.
+The preserved implementation discussion describes its own derivative route;
+do not relabel it analytic without checking the code revision.
 
 ## What AM1 computes
 
@@ -51,11 +69,45 @@ zero-differential-overlap approximation makes the orbital basis orthonormal, so
 there is no basis-derivative ("Pulay") term either. The approximation is the
 difference quotient, which equals the exact NDDO gradient to \(O(h^{2})\) plus
 round-off — which is why these forces match re-SCF energy finite differences.
-Regressions live under `regressions/semiempirical/`.
+Regressions live under `semiempirical`.
 
 Only \(3(N-1)\) differences are evaluated: the force on the last atom is set to
 minus the sum of the others, exact because a rigid translation cannot change
 \(E\). The forces therefore sum to zero by construction.
+
+## Model selection
+
+- Faster than RHF/STO-3G by roughly an order of magnitude for organics.
+- Same Driver presets as everything else — only the force/energy component
+  changes ([Comparing Models](ch15-cross-method.md)).
+- For metals and covalent solids prefer many-body classical potentials
+  ([Many-Body Potentials](ch16-many-body-potentials.md)) or GPW/PW DFT.
+
+DFTB/xTB stay out of the NDDO family by design.
+
+## Practice plan
+
+Begin with neutral water at a slightly distorted geometry. Check electron
+and charge counts, then compare force components with reconverged energy
+differences. Zero net force is useful but not sufficient if translation
+invariance has been enforced by construction.
+
+Optimize with explicit force and displacement criteria. Compare bond lengths
+and angle with another method, and re-evaluate both geometries using one
+common reference Hamiltonian. This separates geometry changes from energy
+convention changes. Semiempirical screening is most useful when the later
+verification stage is planned from the beginning.
+
+## Evaluator integration
+
+```text
+Preset (Evaluate / MD / Minimize / Hessian)
+  └── AM1Evaluator  :  cpu::Semiempirical   (kind)
+         └── AM1Solver : NDDOSolver         (inner SCF + forces)
+```
+
+There is **no** `SemiempiricalDriver`. DFTB and xTB, if added later, get their
+own Solver + Evaluator + kind — not a seat on `NDDOSolver`.
 
 ## Example code
 
@@ -94,7 +146,11 @@ opt.build();
 opt.run(frame, 50);
 ```
 
-## Live Results
+The following numerical material is retained from the source snapshot.
+It was not rerun for this editorial revision; match its input and provenance
+before using it as a validation target.
+
+## Reference results
 
 Pinned results:
 
@@ -118,12 +174,6 @@ Oxygen carries the negative charge (\(q_O=-0.394\) e); hydrogens are positive
 darker colour for higher \(|q|\) when colouring by charge through the viewer
 API after `molvis:ready`; the table above is the quantitative record.
 
-## Where AM1 sits in the book
+## Questions for reflection
 
-- Faster than RHF/STO-3G by roughly an order of magnitude for organics.
-- Same Driver presets as everything else — only the force/energy component
-  changes ([Chapter 15](ch15-cross-method.md)).
-- For metals and covalent solids prefer many-body classical potentials
-  ([Chapter 16](ch16-many-body-potentials.md)) or GPW/PW DFT.
-
-DFTB/xTB stay out of the NDDO family by design.
+Which atomic reference terms cancel between isomers of the same composition? Why should an inexpensive optimized geometry be checked before using it in a different electronic method?

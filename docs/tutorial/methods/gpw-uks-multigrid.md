@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-uks-multigrid` |
-| Regression | `regressions/gpw/gpw-uks-multigrid/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`n_alpha`/`n_beta`, `ngrids`, `rel_cutoff`, `XcKind::PADE`, `nonperiodic`); `cpu::single_point` |
+| Public API | `cpu::gpw::GpwDft` members (`n_alpha`/`n_beta`, `ngrids`, `rel_cutoff`, `XcKind::PADE`, `nonperiodic`) bound through `cpu::gpw::GPWEvaluator`; `cpu::single_point` |
 | Roadmap | `docs/roadmap/dft.md` — UKS multigrid product collocation |
 
 ## Summary
@@ -23,9 +22,9 @@ and the fine potential restricted back for AO integration.
 This page pins **triplet O₂** energy and spin contamination against offline
 **CP2K 2026.1 Quickstep** (`LSD`, `MULTIPLICITY 3`, `&MGRID NGRIDS 4` /
 `REL_CUTOFF 60` / `CUTOFF 400`) with **Martyna–Tuckerman** isolated
-electrostatics. Public path: construct `cpu::gpw::GPWEvaluator` with one
+electrostatics. Public path: construct `cpu::gpw::GpwDft` with one
 `Kind` per element, set members including **`ngrids`** and **`rel_cutoff`**,
-run `cpu::single_point(frame, eval)`. Energy on `frame.meta` is **eV**;
+move it into `cpu::gpw::GPWEvaluator`, run `cpu::single_point(frame, eval)`. Energy on `frame.meta` is **eV**;
 Hartree and \(\langle S^2\rangle\) via `last_energy_hartree()` / `last_s2()`.
 Product gate: `reg_gpw-uks-multigrid`. Fair wall ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \approx 1.54\) (≤10×).
@@ -101,7 +100,7 @@ expectation for a single unrestricted determinant. Ideal high-spin
 
 ## Implementation
 
-Public surface only (`cpu::Frame`, concrete evaluator members; **no**
+Public surface only (`cpu::Frame`, concrete `GpwDft` members; **no**
 `*Config` bag, **no** `make_*` / `build_*` factories):
 
 ```cpp
@@ -133,17 +132,19 @@ cpu::gpw::Kind O{molrs::Element::O,
                  cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
                  cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
-cpu::gpw::GPWEvaluator eval({O});
-eval.cutoff_ry = 400.0;
-eval.ngrids = 4;        // CP2K &MGRID NGRIDS
-eval.rel_cutoff = 60.0; // CP2K REL_CUTOFF [Ry]
-eval.max_iter = 200;
-eval.tol = 1e-7;
-eval.mix = 0.4;
-eval.xc = cpu::gpw::XcKind::PADE;
-eval.nonperiodic = true;
-eval.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
-eval.n_beta = 5;
+cpu::gpw::GpwDft dft{{O}};
+dft.cutoff_ry = 400.0;
+dft.ngrids = 4;        // CP2K &MGRID NGRIDS
+dft.rel_cutoff = 60.0; // CP2K REL_CUTOFF [Ry]
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.nonperiodic = true;
+dft.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
+dft.n_beta = 5;
+
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 
 cpu::single_point(frame, eval);
 
@@ -167,7 +168,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-uks-multigrid -j$(nproc)
-  ./build/regressions/reg_gpw-uks-multigrid
+  reg_gpw-uks-multigrid
 '
 ```
 
@@ -175,16 +176,15 @@ Relevant sources:
 
 | Piece | Path |
 | ----- | ---- |
-| Evaluator (`ngrids` / `rel_cutoff`) | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| Solver (UKS + multigrid product path) | `include/atomiverse/cpu/gpw/gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
-| Multigrid levels / prolong / restrict | `include/atomiverse/cpu/gpw/internal/multigrid.h` |
+| Evaluator (`ngrids` / `rel_cutoff`) | `gpw_evaluator.h` |
+| Solver (UKS + multigrid product path) | `gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
+| Multigrid levels / prolong / restrict | `multigrid.h` |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_uks.cpp` (UKS multigrid), `tests/cpu/gpw/test_cpu_gpw_multigrid.cpp` |
-| Regression | `regressions/gpw/gpw-uks-multigrid/reg_gpw-uks-multigrid.cpp` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/gpw-uks-multigrid/o2_uks_pade_mg.inp` |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (CP2K)
 
-Source: `regressions/gpw/gpw-uks-multigrid/REFERENCE.md` (offline pin; **never**
+Source: case `gpw-uks-multigrid` pin (offline pin; **never**
 live CP2K in ctest). Engine: **CP2K 2026.1** (`cp2k.psmp`, git:5e54ba2),
 module `CP2K/2026.1` on Arrhenius. Re-pin date: **2026-07-23** (centered
 geometry; energy/S² shared with `gpw-uks-o2-gamma` twin physics). ATV
@@ -229,15 +229,15 @@ Offline re-run (operator only; not ctest):
 module load buildtool-easybuild/5.2.1-hpca3ef7d197 GCC/14.3.0 MPICH/4.3.2 CP2K/2026.1
 export CP2K_DATA_DIR=$EBROOTCP2K/share/cp2k/data
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_MOLOPT,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/gpw-uks-multigrid/o2_uks_pade_mg.inp
+# copy <CP2K oracle input for this case>
 mpirun -np 1 cp2k.psmp -i o2_uks_pade_mg.inp -o o2_uks_pade_mg.out
 ```
 
 ## Performance
 
-Source: same `REFERENCE.md` fair-wall note (2026-07-26 ATV / 2026-07-23 CP2K).
-Not a ctest gate; optional offline twin under `tools/cp2k_oracle/`. Handoff:
-the case `REFERENCE.md` ratio **~1.54**.
+Source: same pin notes fair-wall note (2026-07-26 ATV / 2026-07-23 CP2K).
+Not a ctest gate; optional offline twin under CP2K oracle. Handoff:
+the case pin notes ratio **~1.54**.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | ---------------------------------------: | ---- | ------ |
@@ -269,10 +269,10 @@ inside the 10× wall budget.
 
 ## References
 
-- Offline pin: [`regressions/gpw/gpw-uks-multigrid/REFERENCE.md`](../../../regressions/gpw/gpw-uks-multigrid/REFERENCE.md)
-- Regression consumer: [`reg_gpw-uks-multigrid.cpp`](../../../regressions/gpw/gpw-uks-multigrid/reg_gpw-uks-multigrid.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/gpw-uks-multigrid/`](../../../tools/cp2k_oracle/inputs/gpw-uks-multigrid/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin: case `gpw-uks-multigrid` pin
+- Regression consumer: `reg_gpw-uks-multigrid.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Single-grid UKS sibling: [`gpw-uks-o2-gamma.md`](gpw-uks-o2-gamma.md)
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md)

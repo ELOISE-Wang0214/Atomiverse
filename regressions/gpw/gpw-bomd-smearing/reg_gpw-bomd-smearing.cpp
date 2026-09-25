@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -47,17 +48,21 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
-    cpu::gpw::GPWEvaluator gpw(
-        /*kinds*/ {H}, /*cutoff_ry*/ 300.0, /*max_iter*/ 60, /*tol*/ 1e-7,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-        /*compute_forces*/ true);
-    gpw.k_mesh[0] = 1;
-    gpw.k_mesh[1] = 1;
-    gpw.k_mesh[2] = 2;
-    gpw.k_time_reversal = false;
-    gpw.smearing = cpu::gpw::Smearing::fermi_dirac;
-    gpw.degauss = 0.02; // Ry
-    gpw.extra_bands = 4;
+    cpu::gpw::GpwDft dft{{H}};
+    dft.cutoff_ry = 300.0;
+    dft.max_iter = 60;
+    dft.tol = 1e-7;
+    dft.mix = 0.3;
+    dft.xc = cpu::gpw::XcKind::PADE;
+    dft.nonperiodic = false;
+    dft.k_mesh[0] = 1;
+    dft.k_mesh[1] = 1;
+    dft.k_mesh[2] = 2;
+    dft.k_time_reversal = false;
+    dft.smearing = cpu::gpw::Smearing::fermi_dirac;
+    dft.degauss = 0.02; // Ry
+    dft.extra_bands = 4;
+    cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 
     // Soft pins: free-energy class near fixed-occ BOMD twin (~−1.07 Ha);
     // absolute window absorbs smear residual. Tightened after first green.

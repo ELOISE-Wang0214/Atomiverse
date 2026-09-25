@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-kpoint-uks-stress-gga` |
-| Regression | `regressions/gpw/gpw-kpoint-uks-stress-gga/` |
 | Public API | `cpu::gpw::GpwDft` + `cpu::gpw::gpw_stress` / `gpw_stress_fd`; members `n_alpha`/`n_beta`, `k_mesh`, `xc` (`RevPBE` \| `RPBE` \| `BLYP`) |
 | Roadmap | [dft.md](../../roadmap/dft.md) § Periodic DFT / GPW — multi-k UKS stress for pure GGA |
 | Queue | CP2K capability loop — harness wave 11 done (2026-07-26) |
@@ -17,7 +16,7 @@
 analytic cell stress** for pure **spin-GGA** exchange–correlation: **RevPBE**,
 **RPBE**, and **BLYP**. Product path is the same fixed-density-matrix strain
 theorem as closed-shell / PADE multi-k UKS stress
-([`gpw-kpoint-uks-stress`](../../../regressions/gpw/gpw-kpoint-uks-stress/REFERENCE.md)),
+(case `gpw-kpoint-uks-stress` pin),
 extended so the non-self-consistent Lagrangian rebuilds **spin GGA XC** under
 orthorhombic diagonal strain.
 
@@ -32,7 +31,7 @@ channels and stress use **Ha / Ha·Bohr⁻³**.
 Product gate: `reg_gpw-kpoint-uks-stress-gga`. Fair wall vs same-basis CP2K
 NUMERICAL stress is **`perf_exempt`** (DZV-GTH-PADE not in `BASIS_MOLOPT`;
 documentation SZV twins only). Oracle contract: offline pins under
-`tools/cp2k_oracle/` — **never** live CP2K in ctest.
+CP2K oracle — **never** live CP2K in ctest.
 
 Related narrative: [Ch. 9 GPW](../ch09-gpw.md). Predecessor stress pages:
 [`gpw-analytic-stress`](gpw-analytic-stress.md) (Γ RKS fixed-\(P\)),
@@ -109,32 +108,41 @@ PBE-mislabelled path.
 
 ## Implementation
 
-Public surface only: `GpwAtom` + lookup constructors
-(`GaussianBasis` / `GthPotential`), `GpwDft` members, free `gpw_stress` /
+Public surface only: a `Frame` (Å, Z in `kAtom_type`, box) + `Kind` built
+from lookup constructors (`GaussianBasis` / `GthPotential`), `GpwDft` members, free `gpw_stress` /
 `gpw_stress_fd`. **No** public `*Config`, **no** `make_*` / `build_*`
 factories. Match the regression:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
+// Geometry in Bohr (H₂ along x, ±0.5 Bohr about the centre of a 12 Bohr cube),
+// converted to Å for the Frame.
 const double L = 12.0;  // Bohr
-const GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-const GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-const double r0[3] = {0.5 * L - 0.5, 0.5 * L, 0.5 * L};
-const double r1[3] = {0.5 * L + 0.5, 0.5 * L, 0.5 * L};
-std::vector<GpwAtom> atoms{
-    GpwAtom(r0, bH, pH, 1),
-    GpwAtom(r1, bH, pH, 1),
-};
+const double b2a = units::kBohrInAngstrom;
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 1;
+    frame.span(kAtom_x)[i] = (0.5 * L + (i == 0 ? -0.5 : 0.5)) * b2a;
+    frame.span(kAtom_y)[i] = 0.5 * L * b2a;
+    frame.span(kAtom_z)[i] = 0.5 * L * b2a;
+}
+frame.box = cpu::Box::cubic(L * b2a);
+const Kind H{molrs::Element::H,
+             GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+             GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
 auto make_uks = [&](XcKind xc) {
-    GpwDft m;
-    m.cell[0] = m.cell[1] = m.cell[2] = L;
+    GpwDft m{{H}};
     m.cutoff_ry = 100.0;
     m.n_alpha = 2;
     m.n_beta = 0;
@@ -150,13 +158,13 @@ auto make_uks = [&](XcKind xc) {
 
 // Energy soft pin path
 GpwDft energy = make_uks(XcKind::RevPBE);
-energy.build(atoms);
-const auto& er = energy.run(atoms);  // er.e_total [Ha]
+energy.build(frame);
+const auto& er = energy.run(frame);  // er.e_total [Ha]
 
 // Analytic product stress vs multi-SCF FD dual-gate
 const double h = 2e-3;
-const auto san = gpw_stress(atoms, make_uks(XcKind::RevPBE), h);   // Voigt Ha/Bohr³
-const auto sfd = gpw_stress_fd(atoms, make_uks(XcKind::RevPBE), h);
+const auto san = gpw_stress(frame, make_uks(XcKind::RevPBE), h);   // Voigt Ha/Bohr³
+const auto sfd = gpw_stress_fd(frame, make_uks(XcKind::RevPBE), h);
 ```
 
 `GPWEvaluator` can also request product stress on a Frame path
@@ -177,26 +185,26 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-kpoint-uks-stress-gga
-  ./build/regressions/reg_gpw-kpoint-uks-stress-gga
+  reg_gpw-kpoint-uks-stress-gga
   # or: cmake --build build --target run_reg_gpw-kpoint-uks-stress-gga
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `gpw_stress`, `gpw_stress_fd` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | Frame-facing stress members (product path) |
+| `gpw_solver.h` | `GpwDft`, `gpw_stress`, `gpw_stress_fd` |
+| `gpw_evaluator.h` | Frame-facing stress members (product path) |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Fixed-\(P_k^\sigma\)+Pulay + multi-SCF FD |
-| `include/atomiverse/cpu/gpw/gaussian_basis.h` | `GaussianBasis(Element, "DZV-GTH-PADE")` |
-| `include/atomiverse/cpu/gpw/gth_potential.h` | `GthPotential(Element, "GTH-PADE-q1")` |
-| `regressions/gpw/gpw-kpoint-uks-stress-gga/reg_gpw-kpoint-uks-stress-gga.cpp` | Product dual-gate + activation |
-| `regressions/gpw/gpw-kpoint-uks-stress-gga/REFERENCE.md` | Hard-coded pins + tolerances |
-| `tools/cp2k_oracle/inputs/gpw-kpoint-uks-stress-gga/` | CP2K NUMERICAL documentation twins |
+| `gaussian_basis.h` | `GaussianBasis(Element, "DZV-GTH-PADE")` |
+| `gth_potential.h` | `GthPotential(Element, "GTH-PADE-q1")` |
+| `reg_gpw-kpoint-uks-stress-gga.cpp` | Product dual-gate + activation |
+| case `gpw-kpoint-uks-stress-gga` pin | Hard-coded pins + tolerances |
+| CP2K oracle | CP2K NUMERICAL documentation twins |
 
 ## Validation (vs CP2K / dual-gate)
 
 Source:
-[`regressions/gpw/gpw-kpoint-uks-stress-gga/REFERENCE.md`](../../../regressions/gpw/gpw-kpoint-uks-stress-gga/REFERENCE.md).
+case `gpw-kpoint-uks-stress-gga` pin.
 Oracle: offline **CP2K** documentation twins + **ATV dual-gate** (analytic vs
 `gpw_stress_fd`). Hard-coded pins in the regression binary — **never** live
 CP2K from ctest.
@@ -246,7 +254,7 @@ CP2K from ctest.
 | Field | Value |
 | ----- | ----- |
 | Engine | CP2K 2026.1 (when available) |
-| Inputs | `tools/cp2k_oracle/inputs/gpw-kpoint-uks-stress-gga/h2_uks_kpoint_stress_{revpbe,rpbe,blyp}.inp` |
+| Inputs | CP2K oracle |
 | Mode | `RUN_TYPE ENERGY_FORCE`, `STRESS_TENSOR NUMERICAL`, `LSD`, `MULTIPLICITY 3`, MP 1 1 2 |
 | XC | RevPBE (`PBE` `PARAMETRIZATION REVPBE`), RPBE, BLYP |
 | Basis / PP in twin | **SZV-MOLOPT-GTH** / GTH-PBE-q1 — **not** DZV-GTH-PADE |
@@ -257,7 +265,7 @@ Offline re-run sketch (operator only; **not** ctest):
 ```bash
 # module load ... CP2K/2026.1 when available
 export CP2K_DATA_DIR=.../share/cp2k/data
-cp2k.psmp -i tools/cp2k_oracle/inputs/gpw-kpoint-uks-stress-gga/h2_uks_kpoint_stress_revpbe.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o /tmp/cp2k_oracle_h2_uks_kpoint_stress_revpbe.out
 # STRESS| Numerical stress tensor [bar]  — convert with
 # 1 Ha/Bohr³ = 2.94210107994716×10⁸ bar  (same table as gpw-stress-water)
@@ -270,7 +278,7 @@ k-UKS force/stress footholds. Activation floor separates GGA from PBE.
 
 ## Performance
 
-Source: `REFERENCE.md` + handoff wave 11 (the case `REFERENCE.md`).
+Source: pin notes + handoff wave 11 (the case pin notes).
 
 | Item | Value |
 | ---- | ----- |
@@ -309,14 +317,14 @@ and target \(r \le 10\).
 ## References
 
 - Offline pin + dual-gate numbers:
-  [`regressions/gpw/gpw-kpoint-uks-stress-gga/REFERENCE.md`](../../../regressions/gpw/gpw-kpoint-uks-stress-gga/REFERENCE.md)
+  case `gpw-kpoint-uks-stress-gga` pin
 - Regression consumer:
-  [`reg_gpw-kpoint-uks-stress-gga.cpp`](../../../regressions/gpw/gpw-kpoint-uks-stress-gga/reg_gpw-kpoint-uks-stress-gga.cpp)
+  `reg_gpw-kpoint-uks-stress-gga.cpp`
 - CP2K documentation twins:
-  [`tools/cp2k_oracle/inputs/gpw-kpoint-uks-stress-gga/`](../../../tools/cp2k_oracle/inputs/gpw-kpoint-uks-stress-gga/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+  CP2K oracle
+- Oracle contract: CP2K oracle
 - Predecessor PADE multi-k UKS stress:
-  [`regressions/gpw/gpw-kpoint-uks-stress/REFERENCE.md`](../../../regressions/gpw/gpw-kpoint-uks-stress/REFERENCE.md)
+  case `gpw-kpoint-uks-stress` pin
 - Γ analytic stress narrative: [`gpw-analytic-stress.md`](gpw-analytic-stress.md)
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md)

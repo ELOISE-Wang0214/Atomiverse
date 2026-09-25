@@ -10,14 +10,14 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
-
-constexpr double kA2B = 1.0 / 0.52917720859;
 
 int g_fail = 0;
 
@@ -30,18 +30,25 @@ void check(bool ok, const char* what) {
     }
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> na_bcc(double a_bohr) {
-    using namespace ATV;
-    const cpu::gpw::GaussianBasis bNa(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH");
-    const cpu::gpw::GthPotential pNa(molrs::Element::Na, "GTH-PBE-q9");
+/// BCC conventional cubic: 2 Na at (0,0,0) and (½,½,½).
+ATV::cpu::Frame na_bcc(double a_ang) {
     const double frac[2][3] = {{0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}};
-    std::vector<cpu::gpw::GpwAtom> atoms;
+    ATV::cpu::Frame frame(2);
     for (int i = 0; i < 2; ++i) {
-        const double pos[3] = {frac[i][0] * a_bohr, frac[i][1] * a_bohr,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bNa, pNa, 11);
+        frame.span(ATV::kAtom_type)[i] = 11;
+        frame.span(ATV::kAtom_x)[i] = frac[i][0] * a_ang;
+        frame.span(ATV::kAtom_y)[i] = frac[i][1] * a_ang;
+        frame.span(ATV::kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = ATV::cpu::Box::cubic(a_ang);
+    return frame;
+}
+
+std::vector<ATV::cpu::gpw::Kind> na_kinds() {
+    using namespace ATV::cpu::gpw;
+    return {Kind{molrs::Element::Na,
+                 GaussianBasis(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH"),
+                 GthPotential(molrs::Element::Na, "GTH-PBE-q9")}};
 }
 
 } // namespace
@@ -58,14 +65,12 @@ int main() {
         -92.126330608004; // same class as uks-metallic-forces
     const double f_tol_ha = 1e-3;
     const double a_ang = 4.225;
-    const double a = a_ang * kA2B;
     const double n_elec = 18.0;
 
-    auto atoms = na_bcc(a);
+    auto frame = na_bcc(a_ang);
 
     auto make_uks = [&]() {
-        GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = a;
+        GpwDft m{na_kinds()};
         m.cutoff_ry = 150.0;
         m.n_alpha = 9;
         m.n_beta = 9;
@@ -93,10 +98,10 @@ int main() {
     };
 
     GpwDft energy = make_uks();
-    energy.build(atoms);
+    energy.build(frame);
 
     const auto t0 = std::chrono::steady_clock::now();
-    const auto& r = energy.run(atoms);
+    const auto& r = energy.run(frame);
     const auto t1 = std::chrono::steady_clock::now();
     const double wall_scf = std::chrono::duration<double>(t1 - t0).count();
 
@@ -115,9 +120,9 @@ int main() {
 
     const double h = 2e-3;
     const auto t2 = std::chrono::steady_clock::now();
-    const auto san = gpw_stress(atoms, make_uks(), h);
+    const auto san = gpw_stress(frame, make_uks(), h);
     const auto t3 = std::chrono::steady_clock::now();
-    const auto sfd = gpw_stress_fd(atoms, make_uks(), h);
+    const auto sfd = gpw_stress_fd(frame, make_uks(), h);
     const auto t4 = std::chrono::steady_clock::now();
     const double wall_an = std::chrono::duration<double>(t3 - t2).count();
     const double wall_fd = std::chrono::duration<double>(t4 - t3).count();
@@ -144,7 +149,7 @@ int main() {
     check(max_diag_err <= kAnFdTol, "A2 free-energy analytic vs FD max diag");
 
     // Closed-shell UKS+smear ≡ RKS+smear stress identity.
-    const auto s_rks = gpw_stress(atoms, make_rks(), h);
+    const auto s_rks = gpw_stress(frame, make_rks(), h);
     double max_cs = 0.0;
     for (int ax = 0; ax < 3; ++ax)
         max_cs =

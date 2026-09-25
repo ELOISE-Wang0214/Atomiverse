@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -68,15 +69,18 @@ cpu::gpw::GPWEvaluator make_eval(bool vdw_df) {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval(
-        {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 80, /*tol*/ 1e-7,
-        /*mix*/ 0.4, cpu::gpw::XcKind::OptB88VdW, /*nonperiodic*/ false,
-        /*compute_forces*/ true);
+    cpu::gpw::GpwDft dft{{O, H}};
+    dft.cutoff_ry = 200.0;
+    dft.max_iter = 80;
+    dft.tol = 1e-7;
+    dft.mix = 0.4;
+    dft.xc = cpu::gpw::XcKind::OptB88VdW;
+    dft.nonperiodic = false;
     // Match CP2K MGRID (NGRIDS 4 / REL_CUTOFF 40) — fair twin for E/F/wall.
-    eval.ngrids = 4;
-    eval.rel_cutoff = 40.0;
-    eval.vdw_df = vdw_df;
-    return eval;
+    dft.ngrids = 4;
+    dft.rel_cutoff = 40.0;
+    dft.vdw_df = vdw_df;
+    return cpu::gpw::GPWEvaluator(std::move(dft), /*compute_forces=*/true);
 }
 
 void run_eval(cpu::Frame& frame, cpu::gpw::GPWEvaluator& eval) {

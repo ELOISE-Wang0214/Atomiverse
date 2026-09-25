@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ot-smearing` |
-| Regression | `regressions/gpw/ot-smearing/` |
 | Public API | `cpu::gpw::GpwDft` members `use_ot`, `smearing`, `degauss` [Ry], `extra_bands`, `mp_order`; `GpwResult::{e_total,e_fermi,n_elec_occ,e_entropy}` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §10 — OT + metallic smear ✓ (`reg_ot-smearing`) |
 ## Summary
@@ -103,11 +102,13 @@ state when both converge on identical grids (product identity gate).
 ## Implementation
 
 Public surface only: construct `cpu::gpw::GpwDft`, set members, `build` /
-`run` on GTH atoms (regression path). No `*Config`, no factories. Headers:
-`include/atomiverse/cpu/gpw/gpw_solver.h` (API + `Smearing` enum);
-OT internals in `include/atomiverse/cpu/gpw/internal/ot.h` (not a user type).
+`run` on a `cpu::Frame` (regression path). No `*Config`, no factories. Headers:
+`gpw_solver.h` (API + `Smearing` enum);
+OT internals in `ot.h` (not a user type).
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -117,22 +118,22 @@ using namespace ATV;
 using cpu::gpw::GpwDft;
 using cpu::gpw::Smearing;
 
-constexpr double kA2B = 1.0 / 0.52917720859; // Å → Bohr
-const double a_ang = 4.225;
-const double a = a_ang * kA2B;
+const double a = 4.225; // Å
 
 // BCC conventional cubic: 2 Na at (0,0,0) and (½,½,½)
-const cpu::gpw::GaussianBasis bNa(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH");
-const cpu::gpw::GthPotential pNa(molrs::Element::Na, "GTH-PBE-q9");
 const double frac[2][3] = {{0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}};
-std::vector<cpu::gpw::GpwAtom> atoms;
+cpu::Frame frame(2);
 for (int i = 0; i < 2; ++i) {
-    const double pos[3] = {frac[i][0] * a, frac[i][1] * a, frac[i][2] * a};
-    atoms.emplace_back(pos, bNa, pNa, 11);
+    frame.span(kAtom_type)[i] = 11;
+    frame.span(kAtom_x)[i] = frac[i][0] * a;
+    frame.span(kAtom_y)[i] = frac[i][1] * a;
+    frame.span(kAtom_z)[i] = frac[i][2] * a;
 }
+frame.box = cpu::Box::cubic(a);
 
-GpwDft ot;
-ot.cell[0] = ot.cell[1] = ot.cell[2] = a;
+GpwDft ot{{cpu::gpw::Kind{molrs::Element::Na,
+                           cpu::gpw::GaussianBasis(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH"),
+                           cpu::gpw::GthPotential(molrs::Element::Na, "GTH-PBE-q9")}}};
 ot.cutoff_ry = 150.0;
 ot.n_occ = 9;            // Ne/2 for GTH-PBE-q9 × 2
 ot.max_iter = 200;
@@ -148,8 +149,8 @@ ot.degauss = 0.02;       // Ry
 ot.extra_bands = 4;
 ot.use_ot = true;
 
-ot.build(atoms);
-const auto& r = ot.run(atoms);
+ot.build(frame);
+const auto& r = ot.run(frame);
 // r.e_total [Ha] free energy F; r.e_fermi [Ha]; r.n_elec_occ ≈ 18;
 // r.e_entropy [Ha] (−TS); r.converged, r.iters; r.n_kpts > 1
 ```
@@ -171,24 +172,24 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_ot-smearing -j$(nproc)
-  ./build/regressions/reg_ot-smearing
+  reg_ot-smearing
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | Public `use_ot`, `Smearing`, `degauss`, `extra_bands` |
-| `include/atomiverse/cpu/gpw/internal/ot.h` | Multi-k OT + fractional gradient (internal) |
+| `gpw_solver.h` | Public `use_ot`, `Smearing`, `degauss`, `extra_bands` |
+| `ot.h` | Multi-k OT + fractional gradient (internal) |
 | `src/cpu/gpw/gpw_solver.cpp` | Build gates (RKS OT+smear OK; UKS OT+smear throws) |
-| `regressions/gpw/ot-smearing/` | E2E product gate + `REFERENCE.md` |
-| `tools/cp2k_oracle/inputs/ot-smearing/na_ot_fermi_dirac.inp` | Offline CP2K DIIS+FD twin |
+| `ot-smearing` | E2E product gate + pin notes |
+| CP2K oracle | Offline CP2K DIIS+FD twin |
 | Related: `reg_gpw-metallic-smearing` | DIIS-only metallic smear (same system class) |
 | Related: `reg_ot-minimizer-water` | Γ OT, fixed integer occupations |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/ot-smearing/REFERENCE.md`](../../../regressions/gpw/ot-smearing/REFERENCE.md)
+case `ot-smearing` pin
 (offline pins only; **never** live CP2K in ctest).
 
 ### System (Atomiverse pin)
@@ -237,7 +238,7 @@ surface. Same system class as `reg_gpw-metallic-smearing`.
 | Item | Value |
 | ---- | ----- |
 | Code | **CP2K 2026.1** (same class as metallic-smearing) |
-| Input | `tools/cp2k_oracle/inputs/ot-smearing/na_ot_fermi_dirac.inp` |
+| Input | CP2K oracle |
 | Method | Quickstep GPW, PADE, GTH-PBE-q9 + DZVP-MOLOPT-SR-GTH |
 | Cell | BCC Na conventional \(a=4.225\) Å |
 | SCF | DIIS / Broyden mix; **not** `&OT` (CP2K OT ↛ SMEAR) |
@@ -246,21 +247,21 @@ surface. Same system class as `reg_gpw-metallic-smearing`.
 | k-points | Monkhorst–Pack \(2\times2\times2\) |
 | Example \(E_{\mathrm{tot}}\) | **−92.76593904 Ha** (not ATV pin) |
 
-Oracle path: `tools/cp2k_oracle/README.md` (offline only).
+Oracle path: CP2K oracle (offline only).
 
 Offline sketch (host with CP2K module; not ctest):
 
 ```bash
 module load ... CP2K/2026.1
 export CP2K_DATA_DIR=.../share/cp2k/data
-cp2k.psmp -i tools/cp2k_oracle/inputs/ot-smearing/na_ot_fermi_dirac.inp -o ot.out
+cp2k.psmp -i <CP2K oracle input for this case> -o ot.out
 # ENERGY| Total FORCE_EVAL ( QS ) energy [hartree]  ~ -92.76593904
 ```
 
 ## Performance
 
 Source: fair wall table in
-`regressions/gpw/ot-smearing/REFERENCE.md` (2026-07-26). Handoff /
+case `ot-smearing` pin (2026-07-26). Handoff /
 queue record: ratio **~0.20**. Gate \(r\le 10\) unless `perf_exempt`.
 
 Comparable settings: cutoff 150 Ry, PADE, multi-k \(2^3\), single rank,
@@ -304,14 +305,13 @@ sparse/linear-scaling OT. (4) **ctest never launches CP2K.**
 
 ## References
 
-- Offline pin + fair wall: `regressions/gpw/ot-smearing/REFERENCE.md`
-- Regression binary: `regressions/gpw/ot-smearing/reg_ot-smearing.cpp`
-- CP2K twin input: `tools/cp2k_oracle/inputs/ot-smearing/na_ot_fermi_dirac.inp`
-- Oracle notes: `tools/cp2k_oracle/README.md`
-- Handoff ratio **~0.20**: the case `REFERENCE.md`
+- Offline pin + fair wall: case `ot-smearing` pin
+- Regression binary: `reg_ot-smearing.cpp`
+- CP2K twin input: CP2K oracle
+- Oracle notes: CP2K oracle
+- Handoff ratio **~0.20**: the case pin notes
 - Roadmap: `docs/roadmap/dft.md` §10 (OT + metallic smear ✓)
-- Public header: `include/atomiverse/cpu/gpw/gpw_solver.h`
-- Internal OT (fractional gradient): `include/atomiverse/cpu/gpw/internal/ot.h`
+- Internal OT (fractional gradient): `ot.h`
 - Related tutorials: [ot-minimizer-water](ot-minimizer-water.md) (Γ OT,
   fixed occ); [pw-smearing-al](pw-smearing-al.md) (PW metallic FD)
 - Related regressions: `reg_gpw-metallic-smearing`, `reg_ot-kpoints`,

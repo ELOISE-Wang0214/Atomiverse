@@ -15,8 +15,9 @@
 ///      bit-identical to the Γ pin).
 ///   2. F_ATM — F(C9) − F(two-body). Electronic force cancels; pure ATM
 ///      gradient (matches Γ ΔF to print residual).
-/// Product dual: multi-k H₂ SCF + force assembly (d3_atm on − off) on the
-/// same density equals the standalone ATM ΔF. Multi-k payload: C_occ_k.
+/// Product dual: multi-k H₂ `GpwDft::forces` with d3_atm on − off (same
+/// density — D3 is geometry-only) equals the standalone ATM ΔF. Multi-k
+/// payload: C_occ_k.
 ///
 /// Public API only. No live CP2K. See REFERENCE.md.
 
@@ -26,12 +27,14 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/dftd3_params.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
 using namespace ATV;
@@ -162,18 +165,38 @@ int main() {
     // Cheap product twin (same mesh class as the CP2K ENERGY_FORCE twin)
     // so the e2e wall stays under 60 s. ATM pin above already exercised
     // lattice-image triples on the water dimer.
-    const auto basis =
-        cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
-    const auto pot = cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    // H₂ geometry is native Bohr (cell 12 Bohr); the Frame carries Å.
     const double rA[3] = {5.5, 6.0, 6.0};
     const double rB[3] = {6.5, 6.0, 6.0};
-    std::vector<cpu::gpw::GpwAtom> atoms = {
-        cpu::gpw::GpwAtom(rA, basis, pot, 1),
-        cpu::gpw::GpwAtom(rB, basis, pot, 1)};
+    auto make_frame = [&]() {
+        constexpr double b2a = units::kBohrInAngstrom;
+        cpu::Frame f(2);
+        const double* r[2] = {rA, rB};
+        for (int i = 0; i < 2; ++i) {
+            f.span(kAtom_type)[i] = 1;
+            f.span(kAtom_x)[i] = r[i][0] * b2a;
+            f.span(kAtom_y)[i] = r[i][1] * b2a;
+            f.span(kAtom_z)[i] = r[i][2] * b2a;
+        }
+        f.box = cpu::Box::cubic(12.0 * b2a);
+        return f;
+    };
+    auto forces_ha_bohr = [](const cpu::Frame& f) {
+        const double c = units::kHartreePerBohrInEvPerAngstrom;
+        std::vector<std::array<double, 3>> out(2);
+        for (int i = 0; i < 2; ++i)
+            out[static_cast<std::size_t>(i)] = {
+                static_cast<double>(f.span(kAtom_fx)[i]) / c,
+                static_cast<double>(f.span(kAtom_fy)[i]) / c,
+                static_cast<double>(f.span(kAtom_fz)[i]) / c};
+        return out;
+    };
 
     auto make_cfg = [](bool atm) {
-        cpu::gpw::GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        cpu::gpw::GpwDft m{{cpu::gpw::Kind{
+            molrs::Element::H,
+            cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+            cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
         m.cutoff_ry = 100.0;
         m.n_occ = 1;
         m.tol = 1e-8;
@@ -192,9 +215,10 @@ int main() {
     };
 
     const auto t_prod0 = clock::now();
+    cpu::Frame frame_atm = make_frame();
     cpu::gpw::GpwDft cfg_atm = make_cfg(true);
-    cfg_atm.build(atoms);
-    const auto& scf = cfg_atm.run(atoms);
+    cfg_atm.build(frame_atm);
+    const auto& scf = cfg_atm.forces(frame_atm);
     if (!scf.converged) {
         std::printf("FAIL: multi-k SCF did not converge (iters=%d)\n",
                     scf.iters);
@@ -211,10 +235,14 @@ int main() {
         return 1;
     }
 
-    const auto F_on = cpu::gpw::gpw_forces_from_scf(atoms, cfg_atm, scf);
+    // D3 is geometry-only: the ATM-off twin SCF converges to the same density,
+    // so F_on − F_off isolates the ATM gradient.
+    const auto F_on = forces_ha_bohr(frame_atm);
+    cpu::Frame frame_two = make_frame();
     cpu::gpw::GpwDft cfg_two = make_cfg(false);
-    cfg_two.build(atoms);
-    const auto F_off = cpu::gpw::gpw_forces_from_scf(atoms, cfg_two, scf);
+    cfg_two.build(frame_two);
+    cfg_two.forces(frame_two);
+    const auto F_off = forces_ha_bohr(frame_two);
     const double t_prod_s =
         std::chrono::duration<double>(clock::now() - t_prod0).count();
 

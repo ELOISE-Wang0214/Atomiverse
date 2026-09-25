@@ -5,12 +5,11 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `second-gen-cpmd-uks-ot` |
-| Regression | `regressions/dynamics/second-gen-cpmd-uks-ot/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{…, n_alpha, n_beta, use_ot=true}, aspc_k, corrector_max_iter}` bound with `set_evaluator_ref` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{cpu::gpw::GpwDft{…, n_alpha, n_beta, use_ot=true}}, aspc_k, corrector_max_iter}` bound with `set_evaluator_ref` |
 | Roadmap | `docs/roadmap/molecular-dynamics.md` §7 — SGCP Γ-UKS OT |
 | Dual gate | Correctness: NVE drift envelope + OT corrector-budget identity + triplet ⟨S²⟩; speed **`perf_exempt`** (no CP2K AIMD twin wall on pin host) |
 | Wave | CP2K capability loop — wave 10 (merged 2026-07-26) |
-| Oracle | Offline CP2K sketch only (`tools/cp2k_oracle/`); **never** live in ctest |
+| Oracle | Offline CP2K sketch only (CP2K oracle); **never** live in ctest |
 
 ## Summary
 
@@ -116,7 +115,7 @@ trajectory — same class as `second-gen-cpmd-ot` / `second-gen-cpmd-uks`.
 
 ## Implementation
 
-Public surface only (`cpu::Frame` + evaluator **members** / ctor args; **no**
+Public surface only (`cpu::Frame` + `GpwDft` **members** / ctor args; **no**
 `*Config` bag, **no** `make_*` / `build_*` factories). Match the regression:
 
 ```cpp
@@ -158,13 +157,17 @@ const cpu::gpw::Kind O{
 
 constexpr double dt = 0.5; // fs — BOMD-class step (not classical CP dt)
 constexpr int corrector_budget = 5;
-cpu::gpw::GPWEvaluator gpw(
-    /*kinds*/ {O}, /*cutoff_ry*/ 200.0, /*max_iter*/ 80, /*tol*/ 1e-5,
-    /*mix*/ 0.4, cpu::gpw::XcKind::PADE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
-gpw.n_alpha = 7; // multiplicity 3, 12 valence e⁻
-gpw.n_beta = 5;
-gpw.use_ot = true;                     // OT partial-SCF corrector (this slug)
+cpu::gpw::GpwDft dft{{O}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 80;
+dft.tol = 1e-5;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.nonperiodic = true;
+dft.n_alpha = 7; // multiplicity 3, 12 valence e⁻
+dft.n_beta = 5;
+dft.use_ot = true;                     // OT partial-SCF corrector
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // SGCP is the wrapper type; Kolafa ASPC order K (needs K+1 seeds) and the
 // corrector budget are its constructor arguments.
 cpu::electronic::SecondGenCp eval{std::move(gpw), /*aspc_k=*/1,
@@ -198,26 +201,26 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_second-gen-cpmd-uks-ot
-  ./build/regressions/reg_second-gen-cpmd-uks-ot
+  reg_second-gen-cpmd-uks-ot
   # or: cmake --build build --target run_reg_second-gen-cpmd-uks-ot
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/electronic/second_gen_cp.h` | `SecondGenCp` wrapper (ASPC order + corrector budget) |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | Public members `use_ot`, `n_alpha`/`n_beta`; private SGCP mode bits |
-| `include/atomiverse/cpu/gpw/internal/ot.h` | OT parameterization / preconds (internal) |
-| `include/atomiverse/cpu/electronic/aspc_predictor.h` | Kolafa ASPC (shared with XL / BOMD warm-start) |
+| `second_gen_cp.h` | `SecondGenCp` wrapper (ASPC order + corrector budget) |
+| `gpw_solver.h` / `gpw_evaluator.h` | `GpwDft` members `use_ot`, `n_alpha`/`n_beta`; evaluator holds private SGCP mode bits |
+| `ot.h` | OT parameterization / preconds (internal) |
+| `aspc_predictor.h` | Kolafa ASPC (shared with XL / BOMD warm-start) |
 | `src/cpu/gpw/` | Wire dual-spin ASPC + OT corrector into force path |
 | `tests/cpu/gpw/` (`test_gpw_second_gen_cpmd`, related) | Unit: method identity / mutual exclusion |
-| `regressions/dynamics/second-gen-cpmd-uks-ot/` | E2E product gate + `REFERENCE.md` |
-| `tools/cp2k_oracle/inputs/second-gen-cpmd-uks-ot/` | Offline CP2K twin sketch (not ctest) |
+| `second-gen-cpmd-uks-ot` | E2E product gate + pin notes |
+| CP2K oracle | Offline CP2K twin sketch (not ctest) |
 
 ## Validation (vs CP2K)
 
-Source: [`regressions/dynamics/second-gen-cpmd-uks-ot/REFERENCE.md`](../../../regressions/dynamics/second-gen-cpmd-uks-ot/REFERENCE.md).
-Oracle: offline **CP2K** sketch under `tools/cp2k_oracle/inputs/second-gen-cpmd-uks-ot/`;
+Source: case `second-gen-cpmd-uks-ot` pin.
+Oracle: offline **CP2K** sketch under CP2K oracle;
 **never** live in ctest. Pin host inventory (2026-07-26): **no** `cp2k`
 binary / CP2K Lmod module — same class as sibling SGCP dynamics slugs
 (`second-gen-cpmd-uks`, `second-gen-cpmd-ot`, `xl-bomd-uks`). When a binary is
@@ -264,17 +267,17 @@ Offline oracle sketch (host with CP2K module; **not** ctest):
 ```bash
 module load ... CP2K/2026.1   # when available
 export CP2K_DATA_DIR=.../share/cp2k/data
-cp2k.psmp -i tools/cp2k_oracle/inputs/second-gen-cpmd-uks-ot/o2_uks_sgcp_ot_nve.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o o2_uks_sgcp_ot_nve.out
 # Record: ENERGY| / .ener drift, fair wall vs reg_second-gen-cpmd-uks-ot
 ```
 
 Related absolute energy / force offline pins (static O₂ UKS, not this MD slug):
-`regressions/gpw/gpw-uks-o2-gamma`, `gpw-uks-forces`.
+`gpw-uks-o2-gamma`, `gpw-uks-forces`.
 
 ## Performance
 
-Source: `regressions/dynamics/second-gen-cpmd-uks-ot/REFERENCE.md` and
+Source: case `second-gen-cpmd-uks-ot` pin and
 Campaign record: **`perf_exempt`** (NVE drift / method-identity gate; no fair AIMD
 wall twin on pin host 2026-07-26).
 
@@ -318,10 +321,10 @@ AIMD with matched ASPC order / OT corrector budget / cutoff / OMP and record
 
 ## References
 
-- Offline pin + dual gate: `regressions/dynamics/second-gen-cpmd-uks-ot/REFERENCE.md`
-- Regression binary: `regressions/dynamics/second-gen-cpmd-uks-ot/reg_second-gen-cpmd-uks-ot.cpp`
-- CP2K oracle sketch: `tools/cp2k_oracle/inputs/second-gen-cpmd-uks-ot/o2_uks_sgcp_ot_nve.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md` (offline only; never ctest)
+- Offline pin + dual gate: case `second-gen-cpmd-uks-ot` pin
+- Regression binary: `reg_second-gen-cpmd-uks-ot.cpp`
+- CP2K oracle sketch: CP2K oracle
+- Oracle rules: CP2K oracle (offline only; never ctest)
 - Roadmap: `docs/roadmap/molecular-dynamics.md` §7 (SGCP UKS OT ✓)
 - Closed-shell OT static: `docs/tutorial/methods/ot-minimizer-water.md`
 - Γ-UKS static O₂: `docs/tutorial/methods/gpw-uks-o2-gamma.md`

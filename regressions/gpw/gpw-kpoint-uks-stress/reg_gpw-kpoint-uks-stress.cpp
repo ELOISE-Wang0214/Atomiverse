@@ -11,6 +11,9 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -29,28 +32,42 @@ void check(bool ok, const char* what) {
     }
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> h2_hs(double L) {
+/// H₂ toy in a cubic box of edge `L` [Bohr]; the Frame is in Å.
+ATV::cpu::Frame h2_hs(double L) {
+    using namespace ATV;
+    constexpr double b2a = units::kBohrInAngstrom;
+    const double x[2] = {0.5 * L - 0.5, 0.5 * L + 0.5};
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_x)[i] = x[i] * b2a;
+        frame.span(kAtom_y)[i] = 0.5 * L * b2a;
+        frame.span(kAtom_z)[i] = 0.5 * L * b2a;
+    }
+    frame.box = cpu::Box::cubic(L * b2a);
+    return frame;
+}
+
+std::vector<ATV::cpu::gpw::Kind> h_kinds() {
     using namespace ATV::cpu::gpw;
-    const GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-    const GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-    const double r0[3] = {0.5 * L - 0.5, 0.5 * L, 0.5 * L};
-    const double r1[3] = {0.5 * L + 0.5, 0.5 * L, 0.5 * L};
-    return {GpwAtom(r0, bH, pH, 1), GpwAtom(r1, bH, pH, 1)};
+    return {Kind{molrs::Element::H,
+                 GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                 GthPotential(molrs::Element::H, "GTH-PADE-q1")}};
 }
 
 } // namespace
 
 int main() {
+    using namespace ATV;
     using namespace ATV::cpu::gpw;
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();
 
     const double L = 12.0;
-    const auto atoms = h2_hs(L);
+    cpu::Frame frame = h2_hs(L);
 
     auto make_uks = [&]() {
-        GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = L;
+        GpwDft m{h_kinds()};
         m.cutoff_ry = 100.0;
         m.n_alpha = 2;
         m.n_beta = 0;
@@ -66,8 +83,8 @@ int main() {
 
     // A1: SCF + payload
     GpwDft energy = make_uks();
-    energy.build(atoms);
-    const auto& er = energy.run(atoms);
+    energy.build(frame);
+    const auto& er = energy.run(frame);
     check(er.converged, "A1 SCF converged");
     check(std::isfinite(er.e_total), "A1 finite e_total");
     check(er.n_kpts >= 1 && !er.C_occ_k.empty(), "A1 C_occ_k present");
@@ -78,8 +95,8 @@ int main() {
 
     // A2/A3: dual-gate analytic vs multi-SCF FD
     const double h = 2e-3;
-    const auto san = gpw_stress(atoms, make_uks(), h);
-    const auto sfd = gpw_stress_fd(atoms, make_uks(), h);
+    const auto san = gpw_stress(frame, make_uks(), h);
+    const auto sfd = gpw_stress_fd(frame, make_uks(), h);
 
     double max_diag_err = 0.0;
     const char* names[3] = {"xx", "yy", "zz"};
@@ -102,8 +119,7 @@ int main() {
 
     // A4: closed-shell multi-k UKS ≡ multi-k RKS
     {
-        GpwDft rks;
-        rks.cell[0] = rks.cell[1] = rks.cell[2] = L;
+        GpwDft rks{h_kinds()};
         rks.cutoff_ry = 100.0;
         rks.n_occ = 1;
         rks.max_iter = 60;
@@ -114,8 +130,7 @@ int main() {
         rks.k_mesh[1] = 1;
         rks.k_mesh[2] = 2;
 
-        GpwDft uks_cs;
-        uks_cs.cell[0] = uks_cs.cell[1] = uks_cs.cell[2] = L;
+        GpwDft uks_cs{h_kinds()};
         uks_cs.cutoff_ry = 100.0;
         uks_cs.n_alpha = 1;
         uks_cs.n_beta = 1;
@@ -127,8 +142,8 @@ int main() {
         uks_cs.k_mesh[1] = 1;
         uks_cs.k_mesh[2] = 2;
 
-        const auto sr = gpw_stress(atoms, rks, h);
-        const auto su = gpw_stress(atoms, uks_cs, h);
+        const auto sr = gpw_stress(frame, rks, h);
+        const auto su = gpw_stress(frame, uks_cs, h);
         double max_d = 0.0;
         for (int a = 0; a < 3; ++a) {
             const double d = std::abs(sr[static_cast<std::size_t>(a)]

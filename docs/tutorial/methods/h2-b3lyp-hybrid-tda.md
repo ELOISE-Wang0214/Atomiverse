@@ -4,7 +4,7 @@
 
 Tamm–Dancoff linear response on a **hybrid** RKS reference: Casida **A** includes
 exact-exchange kernel \(\alpha_{\mathrm{hf}}\) plus semi-local \(f^{xc}\).
-Regression: `regressions/scf/h2-b3lyp-hybrid-tda`. Related: [Ch. 6 Hybrid DFT](../ch06-hybrid-dft.md).
+Regression: `h2-b3lyp-hybrid-tda`. Related: [Ch. 6 Hybrid DFT](../ch06-hybrid-dft.md).
 
 ## Theory
 
@@ -33,7 +33,7 @@ auto ex = rks.tda(/*n_states=*/3);   // excitations [eV], oscillator strengths
 ```
 
 ```bash
-cmake --build build --target reg_h2-b3lyp-hybrid-tda && ./build/regressions/reg_h2-b3lyp-hybrid-tda
+cmake --build build --target reg_h2-b3lyp-hybrid-tda && reg_h2-b3lyp-hybrid-tda
 ```
 
 ## Results

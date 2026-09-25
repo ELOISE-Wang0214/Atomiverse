@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ot-uks-dftu` |
-| Regression | `regressions/gpw/ot-uks-dftu/` |
 | Public API | `cpu::gpw::GpwDft` members `use_ot`, `n_alpha`/`n_beta`, `k_mesh` / `k_points`, `plus_u` |
 | Roadmap | `docs/roadmap/dft.md` § OT — multi-k UKS OT+U (`reg_ot-uks-dftu`) ✓ |
 
@@ -20,9 +19,9 @@ intersection of three previously separate footholds: multi-k UKS OT
 2026.1** logistics and in-tree OT≡DIIS fixed-point identities.
 
 Product path: construct `cpu::gpw::GpwDft`, set UKS occupations + `use_ot` +
-`k_mesh`/`k_points` + `plus_u`, `build(atoms)` / `run(atoms)`. Method energy
-channel is **Hartree** on `GpwResult::e_total` / `e_dftu` (public Frame energy
-remains eV when routed through an evaluator). Product gate:
+`k_mesh`/`k_points` + `plus_u`, `build(frame)` / `run(frame)`. Method energy
+channel is **Hartree** on `GpwResult::e_total` / `e_dftu`; `run(frame)` also
+writes the public Frame energy in eV (`kEnergy`). Product gate:
 `reg_ot-uks-dftu`. Fair wall: **`perf_exempt`** — CP2K 2026.1 hard-aborts OT
 with k-points, so no OT wall twin exists; decisive gates are internal
 OT≡DIIS multi-k UKS+U identities (same pattern as `ot-uks-kpoints` /
@@ -118,9 +117,13 @@ OT≡DIIS multi-k UKS+U (A1–A2) plus activation / absolute first-green pin
 ## Implementation
 
 Public surface only (`cpu::gpw::GpwDft` members; **no** `*Config` bag, **no**
-`make_*` / `build_*`). Match the regression (Bohr geometry, `GpwAtom` path):
+`make_*` / `build_*`). Match the regression (Frame in Å; the Bohr cell and
+offsets are converted with `units::kBohrInAngstrom`):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -133,18 +136,23 @@ using cpu::gpw::PlusU;
 using cpu::gpw::XcKind;
 
 // High-spin H₂, 8 Bohr cubic cell, ±0.7 Bohr from centre along x
-const double L = 8.0;
-const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-const double r0[3] = {0.5 * L - 0.7, 0.5 * L, 0.5 * L};
-const double r1[3] = {0.5 * L + 0.7, 0.5 * L, 0.5 * L};
-std::vector<cpu::gpw::GpwAtom> atoms;
-atoms.emplace_back(r0, bH, pH, 1);
-atoms.emplace_back(r1, bH, pH, 1);
+constexpr double b2a = units::kBohrInAngstrom;  // Frame is Å
+const double L = 8.0 * b2a;                     // 8 Bohr
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 1;
+    frame.span(kAtom_x)[i] = 0.5 * L + (i == 0 ? -0.7 : 0.7) * b2a;
+    frame.span(kAtom_y)[i] = 0.5 * L;
+    frame.span(kAtom_z)[i] = 0.5 * L;
+}
+frame.box = cpu::Box::cubic(L);
+
+const cpu::gpw::Kind H{molrs::Element::H,
+                       cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                       cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
 // A3-class product: MP 2×1×1, time-reversal, OT + Dudarev U
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = L;
+GpwDft m{{H}};
 m.cutoff_ry = 100.0;
 m.n_alpha = 2;
 m.n_beta = 0;
@@ -159,8 +167,8 @@ m.k_time_reversal = true;
 m.use_ot = true;
 m.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_minus_j_ev=*/4.0});
 
-m.build(atoms);
-const GpwResult r = m.run(atoms);
+m.build(frame);
+const GpwResult& r = m.run(frame);
 // r.e_total [Ha], r.e_dftu [Ha], r.converged, r.n_kpts, r.s2
 ```
 
@@ -188,29 +196,28 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_ot-uks-dftu -j$(nproc)
-  ./build/regressions/reg_ot-uks-dftu
+  reg_ot-uks-dftu
 '
 ```
 
 | Piece | Path |
 | ----- | ---- |
-| Public `GpwDft::{use_ot,plus_u,k_mesh,n_alpha,…}` | `include/atomiverse/cpu/gpw/gpw_solver.h` |
+| Public `GpwDft::{use_ot,plus_u,k_mesh,n_alpha,…}` | `gpw_solver.h` |
 | Public `PlusU` / `GpwResult::{e_dftu,s2,n_kpts}` | same |
 | OUTER_SCF multi-k UKS OT+U | `src/cpu/gpw/gpw_solver.cpp` |
-| OT internals (`ot_minimize_fixed_k`, …) | `include/atomiverse/cpu/gpw/internal/ot.h` |
-| Dudarev E/V (internal) | `include/atomiverse/cpu/gpw/internal/dft_plus_u.h` |
+| OT internals (`ot_minimize_fixed_k`, …) | `ot.h` |
+| Dudarev E/V (internal) | `dft_plus_u.h` |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_ot.cpp` (Γ-UKS OT+U) |
-| Regression | `regressions/gpw/ot-uks-dftu/reg_ot-uks-dftu.cpp` |
-| Offline CP2K DIIS multi-k+U twin | `tools/cp2k_oracle/inputs/ot-uks-dftu/` |
+| Offline CP2K DIIS multi-k+U twin | CP2K oracle |
 
-**Note on `GPWEvaluator`:** the Frame / driver component exposes `use_ot`,
-`n_alpha`/`n_beta`, and `plus_u`, but multi-k sampling for this product gate
-is exercised on concrete `GpwDft` (as in the regression). Prefer the solver
-API for multi-k UKS OT+U until k-mesh is wired through the evaluator.
+**Note on `GPWEvaluator`:** the driver component binds the same configured
+`GpwDft` (`GPWEvaluator(std::move(m))`), so `use_ot`, `n_alpha`/`n_beta`,
+`plus_u` and `k_mesh` / `k_points` are all set on the method; the product gate
+itself calls `GpwDft` directly (as in the regression).
 
 ## Validation (vs CP2K / internal identities)
 
-Source: [`regressions/gpw/ot-uks-dftu/REFERENCE.md`](../../../regressions/gpw/ot-uks-dftu/REFERENCE.md).
+Source: case `ot-uks-dftu` pin.
 Oracle: offline **CP2K 2026.1** (`cp2k.psmp`); **never** live in ctest.
 Pin date: **2026-07-26**.
 
@@ -255,7 +262,7 @@ Offline CP2K DIIS multi-k+U twin (operator only; not ctest):
 ```bash
 # module load … CP2K/2026.1; export CP2K_DATA_DIR=…/share/cp2k/data
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_SET,GTH_POTENTIALS} .
-cp2k.psmp -i tools/cp2k_oracle/inputs/ot-uks-dftu/h2_uks_ot_dftu_kpoints.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o h2_uks_dftu_k.out
 # OT+k aborts on CP2K 2026.1; this input is DIAGONALIZATION multi-k UKS+U
 ```
@@ -263,8 +270,8 @@ cp2k.psmp -i tools/cp2k_oracle/inputs/ot-uks-dftu/h2_uks_ot_dftu_kpoints.inp \
 ## Performance
 
 Source: fair wall table in
-`regressions/gpw/ot-uks-dftu/REFERENCE.md` (2026-07-26). Handoff:
-the case `REFERENCE.md` → **`perf_exempt`**.
+case `ot-uks-dftu` pin (2026-07-26). Handoff:
+the case pin notes → **`perf_exempt`**.
 
 | Item | Value |
 | ---- | ----- |
@@ -291,8 +298,8 @@ apply; do not invent a CP2K OT wall from the DIIS twin.
   GPW regressions.
 - **Single-grid periodic only** for multi-k; multigrid and MT nonperiodic
   multi-k OT+U are out of scope.
-- **`GPWEvaluator` k-mesh** is not the regression surface — multi-k product
-  gate is on `GpwDft`.
+- **`GPWEvaluator`** is not the regression surface — the multi-k product
+  gate calls `GpwDft` directly.
 - **Dense OT preconditioner** cost does not forecast sparse / linear-scaling
   OT industrial workloads.
 - Prior product pins remain the entry points for partial combos: multi-k UKS
@@ -301,10 +308,10 @@ apply; do not invent a CP2K OT wall from the DIIS twin.
 
 ## References
 
-- Offline pin + fair wall: [`regressions/gpw/ot-uks-dftu/REFERENCE.md`](../../../regressions/gpw/ot-uks-dftu/REFERENCE.md)
-- Regression consumer: [`reg_ot-uks-dftu.cpp`](../../../regressions/gpw/ot-uks-dftu/reg_ot-uks-dftu.cpp)
-- CP2K DIIS multi-k+U twin: [`tools/cp2k_oracle/inputs/ot-uks-dftu/`](../../../tools/cp2k_oracle/inputs/ot-uks-dftu/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin + fair wall: case `ot-uks-dftu` pin
+- Regression consumer: `reg_ot-uks-dftu.cpp`
+- CP2K DIIS multi-k+U twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md)
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Related handbook: [ot-minimizer-water](ot-minimizer-water.md),

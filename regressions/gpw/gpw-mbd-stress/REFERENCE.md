@@ -30,7 +30,7 @@ Public path: `cpu::gpw::GPWEvaluator` with `mbd = true`,
 | Gate | Oracle |
 | ---- | ------ |
 | \(E_{\mathrm{disp}}\) | offline **pure-Python pymbd** `mbd_energy` — the same pin `gpw-mbd-periodic` uses, so the energy being differentiated is externally validated |
-| \(\sigma\) | **multi-SCF strain-FD** (`gpw_stress_fd_impl`): full re-SCF at each strained cell, MBD folded through the energy path |
+| \(\sigma\) | **multi-SCF strain-FD** (`gpw_stress_fd`): full re-SCF at each strained cell, MBD folded through the energy path |
 | MBD actually folded | \(\sigma(\text{mbd}) \ne \sigma(\text{plain})\) |
 
 The stress itself has no external twin: CP2K ships no MBD@rsSCS stress class,

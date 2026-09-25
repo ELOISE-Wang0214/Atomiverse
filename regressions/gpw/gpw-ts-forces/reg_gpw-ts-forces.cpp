@@ -9,20 +9,21 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/molrs.hpp"
 
 int main() {
     using namespace ATV;
     using cpu::gpw::GaussianBasis;
-    using cpu::gpw::gpw_forces_from_scf;
-    using cpu::gpw::GpwAtom;
     using cpu::gpw::GpwDft;
     using cpu::gpw::GthPotential;
+    using cpu::gpw::Kind;
     using cpu::gpw::ts_pbe;
     using cpu::gpw::TsResult;
     using cpu::gpw::XcKind;
@@ -112,25 +113,35 @@ int main() {
     }
 
     // ── Product path: GPW SCF with ts=true + force wiring ─────────────────
-    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
-    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
-    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
-    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
-    std::vector<GpwAtom> atoms;
-    atoms.reserve(6);
+    // Product Frame [Å]: same geometry, 12 Å cubic cell.
+    cpu::Frame frame(6);
     for (int i = 0; i < 6; ++i) {
-        const double p[3] = {pos[static_cast<std::size_t>(i)][0],
-                             pos[static_cast<std::size_t>(i)][1],
-                             pos[static_cast<std::size_t>(i)][2]};
-        if (Zarr[i] == 8)
-            atoms.emplace_back(p, bO, pO, 8);
-        else
-            atoms.emplace_back(p, bH, pH, 1);
+        frame.span(kAtom_type)[i] = Zarr[i];
+        frame.span(kAtom_x)[i] = ang[i][0];
+        frame.span(kAtom_y)[i] = ang[i][1];
+        frame.span(kAtom_z)[i] = ang[i][2];
     }
+    frame.box = cpu::Box::cubic(12.0);
+    // Frame forces [eV/Å] → per-atom [Ha/Bohr].
+    auto frame_forces_ha_bohr = [&]() {
+        std::vector<std::array<double, 3>> F(6);
+        for (int i = 0; i < 6; ++i) {
+            F[static_cast<std::size_t>(i)] = {
+                frame.span(kAtom_fx)[i] / units::kHartreePerBohrInEvPerAngstrom,
+                frame.span(kAtom_fy)[i] / units::kHartreePerBohrInEvPerAngstrom,
+                frame.span(kAtom_fz)[i]
+                    / units::kHartreePerBohrInEvPerAngstrom};
+        }
+        return F;
+    };
 
     auto make_cfg = [&](bool with_ts) {
-        GpwDft cfg;
-        cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = L;
+        GpwDft cfg{{Kind{molrs::Element::O,
+                         GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH"),
+                         GthPotential(molrs::Element::O, "GTH-PBE-q6")},
+                    Kind{molrs::Element::H,
+                         GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
+                         GthPotential(molrs::Element::H, "GTH-PBE-q1")}}};
         cfg.cutoff_ry = 200.0;
         cfg.n_occ = 8;
         cfg.max_iter = 80;
@@ -140,12 +151,14 @@ int main() {
         cfg.nonperiodic = false;
         cfg.local_pp_on_grid = true;
         cfg.ts = with_ts;
-        cfg.build(atoms);
+        cfg.build(frame);
         return cfg;
     };
 
+    // SCF + analytic forces (TS folded in) in one call.
     GpwDft gpw = make_cfg(/*with_ts=*/true);
-    const auto& res = gpw.run(atoms);
+    const auto& res = gpw.forces(frame);
+    const auto F_ts = frame_forces_ha_bohr();
     if (!std::isfinite(res.e_disp)
         || std::abs(res.e_disp - kEPeriodic) > kETol) {
         std::fprintf(stderr, "FAIL: GpwDft e_disp got=%.14e want=%.14e\n",
@@ -162,10 +175,12 @@ int main() {
         return 1;
     }
 
-    // Wiring: F(ts) − F(plain) on the same density matches standalone F_TS.
-    const auto F_ts = gpw_forces_from_scf(atoms, gpw, res);
+    // Wiring: F(ts) − F(plain) matches standalone F_TS. Free-atom TS is a
+    // geometry-only post-SCF term (no Hirshfeld, no KS potential), so the
+    // plain SCF reaches the same density and the difference isolates F_TS.
     GpwDft plain = make_cfg(/*with_ts=*/false);
-    const auto F_plain = gpw_forces_from_scf(atoms, plain, res);
+    plain.forces(frame);
+    const auto F_plain = frame_forces_ha_bohr();
 
     double max_wiring = 0.0;
     for (int a = 0; a < 6; ++a) {

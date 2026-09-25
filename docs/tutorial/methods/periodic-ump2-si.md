@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-ump2-si` |
-| Regression | `regressions/gpw/periodic-ump2-si/` |
-| Public API | `cpu::gpw::GpwDft::mp2(atoms)` → `cpu::gpw::Mp2Result` on a **UKS** reference (`n_alpha`/`n_beta`); members `mp2_ri`, `mp2_n_virt`, `mp2_os_scale`, `mp2_ss_scale` |
+| Public API | `cpu::gpw::GpwDft::mp2()` → `cpu::gpw::Mp2Result` on a **UKS** reference (`n_alpha`/`n_beta`); members `mp2_ri`, `mp2_n_virt`, `mp2_os_scale`, `mp2_ss_scale` |
 | Roadmap | `docs/roadmap/dft.md` §10 — Periodic MP2 includes **Γ UMP2@UKS** (`reg_periodic-ump2-si`) ✓ |
 
 ## Summary
@@ -124,26 +123,30 @@ Public surface only (`GpwDft` members + lookup basis/PP constructors; **no**
 `*Config` bag, **no** `make_*` / `build_*` factories):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/mp2.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
-constexpr double kA2B = 1.8897259885789;
-constexpr double a_bohr = 5.43 * kA2B;   // cubic cell [Bohr]
 
-const double pos0[3] = {0.0, 0.0, 0.0};
-const double pos1[3] = {a_bohr / 4.0, a_bohr / 4.0, a_bohr / 4.0};
-const GaussianBasis bas(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-const GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
-std::vector<GpwAtom> atoms;
-atoms.emplace_back(pos0, bas, pot, 14);
-atoms.emplace_back(pos1, bas, pot, 14);
+constexpr double a = 5.43;                    // cubic cell [Å]
 
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = a_bohr;
+cpu::Frame frame(2);                          // sc-Si₂, positions [Å]
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 14;
+    frame.span(kAtom_x)[i] = frame.span(kAtom_y)[i] =
+        frame.span(kAtom_z)[i] = i * a / 4.0;
+}
+frame.box = cpu::Box::cubic(a);
+
+GpwDft m{{Kind{molrs::Element::Si,
+               GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+               GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 30.0;
 m.n_alpha = 4;                 // UKS; equal-spin closed shell
 m.n_beta  = 4;
@@ -153,11 +156,11 @@ m.mix = 0.3;
 m.level_shift = 0.3;           // small-gap artificial sc-Si₂
 m.xc = XcKind::PBE;
 m.mp2_ri = true;               // product RI-GPW
-m.build(atoms);
+m.build(frame);
 
-const GpwResult& scf = m.run(atoms);   // must converge
+const GpwResult& scf = m.run(frame);   // must converge
 m.mp2_n_virt = 0;                      // 0 = all kept virtuals per spin
-const Mp2Result& r = m.mp2(atoms);
+const Mp2Result& r = m.mp2();
 // r.e_corr (< 0), r.e_corr_os / r.e_corr_ss, r.e_total = r.e_scf + r.e_corr [Ha]
 // r.n_occ == 8 (nα+nβ); r.ri == true; r.n_kpts == 0
 ```
@@ -181,27 +184,26 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_periodic-ump2-si
-  ./build/regressions/reg_periodic-ump2-si
+  reg_periodic-ump2-si
   # or: cmake --build build --target run_reg_periodic-ump2-si
 '
 ```
 
 | Piece | Path |
 | ----- | ---- |
-| Public `Mp2Result` | `include/atomiverse/cpu/gpw/mp2.h` |
-| `GpwDft::{n_alpha,n_beta,mp2_ri,mp2_n_virt,mp2_os_scale,mp2_ss_scale,mp2}` | `include/atomiverse/cpu/gpw/gpw_solver.h` |
+| Public `Mp2Result` | `mp2.h` |
+| `GpwDft::{n_alpha,n_beta,mp2_ri,mp2_n_virt,mp2_os_scale,mp2_ss_scale,mp2}` | `gpw_solver.h` |
 | UMP2 dispatch (Γ UKS) | `src/cpu/gpw/mp2.cpp` |
-| Kernels (private) | `include/atomiverse/cpu/gpw/internal/mp2_kernels.h` |
+| Kernels (private) | `mp2_kernels.h` |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_mp2.cpp` |
-| Regression | `regressions/gpw/periodic-ump2-si/reg_periodic-ump2-si.cpp` |
-| Offline pin contract | `regressions/gpw/periodic-ump2-si/REFERENCE.md` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/periodic-ump2-si.inp` |
+| Offline pin contract | case `periodic-ump2-si` pin |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (vs CP2K / dual-gate)
 
 Source:
-[`regressions/gpw/periodic-ump2-si/REFERENCE.md`](../../../regressions/gpw/periodic-ump2-si/REFERENCE.md).
-Oracle: offline **CP2K** twin (`tools/cp2k_oracle/inputs/periodic-ump2-si.inp`:
+case `periodic-ump2-si` pin.
+Oracle: offline **CP2K** twin (CP2K oracle:
 `UKS`, `MULTIPLICITY 1`, same cell/basis/PP/cutoff, `&WF_CORRELATION` MP2);
 **never** live in ctest. At pin time **no CP2K module** on the host —
 absolute `MP2 Energy` digits are **not invented**. Product gate uses the
@@ -240,8 +242,8 @@ sum; UMP2 ≡ RMP2 on identical α=β tensors; cross-spin RI ≡ Poisson.
 
 ## Performance
 
-Source: the case `REFERENCE.md` (harness wave 5, 2026-07-26);
-`REFERENCE.md` §Perf.
+Source: the case pin notes (harness wave 5, 2026-07-26);
+pin notes §Perf.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | ----------------------------------------: | ---- | ------ |
@@ -253,7 +255,7 @@ build: αα, ββ, αβ). Do **not** invent a numeric ratio without a fair twin.
 ## Limitations
 
 - **Dual-gate only** until offline CP2K re-pin of
-  `tools/cp2k_oracle/inputs/periodic-ump2-si.inp` lands absolute digits +
+  CP2K oracle lands absolute digits +
   release citation.
 - **Γ UKS only** — multi-k UMP2, UGW, URPA are follow-ons.
 - **MP2@KS (PBE)** — not MP2@HF; periodic hybrid / exact exchange blocked.
@@ -266,10 +268,9 @@ build: αα, ββ, αβ). Do **not** invent a numeric ratio without a fair twin.
 
 ## References
 
-- Offline pin: [`regressions/gpw/periodic-ump2-si/REFERENCE.md`](../../../regressions/gpw/periodic-ump2-si/REFERENCE.md)
-- Regression: `regressions/gpw/periodic-ump2-si/reg_periodic-ump2-si.cpp`
-- CP2K twin: `tools/cp2k_oracle/inputs/periodic-ump2-si.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md` (offline pins only; never live ctest)
+- Offline pin: case `periodic-ump2-si` pin
+- CP2K twin: CP2K oracle
+- Oracle rules: CP2K oracle (offline pins only; never live ctest)
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md) §10 Periodic MP2
 - Closed-shell sibling: [periodic-mp2-si](periodic-mp2-si.md)
 - Molecular UMP2: [ump2-o2-sto3g](ump2-o2-sto3g.md)

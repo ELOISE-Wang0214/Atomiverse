@@ -14,7 +14,8 @@ Not a history log. Binding contracts: [cuda-gpw-public-shape.md](cuda-gpw-public
 | `build` → `run` → `last_result` | yes |
 | Forces/stress free-fn family (CPU twin idea) | yes (`gpw_forces_*`, stress free-fn) |
 | Stages under `cuda/gpw/internal/` only | yes |
-| Same `GpwAtom` / `GpwResult` / `XcKind` as CPU | yes |
+| Same `GpwResult` / `XcKind` as CPU | yes |
+| Frame-in `build`/`run(Frame&)`/`forces(Frame&)` like CPU | **no** — still `internal::GpwAtom` + public `cell` (`es-cuda-gpw-frame-io`) |
 | Fail-closed unsupported (OT/MT/…) | yes |
 
 **Architecture residual (not a fork):** CUDA method is still a free-loop

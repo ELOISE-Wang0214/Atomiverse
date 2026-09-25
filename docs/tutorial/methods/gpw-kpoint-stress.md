@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-kpoint-stress` |
-| Regression | `regressions/gpw/gpw-kpoint-stress/` |
-| Public API | `cpu::gpw::gpw_stress` (analytic fixed-\(P_k\)); oracle `gpw_stress_fd`; `GpwDft` members `k_mesh`, `cell`, `cutoff_ry`, … (no `*Config`) |
+| Public API | `cpu::gpw::gpw_stress` (analytic fixed-\(P_k\)); oracle `gpw_stress_fd`; `GpwDft` members `k_mesh`, `cutoff_ry`, … + Frame `box` (no `*Config`) |
 | Roadmap | [dft.md](../../roadmap/dft.md) § Periodic DFT — GPW analytic cell stress at k-points |
 
 ## Summary
@@ -19,7 +18,7 @@ unstrained cell, then orthorhombic diagonal strain samples of the
 **non-self-consistent** k-summed Lagrangian (fixed density matrices \(P_k\) and
 energy-weighted \(W_k\)); multi-SCF strain-FD (`gpw_stress_fd`) is the dual-gate
 oracle only. Product gate: `reg_gpw-kpoint-stress`. Offline CP2K twin input
-ships at `tools/cp2k_oracle/inputs/gpw-kpoint-stress.inp`; absolute CP2K stress
+ships at CP2K oracle; absolute CP2K stress
 digits are **not** frozen on the pin host (no CP2K module at pin time) —
 decisive gate is analytic vs multi-SCF FD. Performance: **`perf_exempt`**.
 
@@ -100,35 +99,37 @@ strained cell (±h per diagonal). Used only for dual-gate tests / REFERENCE.
 
 ## Implementation
 
-Public surface only (`GpwAtom`, `GpwDft` members, free `gpw_stress` /
+Public surface only (`cpu::Frame`, `GpwDft` members, free `gpw_stress` /
 `gpw_stress_fd`; no `*Config`, no `make_*` / `build_*`). Match the regression:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
-constexpr double kA2B = 1.0 / 0.52917720859; // Å → Bohr
-const double a = 5.43 * kA2B;                // ~10.26120 Bohr
+const double a = 5.43;                 // Å (~10.26120 Bohr)
 const double at = a / std::sqrt(2.0);
 
-const GaussianBasis bSi(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-const GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
 const double frac[4][3] = {
     {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}, {0.5, 0.0, 0.25}, {0.0, 0.5, 0.75}};
-std::vector<GpwAtom> atoms;
+cpu::Frame frame(4);
 for (int i = 0; i < 4; ++i) {
-    const double pos[3] = {frac[i][0] * at, frac[i][1] * at,
-                           frac[i][2] * a};
-    atoms.emplace_back(pos, bSi, pSi, 14);
+    frame.span(kAtom_type)[i] = 14;
+    frame.span(kAtom_x)[i] = frac[i][0] * at;
+    frame.span(kAtom_y)[i] = frac[i][1] * at;
+    frame.span(kAtom_z)[i] = frac[i][2] * a;
 }
+frame.box = cpu::Box::orthorhombic(at, at, a);
 
-GpwDft m;
-m.cell[0] = m.cell[1] = at;
-m.cell[2] = a;
+GpwDft m{{Kind{molrs::Element::Si,
+               GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+               GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 100.0;
 m.n_occ = 8;
 m.max_iter = 60;
@@ -140,18 +141,18 @@ m.k_mesh[0] = 1;
 m.k_mesh[1] = 1;
 m.k_mesh[2] = 2; // MP → κ_z = ±1/4, TR → one k
 
-m.build(atoms);
-const auto& er = m.run(atoms); // energy [Ha] on er.e_total
+m.build(frame);
+const auto& er = m.run(frame); // energy [Ha] on er.e_total
 
 const double h = 2e-3;
-const auto san = gpw_stress(atoms, m, h);    // analytic fixed-P_k [Ha/Bohr³]
-const auto sfd = gpw_stress_fd(atoms, m, h); // multi-SCF FD oracle
+const auto san = gpw_stress(frame, m, h);    // analytic fixed-P_k [Ha/Bohr³]
+const auto sfd = gpw_stress_fd(frame, m, h); // multi-SCF FD oracle
 // Voigt: san[0..2] = xx,yy,zz; san[3..5] off-diag (0 for orthorhombic)
 ```
 
 `GPWEvaluator` product stress (`compute_stress`, default analytic) is the
-Frame-facing path for Γ-point Evaluate runs; this regression exercises the
-free multi-k solver API directly (same `gpw_stress` implementation that
+driver-facing path (`GPWEvaluator(std::move(m))` in `cpu::Evaluate`); this
+regression calls the free stress API on the method directly (same `gpw_stress` implementation that
 supports Gamma and closed-shell multi-k RKS).
 
 Build and run the regression (requires GPW + HF + PW + regressions):
@@ -167,26 +168,26 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-kpoint-stress
-  ./build/regressions/reg_gpw-kpoint-stress
+  reg_gpw-kpoint-stress
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `gpw_stress`, `gpw_stress_fd` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | Product `compute_stress` / `stress_use_fd` (Evaluate) |
+| `gpw_solver.h` | `GpwDft`, `gpw_stress`, `gpw_stress_fd` |
+| `gpw_evaluator.h` | Product `compute_stress` / `stress_use_fd` (Evaluate) |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Fixed-\(P_k\)+Pulay + multi-SCF FD |
 | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` | Unit dual-gate (Γ; not this e2e) |
-| `regressions/gpw/gpw-kpoint-stress/reg_gpw-kpoint-stress.cpp` | Product dual-gate |
-| `regressions/gpw/gpw-kpoint-stress/REFERENCE.md` | Offline pins + perf |
-| `tools/cp2k_oracle/inputs/gpw-kpoint-stress.inp` | CP2K twin (`STRESS_TENSOR NUMERICAL`) |
+| `reg_gpw-kpoint-stress.cpp` | Product dual-gate |
+| case `gpw-kpoint-stress` pin | Offline pins + perf |
+| CP2K oracle | CP2K twin (`STRESS_TENSOR NUMERICAL`) |
 
 ## Validation (vs CP2K / dual-gate)
 
 Source:
-[`regressions/gpw/gpw-kpoint-stress/REFERENCE.md`](../../../regressions/gpw/gpw-kpoint-stress/REFERENCE.md).
+case `gpw-kpoint-stress` pin.
 Oracle strategy: offline **CP2K** twin when available (`cp2k.psmp` +
-`tools/cp2k_oracle/inputs/gpw-kpoint-stress.inp`); **never** live CP2K from
+CP2K oracle); **never** live CP2K from
 ctest. Pin host (2026-07-25) had **no CP2K binary/module** — absolute
 `STRESS_TENSOR` digits are not invented. Decisive product gate is **internal
 dual-gate** analytic vs multi-SCF FD.
@@ -196,7 +197,7 @@ dual-gate** analytic vs multi-SCF FD.
 | Item | Value |
 | ---- | ----- |
 | Engine class | CP2K Quickstep GPW (twin input ready) |
-| Twin input | `tools/cp2k_oracle/inputs/gpw-kpoint-stress.inp` |
+| Twin input | CP2K oracle |
 | CP2K stress mode (when run) | `STRESS_TENSOR NUMERICAL` |
 | Atomiverse path | `GpwDft` + `gpw_stress` / `gpw_stress_fd`, mesh \(1\times1\times2\), \(h=2\times 10^{-3}\) |
 | Deps | `gpw-kpoints-si` ✓, `gpw-analytic-stress` ✓ |
@@ -226,7 +227,7 @@ Offline oracle sketch (host with CP2K module; not ctest):
 ```bash
 module load ... CP2K/2026.1   # example
 export CP2K_DATA_DIR=.../share/cp2k/data
-cp2k.psmp -i tools/cp2k_oracle/inputs/gpw-kpoint-stress.inp -o kstress.out
+cp2k.psmp -i <CP2K oracle input for this case> -o kstress.out
 # ENERGY| Total FORCE_EVAL ( QS ) energy [hartree]  ...
 # STRESS| Numerical stress tensor [bar] ...
 # Convert: 1 Ha/Bohr³ = 2.94210107994716e8 bar (CP2K table)
@@ -234,7 +235,7 @@ cp2k.psmp -i tools/cp2k_oracle/inputs/gpw-kpoint-stress.inp -o kstress.out
 
 ## Performance
 
-Source: `REFERENCE.md` / handoff. **`perf_exempt = true`** — no CP2K
+Source: pin notes / handoff. **`perf_exempt = true`** — no CP2K
 binary/module on the pin host for a fair wall twin.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -266,13 +267,13 @@ convention for stress twins (`gpw-stress-water`).
 
 ## References
 
-- Offline pin + fair wall: `regressions/gpw/gpw-kpoint-stress/REFERENCE.md`
-- Twin input: `tools/cp2k_oracle/inputs/gpw-kpoint-stress.inp`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin + fair wall: case `gpw-kpoint-stress` pin
+- Twin input: CP2K oracle
+- Oracle notes: CP2K oracle
 - Related: [gpw-analytic-stress](gpw-analytic-stress.md) (Γ fixed-\(P\)),
   [gpw-stress-water](gpw-stress-water.md) (MT NUMERICAL pin),
   k-point energy twin family `gpw-kpoints-si`, k-forces
-  `regressions/gpw/gpw-kpoint-forces/`
+  `gpw-kpoint-forces`
 - Roadmap: `docs/roadmap/dft.md` (GPW analytic cell stress at Γ and k-points ✓)
 - Nielsen & Martin, *Phys. Rev. B* **32**, 3780 (1985)
 - J. VandeVondele, M. Krack, F. Mohamed, M. Parrinello, T. Chassaing,

@@ -24,8 +24,8 @@ reference awaits periodic exact exchange (blocked row `periodic-hybrid-gpw`).
 Atomiverse public path (no Config bag, no factory):
 
 ```cpp
-cpu::gpw::GpwDft m;            // members below; build(); run(atoms)
-const cpu::gpw::Mp2Result& r = m.mp2(atoms);   // Γ-point GPW MP2
+cpu::gpw::GpwDft m{{si_kind}}; // members below; build(frame); run(frame)
+const cpu::gpw::Mp2Result& r = m.mp2();   // Γ-point GPW MP2
 ```
 
 ## System

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-gga-finite-q-si` |
-| Regression | `regressions/response/dfpt-gga-finite-q-si/` |
 | Public API | `cpu::pw::DfptPhonon` (members, `q_frac`) + `cpu::pw::DfptPhononResult`; `PW.xc = XCType::PBE` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — **finite-q × pure GGA** ✓ (`reg_dfpt-gga-finite-q-si`) |
 | Dep | `dfpt-finite-q-si` ✓ (commensurate X path, LSDA); `dfpt-gga-si` ✓ (Γ, PBE kernel) |
@@ -96,7 +95,7 @@ cmake --build build --target run_reg_dfpt-gga-finite-q-si
 
 ## Validation (vs offline pins)
 
-Source: `regressions/response/dfpt-gga-finite-q-si/REFERENCE.md`. Measured
+Source: case `dfpt-gga-finite-q-si` pin. Measured
 2026-07-31 (Release; identical numbers at OMP=1 and OMP=8):
 
 | Quantity | Atomiverse / pin | Gate | Notes |
@@ -122,10 +121,9 @@ host.
 
 ## References
 
-- Offline pins: `regressions/response/dfpt-gga-finite-q-si/REFERENCE.md`
-- Regression: `regressions/response/dfpt-gga-finite-q-si/reg_dfpt-gga-finite-q-si.cpp`
-- Oracle note + CP2K input: `tools/cp2k_oracle/inputs/dfpt-gga-finite-q-si.note`,
-  `tools/cp2k_oracle/inputs/dfpt-gga-finite-q-si/si4_pbe_vib.inp`
+- Offline pins: case `dfpt-gga-finite-q-si` pin
+- Oracle note + CP2K input: CP2K oracle,
+  CP2K oracle
 - Parents: `docs/tutorial/methods/dfpt-finite-q-si.md`,
   `docs/tutorial/methods/dfpt-gga-si.md`
 - Literature: Baroni, de Gironcoli, Dal Corso, Giannozzi, *Rev. Mod. Phys.*

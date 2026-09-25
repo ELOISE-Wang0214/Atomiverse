@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dftb3-water-mio` |
-| Regression | `regressions/semiempirical/dftb3-water-mio/` |
 | Public API | `cpu::Evaluate` + `cpu::semiempirical::DFTB3` (forces off) |
 | Roadmap / queue | `docs/roadmap/semiempirical.md` § DFTB3; queue **done** 2026-07-28 (`reg_dftb3-water-mio`) |
 | Oracle | **DFTB+** family only (formula-Gaus2011 module boundary; never OpenMOPAC / xtb) |
@@ -196,18 +195,17 @@ Relevant paths:
 
 | Role | Path |
 | ---- | ---- |
-| Method | `include/atomiverse/cpu/semiempirical/dftb3.h` |
+| Method | `dftb3.h` |
 | Impl | `src/cpu/semiempirical/dftb3.cpp` |
-| SCC kernel (private) | `include/atomiverse/cpu/semiempirical/internal/dftb3_scc.h` |
+| SCC kernel (private) | `dftb3_scc.h` |
 | Static mio-style SK | `…/basis_data/dftb_mio_tables.h` |
 | mio-1-1 H–H | `…/basis_data/dftb_mio_hh_sk.h` |
-| Regression | `regressions/semiempirical/dftb3-water-mio/` |
-| Offline twin note | `tools/tb_oracle/inputs/dftbplus/dftb3_h2o_mio_note.md` |
+| Offline twin note | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 | Unit gates | `tests/cpu/semiempirical/test_dftb3.cpp`, `test_dftb3_scc.cpp` |
 
 ## Validation (vs DFTB+ family)
 
-Source: `regressions/semiempirical/dftb3-water-mio/REFERENCE.md`
+Source: case `dftb3-water-mio` pin
 (offline pin; **never** live DFTB+ in ctest).
 
 ```text
@@ -265,7 +263,7 @@ Three defects, all fixed 2026-07-28 (see REFERENCE for numbers):
 ### DFTB+ absolute oracle still owed
 
 No DFTB+ binary on the pin host (`module spider dftb` → none). Twin note:
-`tools/tb_oracle/inputs/dftbplus/dftb3_h2o_mio_note.md`. When DFTB+ + matching
+TB oracle (OpenMOPAC / DFTB+ / xtb). When DFTB+ + matching
 SK land offline: `ThirdOrderFull = Yes` (or diagonal DFTB3), same geometry and
 SCC tol → replace `kPinEnergyEV` only after SK fidelity matches.
 
@@ -273,7 +271,7 @@ SCC tol → replace `kPinEnergyEV` only after SK fidelity matches.
 
 `perf_exempt: true` — host has no DFTB+ binary for fair wall ratio; formula /
 Hamiltonian-twin oracle only. Revisit when offline DFTB+ pin infrastructure
-lands under `tools/tb_oracle/inputs/dftbplus/`.
+lands under TB oracle (OpenMOPAC / DFTB+ / xtb).
 
 | Twin | \(T_{\mathrm{oracle}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{oracle}}\) | ≤10× | Caveat |
 | ---- | --------------------------: | ----------------------: | ----------------------------------------: | ---- | ------ |
@@ -300,9 +298,9 @@ DFTB+/mio-1-1 water identity or analytic forces.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/dftb3-water-mio/REFERENCE.md`](../../../regressions/semiempirical/dftb3-water-mio/REFERENCE.md)
-- Twin note: [`tools/tb_oracle/inputs/dftbplus/dftb3_h2o_mio_note.md`](../../../tools/tb_oracle/inputs/dftbplus/dftb3_h2o_mio_note.md)
-- Family rules: [`tools/tb_oracle/README.md`](../../../tools/tb_oracle/README.md)
+- Offline pin: case `dftb3-water-mio` pin
+- Twin note: TB oracle (OpenMOPAC / DFTB+ / xtb)
+- Family rules: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: [`docs/roadmap/semiempirical.md`](../../roadmap/semiempirical.md)
 - H–H absolute bridge: [`dftb2-dftbplus-energy-pin`](dftb2-dftbplus-energy-pin.md)
 - M. Gaus, Q. Cui, M. Elstner, *J. Chem. Theory Comput.* **7**, 931 (2011),

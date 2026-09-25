@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `nevpt2-h2-sto3g` |
-| Regression | `regressions/scf/nevpt2-h2-sto3g/` |
 | Public API | `cpu::scf::RHF::nevpt2(Frame&, ncas, nelecas)` → `NEVPT2Result` |
 | Roadmap | [Post-HF §4.2 Multireference correlation](../../roadmap/post-hf.md) |
 
@@ -21,7 +20,7 @@ converged}` in Hartree. On this system the active space spans **all** MOs
 one inactive or external index and the PT2 correction is **identically
 zero**: \(E_{\mathrm{NEVPT2}} = E_{\mathrm{CASSCF}} = E_{\mathrm{FCI}}\).
 Offline oracle pin is PySCF 2.14.0 `mcscf.CASSCF` + `mrpt.NEVPT` (never live
-in ctest). End-to-end gate: `regressions/scf/nevpt2-h2-sto3g` → binary
+in ctest). End-to-end gate: `nevpt2-h2-sto3g` → binary
 `reg_nevpt2-h2-sto3g`. Fair-bench ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} = 0.0723\) (within 10×;
 startup-dominated).
@@ -107,7 +106,7 @@ const cpu::scf::NEVPT2Result nev =
 // On this system: nev.e_corr == 0; nev.e_nevpt2 == nev.e_casscf
 ```
 
-`NEVPT2Result` fields (`include/atomiverse/cpu/scf/nevpt2.h`): `e_nevpt2`,
+`NEVPT2Result` fields (`nevpt2.h`): `e_nevpt2`,
 `e_corr`, `e_casscf` [Hartree], `ncas`, `nelecas`, `ncore`, `nvirt`,
 `converged`. `nevpt2_energy` is private engine code.
 (`internal/nevpt2_pack.h`).
@@ -124,22 +123,22 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_nevpt2-h2-sto3g -j$(nproc)
-  ./build/regressions/reg_nevpt2-h2-sto3g
+  reg_nevpt2-h2-sto3g
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/nevpt2.h` | Public `NEVPT2Result` |
-| `include/atomiverse/cpu/scf/mean_field_method.h` | `RHF::nevpt2(Frame&, ncas, nelecas)` |
-| `include/atomiverse/cpu/scf/internal/nevpt2_pack.h` | Private pack entry |
+| `nevpt2.h` | Public `NEVPT2Result` |
+| `mean_field_method.h` | `RHF::nevpt2(Frame&, ncas, nelecas)` |
+| `nevpt2_pack.h` | Private pack entry |
 | `src/cpu/scf/nevpt2.cpp` | SC-NEVPT2 class contributions |
 | `src/cpu/scf/mean_field_method.cpp` | `MeanFieldMethod::nevpt2` dispatch |
-| `regressions/scf/nevpt2-h2-sto3g/reg_nevpt2-h2-sto3g.cpp` | E2E consumer |
+| `reg_nevpt2-h2-sto3g.cpp` | E2E consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/nevpt2-h2-sto3g/REFERENCE.md`](../../../regressions/scf/nevpt2-h2-sto3g/REFERENCE.md)
+Source: case `nevpt2-h2-sto3g` pin
 (offline pin; PySCF never in ctest). Protocol:
 `docs/tutorial/appendix-pyscf-oracle.md`.
 
@@ -172,17 +171,17 @@ exactly zero by construction of the active space.
 Oracle repro (human / offline only):
 
 ```bash
-bash tools/setup_pyscf_env.sh
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py nevpt2 \
+bash <pyscf env setup>
+python <pyscf pin> nevpt2 \
     --geom h2 --basis sto-3g --ncas 2 --nelecas 2 --conv-tol 1e-12
 ```
 
 ## Performance
 
 Source: fair wall in
-[`regressions/scf/nevpt2-h2-sto3g/REFERENCE.md`](../../../regressions/scf/nevpt2-h2-sto3g/REFERENCE.md)
+case `nevpt2-h2-sto3g` pin
 (2026-07-24; login node; `OMP_NUM_THREADS=1`; median of ≥5). Campaign
-handoff ratio **0.072** (the case `REFERENCE.md`). No
+handoff ratio **0.072** (the case pin notes). No
 standing comparison table in-tree at draft time.
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -191,9 +190,9 @@ standing comparison table in-tree at draft time.
 
 ```bash
 export OMP_NUM_THREADS=1
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
     --method nevpt2 --geom h2 --basis sto-3g --repeat 5 -- \
-    ./build/regressions/reg_nevpt2-h2-sto3g
+    reg_nevpt2-h2-sto3g
 ```
 
 Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\). No ⚡ optimization
@@ -219,11 +218,11 @@ pass required on this case.
 
 ## References
 
-- Offline pin: `regressions/scf/nevpt2-h2-sto3g/REFERENCE.md`
-- Regression consumer: `regressions/scf/nevpt2-h2-sto3g/reg_nevpt2-h2-sto3g.cpp`
+- Offline pin: case `nevpt2-h2-sto3g` pin
+- Regression consumer: `reg_nevpt2-h2-sto3g.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Roadmap: `docs/roadmap/post-hf.md` (§4.2 Multireference correlation)
-- Public API: `include/atomiverse/cpu/scf/nevpt2.h`
+- Public API: `nevpt2.h`
 - Sibling (CASSCF foothold): `docs/tutorial/methods/casscf-h2-sto3g.md`
 - C. Angeli, R. Cimiraglia, S. Evangelisti, T. Leininger, J.-P. Malrieu,
   *Introduction of n-electron valence states for multireference perturbation

@@ -20,17 +20,19 @@
 /// `PeriodicWannier` — no public `*Config` bag, no factories.
 ///
 /// @code
-///   cpu::gpw::GpwDft dft;
-///   dft.cell[0] = dft.cell[1] = a / std::sqrt(2.0); // BCT Si [Bohr]
-///   dft.cell[2] = a;
+///   // frame: Si positions [Å], Z in kAtom_type,
+///   //        box = Box::orthorhombic(a/√2, a/√2, a) [Å] (BCT Si)
+///   cpu::gpw::GpwDft dft{{{molrs::Element::Si,
+///                          cpu::gpw::GaussianBasis(molrs::Element::Si, "SZV-GTH"),
+///                          cpu::gpw::GthPotential(molrs::Element::Si, "GTH-PADE-q4")}}};
 ///   dft.cutoff_ry = 100.0;
 ///   dft.n_alpha = 8;   // collinear UKS (M = 0): 8↑ + 8↓
 ///   dft.n_beta  = 8;
 ///   dft.xc = cpu::gpw::XcKind::PADE;
-///   dft.build(atoms);
+///   dft.build(frame);
 ///
 ///   cpu::gpw::PeriodicWannier mlwf;   // members: k_mesh, max_iter, …
-///   auto r = mlwf.compute(dft, atoms);
+///   auto r = mlwf.compute(dft, frame);
 ///   // r.centers[i] [Å], r.spreads[i] [Å²], r.n_wann_up / r.n_wann_dn
 /// @endcode
 #pragma once
@@ -109,21 +111,21 @@ class PeriodicWannier {
     ///        Si-like cells with 8 WFs/channel, else crystal origin replicates.
     std::vector<std::array<double, 3>> trial_centers;
 
-    /// @brief Multi-k SCF + MLWF for the geometry in `atoms`.
+    /// @brief Multi-k SCF + MLWF for the geometry in `frame`.
     ///
     /// Configures `method.k_mesh = {k_mesh,k_mesh,k_mesh}`, disables time
-    /// reversal, runs `method.run(atoms)`, then localizes the occupied Bloch
+    /// reversal, runs `method.run(frame)`, then localizes the occupied Bloch
     /// manifold from `last_result()` (RKS: one channel; UKS: α then β).
     ///
     /// @param method GPW DFT method (members + `build()` already done; k-mesh
     ///               and TR flag are overwritten for the MLWF SCF).
-    /// @param atoms  Atom set at the current geometry [Bohr] (same as `build`).
+    /// @param frame  Geometry (positions [Å], Z, orthorhombic box [Å]); the
+    ///               SCF energy [eV] is written to `frame.meta[kEnergy]`.
     /// @return Owned `PeriodicWannierResult` (centers [Å], spreads [Å²]).
     /// @throws std::invalid_argument on metallic smearing, non-positive
     ///         mesh / step / tol, empty occupied manifold, or `!built`.
     /// @throws std::logic_error when `method` was not `build()`'d.
-    PeriodicWannierResult compute(GpwDft& method,
-                                  const std::vector<GpwAtom>& atoms) const;
+    PeriodicWannierResult compute(GpwDft& method, Frame& frame) const;
 };
 
 /// @brief Eight Si–Si bond midpoints of the diamond BCT 4-atom orthorhombic

@@ -22,14 +22,13 @@ F_A = -\frac{\partial E_{\mathrm{disp}}}{\partial R_A}\Big|_{v}
 Public API:
 
 ```cpp
-GpwDft gpw;
+GpwDft gpw{kinds};
 gpw.ts = true;          // or gpw.mbd = true
 gpw.hirshfeld = true;
 gpw.k_mesh[0] = gpw.k_mesh[1] = 1;
 gpw.k_mesh[2] = 2;
-gpw.build(atoms);
-const auto& scf = gpw.run(atoms);
-auto F = gpw_forces_from_scf(atoms, gpw, scf);
+gpw.build(frame);
+const auto& scf = gpw.forces(frame);  // SCF + forces → kAtom_fx/fy/fz [eV/Å]
 ```
 
 Scaling of free-atom \(\alpha_0\) / \(C_6\) / \(R_{\mathrm{vdW}}\):

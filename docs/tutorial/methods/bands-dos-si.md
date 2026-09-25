@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `bands-dos-si` |
-| Regression | `regressions/pw/bands-dos-si/` |
 | Public API | `cpu::pw::PW` (SCF members) + `cpu::pw::Bands` / `cpu::pw::Dos` + `BandsResult` / `DosResult` |
 | Roadmap | [dft.md](../../roadmap/dft.md) § bands/DOS|
 
@@ -21,7 +20,7 @@ Monkhorst–Pack mesh (`cpu::pw::Dos`). Observables are \(\varepsilon_n(\mathbf{
 \(n_\mathrm{elec\_to\_vbm}\). Scientific gate is a literature incomplete-basis
 window around the Yin–Cohen LDA indirect gap (~0.45 eV), not absolute
 eigenvalue parity with CP2K Quickstep (GTH+Gaussian). Product regression:
-`regressions/pw/bands-dos-si` (`reg_bands-dos-si`). Performance:
+`bands-dos-si` (`reg_bands-dos-si`). Performance:
 **`perf_exempt`** (no fair CP2K PW twin wall on the pin host).
 
 ## Method
@@ -113,7 +112,7 @@ Conversion: `cpu/planewave/qe_units.h` (`rydberg_to_ev = 13.605693`).
 
 Public surface only (`cpu::Frame` + concrete method / post-processor
 members; no `*Config`, no factories). Headers:
-`include/atomiverse/cpu/planewave/bands_dos.h`,
+`bands_dos.h`,
 `pw_solver.h`, `qe_units.h`. Implementation:
 `src/cpu/planewave/bands_dos.cpp` (restricted SCF → freeze \(V_\mathrm{eff}\)
 → NSCF Davidson on path / DOS mesh).
@@ -191,7 +190,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_bands-dos-si -j$(nproc)
-  ./build/regressions/reg_bands-dos-si
+  reg_bands-dos-si
 '
 ```
 
@@ -200,7 +199,7 @@ integral identity, synthetic gap finder.
 
 ## Validation (vs literature / CP2K note)
 
-Source: `regressions/pw/bands-dos-si/REFERENCE.md` (offline pin; never live
+Source: case `bands-dos-si` pin (offline pin; never live
 third party in ctest). Closed acceptance: git history
 `.claude/specs/bands-dos-si/` (spec `034fed2e`, feature merged on `dev`).
 
@@ -212,7 +211,7 @@ third party in ctest). Closed acceptance: git history
 | Family | PseudoDojo ONCVPSP-LDA-SR-noCC v0.4 |
 | Generator | ONCVPSP 3.3.0 (D. R. Hamann), \(Z_\mathrm{val}=4\), no NLCC |
 | Cite | Hamann, *Phys. Rev. B* **88**, 085117 (2013); van Setten et al., *Comput. Phys. Commun.* **226**, 39 (2018) |
-| Same family as | `regressions/pw/pw-lda-si` |
+| Same family as | `pw-lda-si` |
 
 ### Literature pin (indirect gap)
 
@@ -266,12 +265,12 @@ a metallic or multi-eV disaster.
 ONCV plane waves. Absolute \(\varepsilon_n\) are **not** comparable.
 Character (indirect Si, \(\varepsilon_c(X)<\varepsilon_c(\Gamma)\)) and the
 Yin–Cohen LDA Γ→X window are the scientific pins. Optional offline wall /
-character input: `tools/cp2k_oracle/inputs/si_bands_dos_note.inp` (same
+character input: CP2K oracle (same
 geometry, \(2\times 2\times 2\) MP, path Γ–X–W–L–Γ–K with `NPOINTS 4`).
 
 ## Performance
 
-Source: `regressions/pw/bands-dos-si/REFERENCE.md`. Queue / handoff row:
+Source: case `bands-dos-si` pin. Queue / handoff row:
 **`perf_exempt`** (literature Γ→X window; no fair GTH twin wall on pin host).
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -288,7 +287,7 @@ Source: `regressions/pw/bands-dos-si/REFERENCE.md`. Queue / handoff row:
 | Wall budget | e2e ≤ 60 s single-rank CPU (PASS) |
 
 When a CP2K binary is available offline: time the same geometry with
-`tools/cp2k_oracle/inputs/si_bands_dos_note.inp`, append
+CP2K oracle, append
 \(r = T_\mathrm{ATV}/T_\mathrm{CP2K}\) to REFERENCE.md, require \(r\le 10\).
 Wall comparison is same-geometry only, not absolute-eigenvalue parity
 (GTH+Gaussian vs NC-UPF PW).
@@ -312,10 +311,9 @@ Wall comparison is same-geometry only, not absolute-eigenvalue parity
 
 ## References
 
-- Offline pin: [`regressions/pw/bands-dos-si/REFERENCE.md`](../../../regressions/pw/bands-dos-si/REFERENCE.md)
-- Regression: [`regressions/pw/bands-dos-si/reg_bands-dos-si.cpp`](../../../regressions/pw/bands-dos-si/reg_bands-dos-si.cpp)
-- Public API: [`include/atomiverse/cpu/planewave/bands_dos.h`](../../../include/atomiverse/cpu/planewave/bands_dos.h)
-- Optional CP2K wall / character skeleton: `tools/cp2k_oracle/inputs/si_bands_dos_note.inp`
+- Offline pin: case `bands-dos-si` pin
+- Public API: `bands_dos.h`
+- Optional CP2K wall / character skeleton: CP2K oracle
 - Related energy foothold: [pw-lda-si](pw-lda-si.md)
 - Narrative style ref: [Chapter 8 — Plane-Wave DFT](../ch08-plane-wave.md)
 - M. T. Yin and M. L. Cohen, *Phys. Rev. B* **26**, 5668 (1982)

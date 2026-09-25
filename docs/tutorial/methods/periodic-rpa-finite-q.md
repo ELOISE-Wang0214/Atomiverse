@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-rpa-finite-q` |
-| Regression | `regressions/gpw/periodic-rpa-finite-q/` |
-| Public API | `cpu::gpw::GpwDft::direct_rpa(atoms)` → `cpu::gpw::RpaResult` (`cpu/gpw/rpa.h`); multi-k members `k_mesh[]`, `k_time_reversal`, `mp2_ri`, `mp2_n_virt` |
+| Public API | `cpu::gpw::GpwDft::direct_rpa()` → `cpu::gpw::RpaResult` (`cpu/gpw/rpa.h`); multi-k members `k_mesh[]`, `k_time_reversal`, `mp2_ri`, `mp2_n_virt` |
 | Roadmap | `docs/roadmap/dft.md` §10 Periodic RPA (finite-\(q\) inter-\(k\)) |
 
 ## Summary
@@ -23,7 +22,7 @@ and sits above the Γ-only product `periodic-rpa-si`. Total energy is
 **dRPA@KS** \(E_{\mathrm{SCF}}+E_c\) (no EXX — periodic HF blocked).
 Public path is `GpwDft` members → `build` → `run` → `direct_rpa` — no
 `*Config` bag, no factory. Product gate:
-`reg_periodic-rpa-finite-q` under `regressions/gpw/periodic-rpa-finite-q/`.
+`reg_periodic-rpa-finite-q` under `periodic-rpa-finite-q`.
 
 ## Method
 
@@ -91,25 +90,39 @@ For the regression deck: \(N_k=2\), \(n_{\mathrm{occ}}=8\),
 ## Implementation
 
 Public surface only (`GpwDft` members; no `*Config`, no `make_*` / `build_*`).
-Headers: `include/atomiverse/cpu/gpw/gpw_solver.h`, `rpa.h`; kernels under
+Headers: `gpw_solver.h`, `rpa.h`; kernels under
 `src/cpu/gpw/rpa.cpp` + `src/cpu/gpw/internal/mp2_kernels.cpp` (shared
 RI-GPW \((ia|jb)\) / finite-\(q\) path).
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/rpa.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
-// Diamond Si bct 4-atom (frac → Bohr); a = 5.43 Å.
-// GpwAtom rows: DZVP-MOLOPT-GTH + GTH-PBE-q4, Z=14.  See regression.
+// bct diamond Si4: a = 5.43 Å, a_t = a/√2, c = a; fractional coords
+// (0,0,0), (½,½,½), (½,0,¼), (0,½,¾); Z = 14 in kAtom_type.
+constexpr double a = 5.43;                   // [Å]
+const double at = a / std::sqrt(2.0);
+const double frac[4][3] = {{0, 0, 0}, {0.5, 0.5, 0.5}, {0.5, 0, 0.25}, {0, 0.5, 0.75}};
+cpu::Frame frame(4);
+for (int i = 0; i < 4; ++i) {
+    frame.span(kAtom_type)[i] = 14;
+    frame.span(kAtom_x)[i] = frac[i][0] * at;
+    frame.span(kAtom_y)[i] = frac[i][1] * at;
+    frame.span(kAtom_z)[i] = frac[i][2] * a;
+}
+frame.box = cpu::Box::orthorhombic(at, at, a);
 
-GpwDft m;
-m.cell[0] = m.cell[1] = a_bohr / std::sqrt(2.0);
-m.cell[2] = a_bohr;
+GpwDft m{{Kind{molrs::Element::Si,
+               GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+               GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 80.0;
 m.n_occ = 8;                 // 16 valence e⁻
 m.max_iter = 60;
@@ -126,9 +139,9 @@ m.k_mesh[2] = 1;
 m.k_time_reversal = false;   // FULL_GRID / no symmetry twin
 m.diis_depth = 6;
 
-m.build(atoms);
-const GpwResult& scf = m.run(atoms);   // multi-k RKS
-const RpaResult r = m.direct_rpa(atoms);
+m.build(frame);
+const GpwResult& scf = m.run(frame);   // multi-k RKS
+const RpaResult r = m.direct_rpa();
 // r.e_corr, r.e_scf, r.e_total [Ha]; r.omega_ha; r.tr_A; r.n_kpts; r.ri
 ```
 
@@ -155,9 +168,9 @@ kernel at \(N_k=1\) ≡ real plasmon.
 
 ## Validation (vs offline CP2K)
 
-Source: `regressions/gpw/periodic-rpa-finite-q/REFERENCE.md` (offline pin;
+Source: case `periodic-rpa-finite-q` pin (offline pin;
 **never** live CP2K in ctest). Oracle input twin:
-`tools/cp2k_oracle/inputs/periodic-rpa-finite-q.inp`.
+CP2K oracle.
 
 **Oracle status.** No CP2K binary on the pin host at first green
 (2026-07-26). Absolute CP2K \(E_c\) digits are **not invented**. CP2K’s
@@ -184,7 +197,7 @@ Geometry / cell / basis / PP / XC / k-mesh: see REFERENCE system table and
 
 ## Performance
 
-Source: the case `REFERENCE.md` (wave 4), queue row
+Source: the case pin notes (wave 4), queue row
 `periodic-rpa-finite-q`. Fair-wall target when a comparable CP2K binary and
 algorithm twin exist: \(r=T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\le 10\).
 
@@ -209,9 +222,9 @@ Regression wall budget: **≤ 60 s** (hard fail above).
 
 ## References
 
-- Offline pin: `regressions/gpw/periodic-rpa-finite-q/REFERENCE.md`
-- Oracle input: `tools/cp2k_oracle/inputs/periodic-rpa-finite-q.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md` (offline only; never in ctest)
+- Offline pin: case `periodic-rpa-finite-q` pin
+- Oracle input: CP2K oracle
+- Oracle rules: CP2K oracle (offline only; never in ctest)
 - Roadmap: `docs/roadmap/dft.md` §10
 - Related: `periodic-rpa-si`, `periodic-rpa-kpoints`, `periodic-mp2-kpoints`,
   `periodic-gw-kpoints`

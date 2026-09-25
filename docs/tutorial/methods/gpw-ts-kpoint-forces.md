@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-ts-kpoint-forces` |
-| Regression | `regressions/gpw/gpw-ts-kpoint-forces/` |
-| Public API | `cpu::gpw::GpwDft::ts` + `k_mesh` / `GPWEvaluator::ts`; multi-k `gpw_forces_from_scf` / `GPWEvaluator(compute_forces=true)`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::GpwDft::ts` + `k_mesh`; multi-k `GpwDft::forces(frame)` / `GPWEvaluator(std::move(dft), /*compute_forces=*/true)`; `GpwResult::e_disp` [Ha] |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion + §10 Periodic KS |
 | Oracle | **libMBD** free-atom TS energy + force dual-gate (CP2K has **no** stock `TYPE TS`) |
 
@@ -52,12 +51,11 @@ Free-atom tables: `basis_data/ts_tables.h` (libMBD `ts_vdw_params`).
 ## Public surface
 
 ```cpp
-cpu::gpw::GpwDft gpw;
+cpu::gpw::GpwDft gpw{kinds};   // one Kind per element
 gpw.k_mesh[0] = 1; gpw.k_mesh[1] = 1; gpw.k_mesh[2] = 2;
 gpw.ts = true;
-gpw.build(atoms);
-const auto& scf = gpw.run(atoms);
-const auto F = cpu::gpw::gpw_forces_from_scf(atoms, gpw, scf);
+gpw.build(frame);                     // positions [Å], Z in kAtom_type, box [Å]
+const auto& scf = gpw.forces(frame);  // SCF + analytic forces → kAtom_f* [eV/Å]
 // scf.e_disp [Ha] is geometry-only TS
 ```
 
@@ -65,5 +63,5 @@ No `*Config` bag; no `make_*` factory.
 
 ## Pins and geometry
 
-See `regressions/gpw/gpw-ts-kpoint-forces/REFERENCE.md` and
-`tools/cp2k_oracle/inputs/gpw-ts-kpoint-forces/h2_ts_kpoint_forces.note`.
+See case `gpw-ts-kpoint-forces` pin and
+CP2K oracle.

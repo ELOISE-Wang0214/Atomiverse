@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `cpmd-uks-thermostat-kpoints` |
-| Regression | `regressions/dynamics/cpmd-uks-thermostat-kpoints/` |
 | Public API | `cpu::electronic::CarParrinello{gpw, mu_au, ElectronicThermostat{K0, tau_e}}` with multi-k UKS `gpw` (`n_alpha`/`n_beta` + `k_mesh`); one thermostatted `CpmdCplx` per (k, spin). Nuclear dt pushed from the MD integrator (`TimestepProvider` → `TimestepConsumer`) |
 | Roadmap / queue | `docs/roadmap/dft.md` (AIMD); queue done 2026-08-01 |
 
@@ -48,12 +47,12 @@ Production steps use dual-spin fixed-density multi-k KS evals
 ## Implementation
 
 ```cpp
-cpu::gpw::GPWEvaluator gpw({H}, /*cutoff_ry=*/100.0, /*max_iter=*/80,
-                           /*tol=*/1e-5, /*mix=*/0.3,
-                           cpu::gpw::XcKind::PADE, /*nonperiodic=*/false,
-                           /*compute_forces=*/true);
-gpw.n_alpha = 1;  gpw.n_beta = 1;
-gpw.k_mesh[2] = 2;  gpw.k_time_reversal = false;
+cpu::gpw::GpwDft dft{{H}};
+dft.cutoff_ry = 100.0;  dft.max_iter = 80;  dft.tol = 1e-5;  dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PADE;  dft.nonperiodic = false;
+dft.n_alpha = 1;  dft.n_beta = 1;
+dft.k_mesh[2] = 2;  dft.k_time_reversal = false;
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 
 cpu::electronic::CarParrinello cp{
     std::move(gpw), /*mu_au=*/400.0,
@@ -67,12 +66,12 @@ md.run(frame, /*steps=*/6);
 
 ```bash
 cmake --build build --target reg_cpmd-uks-thermostat-kpoints
-./build/regressions/reg_cpmd-uks-thermostat-kpoints
+reg_cpmd-uks-thermostat-kpoints
 ```
 
 ## Validation
 
-Source: `regressions/dynamics/cpmd-uks-thermostat-kpoints/REFERENCE.md`
+Source: case `cpmd-uks-thermostat-kpoints` pin
 (offline pins; never live in ctest). The CP propagator has no CP2K twin
 (family lock); the BO surface underneath is CP2K-anchored through
 `gpw-kpoints-uks` / `gpw-kpoint-uks-forces` / `gpw-bomd-uks-kpoints`.
@@ -96,5 +95,5 @@ Source: `regressions/dynamics/cpmd-uks-thermostat-kpoints/REFERENCE.md`
 ## See also
 
 - [cpmd-uks-kpoints](cpmd-uks-kpoints.md) — multi-k UKS CP NVE (no eNH)
-- Parent multi-k RKS thermostat: `regressions/dynamics/cpmd-thermostat-kpoints`
+- Parent multi-k RKS thermostat: `cpmd-thermostat-kpoints`
 - [cpmd-electronic-thermostat](cpmd-electronic-thermostat.md) — Γ electronic NH

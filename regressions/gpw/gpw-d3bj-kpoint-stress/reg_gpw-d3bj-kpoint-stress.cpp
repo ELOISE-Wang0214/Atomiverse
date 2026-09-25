@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -161,17 +162,18 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 200.0;
-    eval.max_iter = 120;
-    eval.tol = 1e-6;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = false;
-    eval.k_mesh[0] = 1;
-    eval.k_mesh[1] = 1;
-    eval.k_mesh[2] = 2; // MP 1×1×2, TR-folded
-    eval.d3bj = true;
+    cpu::gpw::GpwDft eval_method{{O, H}};
+    eval_method.cutoff_ry = 200.0;
+    eval_method.max_iter = 120;
+    eval_method.tol = 1e-6;
+    eval_method.mix = 0.4;
+    eval_method.xc = cpu::gpw::XcKind::PBE;
+    eval_method.nonperiodic = false;
+    eval_method.k_mesh[0] = 1;
+    eval_method.k_mesh[1] = 1;
+    eval_method.k_mesh[2] = 2; // MP 1×1×2, TR-folded
+    eval_method.d3bj = true;
+    cpu::gpw::GPWEvaluator eval(std::move(eval_method));
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
@@ -244,17 +246,8 @@ int main() {
     // ── (4) Wiring: product σ − plain multi-k analytic ≡ dispersion pin ───
     // Rebuild plain method (no d3bj) for the wiring gate without a second
     // full Evaluate product path — use internal analytic stress on GpwDft.
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
-    for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double pos[3] = {xs[i] * kAng2Bohr, ys[i] * kAng2Bohr,
-                               zs[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(pos, k.basis, k.pot, z[i]));
-    }
     auto make_cfg = [&](bool d3bj) {
-        cpu::gpw::GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = Lb;
+        cpu::gpw::GpwDft m{{O, H}};
         m.cutoff_ry = 200.0;
         m.n_occ = 8;
         m.max_iter = 120;
@@ -273,7 +266,7 @@ int main() {
     // Product path already ran with d3bj; use san as σ(d3bj). Plain analytic
     // for the wiring difference (same k-mesh).
     const auto s_plain =
-        cpu::gpw::gpw_stress(atoms, make_cfg(false), /*h=*/2e-3);
+        cpu::gpw::gpw_stress(frame, make_cfg(false), /*h=*/2e-3);
     double max_wire = 0.0;
     for (int a = 0; a < 3; ++a) {
         const double shift = san[static_cast<std::size_t>(a)]
@@ -294,11 +287,11 @@ int main() {
 
     // ── (5) Decisive dual gate: analytic vs multi-SCF strain-FD (xx) ──────
     cpu::gpw::GpwDft method = make_cfg(true);
-    method.build(atoms);
+    method.build(frame);
 
     const auto t2 = clock::now();
-    const auto sfd = cpu::gpw::gpw_stress_fd(
-        atoms, method, /*h=*/2e-3, /*axes*/ {true, false, false}, nullptr);
+    const auto sfd = cpu::gpw::gpw_stress_fd(frame, method, /*h=*/2e-3,
+                                             /*axes*/ {true, false, false});
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 

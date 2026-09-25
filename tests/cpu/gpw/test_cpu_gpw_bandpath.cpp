@@ -64,18 +64,23 @@ TEST(GpwGapFromSpectrum, SyntheticIndirectGap) {
 
 TEST(GpwBandsGuards, RejectsDispersionOnPath) {
     const double L = 8.0;
-    const GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-    const GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-    const double r0[3] = {0.5 * L - 0.7, 0.5 * L, 0.5 * L};
-    const double r1[3] = {0.5 * L + 0.7, 0.5 * L, 0.5 * L};
-    std::vector<GpwAtom> h2;
-    h2.emplace_back(r0, bH, pH, 1);
-    h2.emplace_back(r1, bH, pH, 1);
+    // H2 in an L-Bohr cube; Frame speaks Å.
+    const double b2a = ATV::units::kBohrInAngstrom;
+    ATV::cpu::Frame h2(2);
+    const double xs[2] = {0.5 * L - 0.7, 0.5 * L + 0.7};
+    for (int i = 0; i < 2; ++i) {
+        h2.span(ATV::kAtom_type)[i] = 1;
+        h2.span(ATV::kAtom_x)[i] = xs[i] * b2a;
+        h2.span(ATV::kAtom_y)[i] = 0.5 * L * b2a;
+        h2.span(ATV::kAtom_z)[i] = 0.5 * L * b2a;
+    }
+    h2.box = ATV::cpu::Box::cubic(L * b2a);
 
     // Multigrid / DFT+U / dispersion throw in Bands before SCF; d3 is the
     // lightest product-illegal flag that still builds on the k path.
-    GpwDft disp;
-    disp.cell[0] = disp.cell[1] = disp.cell[2] = L;
+    GpwDft disp{{Kind{molrs::Element::H,
+                      GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                      GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
     disp.cutoff_ry = 80.0;
     disp.n_occ = 1;
     disp.max_iter = 1;

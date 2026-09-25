@@ -11,20 +11,21 @@
 /// single-grid multi-k O0 x — not re-run in ctest (3× multi-k SCFs ≫ 60 s).
 /// No live oracle in ctest.
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
-
-constexpr double kA2B = 1.0 / 0.52917720859;
 
 // Same water dimer as gpw-vdw-kpoints / gpw-vdw-df-ice [Å].
 const double kAng[6][3] = {
@@ -79,29 +80,27 @@ void check(bool ok, const char* what) {
     }
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> make_atoms() {
-    using namespace ATV::cpu::gpw;
-    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
-    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
-    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
-    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
-    std::vector<GpwAtom> atoms;
-    atoms.reserve(6);
+ATV::cpu::Frame make_frame() {
+    using namespace ATV;
+    cpu::Frame frame(6);
     for (int i = 0; i < 6; ++i) {
-        const double pos[3] = {kAng[i][0] * kA2B, kAng[i][1] * kA2B,
-                               kAng[i][2] * kA2B};
-        if (kZ[i] == 8)
-            atoms.emplace_back(pos, bO, pO, 8);
-        else
-            atoms.emplace_back(pos, bH, pH, 1);
+        frame.span(kAtom_type)[i] = kZ[i];
+        frame.span(kAtom_x)[i] = kAng[i][0];
+        frame.span(kAtom_y)[i] = kAng[i][1];
+        frame.span(kAtom_z)[i] = kAng[i][2];
     }
-    return atoms;
+    frame.box = cpu::Box::cubic(12.0);
+    return frame;
 }
 
 ATV::cpu::gpw::GpwDft make_twin() {
-    ATV::cpu::gpw::GpwDft gpw;
-    const double L = 12.0 * kA2B;
-    gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+    using namespace ATV::cpu::gpw;
+    GpwDft gpw({Kind{molrs::Element::O,
+                     GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH"),
+                     GthPotential(molrs::Element::O, "GTH-PBE-q6")},
+                Kind{molrs::Element::H,
+                     GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
+                     GthPotential(molrs::Element::H, "GTH-PBE-q1")}});
     gpw.cutoff_ry = 200.0;
     gpw.ngrids = 4;
     gpw.rel_cutoff = 40.0;
@@ -126,12 +125,13 @@ int main() {
     using Clock = std::chrono::steady_clock;
 
     const auto t_all0 = Clock::now();
-    const auto atoms = make_atoms();
+    ATV::cpu::Frame frame = make_frame();
 
     GpwDft mp = make_twin();
-    mp.build(atoms);
+    mp.build(frame);
     const auto t0 = Clock::now();
-    const GpwResult& res = mp.run(atoms);
+    // One SCF + analytic forces; forces land on the Frame in eV/Å.
+    const GpwResult& res = mp.forces(frame);
     check(res.converged, "G1 multi-k SCF converged");
     check(res.n_kpts >= 1 && !res.C_occ_k.empty(),
           "G1 multi-k C_occ_k payload");
@@ -146,9 +146,19 @@ int main() {
                 res.e_disp, kEDispCp2k, std::abs(res.e_disp - kEDispCp2k),
                 res.n_kpts);
 
-    const auto F = gpw_forces_from_scf(atoms, mp, res);
     const double wall_twin_s =
         std::chrono::duration<double>(Clock::now() - t0).count();
+    // Frame forces [eV/Å] → pin units [Ha/Bohr].
+    std::vector<std::array<double, 3>> F(6);
+    for (int i = 0; i < 6; ++i) {
+        F[static_cast<std::size_t>(i)] = {
+            frame.span(ATV::kAtom_fx)[i]
+                / ATV::units::kHartreePerBohrInEvPerAngstrom,
+            frame.span(ATV::kAtom_fy)[i]
+                / ATV::units::kHartreePerBohrInEvPerAngstrom,
+            frame.span(ATV::kAtom_fz)[i]
+                / ATV::units::kHartreePerBohrInEvPerAngstrom};
+    }
     check(F.size() == 6, "G2 six force vectors");
 
     double max_df = 0.0;

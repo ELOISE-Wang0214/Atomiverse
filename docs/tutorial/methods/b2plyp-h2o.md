@@ -5,13 +5,12 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `b2plyp-h2o` |
-| Regression | `regressions/scf/b2plyp-h2o/` |
 | Public API | `cpu::scf::RKS{XCType::B2PLYP}` + `mp2(frame)` with \(a_c\) scales |
 | Roadmap | `docs/roadmap/dft.md` §7 Double-Hybrid Functionals |
 
 ## Summary
 
-Restricted B2PLYP (Grimme 2006) total energy on gas-phase water / STO-3G: hybrid KS (\(a_x=0.53\) HF + semi-local B88/LYP) plus scaled canonical RMP2 on the KS orbitals (\(a_c=0.27\)). Public path is concrete `cpu::scf::RKS` with `XCType::B2PLYP`; set `mp2_os_scale = mp2_ss_scale = hybrid_pt2_fraction(B2PLYP)` and call `mp2(frame)` — KS SCF alone is not the double-hybrid total. Offline accuracy pin is PySCF 2.14.0 composed as `0.53*HF + 0.47*B88 + 0.73*LYP` + \(a_c\cdot E_{\mathrm{MP2}}\) (hosted libxc often lacks a named B2PLYP composite). Product gate: `regressions/scf/b2plyp-h2o` (`reg_b2plyp-h2o`); fair wall ratio \(r=T_{\mathrm{ATV}}/T_{\mathrm{PySCF}}\approx 1.75\) (≤10×).
+Restricted B2PLYP (Grimme 2006) total energy on gas-phase water / STO-3G: hybrid KS (\(a_x=0.53\) HF + semi-local B88/LYP) plus scaled canonical RMP2 on the KS orbitals (\(a_c=0.27\)). Public path is concrete `cpu::scf::RKS` with `XCType::B2PLYP`; set `mp2_os_scale = mp2_ss_scale = hybrid_pt2_fraction(B2PLYP)` and call `mp2(frame)` — KS SCF alone is not the double-hybrid total. Offline accuracy pin is PySCF 2.14.0 composed as `0.53*HF + 0.47*B88 + 0.73*LYP` + \(a_c\cdot E_{\mathrm{MP2}}\) (hosted libxc often lacks a named B2PLYP composite). Product gate: `b2plyp-h2o` (`reg_b2plyp-h2o`); fair wall ratio \(r=T_{\mathrm{ATV}}/T_{\mathrm{PySCF}}\approx 1.75\) (≤10×).
 
 ## Method
 
@@ -50,7 +49,7 @@ Public surface only (`cpu::Frame` + concrete method members; no `*Config`, no fa
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/methods.h"
 
-// H₂O geometry [Å] as in regressions/scf/b2plyp-h2o; 20 Å cubic box
+// H₂O geometry [Å] as in `b2plyp-h2o`; 20 Å cubic box
 ATV::cpu::Frame frame(3);
 // ... type / x,y,z / box ...
 
@@ -92,22 +91,22 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_b2plyp-h2o -j$(nproc)
-  ./build/regressions/reg_b2plyp-h2o
+  reg_b2plyp-h2o
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/rks.h` | `RKS` ctor / `XCType` latch |
-| `include/atomiverse/cpu/scf/xc_functional.h` | `XCType::B2PLYP`, hybrid/PT2 fractions, `evaluate_xc` |
-| `include/atomiverse/cpu/scf/mean_field_method.h` | `mp2`, `mp2_os_scale` / `mp2_ss_scale` |
+| `rks.h` | `RKS` ctor / `XCType` latch |
+| `xc_functional.h` | `XCType::B2PLYP`, hybrid/PT2 fractions, `evaluate_xc` |
+| `mean_field_method.h` | `mp2`, `mp2_os_scale` / `mp2_ss_scale` |
 | `src/cpu/scf/xc_functional.cpp` | B2PLYP semi-local grid + fraction tables |
-| `regressions/scf/b2plyp-h2o/reg_b2plyp-h2o.cpp` | Product gate |
-| `regressions/scf/b2plyp-h2o/REFERENCE.md` | Offline pins + fair_bench numbers |
+| `reg_b2plyp-h2o.cpp` | Product gate |
+| case `b2plyp-h2o` pin | Offline pins + fair_bench numbers |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/b2plyp-h2o/REFERENCE.md`](../../../regressions/scf/b2plyp-h2o/REFERENCE.md).
+Source: case `b2plyp-h2o` pin.
 Oracle: offline PySCF **2.14.0** composed B2PLYP (not a golden of Atomiverse output; never live-import PySCF in ctest).
 
 **Setup:**
@@ -138,15 +137,15 @@ Regression also asserts \(E_{\mathrm{tot}}=E_{\mathrm{KS}}+E_{\mathrm{corr}}\), 
 Pin command (offline only):
 
 ```bash
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py b2plyp \
+python <pyscf pin> b2plyp \
   --geom water --basis sto-3g --conv-tol 1e-12
 ```
 
 ## Performance
 
-Source: fair wall in `regressions/scf/b2plyp-h2o/REFERENCE.md` (worktree 2026-07-23); worker/handoff ratio **1.75**. No standing row in at handbook write time.
+Source: fair wall in case `b2plyp-h2o` pin (worktree 2026-07-23); worker/handoff ratio **1.75**. No standing row in at handbook write time.
 
-Protocol: `tools/pyscf_oracle/fair_bench.py`, median of ≥3 runs, `OMP_NUM_THREADS=1`.
+Protocol: PySCF oracle, median of ≥3 runs, `OMP_NUM_THREADS=1`.
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r=T_{\mathrm{ATV}}/T_{\mathrm{PySCF}}\) | ≤10× | Caveat |
 | ---- | -------------------------: | -----------------------: | --------------------------------------: | ---- | ------ |
@@ -155,9 +154,9 @@ Protocol: `tools/pyscf_oracle/fair_bench.py`, median of ≥3 runs, `OMP_NUM_THRE
 ```bash
 export OMP_NUM_THREADS=1 OMP_PROC_BIND=close
 export LD_LIBRARY_PATH="$LIBRARY_PATH:$LD_LIBRARY_PATH"
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
   --method b2plyp --geom water --basis sto-3g --repeat 3 --max-ratio 10 \
-  -- ./build/regressions/reg_b2plyp-h2o
+  -- reg_b2plyp-h2o
 ```
 
 **Caveats.** (1) Twin is the full double-hybrid class (hybrid SCF + MP2), not KS-only. (2) Tiny STO-3G foothold — wall ratio does not forecast large-basis \(O(N^5)\) MP2 scaling. (3) Hosted libxc may lack named B2PLYP; fair_bench/pin compose the same hybrid string as Atomiverse. Gate \(r\le 10\) passed; no optimize pass required.
@@ -176,9 +175,9 @@ export LD_LIBRARY_PATH="$LIBRARY_PATH:$LD_LIBRARY_PATH"
 
 - Grimme, S. *J. Chem. Phys.* **124**, 034108 (2006), doi:10.1063/1.2148954 (B2PLYP parameters \(a_x=0.53\), \(a_c=0.27\)).
 - Becke, A. D. *Phys. Rev. A* **38**, 3098 (1988) (B88); Lee–Yang–Parr *Phys. Rev. B* **37**, 785 (1988) (LYP).
-- Offline pin + fair_bench numbers: `regressions/scf/b2plyp-h2o/REFERENCE.md`
-- Regression consumer: `regressions/scf/b2plyp-h2o/reg_b2plyp-h2o.cpp`
-- Oracle helpers: `tools/pyscf_oracle/pin_scf.py`, `tools/pyscf_oracle/fair_bench.py`; env `tools/setup_pyscf_env.sh`
+- Offline pin + fair_bench numbers: case `b2plyp-h2o` pin
+- Regression consumer: `reg_b2plyp-h2o.cpp`
+- Oracle helpers: PySCF oracle, PySCF oracle; env PySCF oracle
 - Roadmap: `docs/roadmap/dft.md` §7
-- Campaign queue/handoff: the case `REFERENCE.md`
-- Perf rollup (if populated later): - Public API headers: `include/atomiverse/cpu/scf/rks.h`, `xc_functional.h`, `mean_field_method.h`
+- Campaign queue/handoff: the case pin notes
+- Perf rollup (if populated later): - Public API headers: `rks.h`, `xc_functional.h`, `mean_field_method.h`

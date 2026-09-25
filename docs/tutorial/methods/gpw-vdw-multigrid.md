@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-vdw-multigrid` |
-| Regression | `regressions/gpw/gpw-vdw-multigrid/` |
 | Public API | `cpu::gpw::GpwDft` (`vdw_df` / `vdw_df2` / `rvv10`, `ngrids`, `rel_cutoff`, `cutoff_ry`); lookup ctors `GaussianBasis` / `GthPotential` |
 | Roadmap | `docs/roadmap/dft.md` §8 — nonlocal vdW × multigrid |
 
@@ -61,16 +60,17 @@ kernel).
 ## Public API
 
 ```cpp
-cpu::gpw::GpwDft gpw;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = 12.0 * kA2B;
+// frame: water dimer, positions [Å], Z in kAtom_type
+frame.box = cpu::Box::cubic(12.0);  // Å
+cpu::gpw::GpwDft gpw{kinds};          // one Kind each for O and H
 gpw.cutoff_ry = 200.0;
 gpw.ngrids = 4;        // CP2K NGRIDS (its default is 4)
 gpw.rel_cutoff = 40.0; // CP2K REL_CUTOFF [Ry]
 gpw.n_occ = 8;
 gpw.xc = cpu::gpw::XcKind::PBE;
 gpw.vdw_df = true;     // or vdw_df2 / rvv10
-gpw.build(atoms);
-const cpu::gpw::GpwResult& r = gpw.run(atoms);
+gpw.build(frame);
+const cpu::gpw::GpwResult& r = gpw.run(frame);  // frame.meta[kEnergy] [eV]
 // r.e_total [Ha], r.e_disp = E_c^nl [Ha]
 ```
 
@@ -112,4 +112,4 @@ screening. The capability statements are rows 1–2.
 
 Fair ratio \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \approx 0.83\), charging
 both ATV solves against CP2K's single NGRIDS 4 run (≤ 10×; no perf exemption
-needed). Measured gates: `regressions/gpw/gpw-vdw-multigrid/REFERENCE.md`.
+needed). Measured gates: case `gpw-vdw-multigrid` pin.

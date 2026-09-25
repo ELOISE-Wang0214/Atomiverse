@@ -7,16 +7,15 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
-#include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
-
-constexpr double kA2B = 1.0 / 0.52917720859; // Angstrom -> Bohr
 
 int g_fail = 0;
 
@@ -29,34 +28,35 @@ void check(bool ok, const char* what) {
     }
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> si_bct(double a_bohr) {
-    const double at = a_bohr / std::sqrt(2.0);
-    const ATV::cpu::gpw::GaussianBasis bSi(molrs::Element::Si,
-                                           "DZVP-MOLOPT-GTH");
-    const ATV::cpu::gpw::GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
+/// Diamond Si as a 4-atom BCT cell (a/√2, a/√2, a) of cubic edge `a_ang` [Å].
+ATV::cpu::Frame si_bct(double a_ang) {
+    using namespace ATV;
+    const double at = a_ang / std::sqrt(2.0);
     const double frac[4][3] = {
         {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}, {0.5, 0.0, 0.25}, {0.0, 0.5, 0.75}};
-    std::vector<ATV::cpu::gpw::GpwAtom> atoms;
+    cpu::Frame frame(4);
     for (int i = 0; i < 4; ++i) {
-        const double pos[3] = {frac[i][0] * at, frac[i][1] * at,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bSi, pSi, 14);
+        frame.span(kAtom_type)[i] = 14;
+        frame.span(kAtom_x)[i] = frac[i][0] * at;
+        frame.span(kAtom_y)[i] = frac[i][1] * at;
+        frame.span(kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = cpu::Box::orthorhombic(at, at, a_ang);
+    return frame;
 }
 
 } // namespace
 
 int main() {
+    using namespace ATV;
     using namespace ATV::cpu::gpw;
 
-    const double a = 5.43 * kA2B; // 10.26120 Bohr
-    const auto atoms = si_bct(a);
+    cpu::Frame frame = si_bct(5.43); // Å (10.26120 Bohr)
 
     auto make_cfg = [&]() {
-        GpwDft m;
-        m.cell[0] = m.cell[1] = a / std::sqrt(2.0);
-        m.cell[2] = a;
+        GpwDft m{{Kind{molrs::Element::Si,
+                       GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+                       GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
         m.cutoff_ry = 100.0;
         m.n_occ = 8;
         m.max_iter = 60;
@@ -72,8 +72,8 @@ int main() {
 
     // A1: energy + SCF
     GpwDft energy = make_cfg();
-    energy.build(atoms);
-    const auto& er = energy.run(atoms);
+    energy.build(frame);
+    const auto& er = energy.run(frame);
     check(er.converged, "A1 SCF converged");
     check(std::isfinite(er.e_total), "A1 finite e_total");
     check(er.n_kpts >= 1 && !er.C_occ_k.empty(), "A1 C_occ_k payload present");
@@ -85,8 +85,8 @@ int main() {
     // Gate A4 uses a soft absolute band once set.
 
     const double h = 2e-3;
-    const auto san = gpw_stress(atoms, make_cfg(), h);
-    const auto sfd = gpw_stress_fd(atoms, make_cfg(), h);
+    const auto san = gpw_stress(frame, make_cfg(), h);
+    const auto sfd = gpw_stress_fd(frame, make_cfg(), h);
 
     double max_diag_err = 0.0;
     const char* names[3] = {"xx", "yy", "zz"};

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-gga-spin-si` |
-| Regression | `regressions/response/dfpt-gga-spin-si/` |
 | Public API | `cpu::pw::DfptPhonon` (members) + `cpu::pw::DfptPhononResult`; `PW.xc = XCType::PBE` + `PW.spin_polarized = true` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — **joint GGA × collinear spin** ✓ (`reg_dfpt-gga-spin-si`) |
 | Dep | `dfpt-gga-si` ✓ (restricted PBE kernel); `dfpt-spin-si` ✓ (collinear LSDA kernel) |
@@ -96,7 +95,7 @@ cmake --build build --target run_reg_dfpt-gga-spin-si
 
 ## Validation (vs offline pins)
 
-Source: `regressions/response/dfpt-gga-spin-si/REFERENCE.md`. Measured
+Source: case `dfpt-gga-spin-si` pin. Measured
 2026-07-31 (Release, OMP=1):
 
 | Quantity | Atomiverse / pin | Gate | Notes |
@@ -127,10 +126,9 @@ First DFPT-family slug with a real CP2K wall twin (binary
 
 ## References
 
-- Offline pins: `regressions/response/dfpt-gga-spin-si/REFERENCE.md`
-- Regression: `regressions/response/dfpt-gga-spin-si/reg_dfpt-gga-spin-si.cpp`
-- Oracle note + CP2K input: `tools/cp2k_oracle/inputs/dfpt-gga-spin-si.note`,
-  `tools/cp2k_oracle/inputs/dfpt-gga-spin-si/si2_uks_pbe_vib.inp`
+- Offline pins: case `dfpt-gga-spin-si` pin
+- Oracle note + CP2K input: CP2K oracle,
+  CP2K oracle
 - Parents: `docs/tutorial/methods/dfpt-gga-si.md`,
   `docs/tutorial/methods/dfpt-spin-si.md`
 - Literature: Baroni, de Gironcoli, Dal Corso, Giannozzi, *Rev. Mod. Phys.*

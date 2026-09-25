@@ -10,6 +10,9 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -28,19 +31,32 @@ void check(bool ok, const char* what) {
     }
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> h2_hs(double L) {
+/// H₂ toy in a cubic box of edge `L` [Bohr]; the Frame is in Å.
+ATV::cpu::Frame h2_hs(double L) {
+    using namespace ATV;
+    constexpr double b2a = units::kBohrInAngstrom;
+    const double x[2] = {0.5 * L - 0.5, 0.5 * L + 0.5};
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_x)[i] = x[i] * b2a;
+        frame.span(kAtom_y)[i] = 0.5 * L * b2a;
+        frame.span(kAtom_z)[i] = 0.5 * L * b2a;
+    }
+    frame.box = cpu::Box::cubic(L * b2a);
+    return frame;
+}
+
+std::vector<ATV::cpu::gpw::Kind> h_kinds() {
     using namespace ATV::cpu::gpw;
-    const GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-    const GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-    const double r0[3] = {0.5 * L - 0.5, 0.5 * L, 0.5 * L};
-    const double r1[3] = {0.5 * L + 0.5, 0.5 * L, 0.5 * L};
-    return {GpwAtom(r0, bH, pH, 1), GpwAtom(r1, bH, pH, 1)};
+    return {Kind{molrs::Element::H,
+                 GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                 GthPotential(molrs::Element::H, "GTH-PADE-q1")}};
 }
 
 ATV::cpu::gpw::GpwDft make_uks(ATV::cpu::gpw::XcKind xc, double L) {
     using namespace ATV::cpu::gpw;
-    GpwDft m;
-    m.cell[0] = m.cell[1] = m.cell[2] = L;
+    GpwDft m{h_kinds()};
     m.cutoff_ry = 100.0;
     m.n_alpha = 2;
     m.n_beta = 0;
@@ -63,12 +79,13 @@ struct GgaCase {
 } // namespace
 
 int main() {
+    using namespace ATV;
     using namespace ATV::cpu::gpw;
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();
 
     const double L = 12.0;
-    const auto atoms = h2_hs(L);
+    cpu::Frame frame = h2_hs(L);
     const double h = 2e-3;
     constexpr double kAnFdTol = 1.0e-4;
     constexpr double kETol = 1.0e-3;
@@ -86,8 +103,8 @@ int main() {
     double e_pbe = 0.0;
     {
         GpwDft pbe = make_uks(XcKind::PBE, L);
-        pbe.build(atoms);
-        const auto& er = pbe.run(atoms);
+        pbe.build(frame);
+        const auto& er = pbe.run(frame);
         check(er.converged, "PBE SCF converged");
         e_pbe = er.e_total;
         std::printf("E(k-UKS PBE 1x1x2) = %.12f Ha\n", e_pbe);
@@ -97,8 +114,8 @@ int main() {
     for (auto& c : cases) {
         std::printf("\n=== %s ===\n", c.name);
         GpwDft energy = make_uks(c.xc, L);
-        energy.build(atoms);
-        const auto& er = energy.run(atoms);
+        energy.build(frame);
+        const auto& er = energy.run(frame);
         check(er.converged, "SCF converged");
         check(std::isfinite(er.e_total), "finite e_total");
         check(er.n_kpts >= 1 && !er.C_occ_k.empty(), "C_occ_k present");
@@ -113,8 +130,8 @@ int main() {
             check(dE >= kDeFloor, "activation |E_RevPBE-E_PBE| floor");
         }
 
-        const auto san = gpw_stress(atoms, make_uks(c.xc, L), h);
-        const auto sfd = gpw_stress_fd(atoms, make_uks(c.xc, L), h);
+        const auto san = gpw_stress(frame, make_uks(c.xc, L), h);
+        const auto sfd = gpw_stress_fd(frame, make_uks(c.xc, L), h);
 
         double max_diag_err = 0.0;
         const char* names[3] = {"xx", "yy", "zz"};

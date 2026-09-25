@@ -22,6 +22,8 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
+using internal::GpwAtom;
+
 namespace {
 
 using internal::CplxMatrix;
@@ -239,8 +241,11 @@ void Bands::set_diamond_path(int n_seg) {
     kfrac = std::move(path);
 }
 
-BandsResult Bands::compute(GpwDft& method,
-                           const std::vector<GpwAtom>& atoms) const {
+BandsResult Bands::compute(GpwDft& method, Frame& frame) const {
+    internal::GpwDftAccess::set_cell(method,
+                                     internal::cell_from_box(frame.box));
+    const std::vector<GpwAtom> atoms =
+        internal::GpwDftAccess::atoms_from_frame(method, frame);
     if (n_bands < 2)
         throw std::invalid_argument(
             "gpw::Bands::compute: n_bands must be >= 2");
@@ -288,7 +293,7 @@ BandsResult Bands::compute(GpwDft& method,
         method.k_point_weights = {1.0};
     }
 
-    const GpwResult scf = method.run(atoms);
+    const GpwResult scf = method.run(frame);
 
     // Restore method k settings (path is independent of the SCF mesh).
     method.k_points = saved_kpts;
@@ -322,9 +327,11 @@ BandsResult Bands::compute(GpwDft& method,
         rmax = std::max(rmax, radii[static_cast<std::size_t>(i)]);
     }
     int mimg[3] = {0, 0, 0};
-    pair_image_counts(method.cell, /*periodic=*/true, 2.0 * rmax, mimg);
+    pair_image_counts(method.cell_bohr().data(), /*periodic=*/true, 2.0 * rmax,
+                      mimg);
 
-    const UniformGrid grid = make_uniform_grid(method.cell, method.cutoff_ry);
+    const UniformGrid grid =
+        make_uniform_grid(method.cell_bohr().data(), method.cutoff_ry);
     const std::vector<double> n_ion =
         ionic_density_grid(grid, atoms, /*periodic=*/true);
     const std::vector<double> v_locsr =
@@ -386,12 +393,13 @@ BandsResult Bands::compute(GpwDft& method,
     const int nk = static_cast<int>(path_kpts.size());
 
     std::vector<CplxMatrix> S_k, T_k;
-    internal::build_overlap_kinetic_k(basis, radii, method.cell, mimg,
-                                      kBuildScreen, path_kpts, S_k, T_k);
+    internal::build_overlap_kinetic_k(basis, radii, method.cell_bohr().data(),
+                                      mimg, kBuildScreen, path_kpts, S_k, T_k);
     std::vector<CplxMatrix> Vnl_k(static_cast<std::size_t>(nk),
                                   CplxMatrix(xt::zeros<Cplx>({nb, nb})));
-    internal::add_nonlocal_kb_k(Vnl_k, basis, atoms, radii, method.cell, mimg,
-                                kBuildScreen, path_kpts);
+    internal::add_nonlocal_kb_k(Vnl_k, basis, atoms, radii,
+                                method.cell_bohr().data(), mimg, kBuildScreen,
+                                path_kpts);
 
     const internal::KpointBasisGrid kbg_path =
         internal::build_kpoint_basis_grid(grid, basis, path_kpts,
@@ -607,8 +615,11 @@ void flatten_spectrum(const std::vector<std::vector<double>>& evals,
 
 } // namespace
 
-DosResult Dos::compute(GpwDft& method,
-                       const std::vector<GpwAtom>& atoms) const {
+DosResult Dos::compute(GpwDft& method, Frame& frame) const {
+    internal::GpwDftAccess::set_cell(method,
+                                     internal::cell_from_box(frame.box));
+    const std::vector<GpwAtom> atoms =
+        internal::GpwDftAccess::atoms_from_frame(method, frame);
     if (k_mesh < 1 && !use_method_k_list)
         throw std::invalid_argument("Dos::compute: k_mesh must be >= 1");
     if (!(sigma_ha > 0.0))
@@ -634,9 +645,9 @@ DosResult Dos::compute(GpwDft& method,
         throw std::invalid_argument(
             "Dos::compute: multi-k mesh required (set Dos::k_mesh >= 2, or "
             "pass use_method_k_list with a non-Γ GpwDft::k_mesh / k_points). "
-            "Example: dos.k_mesh = 2; dos.compute(method, atoms);");
+            "Example: dos.k_mesh = 2; dos.compute(method, frame);");
 
-    const GpwResult scf = method.run(atoms);
+    const GpwResult scf = method.run(frame);
 
     if (scf.eps_k.empty() || scf.k_weights.empty() || scf.n_kpts < 1)
         throw std::runtime_error(

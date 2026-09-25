@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-rpa-si` |
-| Regression | `regressions/gpw/periodic-rpa-si/` |
-| Public API | `cpu::gpw::GpwDft::direct_rpa(atoms)` → `cpu::gpw::RpaResult` (`cpu/gpw/rpa.h`); members `mp2_ri`, `mp2_n_virt` |
+| Public API | `cpu::gpw::GpwDft::direct_rpa()` → `cpu::gpw::RpaResult` (`cpu/gpw/rpa.h`); members `mp2_ri`, `mp2_n_virt` |
 | Roadmap | roadmap §10 Γ dRPA@KS product; handoff **perf_exempt** |
 
 ## Summary
@@ -22,7 +21,7 @@ of molecular `RHF::direct_rpa()` (`direct-rpa-h2-sto3g`). Total energy is the
 **dRPA@KS** sum \(E_{\mathrm{SCF}}+E_c\) (no EXX replacement; periodic HF
 remains blocked). Product deck: artificial sc-Si₂, \(a=5.43\) Å, DZVP-MOLOPT-GTH
 + GTH-PBE-q4, 30 Ry. Offline CP2K twin input ships at
-`tools/cp2k_oracle/inputs/periodic-rpa-si.inp` (frequency-integrated RI-RPA +
+CP2K oracle (frequency-integrated RI-RPA +
 Gaussian `RI_AUX` — **not** algorithmically identical to the plasmon path).
 Fair wall is **`perf_exempt`**.
 
@@ -112,33 +111,35 @@ is a separate blocked capability.
 ## Implementation
 
 Public surface only: concrete `GpwDft` members + lookup constructors for
-basis/PP; post-SCF `direct_rpa(atoms)`. Headers: `cpu/gpw/rpa.h`,
+basis/PP; post-SCF `direct_rpa()` (orbitals of the last `run(frame)`). Headers: `cpu/gpw/rpa.h`,
 `cpu/gpw/gpw_solver.h`; impl `src/cpu/gpw/rpa.cpp` (plasmon kernel private in
 `cpu/gpw/internal/`). No public `*Config`.
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/rpa.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
-constexpr double kA2B = 1.8897259885789;
-constexpr double a_bohr = 5.43 * kA2B;
+constexpr double a = 5.43;                    // cubic cell [Å]
 
-const double pos0[3] = {0.0, 0.0, 0.0};
-const double pos1[3] = {a_bohr / 4.0, a_bohr / 4.0, a_bohr / 4.0};
-const GaussianBasis bas(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-const GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
+cpu::Frame frame(2);                          // sc-Si₂, positions [Å]
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 14;
+    frame.span(kAtom_x)[i] = frame.span(kAtom_y)[i] =
+        frame.span(kAtom_z)[i] = i * a / 4.0;
+}
+frame.box = cpu::Box::cubic(a);
 
-std::vector<GpwAtom> atoms;
-atoms.emplace_back(pos0, bas, pot, 14);
-atoms.emplace_back(pos1, bas, pot, 14);
-
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = a_bohr;  // Bohr
+GpwDft m{{Kind{molrs::Element::Si,
+               GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+               GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 30.0;
 m.n_occ = 4;
 m.max_iter = 80;
@@ -147,11 +148,11 @@ m.mix = 0.3;
 m.level_shift = 0.3;          // small-gap sc-Si2 convergence aid
 m.xc = XcKind::PBE;
 m.mp2_ri = true;              // product RI-GPW (ia|jb)
-m.build(atoms);
-const GpwResult& scf = m.run(atoms);  // must converge
+m.build(frame);
+const GpwResult& scf = m.run(frame);  // must converge
 
 m.mp2_n_virt = 0;             // 0 = all kept virtuals
-const RpaResult& r = m.direct_rpa(atoms);
+const RpaResult& r = m.direct_rpa();
 // r.e_corr, r.e_total [Ha]; r.tr_A; r.omega_ha; r.ri
 ```
 
@@ -172,25 +173,25 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_periodic-rpa-si
-  ./build/regressions/reg_periodic-rpa-si
+  reg_periodic-rpa-si
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/rpa.h` | public `RpaResult` |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::direct_rpa`, `mp2_ri` / `mp2_n_virt` |
-| `include/atomiverse/cpu/gpw/mp2.h` | shared MO-ERI / `Mp2Result` infrastructure |
+| `rpa.h` | public `RpaResult` |
+| `gpw_solver.h` | `GpwDft::direct_rpa`, `mp2_ri` / `mp2_n_virt` |
+| `mp2.h` | shared MO-ERI / `Mp2Result` infrastructure |
 | `src/cpu/gpw/rpa.cpp` | `GpwDft::direct_rpa` orchestration |
 | `src/cpu/gpw/internal/mp2_kernels.cpp` | `direct_rpa_rhf_energy` plasmon kernel |
-| `regressions/gpw/periodic-rpa-si/reg_periodic-rpa-si.cpp` | product gate |
+| `reg_periodic-rpa-si.cpp` | product gate |
 | `tests/cpu/gpw/test_cpu_gpw_rpa.cpp` | unit: dense A/B vs plasmon kernel |
-| `tools/cp2k_oracle/inputs/periodic-rpa-si.inp` | offline CP2K twin (never ctest) |
+| CP2K oracle | offline CP2K twin (never ctest) |
 
 ## Validation (vs CP2K offline contract)
 
 Source:
-[`regressions/gpw/periodic-rpa-si/REFERENCE.md`](../../../regressions/gpw/periodic-rpa-si/REFERENCE.md)
+case `periodic-rpa-si` pin
 (offline pin only; CP2K never imported from CMake/ctest).
 
 Oracle twin input matches the product deck geometry / basis / PP / cutoff /
@@ -240,7 +241,7 @@ Offline re-pin (human only; never ctest):
 
 ```bash
 # when a CP2K binary is available — diagnostic near-twin only
-cp2k.psmp -i tools/cp2k_oracle/inputs/periodic-rpa-si.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o /tmp/cp2k_oracle_periodic-rpa-si.out
 # record RI-RPA correlation [Ha] into REFERENCE.md only if the path is a fair
 # plasmon-equivalent twin; otherwise keep first-green band + note algorithm gap
@@ -248,7 +249,7 @@ cp2k.psmp -i tools/cp2k_oracle/inputs/periodic-rpa-si.inp \
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/gpw/periodic-rpa-si/REFERENCE.md);
+Source: pin notes;
 queue/handoff **`perf_exempt`**.
 
 | Item | Value |
@@ -294,17 +295,17 @@ host/core count (single-rank).
 
 ## References
 
-- Offline pin: `regressions/gpw/periodic-rpa-si/REFERENCE.md`
-- Regression consumer: `regressions/gpw/periodic-rpa-si/reg_periodic-rpa-si.cpp`
-- Oracle twin: `tools/cp2k_oracle/inputs/periodic-rpa-si.inp`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin: case `periodic-rpa-si` pin
+- Regression consumer: `reg_periodic-rpa-si.cpp`
+- Oracle twin: CP2K oracle
+- Oracle notes: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §10 (Periodic RPA Γ dRPA@KS ✓ product)
 - Related method pages:
   [periodic-mp2-si](periodic-mp2-si.md) (shared MO-ERI foothold),
   [direct-rpa-h2-sto3g](direct-rpa-h2-sto3g.md) (molecular plasmon dRPA),
   [gpw-pbesol-si](gpw-pbesol-si.md) (GPW Si technical-report shape)
-- Public API: `include/atomiverse/cpu/gpw/rpa.h`,
-  `include/atomiverse/cpu/gpw/gpw_solver.h`
+- Public API: `rpa.h`,
+  `gpw_solver.h`
 - Impl: `src/cpu/gpw/rpa.cpp`, `src/cpu/gpw/internal/mp2_kernels.cpp`
 - Unit gate: `tests/cpu/gpw/test_cpu_gpw_rpa.cpp`
 - F. Furche, *J. Chem. Phys.* **114**, 5982 (2001), DOI 10.1063/1.1353585

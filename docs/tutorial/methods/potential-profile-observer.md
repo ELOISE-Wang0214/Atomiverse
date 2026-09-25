@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `potential-profile-observer` |
-| Regression | `regressions/md/potential-profile-observer/` |
 | Public API | `cpu::PotentialProfile` (`Observer` on `cpu::md::MD`, default `end_of_step` @ +45) |
 | Roadmap | map slice E10 ecosystem |
 | Oracle | **literature** (planar Poisson / parallel-plate; Jackson continuum; MetalWalls potential-profile lineage; no LAMMPS or MetalWalls binary twin) |
@@ -194,26 +193,26 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_potential-profile-observer -j"$(nproc)"
-  ./build/regressions/reg_potential-profile-observer
+  reg_potential-profile-observer
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/observe/potential_profile.h` | Public `PotentialProfile` |
+| `potential_profile.h` | Public `PotentialProfile` |
 | `src/cpu/observe/potential_profile.cpp` | Bin charges, planar Poisson, meta write-back |
-| `include/atomiverse/core/frame_schema.h` | `kPotentialDrop` |
-| `regressions/md/potential-profile-observer/reg_potential-profile-observer.cpp` | Product gate |
+| `frame_schema.h` | `kPotentialDrop` |
+| `reg_potential-profile-observer.cpp` | Product gate |
 | `tests/cpu/observe/test_potential_profile.cpp` | Unit surface (not the e2e pin) |
-| `tools/metalwalls_oracle/pin_notes_potential-profile-observer.md` | Offline pin provenance |
+| MetalWalls oracle | Offline pin provenance |
 
 ## Validation (vs literature)
 
 Source:
-[`regressions/md/potential-profile-observer/REFERENCE.md`](../../../regressions/md/potential-profile-observer/REFERENCE.md)
+case `potential-profile-observer` pin
 (offline pin; **never** live MetalWalls or LAMMPS in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md),
-[`tools/metalwalls_oracle/pin_notes_potential-profile-observer.md`](../../../tools/metalwalls_oracle/pin_notes_potential-profile-observer.md).
+MetalWalls oracle,
+MetalWalls oracle.
 
 **Oracle:** **literature** — planar Poisson / parallel-plate continuum (Jackson,
 *Classical Electrodynamics*, ch. 1); MetalWalls JOSS **5**(53), 2373 (2020)
@@ -281,7 +280,7 @@ PY
 ## Performance
 
 Source: REFERENCE.md dual-gate summary; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{oracle}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -320,9 +319,7 @@ same binning and metal units; neither shipped as a binary pin for this slug.
 
 ## References
 
-- Offline pin: [`regressions/md/potential-profile-observer/REFERENCE.md`](../../../regressions/md/potential-profile-observer/REFERENCE.md)
-- Product gate: [`regressions/md/potential-profile-observer/reg_potential-profile-observer.cpp`](../../../regressions/md/potential-profile-observer/reg_potential-profile-observer.cpp)
-- Public header: [`include/atomiverse/cpu/observe/potential_profile.h`](../../../include/atomiverse/cpu/observe/potential_profile.h)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md), [`tools/metalwalls_oracle/pin_notes_potential-profile-observer.md`](../../../tools/metalwalls_oracle/pin_notes_potential-profile-observer.md)
-- Capability map: [`.claude/notes/metalwalls-capability-map.md`](../../../.claude/notes/metalwalls-capability-map.md) (E10)
+- Offline pin: case `potential-profile-observer` pin
+- Oracle notes: MetalWalls oracle, MetalWalls oracle
+- Capability map: `.claude/notes/metalwalls-capability-map.md` (E10)
 - Literature: Jackson, *Classical Electrodynamics* (planar Poisson); Marin-Laflèche et al., *J. Open Source Softw.* **5**(53), 2373 (2020) (MetalWalls); Scalfi et al., *Phys. Chem. Chem. Phys.* **22**, 10480 (2020)

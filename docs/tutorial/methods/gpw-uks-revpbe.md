@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-uks-revpbe` |
-| Regression | `regressions/gpw/gpw-uks-revpbe/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`n_alpha`/`n_beta`, `XcKind::RevPBE`, `nonperiodic`); `cpu::single_point` |
+| Public API | `cpu::gpw::GpwDft` members (`n_alpha`/`n_beta`, `XcKind::RevPBE`, `nonperiodic`) bound through `cpu::gpw::GPWEvaluator`; `cpu::single_point` |
 | Roadmap | `docs/roadmap/dft.md` — Γ-UKS revPBE spin-GGA (`XcKind::RevPBE`) |
 | Fair wall | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \approx \mathbf{3.22}\) (≤10×) |
 
@@ -21,10 +20,10 @@ Löwdin \(\langle S^2\rangle\) against offline **CP2K 2026.1 Quickstep**
 identical-geometry UKS-PBE ensures the functional is activated
 (\(|E_{\mathrm{revPBE}}-E_{\mathrm{PBE}}| > 10^{-4}\) Ha).
 
-Public path: construct `cpu::gpw::GPWEvaluator` with one `Kind` per element
-(lookup constructors `GaussianBasis` / `GthPotential`), set members
+Public path: construct `cpu::gpw::GpwDft` with one `Kind` per element
+(lookup constructors `GaussianBasis` / `GthPotential`), set its members
 (`n_alpha`, `n_beta`, `cutoff_ry`, `xc = XcKind::RevPBE`, `nonperiodic`, …),
-run `cpu::single_point(frame, eval)`. Energy on `frame.meta` is **eV**;
+move it into `cpu::gpw::GPWEvaluator`, run `cpu::single_point(frame, eval)`. Energy on `frame.meta` is **eV**;
 Hartree and \(\langle S^2\rangle\) via `last_energy_hartree()` / `last_s2()`.
 Product gate: `reg_gpw-uks-revpbe`.
 
@@ -65,7 +64,7 @@ base; at finite gradient they differ. libxc: `GGA_X_PBE_R` + `GGA_C_PBE`.
 
 Short `XC_FUNCTIONAL revPBE` is **not** a valid enumeration in CP2K 2026.1
 (closed-shell RKS pin `gpw-revpbe-si` may use a different stock name depending
-on version — always re-pin from the twin input under `tools/cp2k_oracle/`).
+on version — always re-pin from the twin input under CP2K oracle).
 
 **Distinct from RPBE.** Hammer–Hansen–Nørskov RPBE uses a different exchange
 form (not a mere \(\kappa\) revision). Do not interchange `XcKind::RevPBE`
@@ -113,7 +112,7 @@ Ideal high-spin value for \(S=1\): \(S(S+1)=2\). Citation: Löwdin,
 
 ## Implementation
 
-Public surface only (`cpu::Frame`, concrete evaluator members; **no**
+Public surface only (`cpu::Frame`, concrete `GpwDft` members; **no**
 `*Config` bag, **no** `make_*` / `build_*` factories):
 
 ```cpp
@@ -145,15 +144,17 @@ cpu::gpw::Kind O{molrs::Element::O,
                  cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
                  cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
-cpu::gpw::GPWEvaluator eval({O});
-eval.cutoff_ry = 400.0;
-eval.max_iter = 200;
-eval.tol = 1e-7;
-eval.mix = 0.4;
-eval.xc = cpu::gpw::XcKind::RevPBE;
-eval.nonperiodic = true;
-eval.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
-eval.n_beta = 5;
+cpu::gpw::GpwDft dft{{O}};
+dft.cutoff_ry = 400.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::RevPBE;
+dft.nonperiodic = true;
+dft.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
+dft.n_beta = 5;
+
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 
 cpu::single_point(frame, eval);
 
@@ -180,7 +181,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-uks-revpbe
-  ./build/regressions/reg_gpw-uks-revpbe
+  reg_gpw-uks-revpbe
   # or: cmake --build build --target run_reg_gpw-uks-revpbe
 '
 ```
@@ -189,17 +190,16 @@ Relevant sources:
 
 | Piece | Path |
 | ----- | ---- |
-| Evaluator | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| Solver (UKS SCF) | `include/atomiverse/cpu/gpw/gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
-| revPBE spin-GGA grid | `include/atomiverse/cpu/gpw/internal/xc_grid_gga.h`, `src/cpu/gpw/internal/xc_grid_gga.cpp` |
-| Shared pointwise engine | `include/atomiverse/cpu/scf/xc_functional.h` (`XCType::RevPBE`) |
+| Evaluator | `gpw_evaluator.h` |
+| Solver (UKS SCF) | `gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
+| revPBE spin-GGA grid | `xc_grid_gga.h`, `src/cpu/gpw/internal/xc_grid_gga.cpp` |
+| Shared pointwise engine | `xc_functional.h` (`XCType::RevPBE`) |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_uks.cpp`, `test_cpu_gpw_xc_grid_gga.cpp` |
-| Regression | `regressions/gpw/gpw-uks-revpbe/reg_gpw-uks-revpbe.cpp` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/gpw-uks-revpbe/o2_uks_revpbe.inp` |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (CP2K)
 
-Source: `regressions/gpw/gpw-uks-revpbe/REFERENCE.md` (offline pin; **never**
+Source: case `gpw-uks-revpbe` pin (offline pin; **never**
 live CP2K in ctest). Engine: **CP2K 2026.1** (`cp2k.psmp`), module
 `CP2K/2026.1` on Arrhenius. Pin date: **2026-07-26**.
 
@@ -239,15 +239,15 @@ module load buildtool-easybuild/5.2.1-hpca3ef7d197 GCC/14.3.0 MPICH/4.3.2 CP2K/2
 export CP2K_DATA_DIR=$EBROOTCP2K/share/cp2k/data
 export OMP_NUM_THREADS=4
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_MOLOPT,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/gpw-uks-revpbe/o2_uks_revpbe.inp
+# copy <CP2K oracle input for this case>
 cp2k.psmp -i o2_uks_revpbe.inp -o o2_uks_revpbe.out
 ```
 
 ## Performance
 
-Source: same `REFERENCE.md` fair-wall note (2026-07-26) and
-the case `REFERENCE.md` (wave 5). Not a ctest gate; optional
-offline twin under `tools/cp2k_oracle/`.
+Source: same pin notes fair-wall note (2026-07-26) and
+the case pin notes (wave 5). Not a ctest gate; optional
+offline twin under CP2K oracle.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | ---------------------------------------: | ---- | ------ |
@@ -274,14 +274,14 @@ Gate from closed product: \(r \le 10\) or `perf_exempt`. Here
   contamination is accepted (compared to CP2K single-determinant value).
 - **RPBE ≠ revPBE** — do not document RPBE energy against this pin.
 - **No public `*Config` / factories** — parameters are members on
-  `GPWEvaluator` / `GpwDft`.
+  `GpwDft`; `GPWEvaluator` binds it to a Driver slot.
 
 ## References
 
-- Offline pin: [`regressions/gpw/gpw-uks-revpbe/REFERENCE.md`](../../../regressions/gpw/gpw-uks-revpbe/REFERENCE.md)
-- Regression consumer: [`reg_gpw-uks-revpbe.cpp`](../../../regressions/gpw/gpw-uks-revpbe/reg_gpw-uks-revpbe.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/gpw-uks-revpbe/`](../../../tools/cp2k_oracle/inputs/gpw-uks-revpbe/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin: case `gpw-uks-revpbe` pin
+- Regression consumer: `reg_gpw-uks-revpbe.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Sibling UKS-PADE: [gpw-uks-o2-gamma](gpw-uks-o2-gamma.md)
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md)

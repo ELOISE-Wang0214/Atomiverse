@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-phonon-si` |
-| Regression | `regressions/response/dfpt-phonon-si/` |
 | Public API | `cpu::pw::DfptPhonon` (members) + `cpu::pw::DfptPhononResult` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — Γ-point foothold ✓ (dispersions ○) |
 | Dep | `fd-phonon-supercell` ✓ (FD twin machinery); enables `phonon-dispersion-si` |
@@ -43,7 +42,7 @@ follow-ons, not silent approximations.
 ## Validation (regression `reg_dfpt-phonon-si`, ≈ 25 s)
 
 Diamond Si primitive cell (a = 5.431 Å, 10 Ry, 2×2×2 MP), all pins
-hard-coded from `REFERENCE.md`:
+hard-coded from pin notes:
 
 1. **Energy-FD twin (sharp):** the diagonal force constant matches the
    offline central second difference of the SCF total energy at identical

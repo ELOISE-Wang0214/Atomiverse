@@ -4,7 +4,7 @@
 
 Integral-equation formalism PCM (Cancès–Mennucci–Tomasi): electrostatic free
 energy \(\Delta G_{\mathrm{el}} = \tfrac12 \sum_k q_k V_k\).
-Regression: `regressions/scf/ief-pcm-h2o`. C-PCM energy: `h2o_rhf_631gs_cpcm`.
+Regression: `ief-pcm-h2o`. C-PCM energy: `h2o_rhf_631gs_cpcm`.
 
 ## Theory
 
@@ -21,7 +21,7 @@ match the pin protocol in REFERENCE.md.
 ```
 
 ```bash
-./build/regressions/reg_ief-pcm-h2o
+reg_ief-pcm-h2o
 ```
 
 ## Results

@@ -4,7 +4,7 @@
 
 Real two-component generalized Hartree–Fock **nuclear forces** on the
 noncollinear Néel solution of frustrated H₃.
-Regression: `regressions/scf/ghf-grad-h3-sto3g`. Energy sibling: `h3_ghf_sto3g`.
+Regression: `ghf-grad-h3-sto3g`. Energy sibling: `h3_ghf_sto3g`.
 
 ## Theory
 
@@ -27,7 +27,7 @@ auto g = ghf.forces(frame);   // or gradient API used in reg — [eV/Å] on Fram
 ```
 
 ```bash
-./build/regressions/reg_ghf-grad-h3-sto3g
+reg_ghf-grad-h3-sto3g
 ```
 
 ## Results

@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-hirshfeld-uks-kpoints` |
-| Regression | `regressions/gpw/gpw-hirshfeld-uks-kpoints/` |
-| Public API | `cpu::gpw::GpwDft` / `GPWEvaluator`: `n_alpha`/`n_beta`, `k_mesh`, `mbd`, `hirshfeld`; `GpwResult::e_disp` [Ha], `volume_ratios` |
+| Public API | `cpu::gpw::GpwDft` (bound by `GPWEvaluator`): `n_alpha`/`n_beta`, `k_mesh`, `mbd`, `hirshfeld`; `GpwResult::e_disp` [Ha], `volume_ratios` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion — multi-k UKS Hirshfeld |
 
 ## Summary
@@ -20,7 +19,7 @@ Monkhorst–Pack **2×2×1** (TR → 2 k).
 
 Public path: construct `cpu::gpw::GpwDft` with lookup constructors
 `GaussianBasis` / `GthPotential`, set members (`n_alpha`, `n_beta`, `mbd`,
-`hirshfeld`, `k_mesh`, …), `build` → `run`. **No** public `*Config` bag and
+`hirshfeld`, `k_mesh`, …), `build(frame)` → `run(frame)`. **No** public `*Config` bag and
 **no** `make_*` / `build_*` factories. Product gate:
 `reg_gpw-hirshfeld-uks-kpoints`. Wall is **perf_exempt** (E_disp pin; stock
 CP2K has no TS/MBD twin).
@@ -43,7 +42,7 @@ as sibling slugs; scaling \(\alpha\propto v\), \(C_6\propto v^2\),
 ## Hard pin
 
 **E_disp = −1.0427466367435301×10⁻⁴ Ha** (CUTOFF 120 Ry, k=2×2×1 TR).
-See `REFERENCE.md` for free-atom dual and geometry.
+See pin notes for free-atom dual and geometry.
 
 ## Citations
 

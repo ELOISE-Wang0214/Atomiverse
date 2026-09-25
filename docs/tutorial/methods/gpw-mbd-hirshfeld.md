@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-mbd-hirshfeld` |
-| Regression | `regressions/gpw/gpw-mbd-hirshfeld/` |
-| Public API | `cpu::gpw::GpwDft::mbd` + `::hirshfeld` / `GPWEvaluator` same; `GpwResult::e_disp` [Ha], `GpwResult::volume_ratios` |
+| Public API | `cpu::gpw::GpwDft::mbd` + `::hirshfeld` (bound by `GPWEvaluator`); `GpwResult::e_disp` [Ha], `GpwResult::volume_ratios` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -17,20 +16,20 @@
 dispersion). This product pin uses the same **periodic water-dimer cell** as
 `gpw-mbd-ice` / `gpw-ts-ice` / `gpw-pbe-d3bj-ice` (12 Å cubic, ice-relevant
 H-bonded pair — not bulk ice Ih) and gates **E_disp** against the fixed
-product setting documented in `REFERENCE.md`.
+product setting documented in pin notes.
 
 **Why not stock CP2K QS?** CP2K 2026.1 `PAIR_POTENTIAL TYPE` is only
 `DFTD2|DFTD3|DFTD3(BJ)|DFTD4` — no stock TS/MBD. Hosts may link **libMBD**
 externally. Free-atom MBD is already pinned vs **libMBD Fortran**
 (`reg_gpw-mbd-ice`, git `88069c6`). This slug pins the **volume-ratio layer**
 (dual pure-Python Hirshfeld model + volume-scaled `mbd_rsscs_pbe`). Twin notes
-live under `tools/cp2k_oracle/inputs/gpw-mbd-hirshfeld/`.
+live under CP2K oracle.
 
-Public surface: bool members `mbd` and `hirshfeld` on `cpu::gpw::GpwDft` and
-`cpu::gpw::GPWEvaluator` (no `*Config` bag). Dispersion on
+Public surface: bool members `mbd` and `hirshfeld` on `cpu::gpw::GpwDft` (bound by
+`cpu::gpw::GPWEvaluator`; no `*Config` bag). Dispersion on
 `GpwResult::e_disp` [Hartree]; ratios on `GpwResult::volume_ratios`. Free-atom
 path (`hirshfeld=false`) remains geometry-only (`reg_gpw-mbd-ice`). Product
-gate: `regressions/gpw/gpw-mbd-hirshfeld` (`reg_gpw-mbd-hirshfeld`). Wall ratio
+gate: `gpw-mbd-hirshfeld` (`reg_gpw-mbd-hirshfeld`). Wall ratio
 is **perf_exempt** (E_disp + volume-ratio pin; SCF dominates wall — see
 Performance).
 
@@ -121,18 +120,18 @@ Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
 
-// Geometry [Å] → Bohr — water dimer (REFERENCE.md / same as gpw-mbd-ice).
-constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// Geometry [Å] — water dimer (REFERENCE.md / same as gpw-mbd-ice).
+// … fill a 6-atom cpu::Frame (2×O + 4×H; positions [Å], Z in kAtom_type)
+//   and kinds = {O, H}: Kind{Element, DZVP-MOLOPT-SR-GTH, GTH-PBE-q*} …
 
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+frame.box = ATV::cpu::Box::cubic(12.0);  // Å
+
+GpwDft gpw{kinds};
 gpw.cutoff_ry = 200.0; // density-dependent E_disp; pin is this product setting
 gpw.n_occ = 8;         // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 16;
@@ -143,8 +142,8 @@ gpw.nonperiodic = false;
 gpw.mbd = true;
 gpw.hirshfeld = true;  // post-SCF volumes → mbd_rsscs_pbe(…, vol_ratio)
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp [Ha] within 1e-8 of offline pin
 // res.volume_ratios size 6, physically in (0.3, 1.5)
 // res.e_total includes e_disp
@@ -154,12 +153,12 @@ Driver / Frame path (component; same members):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/300.0, /*max_iter=*/200,
-                                 /*tol=*/1e-7, /*mix=*/0.3,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false);
-eval.mbd = true;
-eval.hirshfeld = true;
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 300.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;  dft.nonperiodic = false;
+dft.mbd = true;
+dft.hirshfeld = true;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft));
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 // eval.last_result().volume_ratios
@@ -179,27 +178,27 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-mbd-hirshfeld -j$(nproc)
-  ./build/regressions/reg_gpw-mbd-hirshfeld
+  reg_gpw-mbd-hirshfeld
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `volume_ratios`, `mbd`, `hirshfeld` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::mbd`, `::hirshfeld` |
-| `include/atomiverse/cpu/gpw/internal/mbd_dispersion.h` | `mbd_rsscs_pbe` (private; optional `vol_ratio`) |
-| `include/atomiverse/cpu/gpw/internal/hirshfeld_volumes.h` | `hirshfeld_volume_ratios` (private) |
-| `include/atomiverse/cpu/gpw/basis_data/hirshfeld_tables.h` | Free-atom exponential model |
-| `include/atomiverse/cpu/gpw/basis_data/ts_tables.h` | Free-atom \(\alpha_0\) / \(C_6\) / \(R_{\mathrm{vdW}}\) |
+| `gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `volume_ratios`, `mbd`, `hirshfeld` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds the `GpwDft`) |
+| `mbd_dispersion.h` | `mbd_rsscs_pbe` (private; optional `vol_ratio`) |
+| `hirshfeld_volumes.h` | `hirshfeld_volume_ratios` (private) |
+| `hirshfeld_tables.h` | Free-atom exponential model |
+| `ts_tables.h` | Free-atom \(\alpha_0\) / \(C_6\) / \(R_{\mathrm{vdW}}\) |
 | `tests/cpu/gpw/test_cpu_gpw_hirshfeld.cpp` | Unit gates (free-atom \(v\approx 1\), scaling dual, product path) |
-| `regressions/gpw/gpw-mbd-hirshfeld/reg_gpw-mbd-hirshfeld.cpp` | Product gate |
-| `regressions/gpw/gpw-mbd-hirshfeld/REFERENCE.md` | Offline pin + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-mbd-hirshfeld/` | Oracle notes (no stock CP2K QS twin) |
+| `reg_gpw-mbd-hirshfeld.cpp` | Product gate |
+| case `gpw-mbd-hirshfeld` pin | Offline pin + perf_exempt |
+| CP2K oracle | Oracle notes (no stock CP2K QS twin) |
 
 ## Validation (libMBD / dual Hirshfeld; CP2K loop)
 
 Source:
-[`regressions/gpw/gpw-mbd-hirshfeld/REFERENCE.md`](../../../regressions/gpw/gpw-mbd-hirshfeld/REFERENCE.md).
+case `gpw-mbd-hirshfeld` pin.
 Oracle: offline **libMBD** free-atom MBD (slug `gpw-mbd-ice`) + **dual
 pure-Python Hirshfeld** on the same exponential free-atom model; product pin
 is ATV `GpwDft` with `mbd`+`hirshfeld` at CUTOFF 200 Ry. External / dual
@@ -241,11 +240,11 @@ free-atom (~23% less attractive here), as expected for compressed molecular
 volumes (\(v_A\in[0.58,0.74]\)).
 
 Offline re-pin notes (human only; never ctest):
-`tools/cp2k_oracle/inputs/gpw-mbd-hirshfeld/water_dimer_hirshfeld.note`.
+CP2K oracle.
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 Hirshfeld grid integral is \(O(N_{\mathrm{grid}} N_{\mathrm{atoms}})\); MBD is
 an \(O(N^3)\) eigensolve of a \(3N\times 3N\) matrix on a 6-atom system
@@ -282,13 +281,13 @@ host with libMBD-linked CP2K.
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-mbd-hirshfeld/REFERENCE.md`
-- Free-atom MBD pin: `regressions/gpw/gpw-mbd-ice/REFERENCE.md`
-- Oracle notes: `tools/cp2k_oracle/inputs/gpw-mbd-hirshfeld/`
-- Oracle rules: `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-mbd-hirshfeld` pin
+- Free-atom MBD pin: case `gpw-mbd-ice` pin
+- Oracle notes: CP2K oracle
+- Oracle rules: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
-- Related free-atom MBD regression: `regressions/gpw/gpw-mbd-ice/`
-- Related TS free-atom: `regressions/gpw/gpw-ts-ice/`
+- Related free-atom MBD regression: `gpw-mbd-ice`
+- Related TS free-atom: `gpw-ts-ice`
 - Related D3(BJ) / D4 GPW pins: [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice.md),
   [gpw-d4-water](gpw-d4-water.md)
 - GPW narrative chapter: `docs/tutorial/ch09-gpw.md`

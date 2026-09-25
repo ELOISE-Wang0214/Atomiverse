@@ -18,8 +18,8 @@ Product path:
    is **added** on the multi-k path (periodic pure real-space lattice sum,
    rcut **50 Å**, free-atom volumes when Hirshfeld is off).
 
-Public API: `GpwDft::ts = true` + multi-k mesh + `gpw_forces_*` /
-`GPWEvaluator(compute_forces=true)`. No new symbols.
+Public API: `GpwDft::ts = true` + multi-k mesh + `dft.forces(frame)` /
+`GPWEvaluator(std::move(dft), /*compute_forces=*/true)`. No new symbols.
 
 PBE TS: \(s_R = 0.94\), Fermi \(d = 20\). Free-atom \(\alpha_0\), \(C_6\),
 \(R_{\mathrm{vdW}}\) from `basis_data/ts_tables.h` (libMBD `ts_vdw_params`).

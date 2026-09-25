@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gaussian-electrode-charge` |
-| Regression | `regressions/md/gaussian-electrode-charge/` |
 | Public API | `cpu::PairGaussianCoul` (Potential on `cpu::Evaluate` / MD force slot); pure math `cpu::GaussianChargeKernel` |
 | Map / queue | MetalWalls capability map **E2**; → **done** (wave 1, 2026-07-23) |
 
@@ -150,23 +149,23 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gaussian-electrode-charge -j$(nproc)
-  ./build/regressions/reg_gaussian-electrode-charge
+  reg_gaussian-electrode-charge
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/potentials/gaussian_charge.h` | Header-only `GaussianChargeKernel` |
-| `include/atomiverse/cpu/potentials/pair_gaussian_coul.h` | `PairGaussianCoul` Potential |
+| `gaussian_charge.h` | Header-only `GaussianChargeKernel` |
+| `pair_gaussian_coul.h` | `PairGaussianCoul` Potential |
 | `src/cpu/potentials/pair_gaussian_coul.cpp` | All-pairs energy/force launch |
 | `tests/cpu/potentials/test_gaussian_charge.cpp` | Unit tests (kernel + pair) |
-| `regressions/md/gaussian-electrode-charge/reg_gaussian-electrode-charge.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/metalwalls/gaussian-electrode-charge/` | Offline oracle notes (no live twin yet) |
+| `reg_gaussian-electrode-charge.cpp` | Product gate |
+| MetalWalls oracle | Offline oracle notes (no live twin yet) |
 
 ## Validation (oracle: literature)
 
 Source:
-[`regressions/md/gaussian-electrode-charge/REFERENCE.md`](../../../regressions/md/gaussian-electrode-charge/REFERENCE.md).
+case `gaussian-electrode-charge` pin.
 
 | Field | Value |
 | ----- | ----- |
@@ -177,7 +176,7 @@ Source:
 | Live engine in ctest | **Never** |
 
 Offline oracle notes:
-`tools/metalwalls_oracle/inputs/metalwalls/gaussian-electrode-charge/README.md`.
+MetalWalls oracle.
 
 ### Geometry — fixed-\(Q\) energy pin
 
@@ -223,7 +222,7 @@ from the published formulae with `units::coulomb`.
 ## Performance
 
 Source:
-[`REFERENCE.md`](../../../regressions/md/gaussian-electrode-charge/REFERENCE.md)
+pin notes
 and queue row in (2026-07-23).
 
 | Item | Value |
@@ -260,14 +259,14 @@ host/core count; do **not** invent a ratio.
 
 ## References
 
-- Offline pin: `regressions/md/gaussian-electrode-charge/REFERENCE.md`
+- Offline pin: case `gaussian-electrode-charge` pin
 - Regression consumer:
-  `regressions/md/gaussian-electrode-charge/reg_gaussian-electrode-charge.cpp`
+  `reg_gaussian-electrode-charge.cpp`
 - Oracle notes:
-  `tools/metalwalls_oracle/inputs/metalwalls/gaussian-electrode-charge/README.md`
-- Oracle tree: `tools/metalwalls_oracle/README.md`
-- Public API: `include/atomiverse/cpu/potentials/gaussian_charge.h`,
-  `include/atomiverse/cpu/potentials/pair_gaussian_coul.h`
+  MetalWalls oracle
+- Oracle tree: MetalWalls oracle
+- Public API: `gaussian_charge.h`,
+  `pair_gaussian_coul.h`
 - S. K. Reed, O. J. Lanning, P. A. Madden, *J. Chem. Phys.* **126**, 084704
   (2007) — Gaussian-charge electrode Coulomb.
 - A. Coretti et al., MetalWalls, *J. Open Source Softw.* **5**, 2373 (2020) —

@@ -15,10 +15,10 @@ When \(C^\alpha \approx C^\beta\), **UGW ≡ RGW** — dual-gated against the
 `periodic-gw-si` first-green QP gap.
 
 ```cpp
-cpu::gpw::GpwDft m;
+cpu::gpw::GpwDft m{{si_kind}};
 m.n_alpha = 4; m.n_beta = 4;   // UKS
-// ... members; build(); run(atoms);
-const cpu::gpw::G0W0Result& gw = m.g0w0(atoms);
+// ... members; build(frame); run(frame);  // frame: Å positions, Z, box
+const cpu::gpw::G0W0Result& gw = m.g0w0();
 // gw.gap_ev [eV] = α HOMO→LUMO QP gap; gw.qp_energy_ha = α spectrum
 ```
 

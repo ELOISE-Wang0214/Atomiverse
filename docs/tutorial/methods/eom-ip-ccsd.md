@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `eom-ip-ccsd` |
-| Regression | `regressions/scf/eom-ip-ccsd/` |
 | Public API | `cpu::scf::RHF::eom_ip_ccsd(Frame&, n_states)` → `EOMIPCCSDResult` |
 | Roadmap | [Excited states §3 EOM-CC](../../roadmap/excited-states.md) |
 
@@ -19,7 +18,7 @@ roots \(\omega = E_{\mathrm{CCSD}}(N) - E(N-1)\) [eV] (spin degeneracy
 de-duplicated) plus CCSD energetics [Ha]. Foothold case is H₂O / STO-3G
 (valence IP₀ ≈ 8.42 eV; not an experimental vertical IP). Offline pin is
 PySCF 2.14.0 `cc.CCSD(...).ipccsd` (never live in ctest). End-to-end gate:
-`regressions/scf/eom-ip-ccsd` → binary `reg_eom-ip-ccsd`. Fair-bench ratio
+`eom-ip-ccsd` → binary `reg_eom-ip-ccsd`. Fair-bench ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} = 0.754\) (within 10×;
 startup-dominated).
 
@@ -95,7 +94,7 @@ const cpu::scf::EOMIPCCSDResult eom = rhf.eom_ip_ccsd(frame, /*n_states=*/1);
 // eom.ccsd_iterations; eom.converged
 ```
 
-`EOMIPCCSDResult` (`include/atomiverse/cpu/scf/eom_ip_ccsd.h`): `energy_ev`
+`EOMIPCCSDResult` (`eom_ip_ccsd.h`): `energy_ev`
 (ascending unique ionization roots [eV]), `e_corr_ha`, `e_ccsd_ha` [Hartree],
 `ccsd_iterations`, `converged`. Pack-level
 `eom_ip_ccsd_energies` is private engine code.
@@ -114,21 +113,21 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_eom-ip-ccsd -j$(nproc)
-  ./build/regressions/reg_eom-ip-ccsd
+  reg_eom-ip-ccsd
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/eom_ip_ccsd.h` | Public `EOMIPCCSDResult` |
-| `include/atomiverse/cpu/scf/rhf.h` | `RHF::eom_ip_ccsd(Frame&, n_states)` |
-| `include/atomiverse/cpu/scf/internal/eom_ip_ccsd_pack.h` | Private pack entry |
+| `eom_ip_ccsd.h` | Public `EOMIPCCSDResult` |
+| `rhf.h` | `RHF::eom_ip_ccsd(Frame&, n_states)` |
+| `eom_ip_ccsd_pack.h` | Private pack entry |
 | `src/cpu/scf/eom_ip_ccsd.cpp` | Intermediates, Jacobian, root de-dup |
-| `regressions/scf/eom-ip-ccsd/reg_eom-ip-ccsd.cpp` | E2E consumer |
+| `reg_eom-ip-ccsd.cpp` | E2E consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/eom-ip-ccsd/REFERENCE.md`](../../../regressions/scf/eom-ip-ccsd/REFERENCE.md)
+Source: case `eom-ip-ccsd` pin
 (offline pin; PySCF never in ctest). Protocol:
 `docs/tutorial/appendix-pyscf-oracle.md`.
 
@@ -160,17 +159,17 @@ minimal basis IP₀ is ~8.42 eV (valence).
 Oracle repro (human / offline only):
 
 ```bash
-bash tools/setup_pyscf_env.sh
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py eom-ip-ccsd \
+bash <pyscf env setup>
+python <pyscf pin> eom-ip-ccsd \
     --geom water --basis sto-3g --nstates 3 --conv-tol 1e-12
 ```
 
 ## Performance
 
 Source: fair wall in
-[`regressions/scf/eom-ip-ccsd/REFERENCE.md`](../../../regressions/scf/eom-ip-ccsd/REFERENCE.md)
+case `eom-ip-ccsd` pin
 (2026-07-23; login node; `OMP_NUM_THREADS=1`; median of ≥3). Campaign rollup
-ratio **0.754** (the case `REFERENCE.md`). No standing comparison table in-tree at draft time.
+ratio **0.754** (the case pin notes). No standing comparison table in-tree at draft time.
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | -------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -178,9 +177,9 @@ ratio **0.754** (the case `REFERENCE.md`). No standing comparison table in-tree 
 
 ```bash
 export OMP_NUM_THREADS=1
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
     --method eom-ip-ccsd --geom water --basis sto-3g --nstates 1 --repeat 3 -- \
-    ./build/regressions/reg_eom-ip-ccsd
+    reg_eom-ip-ccsd
 ```
 
 Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\). No ⚡ optimization pass
@@ -203,13 +202,13 @@ required on this case.
 
 ## References
 
-- Offline pin: `regressions/scf/eom-ip-ccsd/REFERENCE.md`
-- Regression consumer: `regressions/scf/eom-ip-ccsd/reg_eom-ip-ccsd.cpp`
+- Offline pin: case `eom-ip-ccsd` pin
+- Regression consumer: `reg_eom-ip-ccsd.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Roadmap: `docs/roadmap/excited-states.md` (§3 Equation-of-Motion Coupled Cluster);
   ground-state CC: `docs/roadmap/post-hf.md` (§3)
-- Public API: `include/atomiverse/cpu/scf/eom_ip_ccsd.h`,
-  `include/atomiverse/cpu/scf/rhf.h`
+- Public API: `eom_ip_ccsd.h`,
+  `rhf.h`
 - J. F. Stanton & R. J. Bartlett, *The equation of motion coupled-cluster
   method…*, *J. Chem. Phys.* **98**, 7029 (1993).
   DOI [10.1063/1.464746](https://doi.org/10.1063/1.464746)

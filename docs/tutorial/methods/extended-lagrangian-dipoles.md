@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `extended-lagrangian-dipoles` |
-| Regression | `regressions/md/extended-lagrangian-dipoles/` |
 | Public API | `cpu::PimXlDipole` (`Potential`; on `cpu::md::MD` at `force`, or `cpu::Evaluate`) |
 | Roadmap | map §2 "XL dipoles" ~ → ✓ |
 | Oracle | **MetalWalls c8ad175d** for stationary PIM (`thole_a=0`); XL dynamics = scheme self-check (Albaugh 2015 / Niklasson 2009) |
@@ -116,25 +115,25 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_extended-lagrangian-dipoles -j"$(nproc)"
-  ./build/regressions/reg_extended-lagrangian-dipoles
+  reg_extended-lagrangian-dipoles
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/potentials/pim_xl_dipole.h` | Public `PimXlDipole` |
-| `include/atomiverse/cpu/potentials/pim_induced_dipole.h` | Owned SCC solver (`solver()`) |
-| `include/atomiverse/cpu/electronic/xl_bomd.h` | Niklasson propagator (`propagator()`) |
-| `regressions/md/extended-lagrangian-dipoles/reg_extended-lagrangian-dipoles.cpp` | Product gate |
+| `pim_xl_dipole.h` | Public `PimXlDipole` |
+| `pim_induced_dipole.h` | Owned SCC solver (`solver()`) |
+| `xl_bomd.h` | Niklasson propagator (`propagator()`) |
+| `reg_extended-lagrangian-dipoles.cpp` | Product gate |
 | `tests/cpu/potentials/test_pim_xl_dipole.cpp` | Unit surface |
 
 ## Validation (vs MetalWalls-form offline pins)
 
 Source:
-[`regressions/md/extended-lagrangian-dipoles/REFERENCE.md`](../../../regressions/md/extended-lagrangian-dipoles/REFERENCE.md)
+case `extended-lagrangian-dipoles` pin
 (offline literature-form pins; **never** live MetalWalls in ctest). An
 independent closed-form re-derivation (no Atomiverse code) lives at
-`tools/metalwalls_oracle/inputs/metalwalls/extended-lagrangian-dipoles/pin_two_site.py`
+MetalWalls oracle
 and agrees to ~1e-14 relative.
 
 **Oracle:** MetalWalls JOSS **5**, 2373 (2020) — capability map §2
@@ -178,7 +177,7 @@ Related unit surface (not the e2e pin):
 ## Performance
 
 Source: REFERENCE.md; handoff
-the case `REFERENCE.md`
+the case pin notes
 (wave 5, 2026-07-27).
 
 | Twin | \(T_{\mathrm{MetalWalls}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -214,9 +213,7 @@ trajectory (Pin 2).
 
 ## References
 
-- Offline pin: [`regressions/md/extended-lagrangian-dipoles/REFERENCE.md`](../../../regressions/md/extended-lagrangian-dipoles/REFERENCE.md)
-- Product gate: [`regressions/md/extended-lagrangian-dipoles/reg_extended-lagrangian-dipoles.cpp`](../../../regressions/md/extended-lagrangian-dipoles/reg_extended-lagrangian-dipoles.cpp)
-- Public header: [`include/atomiverse/cpu/potentials/pim_xl_dipole.h`](../../../include/atomiverse/cpu/potentials/pim_xl_dipole.h)
+- Offline pin: case `extended-lagrangian-dipoles` pin
 - Sibling pages: [`pim-induced-dipole-bulk`](pim-induced-dipole-bulk.md) (owned SCC), [`maze-symplectic-charge-dynamics`](maze-symplectic-charge-dynamics.md) (the MaZe route, for electrode charges)
 - Literature: Albaugh, Demerdash & Head-Gordon, *J. Chem. Phys.* **143**,
   174104 (2015) — iEL/SCF; Niklasson et al., *J. Chem. Phys.* **130**,

@@ -21,11 +21,12 @@ it is added identically to both spin potentials every SCF iteration
 Public API:
 
 ```cpp
-cpu::gpw::GPWEvaluator eval({O});
-eval.xc = cpu::gpw::XcKind::OptB88VdW;
-eval.n_alpha = 7; // O₂ triplet, GTH-q6
-eval.n_beta = 5;
-eval.vdw_df = true;
+cpu::gpw::GpwDft dft{{O}};
+dft.xc = cpu::gpw::XcKind::OptB88VdW;
+dft.n_alpha = 7; // O₂ triplet, GTH-q6
+dft.n_beta = 5;
+dft.vdw_df = true;
+cpu::gpw::GPWEvaluator eval(std::move(dft));
 cpu::single_point(frame, eval);
 // Frame kEnergy [eV]; last_result().e_disp [Ha]
 ```

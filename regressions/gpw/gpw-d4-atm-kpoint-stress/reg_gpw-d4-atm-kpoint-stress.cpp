@@ -25,6 +25,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -36,7 +37,6 @@
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_stress.h"
 #include "atomiverse/cpu/scf/dftd4.h"
 #include "atomiverse/molrs.hpp"
 
@@ -215,18 +215,19 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 120.0;
-    eval.max_iter = 120;
-    eval.tol = 1e-6;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = false;
-    eval.k_mesh[0] = 1;
-    eval.k_mesh[1] = 1;
-    eval.k_mesh[2] = 2; // MP 1×1×2, TR-folded
-    eval.d4 = true;
-    eval.d4_atm = true;
+    cpu::gpw::GpwDft eval_method{{O, H}};
+    eval_method.cutoff_ry = 120.0;
+    eval_method.max_iter = 120;
+    eval_method.tol = 1e-6;
+    eval_method.mix = 0.4;
+    eval_method.xc = cpu::gpw::XcKind::PBE;
+    eval_method.nonperiodic = false;
+    eval_method.k_mesh[0] = 1;
+    eval_method.k_mesh[1] = 1;
+    eval_method.k_mesh[2] = 2; // MP 1×1×2, TR-folded
+    eval_method.d4 = true;
+    eval_method.d4_atm = true;
+    cpu::gpw::GPWEvaluator eval(std::move(eval_method));
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
@@ -280,18 +281,8 @@ int main() {
     check(conv_ok, "C kStress unit conversion");
 
     // ── (3) Dual gate: multi-k analytic vs multi-SCF strain-FD (x only) ──
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
-    for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double p[3] = {xs[i] * kAng2Bohr, ys[i] * kAng2Bohr,
-                             zs[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(p, k.basis, k.pot, z[i]));
-    }
-
     auto make_cfg = [&](bool atm) {
-        cpu::gpw::GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = L * kAng2Bohr;
+        cpu::gpw::GpwDft m{{O, H}};
         m.cutoff_ry = 120.0;
         m.n_occ = 8;
         m.max_iter = 120;
@@ -309,8 +300,8 @@ int main() {
     };
 
     const auto t2 = clock::now();
-    const auto sfd = cpu::gpw::internal::gpw_stress_fd_impl(
-        atoms, make_cfg(true), kStrainH, /*axes*/ {true, false, false});
+    const auto sfd = cpu::gpw::gpw_stress_fd(frame, make_cfg(true), kStrainH,
+                                             /*axes*/ {true, false, false});
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -326,8 +317,8 @@ int main() {
     check(anfd_err <= kAnFdTol, "D multi-k analytic vs multi-SCF FD (xx)");
 
     // ── (4) Wiring: product σ(ATM) − σ(2b) vs standalone σ_ATM ───────────
-    const auto s_2b = cpu::gpw::internal::gpw_stress_analytic_impl(
-        atoms, make_cfg(false), kStrainH, /*axes*/ {true, false, false});
+    const auto s_2b = cpu::gpw::gpw_stress(frame, make_cfg(false), kStrainH,
+                                           /*axes*/ {true, false, false});
     const double wire_xx = san[0] - s_2b[0];
     const double wire_err = std::abs(wire_xx - sig_atm_atv[0]);
     std::printf("  wiring σ_xx(ATM)-σ_xx(2b)=% .6e  standalone_ATM=% .6e  "

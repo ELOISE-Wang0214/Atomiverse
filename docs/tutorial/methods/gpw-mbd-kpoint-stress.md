@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-mbd-kpoint-stress` |
-| Regression | `regressions/gpw/gpw-mbd-kpoint-stress/` |
-| Public API | `cpu::gpw::GPWEvaluator` members `k_mesh`, `mbd`, `mbd_k_mesh`, `compute_stress`, `stress_use_fd`; Frame `kStress` [eV/Å³]; `last_stress_ha_bohr3()` |
+| Public API | `cpu::gpw::GpwDft` members `k_mesh`, `mbd`, `mbd_k_mesh` + `cpu::gpw::GPWEvaluator` members `compute_stress`, `stress_use_fd`; Frame `kStress` [eV/Å³]; `last_stress_ha_bohr3()` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion + §10 Periodic KS |
 
 ## Summary
@@ -102,12 +101,14 @@ const cpu::gpw::Kind H{molrs::Element::H,
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-cpu::gpw::GPWEvaluator eval({O, H}, /*cutoff_ry=*/120.0, /*max_iter=*/60,
-                            /*tol=*/1e-8, /*mix=*/0.3,
-                            cpu::gpw::XcKind::PBE, /*nonperiodic=*/false);
-eval.k_mesh[2] = 2;            // electronic multi-k 1×1×2
-eval.mbd = true;               // MBD@rsSCS, free-atom volumes
-eval.mbd_k_mesh[0] = eval.mbd_k_mesh[1] = eval.mbd_k_mesh[2] = 2;
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 120.0;  dft.max_iter = 60;  dft.tol = 1e-8;  dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;  dft.nonperiodic = false;
+dft.k_mesh[2] = 2;             // electronic multi-k 1×1×2
+dft.mbd = true;                // MBD@rsSCS, free-atom volumes
+dft.mbd_k_mesh[0] = dft.mbd_k_mesh[1] = dft.mbd_k_mesh[2] = 2;
+
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 eval.compute_stress = true;    // analytic fixed-P_k Lagrangian
 eval.stress_use_fd = false;
 
@@ -134,24 +135,25 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-mbd-kpoint-stress
-  ./build/regressions/reg_gpw-mbd-kpoint-stress
+  reg_gpw-mbd-kpoint-stress
   # or: cmake --build build --target run_reg_gpw-mbd-kpoint-stress
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `k_mesh`, `mbd`, `mbd_k_mesh`, `compute_stress`, `stress_use_fd` |
-| `include/atomiverse/cpu/gpw/internal/gpw_stress.h` | fixed-\(P_k\) Lagrangian; multi-k MBD fold (was a throw) |
-| `include/atomiverse/cpu/gpw/internal/mbd_dispersion.h` | `mbd_rsscs_pbe` geometry kernel (private) |
-| `regressions/gpw/gpw-mbd-kpoint-stress/reg_gpw-mbd-kpoint-stress.cpp` | Product gate |
-| `regressions/gpw/gpw-mbd-kpoint-stress/REFERENCE.md` | Offline pins + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-mbd-kpoint-stress/pin_mbd_strain.py` | pymbd pin generator (never at ctest) |
+| `gpw_solver.h` | `GpwDft::{k_mesh, mbd, mbd_k_mesh}` |
+| `gpw_evaluator.h` | `compute_stress`, `stress_use_fd` |
+| `gpw_stress.h` | fixed-\(P_k\) Lagrangian; multi-k MBD fold (was a throw) |
+| `mbd_dispersion.h` | `mbd_rsscs_pbe` geometry kernel (private) |
+| `reg_gpw-mbd-kpoint-stress.cpp` | Product gate |
+| case `gpw-mbd-kpoint-stress` pin | Offline pins + perf_exempt |
+| CP2K oracle | pymbd pin generator (never at ctest) |
 
 ## Validation (pymbd / CP2K-campaign offline pins)
 
 Source:
-[`regressions/gpw/gpw-mbd-kpoint-stress/REFERENCE.md`](../../../regressions/gpw/gpw-mbd-kpoint-stress/REFERENCE.md).
+case `gpw-mbd-kpoint-stress` pin.
 Oracle: offline **pure-Python pymbd** `mbd_energy_species` (libmbd git
 `88069c6`) for the dispersion energies; **multi-SCF strain-FD**
 (`gpw_stress_fd`, full re-SCF at each strained cell on the same 1×1×2 mesh)
@@ -212,7 +214,7 @@ orders better). Gate D residual is bounded by pin round-off
 
 ## Performance
 
-Source: `REFERENCE.md` (**perf_exempt**).
+Source: pin notes (**perf_exempt**).
 
 | Twin | \(T_{\mathrm{oracle}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | ----------------------: | ----: | ---- | ------ |
@@ -242,13 +244,13 @@ defined.
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-mbd-kpoint-stress/REFERENCE.md`
-- Pin generator: `tools/cp2k_oracle/inputs/gpw-mbd-kpoint-stress/pin_mbd_strain.py`
+- Offline pin: case `gpw-mbd-kpoint-stress` pin
+- Pin generator: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion, §10 Periodic KS
-- Sibling stress pins: `regressions/gpw/gpw-mbd-stress/`,
-  `regressions/gpw/gpw-kpoint-stress/`
-- Sibling force / energy pins: `regressions/gpw/gpw-mbd-kpoint-forces/`,
-  `regressions/gpw/gpw-mbd-periodic/`
+- Sibling stress pins: `gpw-mbd-stress`,
+  `gpw-kpoint-stress`
+- Sibling force / energy pins: `gpw-mbd-kpoint-forces`,
+  `gpw-mbd-periodic`
 - GPW narrative chapter: `docs/tutorial/ch09-gpw.md`
 - A. Tkatchenko, R. A. DiStasio Jr., R. Car, M. Scheffler, *Phys. Rev. Lett.*
   **108**, 236402 (2012) (MBD@rsSCS)

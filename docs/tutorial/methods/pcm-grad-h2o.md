@@ -4,7 +4,7 @@
 
 Nuclear gradient of the **C-PCM solvation free energy**
 \(G = E_{\mathrm{HF}}[P] + \Delta G_{\mathrm{el}}[P,R]\).
-Regression: `regressions/scf/pcm-grad-h2o`. Energy-only C-PCM: `h2o_rhf_631gs_cpcm`.
+Regression: `pcm-grad-h2o`. Energy-only C-PCM: `h2o_rhf_631gs_cpcm`.
 
 ## Theory
 
@@ -22,7 +22,7 @@ REFERENCE.md).
 ```
 
 ```bash
-./build/regressions/reg_pcm-grad-h2o
+reg_pcm-grad-h2o
 ```
 
 ## Results

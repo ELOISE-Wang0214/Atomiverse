@@ -5,10 +5,9 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-dftu-kpoint-forces` |
-| Regression | `regressions/gpw/gpw-dftu-kpoint-forces/` |
-| Public API | `cpu::gpw::GpwDft` members (`k_mesh`, `k_points`/`k_point_weights`, `k_time_reversal`, `plus_u`, `n_alpha`/`n_beta`, `local_pp_on_grid`) + `gpw_forces_analytic` / `gpw_forces_from_scf` / `gpw_forces_fd` |
+| Public API | `cpu::gpw::GpwDft` members (`k_mesh`, `k_points`/`k_point_weights`, `k_time_reversal`, `plus_u`, `n_alpha`/`n_beta`, `local_pp_on_grid`) + `GpwDft::forces(frame)` / `gpw_forces_fd` |
 | Roadmap | `docs/roadmap/dft.md` — multi-k DFT+U analytic forces (`reg_gpw-dftu-kpoint-forces`) |
-| Oracle | **CP2K 2026.1** (offline pin, `tools/cp2k_oracle/`) |
+| Oracle | **CP2K 2026.1** (offline pin, CP2K oracle) |
 
 ## Summary
 
@@ -84,28 +83,37 @@ the twin system — documented below).
 ## Implementation
 
 Public surface only — concrete `cpu::gpw::GpwDft` members (no `*Config`
-bags, no factories), plus the force entry points in
-`cpu/gpw/internal/gpw_forces.h` used by the regression consumer.
+bags, no factories), Frame in / Frame out: `forces(frame)` for the analytic
+product path and the free `gpw_forces_fd` oracle.
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
-// High-spin H2, compressed 1.0 Bohr bond, 12 Bohr cubic cell
-const double L = 12.0;
-const GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-const GthPotential  pH(molrs::Element::H, "GTH-PADE-q1");
-const double r0[3] = {0.5 * L - 0.5, 0.5 * L, 0.5 * L};
-const double r1[3] = {0.5 * L + 0.5, 0.5 * L, 0.5 * L};
-std::vector<GpwAtom> atoms{GpwAtom(r0, bH, pH, 1), GpwAtom(r1, bH, pH, 1)};
+// High-spin H2, compressed 1.0 Bohr bond, 12 Bohr cubic cell (Frame is Å)
+const double b2a = units::kBohrInAngstrom;
+const double L = 12.0 * b2a;
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 1;
+    frame.span(kAtom_y)[i] = 0.5 * L;
+    frame.span(kAtom_z)[i] = 0.5 * L;
+}
+frame.span(kAtom_x)[0] = 0.5 * L - 0.5 * b2a;
+frame.span(kAtom_x)[1] = 0.5 * L + 0.5 * b2a;
+frame.box = cpu::Box::cubic(L);
 
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = L;
+GpwDft m{{Kind{molrs::Element::H,
+               GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+               GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
 m.cutoff_ry = 100.0;
 m.n_alpha = 2;  m.n_beta = 0;      // high-spin UKS
 m.tol = 1e-8;   m.mix = 0.35;  m.max_iter = 120;
@@ -115,8 +123,9 @@ m.k_mesh[0] = 1; m.k_mesh[1] = 1; m.k_mesh[2] = 2;   // MP 1×1×2, TR-folded
 m.k_time_reversal = true;
 m.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_minus_j_ev=*/2.0});
 
-const auto F_an = gpw_forces_analytic(atoms, m);           // [Ha/Bohr]
-const auto F_fd = gpw_forces_fd(atoms, m, /*h=*/1e-3);     // multi-SCF FD oracle
+m.build(frame);
+m.forces(frame);                                   // kAtom_fx/fy/fz [eV/Å]
+const auto F_fd = gpw_forces_fd(frame, m, /*h=*/1e-3 * b2a);  // FD oracle [eV/Å]
 ```
 
 U−J = 2 eV deliberately: at 4 eV this DZV s-shell toy sits in the
@@ -138,21 +147,20 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-dftu-kpoint-forces -j$(nproc)
-  ./build/regressions/reg_gpw-dftu-kpoint-forces
+  reg_gpw-dftu-kpoint-forces
 '
 ```
 
 | Piece | Path |
 | ----- | ---- |
-| +U energy/potential + W-fold (`subtract_dftu_pulay[_k]`) | `include/atomiverse/cpu/gpw/internal/dft_plus_u.h` |
-| Force assembly (`gpw_forces_analytic` / `_from_scf` / `_fd`) | `include/atomiverse/cpu/gpw/internal/gpw_forces.h` |
-| Public `GpwDft` members | `include/atomiverse/cpu/gpw/gpw_solver.h` |
-| Regression | `regressions/gpw/gpw-dftu-kpoint-forces/reg_gpw-dftu-kpoint-forces.cpp` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/gpw-dftu-kpoint-forces/nio_pbc_gamma_ot_force.inp` |
+| +U energy/potential + W-fold (`subtract_dftu_pulay[_k]`) | `dft_plus_u.h` |
+| Force assembly (`GpwDft::forces` / `gpw_forces_fd`) | `gpw_solver.h`, `internal/gpw_forces.h` |
+| Public `GpwDft` members | `gpw_solver.h` |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (vs CP2K + internal dual gates)
 
-Source: [`regressions/gpw/gpw-dftu-kpoint-forces/REFERENCE.md`](../../../regressions/gpw/gpw-dftu-kpoint-forces/REFERENCE.md).
+Source: case `gpw-dftu-kpoint-forces` pin.
 Oracle: offline **CP2K 2026.1** (`cp2k.psmp`, OMP=8), pin date **2026-07-31**.
 Never live in ctest.
 
@@ -200,7 +208,7 @@ identity, with the Γ d-shell pin as the external anchor.
 
 ## Performance
 
-Source: `regressions/gpw/gpw-dftu-kpoint-forces/REFERENCE.md` (2026-07-31,
+Source: case `gpw-dftu-kpoint-forces` pin (2026-07-31,
 Release, OMP=8).
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
@@ -225,9 +233,9 @@ Release, OMP=8).
 
 ## References
 
-- Offline pin: [`regressions/gpw/gpw-dftu-kpoint-forces/REFERENCE.md`](../../../regressions/gpw/gpw-dftu-kpoint-forces/REFERENCE.md)
-- Regression consumer: [`reg_gpw-dftu-kpoint-forces.cpp`](../../../regressions/gpw/gpw-dftu-kpoint-forces/reg_gpw-dftu-kpoint-forces.cpp)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin: case `gpw-dftu-kpoint-forces` pin
+- Regression consumer: `reg_gpw-dftu-kpoint-forces.cpp`
+- Oracle contract: CP2K oracle
 - Siblings: [gpw-dftu-kpoints](gpw-dftu-kpoints.md), [gpw-dftu-kpoint-stress](gpw-dftu-kpoint-stress.md), [gpw-dftu-nio](gpw-dftu-nio.md), [gpw-kpoint-forces](gpw-kpoint-forces.md)
 - S. L. Dudarev et al., *Phys. Rev. B* **57**, 1505 (1998) — U−J functional
 - VandeVondele, Krack, Mohamed, Parrinello, Chassaing, Hutter, *Comput. Phys. Commun.* **167**, 103 (2005) — Quickstep GPW forces

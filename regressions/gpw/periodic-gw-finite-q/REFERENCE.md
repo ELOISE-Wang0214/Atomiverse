@@ -18,13 +18,13 @@ as the product multi-k path.
 Public path:
 
 ```cpp
-cpu::gpw::GpwDft m;
+cpu::gpw::GpwDft m{{si_kind}};
 m.k_mesh[0] = 2; m.k_mesh[1] = 1; m.k_mesh[2] = 1;
 m.k_time_reversal = false;
 m.mp2_ri = true;
 m.mp2_n_virt = 2;
-// build(); run(atoms);
-const cpu::gpw::G0W0Result& gw = m.g0w0(atoms);  // finite-q multi-k
+// build(frame); run(frame);  // frame: Å positions, Z, box
+const cpu::gpw::G0W0Result& gw = m.g0w0();  // finite-q multi-k
 // gw.n_kpts == 2; gw.gap_ev = min_k direct QP gap [eV]
 ```
 

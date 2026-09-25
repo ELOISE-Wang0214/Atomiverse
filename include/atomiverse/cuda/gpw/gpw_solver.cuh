@@ -53,7 +53,7 @@ using GpwResult = ::ATV::cpu::gpw::GpwResult;
 /// @brief XC selector shared with the CPU method.
 using XcKind = ::ATV::cpu::gpw::XcKind;
 /// @brief Atom type shared with the CPU method.
-using GpwAtom = ::ATV::cpu::gpw::GpwAtom;
+using GpwAtom = ::ATV::cpu::gpw::internal::GpwAtom;
 
 /// @brief Concrete GPW DFT method on CUDA — members + `build` / `run` /
 ///        `last_result`.

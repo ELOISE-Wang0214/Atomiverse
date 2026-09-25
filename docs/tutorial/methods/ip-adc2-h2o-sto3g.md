@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ip-adc2-h2o-sto3g` |
-| Regression | `regressions/scf/ip-adc2-h2o-sto3g/` |
 | Public API | `cpu::scf::RHF::ip_adc2(n_states)` → `IPADC2Result` |
 | Twin | PySCF `adc.ADC`, `method='adc(2)'`, `method_type='ip'` |
 
@@ -16,7 +15,7 @@ reference via the intermediate-state representation of the one-particle Green’
 function / polarization propagator. This page covers the water / STO-3G product
 gate: the lowest IP root (valence). Call path is Frame → `RHF` members → `run`
 → `ip_adc2`; no public `*Config` bag. Offline pin and fair-bench numbers live in
-`regressions/scf/ip-adc2-h2o-sto3g/REFERENCE.md`; the regression binary is
+case `ip-adc2-h2o-sto3g` pin; the regression binary is
 `reg_ip-adc2-h2o-sto3g`.
 
 ## Method
@@ -82,25 +81,25 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_ip-adc2-h2o-sto3g -j$(nproc)
-  ./build/regressions/reg_ip-adc2-h2o-sto3g
+  reg_ip-adc2-h2o-sto3g
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/adc.h` | `IPADC2Result` public result type |
-| `include/atomiverse/cpu/scf/rhf.h` | `RHF::ip_adc2` declaration |
+| `adc.h` | `IPADC2Result` public result type |
+| `rhf.h` | `RHF::ip_adc2` declaration |
 | `src/cpu/scf/adc.cpp` | IP ISR intermediates, eigen-solve, MP2 \(t_2\) |
-| `regressions/scf/ip-adc2-h2o-sto3g/reg_ip-adc2-h2o-sto3g.cpp` | product gate |
+| `reg_ip-adc2-h2o-sto3g.cpp` | product gate |
 
 Requires `-DATV_BUILD_HF=ON`. Call `run(frame)` before `ip_adc2`; throws if no
 SCF result, no virtuals, or `n_states` outside \([1,\,n_{\mathrm{occ}}]\).
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/ip-adc2-h2o-sto3g/REFERENCE.md`](../../../regressions/scf/ip-adc2-h2o-sto3g/REFERENCE.md)
+Source: case `ip-adc2-h2o-sto3g` pin
 (offline pin; **never** live PySCF in ctest). Oracle:
-`tools/setup_pyscf_env.sh` + `tools/pyscf_oracle/pin_scf.py`.
+PySCF oracle + PySCF oracle.
 
 | Setting | Value |
 | ------- | ----- |
@@ -126,8 +125,8 @@ Source: [`regressions/scf/ip-adc2-h2o-sto3g/REFERENCE.md`](../../../regressions/
 Repro pin:
 
 ```bash
-bash tools/setup_pyscf_env.sh   # once
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py ip-adc2 \
+bash <pyscf env setup>   # once
+python <pyscf pin> ip-adc2 \
     --geom water --basis sto-3g --nstates 5 --conv-tol 1e-12
 ```
 
@@ -138,7 +137,7 @@ of the eV comparison use `units::kHartreeInEv`.
 ## Performance
 
 Source: fair-bench block in
-`regressions/scf/ip-adc2-h2o-sto3g/REFERENCE.md` (2026-07-23, login node,
+case `ip-adc2-h2o-sto3g` pin (2026-07-23, login node,
 `OMP_NUM_THREADS=8`, Release). Handoff records ratio **0.191**.
 no offline comparison table is present in-tree; the numbers below are
 from REFERENCE / handoff, not re-benched here.
@@ -148,9 +147,9 @@ from REFERENCE / handoff, not re-benched here.
 | `ip-adc2`, nstates=1 | 2.766 | 0.528 | **0.191** | ✓ | single login-node median (≥3); STO-3G toy |
 
 ```bash
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
   --method ip-adc2 --geom water --basis sto-3g --nstates 1 --repeat 3 \
-  -- -- ./build/regressions/reg_ip-adc2-h2o-sto3g
+  -- -- reg_ip-adc2-h2o-sto3g
 # recorded: ratio_atv_over_pyscf=0.1907, within_10x=true
 ```
 
@@ -178,11 +177,11 @@ invalid for the 10× gate.
 ## References
 
 - Offline pin / gates / fair-bench:
-  `regressions/scf/ip-adc2-h2o-sto3g/REFERENCE.md`
+  case `ip-adc2-h2o-sto3g` pin
 - Regression consumer:
-  `regressions/scf/ip-adc2-h2o-sto3g/reg_ip-adc2-h2o-sto3g.cpp`
-- Public API: `include/atomiverse/cpu/scf/adc.h`,
-  `include/atomiverse/cpu/scf/rhf.h` (`RHF::ip_adc2`)
+  `reg_ip-adc2-h2o-sto3g.cpp`
+- Public API: `adc.h`,
+  `rhf.h` (`RHF::ip_adc2`)
 - Implementation: `src/cpu/scf/adc.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - J. Schirmer, *Phys. Rev. A* **26**, 2395 (1982).

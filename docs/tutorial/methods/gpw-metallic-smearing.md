@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-metallic-smearing` |
-| Regression | `regressions/gpw/gpw-metallic-smearing/` |
 | Public API | `cpu::gpw::GpwDft` members `smearing`, `degauss` [Ry], `mp_order`, `extra_bands`, `k_mesh`; `GpwResult::{e_total,e_fermi,n_elec_occ,e_entropy}` |
 | Roadmap | [dft.md](../../roadmap/dft.md) — Smearing for metals (CPU GPW ✓ multi-k RKS) |
 ## Summary
@@ -85,47 +84,49 @@ closed-shell RKS** path only. `build()` throws if:
 
 **Excluded (this slug).** GPW UKS + smear; OT + smear; cold /
 Marzari–Vanderbilt; Gaussian smear enum on GPW (PW has it);
-forces/stress under smear as acceptance pins; CUDA GPW; Frame /
-`GPWEvaluator` wrapper path for this regression (uses `GpwDft` +
-`GpwAtom` directly).
+forces/stress under smear as acceptance pins; CUDA GPW;
+`GPWEvaluator` wrapper path for this regression (calls `GpwDft::run(frame)`
+directly).
 
 ## Implementation
 
-Public surface only: construct `cpu::gpw::GpwDft`, set members, `build` /
-`run` on a `std::vector<GpwAtom>` (positions [Bohr]). Headers:
-`include/atomiverse/cpu/gpw/gpw_solver.h` (API + `Smearing` + `GpwResult`);
+Public surface only: construct `cpu::gpw::GpwDft` from its kinds, set
+members, `build` / `run` on a `cpu::Frame` (positions [Å], Z in
+`kAtom_type`, box [Å]). Headers:
+`gpw_solver.h` (API + `Smearing` + `GpwResult`);
 occupation kernels live in `cpu/planewave/internal/smearing.h` (not a user
 type). Lookup constructors only: `GaussianBasis(Element, name)`,
 `GthPotential(Element, name)`.
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
-
-#include <vector>
 
 using namespace ATV;
 using cpu::gpw::GpwDft;
 using cpu::gpw::Smearing;
 using cpu::gpw::XcKind;
 
-// BCC Na conventional cubic, a = 4.225 Å → Bohr (REFERENCE.md)
-constexpr double kA2B = 1.0 / 0.52917720859;
-const double a = 4.225 * kA2B;
-
-const cpu::gpw::GaussianBasis bNa(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH");
-const cpu::gpw::GthPotential pNa(molrs::Element::Na, "GTH-PBE-q9");
+// BCC Na conventional cubic, a = 4.225 Å (REFERENCE.md)
+const double a = 4.225;
 const double frac[2][3] = {{0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}};
-std::vector<cpu::gpw::GpwAtom> atoms;
+cpu::Frame frame(2);
 for (int i = 0; i < 2; ++i) {
-    const double pos[3] = {frac[i][0] * a, frac[i][1] * a, frac[i][2] * a};
-    atoms.emplace_back(pos, bNa, pNa, 11);
+    frame.span(kAtom_type)[i] = 11;
+    frame.span(kAtom_x)[i] = frac[i][0] * a;
+    frame.span(kAtom_y)[i] = frac[i][1] * a;
+    frame.span(kAtom_z)[i] = frac[i][2] * a;
 }
+frame.box = cpu::Box::cubic(a);
 
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = a;
+GpwDft m{{cpu::gpw::Kind{
+    molrs::Element::Na,
+    cpu::gpw::GaussianBasis(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH"),
+    cpu::gpw::GthPotential(molrs::Element::Na, "GTH-PBE-q9")}}};
 m.cutoff_ry = 150.0;
 m.n_occ = 9;              // Ne/2 seed; fractional fill under smear
 m.max_iter = 80;
@@ -140,8 +141,8 @@ m.smearing = Smearing::fermi_dirac;
 m.degauss = 0.02;         // Ry (≈ CP2K ELECTRONIC_TEMPERATURE 3157.75 K)
 m.extra_bands = 4;        // CP2K ADDED_MOS parity
 
-m.build(atoms);
-const cpu::gpw::GpwResult& r = m.run(atoms);
+m.build(frame);
+const cpu::gpw::GpwResult& r = m.run(frame);   // also frame.meta[kEnergy] [eV]
 // r.e_total [Ha] free energy F; r.e_fermi [Ha]; r.n_elec_occ ≈ 18;
 // r.e_entropy [Ha] (−TS); r.converged, r.iters, r.n_kpts > 1
 ```
@@ -164,28 +165,27 @@ bash -lc '
   cmake --build build -j$(nproc) --target atomiverse test_cpu_gpw_smearing \
         reg_gpw-metallic-smearing
   ctest --test-dir build -R "^(test_cpu_gpw_smearing)$" --output-on-failure
-  ./build/regressions/reg_gpw-metallic-smearing
+  reg_gpw-metallic-smearing
 '
 ```
 
 Source consumer:
-`regressions/gpw/gpw-metallic-smearing/reg_gpw-metallic-smearing.cpp`.
+`reg_gpw-metallic-smearing.cpp`.
 Unit tests (API + occupation closed forms, not e2e SCF):
 `tests/cpu/gpw/test_cpu_gpw_smearing.cpp` → `test_cpu_gpw_smearing`.
 
 | Piece | Path |
 | ----- | ---- |
-| Method / result / enum | `include/atomiverse/cpu/gpw/gpw_solver.h` |
+| Method / result / enum | `gpw_solver.h` |
 | SCF + Mermin free energy | `src/cpu/gpw/gpw_solver.cpp` |
 | Shared occupations | `include|src/.../planewave/internal/smearing.*` |
 | Unit tests | `tests/cpu/gpw/test_cpu_gpw_smearing.cpp` |
-| Regression | `regressions/gpw/gpw-metallic-smearing/` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/gpw-metallic-smearing/na_bcc_fermi_dirac.inp` |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/gpw/gpw-metallic-smearing/REFERENCE.md`](../../../regressions/gpw/gpw-metallic-smearing/REFERENCE.md)
+case `gpw-metallic-smearing` pin
 (offline pins only; **never** live CP2K in ctest).
 
 ### ATV system (free energy + \(N_{\mathrm{occ}}\) gate)
@@ -227,7 +227,7 @@ BCC Na, \(2^3\) MP).
 | Item | Value |
 | ---- | ----- |
 | Code | **CP2K 2026.1** (`cp2k.psmp`, source 85b8a9b49c) |
-| Input | `tools/cp2k_oracle/inputs/gpw-metallic-smearing/na_bcc_fermi_dirac.inp` |
+| Input | CP2K oracle |
 | Method | Quickstep GPW, PADE, `GTH-PBE-q9` + `DZVP-MOLOPT-SR-GTH` |
 | Cell | BCC conventional \(a=4.225\) Å, 2 Na |
 | SMEAR | FERMI_DIRAC, \(T_e = 3157.75\) K (\(\approx 0.02\) Ry \(k_B T\)) |
@@ -235,7 +235,7 @@ BCC Na, \(2^3\) MP).
 | CUTOFF / REL_CUTOFF | 150 / 40 Ry, NGRIDS 4 |
 | Example \(E_{\mathrm{tot}}\) | **−92.76593904 Ha** (8 SCF steps; **not** the ATV pin) |
 | Fermi energy (CP2K) | **0.054489 Ha** |
-| Al algorithm twin (PW era) | `tools/cp2k_oracle/inputs/al_fermi_dirac.inp` |
+| Al algorithm twin (PW era) | CP2K oracle |
 
 Offline re-run (operator only; not ctest):
 
@@ -243,11 +243,11 @@ Offline re-run (operator only; not ctest):
 module load buildtool-easybuild/5.2.1-hpca3ef7d197 GCC/14.3.0 MPICH/4.3.2 CP2K/2026.1
 export CP2K_DATA_DIR=$EBROOTCP2K/share/cp2k/data
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_MOLOPT,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/gpw-metallic-smearing/na_bcc_fermi_dirac.inp
+# copy <CP2K oracle input for this case>
 mpirun -np 1 cp2k.psmp -i na_bcc_fermi_dirac.inp -o na_bcc_fermi_dirac.out
 ```
 
-Oracle path: `tools/cp2k_oracle/README.md` (offline only).
+Oracle path: CP2K oracle (offline only).
 
 ## Performance
 
@@ -265,7 +265,7 @@ r = T_{\mathrm{atv}} / T_{\mathrm{cp2k}} \approx 0.011 \ll 10
 `within_10x = true`. Fairness note: do **not** treat \(r\) as a
 same-multigrid throughput claim — CP2K multigrid + Broyden vs ATV DIIS /
 single density pathway. Handoff records ratio **~0.011**
-(the case `REFERENCE.md`).
+(the case pin notes).
 
 ## Limitations
 
@@ -280,23 +280,20 @@ single density pathway. Handoff records ratio **~0.011**
 - **OT + smear incompatible** (OT needs integer occupations).
 - **Forces / stress under smear** may inherit the occupation path; not an
   acceptance pin for this slug.
-- **Regression uses `GpwDft` + `GpwAtom`**, not `GPWEvaluator` /
-  `cpu::Frame` single-point — Frame `kEnergy` [eV] is the evaluator
-  contract when that path is used; this pin reports Ha free energy on
-  `GpwResult`.
+- **Regression calls `GpwDft::run(frame)` directly**, not `GPWEvaluator` /
+  single-point — `run` also writes Frame `kEnergy` [eV]; this pin reports
+  Ha free energy on `GpwResult`.
 - **CUDA GPW** out of scope.
 - **Speed.** \(r\approx 0.011\) on the documented dual; no multi-system
   standing CP2K perf suite in ctest.
 
 ## References
 
-- Offline pin: [`regressions/gpw/gpw-metallic-smearing/REFERENCE.md`](../../../regressions/gpw/gpw-metallic-smearing/REFERENCE.md)
-- Regression: [`reg_gpw-metallic-smearing.cpp`](../../../regressions/gpw/gpw-metallic-smearing/reg_gpw-metallic-smearing.cpp)
-- CP2K twin input: [`tools/cp2k_oracle/inputs/gpw-metallic-smearing/`](../../../tools/cp2k_oracle/inputs/gpw-metallic-smearing/)
-- Oracle notes: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
-- Handoff ratio **~0.011**: the case `REFERENCE.md`
+- Offline pin: case `gpw-metallic-smearing` pin
+- CP2K twin input: CP2K oracle
+- Oracle notes: CP2K oracle
+- Handoff ratio **~0.011**: the case pin notes
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md) (Smearing for metals ✓ CPU GPW)
-- Public header: `include/atomiverse/cpu/gpw/gpw_solver.h`
 - Shared occupations: `include|src/.../planewave/internal/smearing.*`
 - Unit tests: `tests/cpu/gpw/test_cpu_gpw_smearing.cpp`
 - PW metallic twin: [pw-smearing-al](pw-smearing-al.md)

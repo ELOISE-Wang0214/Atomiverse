@@ -59,16 +59,24 @@ Two policy slots let you change *when* a run ends without writing a driver:
 Most methods are a **concrete type** carrying its parameters as constructor
 arguments and public members, with `run(frame)` as the entry point —
 `cpu::scf::RHF`/`UHF`/`RKS`/`UKS` (`cpu/scf/methods.h`), `cpu::pw::PW`
-(`cpu/planewave/pw_solver.h`), `cpu::semiempirical::AM1`/`RM1`
-(`cpu/semiempirical/am1_solver.h`). `PW` and `AM1` want one `build(reference)`
-before the first `run()`; the SCF methods build themselves.
+(`cpu/planewave/pw_solver.h`), `cpu::gpw::GpwDft` (`cpu/gpw/gpw_solver.h`),
+`cpu::semiempirical::AM1`/`RM1` (`cpu/semiempirical/am1_solver.h`). `PW`,
+`GpwDft` and `AM1` want one `build(reference)` before the first `run()`; the
+SCF methods build themselves.
 
-`cpu::gpw::GpwDft` (`cpu/gpw/gpw_solver.h`) is the exception: its `run()` takes
-a `std::vector<GpwAtom>` — positions in **Bohr**, with the contracted basis and
-the GTH pseudopotential already resolved per atom — not a `Frame`. The
-Frame-shaped entry point for GPW is therefore the `cpu::gpw::GPWEvaluator`
-component (`cpu/gpw/gpw_evaluator.h`), which owns the solver and does that
-translation; use it, not `GpwDft`, from user code.
+`GpwDft` takes one `Kind` (element + contracted Gaussian basis + GTH
+pseudopotential) per element and reads positions [Å], Z (`kAtom_type`) and the
+orthorhombic box from the Frame; `run(frame)` writes the energy [eV] and
+`forces(frame)` also writes `kAtom_f*` [eV/Å]. To put it on a Driver slot,
+move the configured method into `cpu::gpw::GPWEvaluator`
+(`cpu/gpw/gpw_evaluator.h`):
+
+```cpp
+cpu::gpw::GpwDft dft{{O, H}};          // cpu::gpw::Kind per element
+dft.cutoff_ry = 400.0;
+dft.xc = cpu::gpw::XcKind::PBE;
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/true);
+```
 
 Bind the matching evaluator component when a Driver needs energy/forces on a
 Plan slot.

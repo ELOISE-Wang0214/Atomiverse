@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d4-forces` |
-| Regression | `regressions/gpw/gpw-d4-forces/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`d4 = true`, `compute_forces = true`); `cpu::scf::dftd4` / `D4Result`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::GpwDft` (`d4 = true`) bound by `cpu::gpw::GPWEvaluator` (`compute_forces = true`); `cpu::scf::dftd4` / `D4Result`; `GpwResult::e_disp` [Ha] |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -28,12 +27,12 @@ by `gpw-d4-water` against offline **dftd4 3.7.0**.
 **Why dftd4 rather than live CP2K QS ENERGY_FORCE?** CP2K 2026.1 on Arrhenius
 was built **without** the DFTD4 library (`TYPE DFTD4` aborts). Hard pins are
 **libdftd4 / dftd4 3.7.0** energy + printed gradient (`-g`). Twin POSCAR /
-notes live under `tools/cp2k_oracle/inputs/gpw-d4-forces/` (and geometry under
+notes live under CP2K oracle (and geometry under
 `gpw-d4-water/`) for hosts that link libdftd4.
 
-Public surface: bool members `d4` and `compute_forces` on
-`cpu::gpw::GPWEvaluator` / `GpwDft` (no `*Config` bag). Product gate:
-`regressions/gpw/gpw-d4-forces` (`reg_gpw-d4-forces`). Wall ratio is
+Public surface: bool member `d4` on `cpu::gpw::GpwDft` and `compute_forces`
+on `cpu::gpw::GPWEvaluator` (no `*Config` bag). Product gate:
+`gpw-d4-forces` (`reg_gpw-d4-forces`). Wall ratio is
 **perf_exempt** (no fair CP2K QS ENERGY_FORCE twin on the pin host — same policy
 as `gpw-d4-water` / `gpw-d4-stress`).
 
@@ -122,8 +121,8 @@ within SCF residual (regression tol \(1\times 10^{-7}\) Ha/Bohr).
 
 ## Implementation
 
-Public surface only (`Frame`, `Kind` lookup constructors, `GPWEvaluator`
-members; no `*Config`, no `make_*` / `build_*` factories):
+Public surface only (`Frame`, `Kind` lookup constructors, `GpwDft` /
+`GPWEvaluator` members; no `*Config`, no `make_*` / `build_*` factories):
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
@@ -152,15 +151,16 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-cpu::gpw::GPWEvaluator eval({O, H});
-eval.cutoff_ry = 200.0;
-eval.max_iter = 120;
-eval.tol = 1e-6;
-eval.mix = 0.4;
-eval.xc = cpu::gpw::XcKind::PBE;
-eval.nonperiodic = false;
-eval.d4 = true;              // exclusive vs d3 / d3bj / ts / mbd / xdm
-eval.compute_forces = true;
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 120;
+dft.tol = 1e-6;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = false;
+dft.d4 = true;               // exclusive vs d3 / d3bj / ts / mbd / xdm
+
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/true);
 eval.compute_stress = false;
 
 cpu::Evaluate driver;
@@ -189,30 +189,30 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-d4-forces
-  ./build/regressions/reg_gpw-d4-forces
+  reg_gpw-d4-forces
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::d4`, `compute_forces` |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::d4`, `GpwResult::e_disp` |
-| `include/atomiverse/cpu/scf/dftd4.h` | `dftd4` / `dftd4_energy` / `D4Result` |
+| `gpw_evaluator.h` | `GPWEvaluator::compute_forces` |
+| `gpw_solver.h` | `GpwDft::d4`, `GpwResult::e_disp` |
+| `dftd4.h` | `dftd4` / `dftd4_energy` / `D4Result` |
 | `src/cpu/gpw/internal/gpw_forces.cpp` | Adds `d4.forces` into product forces |
 | `tests/cpu/gpw/test_cpu_gpw_dftd4.cpp` | Unit E_disp + force pin |
 | `tests/cpu/gpw/test_cpu_gpw_forces.cpp` | H₂ analytic-vs-FD dual-gate with `d4` |
-| `regressions/gpw/gpw-d4-forces/reg_gpw-d4-forces.cpp` | Product gate |
-| `regressions/gpw/gpw-d4-forces/REFERENCE.md` | Offline pins + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-d4-forces/` | Pin notes + dftd4 JSON dumps |
-| `tools/cp2k_oracle/inputs/gpw-d4-water/` | POSCAR + CP2K twin (DFTD4 when linked) |
+| `reg_gpw-d4-forces.cpp` | Product gate |
+| case `gpw-d4-forces` pin | Offline pins + perf_exempt |
+| CP2K oracle | Pin notes + dftd4 JSON dumps |
+| CP2K oracle | POSCAR + CP2K twin (DFTD4 when linked) |
 
 ## Validation (CP2K / dftd4)
 
 Source:
-[`regressions/gpw/gpw-d4-forces/REFERENCE.md`](../../../regressions/gpw/gpw-d4-forces/REFERENCE.md).
+case `gpw-d4-forces` pin.
 Oracle: offline **dftd4 3.7.0** (Arrhenius EasyBuild
 `dftd4/3.7.0-gfbf-2025b`), CLI gradient on
-`tools/cp2k_oracle/inputs/gpw-d4-water/POSCAR`. External engine pin — not a
+CP2K oracle. External engine pin — not a
 golden of Atomiverse’s own output; **never** launch live dftd4 or CP2K from
 ctest.
 
@@ -280,14 +280,14 @@ Offline re-pin (human only; never ctest):
 export PATH=/software/sse2/el9_epyc9005/easybuild/prefix/software/dftd4/3.7.0-gfbf-2025b/bin:$PATH
 export LD_LIBRARY_PATH=/software/sse2/el9_epyc9005/easybuild/prefix/software/dftd4/3.7.0-gfbf-2025b/lib:$LD_LIBRARY_PATH
 # + FlexiBLAS / GCCcore from buildenv-gcc module
-cd tools/cp2k_oracle/inputs/gpw-d4-water
+cd <CP2K oracle input dir for this case>
 dftd4 -f pbe --mbdscale 0.0 --grad pin_grad.txt --json pin.json POSCAR
 # remap O O H H H H → O H H O H H before comparing to ATV
 ```
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 D4 two-body force evaluation is \(O(N^2 \times N_{\mathrm{images}})\) (same
 order as the energy; not \(6N\) energy evaluations) on a 6-atom cell
@@ -329,13 +329,13 @@ host with libdftd4-linked CP2K.
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-d4-forces/REFERENCE.md`
-- Oracle inputs: `tools/cp2k_oracle/inputs/gpw-d4-forces/`,
-  `tools/cp2k_oracle/inputs/gpw-d4-water/`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-d4-forces` pin
+- Oracle inputs: CP2K oracle,
+  CP2K oracle
+- Oracle notes: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
 - Related energy pin: [gpw-d4-water](gpw-d4-water.md)
-- Related stress product: `regressions/gpw/gpw-d4-stress/`
+- Related stress product: `gpw-d4-stress`
 - Related bare GPW forces: [gpw-forces-water](gpw-forces-water.md)
 - Related D3(BJ) energy: [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice.md)
 - Related molecular D4: [dft-d4-h2o-pbe](dft-d4-h2o-pbe.md)

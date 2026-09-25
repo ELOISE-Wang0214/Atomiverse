@@ -17,6 +17,9 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -35,16 +38,27 @@ void check(bool ok, const char* what) {
     }
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> h2_toy(double L_bohr) {
+/// H₂ toy in a cubic box of edge `L_bohr` [Bohr]; the Frame is in Å.
+ATV::cpu::Frame h2_toy(double L_bohr) {
     using namespace ATV;
-    const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-    const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-    const double r0[3] = {0.5 * L_bohr - 0.7, 0.5 * L_bohr, 0.5 * L_bohr};
-    const double r1[3] = {0.5 * L_bohr + 0.7, 0.5 * L_bohr, 0.5 * L_bohr};
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.emplace_back(r0, bH, pH, 1);
-    atoms.emplace_back(r1, bH, pH, 1);
-    return atoms;
+    constexpr double b2a = units::kBohrInAngstrom;
+    const double x[2] = {0.5 * L_bohr - 0.7, 0.5 * L_bohr + 0.7};
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_x)[i] = x[i] * b2a;
+        frame.span(kAtom_y)[i] = 0.5 * L_bohr * b2a;
+        frame.span(kAtom_z)[i] = 0.5 * L_bohr * b2a;
+    }
+    frame.box = cpu::Box::cubic(L_bohr * b2a);
+    return frame;
+}
+
+std::vector<ATV::cpu::gpw::Kind> h_kinds() {
+    using namespace ATV::cpu::gpw;
+    return {Kind{molrs::Element::H,
+                 GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                 GthPotential(molrs::Element::H, "GTH-PADE-q1")}};
 }
 
 } // namespace
@@ -59,14 +73,13 @@ int main() {
     const auto t0 = clock::now();
 
     const double L = 8.0;
-    auto atoms = h2_toy(L);
+    cpu::Frame frame = h2_toy(L);
     constexpr double kU_ev = 4.0;
 
     // ── A1: Γ-limit identity with PLUS_U ──────────────────────────────────
     {
         auto base = [&]() {
-            GpwDft cfg;
-            cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = L;
+            GpwDft cfg{h_kinds()};
             cfg.cutoff_ry = 100.0;
             cfg.n_alpha = 2;
             cfg.n_beta = 0;
@@ -81,14 +94,14 @@ int main() {
         };
 
         GpwDft g = base();
-        g.build(atoms);
-        const GpwResult rg = g.run(atoms);
+        g.build(frame);
+        const GpwResult rg = g.run(frame);
 
         GpwDft k = base();
         k.k_points = {{0.0, 0.0, 0.0}};
         k.k_point_weights = {1.0};
-        k.build(atoms);
-        const GpwResult rk = k.run(atoms);
+        k.build(frame);
+        const GpwResult rk = k.run(frame);
 
         check(rg.converged && rk.converged, "A1 both converge");
         check(std::fabs(rk.e_total - rg.e_total) <= 1e-6,
@@ -114,8 +127,7 @@ int main() {
 
     {
         auto make = [&](bool with_u) {
-            GpwDft m;
-            m.cell[0] = m.cell[1] = m.cell[2] = L;
+            GpwDft m{h_kinds()};
             m.cutoff_ry = 120.0;
             m.n_alpha = 2;
             m.n_beta = 0;
@@ -127,8 +139,8 @@ int main() {
             m.k_time_reversal = true;
             if (with_u)
                 m.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, kU_ev});
-            m.build(atoms);
-            return m.run(atoms);
+            m.build(frame);
+            return m.run(frame);
         };
 
         const GpwResult r0 = make(false);

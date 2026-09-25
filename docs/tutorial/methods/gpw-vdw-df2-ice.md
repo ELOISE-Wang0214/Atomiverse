@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-vdw-df2-ice` |
-| Regression | `regressions/gpw/gpw-vdw-df2-ice/` |
-| Public API | `cpu::gpw::GpwDft::vdw_df2` / `cpu::gpw::GPWEvaluator::vdw_df2`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::GpwDft::vdw_df2` (bound through `cpu::gpw::GPWEvaluator`); `GpwResult::e_disp` [Ha] |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -19,10 +18,10 @@ water-dimer cell** (ice-relevant H-bonded pair in a 12 Å cubic box — not a fu
 ice Ih supercell) and gates **\(E_c^{\mathrm{nl}}\)** reported on
 `GpwResult::e_disp` [Hartree].
 
-Public surface: bool member `vdw_df2` on `cpu::gpw::GpwDft` and
-`cpu::gpw::GPWEvaluator` (no `*Config` bag). The nonlocal energy is folded into
+Public surface: bool member `vdw_df2` on `cpu::gpw::GpwDft` (bound through
+`cpu::gpw::GPWEvaluator`; no `*Config` bag). The nonlocal energy is folded into
 `e_total`. Mutually exclusive with `d3` / `d3bj` / `d4` / `ts` / `mbd` /
-`vdw_df` / `rvv10`. Product gate: `regressions/gpw/gpw-vdw-df2-ice`
+`vdw_df` / `rvv10`. Product gate: `gpw-vdw-df2-ice`
 (`reg_gpw-vdw-df2-ice`). Wall ratio is **perf_exempt** (E_disp pin; full QS twin
 wall unavailable / unfair on the pin host — see Performance).
 
@@ -31,7 +30,7 @@ wall unavailable / unfair on the pin host — see Performance).
 **libvdwxc DF2**. The hard unit kernel pin is offline **libvdwxc 0.5.0**; the
 full-GPW product pin freezes post-SCF \(E_c^{\mathrm{nl}}\) on the ATV PBE
 density after that unit gate. Twin notes:
-`tools/cp2k_oracle/inputs/gpw-vdw-df2-ice/`. **Never** launch live CP2K (or
+CP2K oracle. **Never** launch live CP2K (or
 libvdwxc) from ctest.
 
 ## Method
@@ -79,28 +78,27 @@ Also \(q_{\mathrm{cut}} = 5\) Bohr⁻¹ (soft cutoff, matching libvdwxc / QE).
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
+Public surface only (`GpwDft` members; no `*Config`, no
 `make_*` / `build_*` factories). Regression uses the concrete solver:
 
 ```cpp
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
 
-// Geometry [Å] → Bohr — same water dimer as gpw-vdw-df-ice / gpw-pbe-d3bj-ice.
-constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// Frame: same water dimer as gpw-vdw-df-ice / gpw-pbe-d3bj-ice — positions [Å], Z in kAtom_type (2×O + 4×H).
+// kinds = {O, H} Kind{Element, GaussianBasis, GthPotential} with DZVP-MOLOPT-SR-GTH + GTH-PBE-q*
+frame.box = ATV::cpu::Box::cubic(12.0);  // Å
 
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+GpwDft gpw{kinds};
 gpw.cutoff_ry = 200.0;
 gpw.n_occ = 8;         // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 40;
@@ -110,8 +108,8 @@ gpw.xc = XcKind::PBE;
 gpw.nonperiodic = false;
 gpw.vdw_df2 = true;    // exclusive vs d3/d3bj/d4/ts/mbd/vdw_df/rvv10
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp [Ha] within 5e-5 of offline pin
 // res.e_total includes e_disp
 ```
@@ -120,11 +118,15 @@ Driver / Frame path (component; same member):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/300.0, /*max_iter=*/200,
-                                 /*tol=*/1e-7, /*mix=*/0.3,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false);
-eval.vdw_df2 = true;
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 300.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.3;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;
+dft.nonperiodic = false;
+dft.vdw_df2 = true;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft));
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 // Public frame.meta energy remains eV; internal GpwResult energies are Ha.
@@ -144,27 +146,27 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-vdw-df2-ice
-  ./build/regressions/reg_gpw-vdw-df2-ice
+  reg_gpw-vdw-df2-ice
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `vdw_df2` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::vdw_df2` |
-| `include/atomiverse/cpu/gpw/internal/vdw_df.h` | `vdw_df_lmkll`, `kVdwDf2Zab` (private) |
+| `gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `vdw_df2` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds the configured `GpwDft`) |
+| `vdw_df.h` | `vdw_df_lmkll`, `kVdwDf2Zab` (private) |
 | `tests/cpu/gpw/test_cpu_gpw_vdw_df.cpp` | Unit gate vs libvdwxc DF2 synthetic |
-| `regressions/gpw/gpw-vdw-df2-ice/reg_gpw-vdw-df2-ice.cpp` | Product gate |
-| `regressions/gpw/gpw-vdw-df2-ice/REFERENCE.md` | Offline pins + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-vdw-df2-ice/` | CP2K / libvdwxc twin notes |
+| `reg_gpw-vdw-df2-ice.cpp` | Product gate |
+| case `gpw-vdw-df2-ice` pin | Offline pins + perf_exempt |
+| CP2K oracle | CP2K / libvdwxc twin notes |
 
 ## Validation (CP2K / libvdwxc)
 
 Source:
-[`regressions/gpw/gpw-vdw-df2-ice/REFERENCE.md`](../../../regressions/gpw/gpw-vdw-df2-ice/REFERENCE.md).
+case `gpw-vdw-df2-ice` pin.
 Oracle: offline **libvdwxc 0.5.0** (kernel; same engine CP2K links for
 `TYPE LMKLL`) + dual-frozen full-GPW pin after unit gate. Twin notes:
-`tools/cp2k_oracle/inputs/gpw-vdw-df2-ice/water_dimer_vdw_df2.note`. External
+CP2K oracle. External
 engine pins — not goldens of Atomiverse’s own output; **never** launch live
 oracle from ctest.
 
@@ -198,7 +200,7 @@ compare DRSLL (`gpw-vdw-df-ice`) only via interaction differences, not raw
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff wave 4: **perf_exempt**).
+Source: pin notes (queue / handoff wave 4: **perf_exempt**).
 
 RPS evaluation is \(O(N_g \log N_g \times n_\alpha)\) with \(n_\alpha=20\),
 dominated by the electronic SCF on the 6-atom cell. A fair full Quickstep twin
@@ -237,11 +239,11 @@ when a host provides CP2K linked with libvdwxc if product policy requires
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-vdw-df2-ice/REFERENCE.md`
-- Oracle inputs: `tools/cp2k_oracle/inputs/gpw-vdw-df2-ice/`
+- Offline pin: case `gpw-vdw-df2-ice` pin
+- Oracle inputs: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion (vdW-DF2 ✓)
 - GPW narrative chapter: `docs/tutorial/ch09-gpw.md`
-- Sibling: DRSLL `docs/tutorial/methods/` / `regressions/gpw/gpw-vdw-df-ice`
+- Sibling: DRSLL `docs/tutorial/methods/` / `gpw-vdw-df-ice`
 - Closed spec (git history): `.claude/specs/gpw-vdw-df2-ice/` (deleted at done)
 - K. Lee, É. D. Murray, L. Kong, B. I. Lundqvist, D. C. Langreth,
   *Phys. Rev. B* **82**, 081101(R) (2010) (vdW-DF2 / LMKLL)

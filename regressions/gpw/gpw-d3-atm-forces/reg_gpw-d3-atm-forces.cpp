@@ -17,8 +17,9 @@
 ///      cells — the periodic one exercises the lattice-image triple
 ///      enumeration (CP2K qs_dispersion_d3 doabc CASE 2/3, fac0 = 1/3).
 ///   3. Product wiring: full GPW SCF via public GPWEvaluator with
-///      d3_atm = true; the force assembly with d3_atm on minus off (same
-///      converged density) must equal the standalone ATM gradient.
+///      d3_atm = true; its forces minus a `GpwDft::forces` twin with d3_atm
+///      off (same converged density — D3 is geometry-only) must equal the
+///      standalone ATM gradient.
 ///   4. Total product forces vs CP2K's ATM-run FORCES| table (grid-noise
 ///      bounded) and translation invariance |sum F| on the isolated system.
 /// The analytic-vs-FD dual gate lives in tests/cpu/gpw/test_cpu_gpw_dftd3.cpp
@@ -35,6 +36,7 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
@@ -43,7 +45,6 @@
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/dftd3_params.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
 using namespace ATV;
@@ -258,16 +259,22 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 300.0;
-    eval.max_iter = 120;
-    eval.tol = 1e-7;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = true;
-    eval.d3 = true;
-    eval.d3_atm = true;
-    eval.compute_forces = true;
+    // Method parameters shared by the product run (ATM on) and the two-body
+    // twin (ATM off).
+    auto make_method = [&](bool atm_on) {
+        cpu::gpw::GpwDft m{{O, H}};
+        m.cutoff_ry = 300.0;
+        m.max_iter = 120;
+        m.tol = 1e-7;
+        m.mix = 0.4;
+        m.xc = cpu::gpw::XcKind::PBE;
+        m.nonperiodic = true;
+        m.d3 = true;
+        m.d3_atm = atm_on;
+        return m;
+    };
+
+    cpu::gpw::GPWEvaluator eval(make_method(true), /*compute_forces=*/true);
     eval.compute_stress = false;
 
     cpu::Evaluate driver;
@@ -288,48 +295,39 @@ int main() {
         return 1;
     }
 
-    // Force assembly twice on the SAME converged density — d3_atm on vs off.
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
+    // F(ATM on) is the product evaluator's Frame force (eV/Å → Ha/Bohr);
+    // F(ATM off) is a fresh SCF + analytic forces on a copy of the geometry.
+    // D3 never enters the Kohn-Sham potential, so both SCFs converge to the
+    // same density and the difference isolates the ATM gradient.
+    const double kFConv = units::kHartreePerBohrInEvPerAngstrom;
+    std::vector<std::array<double, 3>> F_on(6);
     for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double p[3] = {pos_iso[static_cast<std::size_t>(i)][0],
-                             pos_iso[static_cast<std::size_t>(i)][1],
-                             pos_iso[static_cast<std::size_t>(i)][2]};
-        atoms.push_back(cpu::gpw::GpwAtom(p, k.basis, k.pot, z[i]));
+        F_on[static_cast<std::size_t>(i)] = {
+            static_cast<double>(frame.span(kAtom_fx)[i]) / kFConv,
+            static_cast<double>(frame.span(kAtom_fy)[i]) / kFConv,
+            static_cast<double>(frame.span(kAtom_fz)[i]) / kFConv};
     }
 
-    cpu::gpw::GpwDft m_atm;
-    m_atm.cell[0] = m_atm.cell[1] = m_atm.cell[2] = kLIso * kAng2Bohr;
-    m_atm.cutoff_ry = 300.0;
-    m_atm.n_occ = 8;
-    m_atm.max_iter = 120;
-    m_atm.tol = 1e-7;
-    m_atm.mix = 0.4;
-    m_atm.xc = cpu::gpw::XcKind::PBE;
-    m_atm.nonperiodic = true;
-    m_atm.local_pp_on_grid = true;
-    m_atm.d3 = true;
-    m_atm.d3_atm = true;
-    m_atm.build(atoms);
-    const auto F_on =
-        cpu::gpw::gpw_forces_from_scf(atoms, m_atm, eval.last_result());
-
-    cpu::gpw::GpwDft m_two; // GpwDft is non-copyable — build the twin fresh
-    m_two.cell[0] = m_two.cell[1] = m_two.cell[2] = kLIso * kAng2Bohr;
-    m_two.cutoff_ry = 300.0;
+    cpu::Frame frame_two(6);
+    for (int i = 0; i < 6; ++i) {
+        frame_two.span(kAtom_type)[i] = z[i];
+        frame_two.span(kAtom_x)[i] = raw[i][0] + 4.5;
+        frame_two.span(kAtom_y)[i] = raw[i][1] + 6.0;
+        frame_two.span(kAtom_z)[i] = raw[i][2] + 6.0;
+    }
+    frame_two.box = cpu::Box::cubic(kLIso);
+    cpu::gpw::GpwDft m_two = make_method(false);
     m_two.n_occ = 8;
-    m_two.max_iter = 120;
-    m_two.tol = 1e-7;
-    m_two.mix = 0.4;
-    m_two.xc = cpu::gpw::XcKind::PBE;
-    m_two.nonperiodic = true;
     m_two.local_pp_on_grid = true;
-    m_two.d3 = true;
-    m_two.d3_atm = false;
-    m_two.build(atoms);
-    const auto F_off =
-        cpu::gpw::gpw_forces_from_scf(atoms, m_two, eval.last_result());
+    m_two.build(frame_two);
+    m_two.forces(frame_two);
+    std::vector<std::array<double, 3>> F_off(6);
+    for (int i = 0; i < 6; ++i) {
+        F_off[static_cast<std::size_t>(i)] = {
+            static_cast<double>(frame_two.span(kAtom_fx)[i]) / kFConv,
+            static_cast<double>(frame_two.span(kAtom_fy)[i]) / kFConv,
+            static_cast<double>(frame_two.span(kAtom_fz)[i]) / kFConv};
+    }
 
     double max_wire = 0.0;
     double max_total_err = 0.0;

@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-rpbe-water` |
-| Regression | `regressions/gpw/gpw-rpbe-water/` |
-| Public API | `cpu::gpw::GPWEvaluator` + `cpu::single_point` with `xc = XcKind::RPBE`; `Kind` + `GaussianBasis` / `GthPotential` lookup ctors; shared `cpu::scf::XCType::RPBE` |
+| Public API | `cpu::gpw::GpwDft` (`xc = XcKind::RPBE`) bound by `cpu::gpw::GPWEvaluator` + `cpu::single_point`; `Kind` + `GaussianBasis` / `GthPotential` lookup ctors; shared `cpu::scf::XCType::RPBE` |
 | Roadmap | handoff ratio **perf_exempt** (dual-gate \|E_RPBE−E_PBE\|); narrative twin [ch09-gpw](../ch09-gpw.md) |
 
 ## Summary
@@ -24,8 +23,8 @@ the PBE foothold [`gpw-water-pbe-mt`](gpw-water-pbe-mt.md) and the BLYP sibling
 The e2e product gate is a **dual-gate** against identical-geometry PBE
 (\(|E_{\mathrm{RPBE}}-E_{\mathrm{PBE}}| > 10^{-4}\) Ha) plus a soft absolute band
 on first-green Atomiverse \(E_{\mathrm{RPBE}}\) until an offline CP2K twin can
-replace it. Public path: concrete `cpu::gpw::GPWEvaluator` constructor
-arguments (no public `*Config` bag, no `make_*` / `build_*` factories) driven by
+replace it. Public path: concrete `cpu::gpw::GpwDft` members bound by
+`cpu::gpw::GPWEvaluator` (no public `*Config` bag, no `make_*` / `build_*` factories) driven by
 `cpu::single_point(frame, eval)`. Fair wall vs CP2K is **`perf_exempt`** (no
 CP2K binary on the pin host).
 
@@ -86,7 +85,7 @@ would couple the molecule to its images. Martyna–Tuckerman replaces the
 reciprocal-space Coulomb kernel so that the electrostatic potential matches
 the free-space solution for a charge density localized inside the cell (here
 \(L = 10\) Å). Atomiverse exposes this as `nonperiodic = true` on
-`GPWEvaluator`.
+`GpwDft`.
 
 **What this pin includes**
 
@@ -118,7 +117,7 @@ the free-space solution for a charge density localized inside the cell (here
 
 ## Implementation
 
-Public surface only (`cpu::Frame` + `GPWEvaluator` ctor args; lookup
+Public surface only (`cpu::Frame` + `GpwDft` members + `GPWEvaluator`; lookup
 constructors for basis/PP tables — not factories for a parallel world model).
 Matches `reg_gpw-rpbe-water.cpp`:
 
@@ -155,9 +154,10 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-cpu::gpw::GPWEvaluator eval(
-    /*kinds*/ {O, H}, /*cutoff_ry*/ 400.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::RPBE, /*nonperiodic*/ true);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 400.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::RPBE;  dft.nonperiodic = true;
+cpu::gpw::GPWEvaluator eval(std::move(dft));
 cpu::single_point(frame, eval);
 
 const double e_ha = eval.last_energy_hartree();   // [Hartree]
@@ -182,26 +182,26 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-rpbe-water -j$(nproc)
-  ./build/regressions/reg_gpw-rpbe-water
+  reg_gpw-rpbe-water
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `XcKind::{…,RPBE,…}`, `GpwDft`, `GpwResult` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | Frame-facing `GPWEvaluator` (ctor `xc` arg) |
-| `include/atomiverse/cpu/gpw/gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
-| `include/atomiverse/cpu/gpw/gth_potential.h` | `GthPotential(Element, name)` lookup |
-| `include/atomiverse/cpu/scf/xc_functional.h` | `XCType::RPBE`, `evaluate_xc`, `is_gga` |
-| `include/atomiverse/cpu/gpw/internal/xc_grid_gga.h` | `xc_grid_rpbe` / GGA grid energy+potential |
+| `gpw_solver.h` | `XcKind::{…,RPBE,…}`, `GpwDft`, `GpwResult` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds a `GpwDft` into a driver slot) |
+| `gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
+| `gth_potential.h` | `GthPotential(Element, name)` lookup |
+| `xc_functional.h` | `XCType::RPBE`, `evaluate_xc`, `is_gga` |
+| `xc_grid_gga.h` | `xc_grid_rpbe` / GGA grid energy+potential |
 | `src/cpu/gpw/internal/xc_grid_gga.cpp` | Closed-shell GGA grid assembly |
-| `regressions/gpw/gpw-rpbe-water/reg_gpw-rpbe-water.cpp` | Product gate (dual-gate + soft absolute) |
-| `tools/cp2k_oracle/inputs/gpw-rpbe-water.inp` | Offline CP2K twin (never ctest) |
+| `reg_gpw-rpbe-water.cpp` | Product gate (dual-gate + soft absolute) |
+| CP2K oracle | Offline CP2K twin (never ctest) |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/gpw-rpbe-water/REFERENCE.md`](../../../regressions/gpw/gpw-rpbe-water/REFERENCE.md).
+case `gpw-rpbe-water` pin.
 Oracle status at pin time (2026-07-25): **no CP2K binary / module** on the worker
 host (`cp2k`, `cp2k.psmp`, `cp2k.sopt` not on PATH; `module avail cp2k` empty).
 Absolute CP2K \(E_{\mathrm{tot}}\) digits are therefore **not** invented from
@@ -216,7 +216,7 @@ product gate uses:
    setup integrity until offline CP2K replaces the pin (cite CP2K version).
 
 Twin input (MT, 400 Ry, RPBE, same H₂O geometry as the PBE foothold):
-`tools/cp2k_oracle/inputs/gpw-rpbe-water.inp`. Closed acceptance:
+CP2K oracle. Closed acceptance:
 `.claude/specs/gpw-rpbe-water/` (git history on `wf/gpw-rpbe-water`). PBE twin
 residual on this host matches the established
 [`gpw-water-pbe-mt`](gpw-water-pbe-mt.md) pin
@@ -252,14 +252,14 @@ Offline re-pin (human only; never ctest):
 
 ```bash
 # when a CP2K binary is available
-cp2k.psmp -i tools/cp2k_oracle/inputs/gpw-rpbe-water.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o /tmp/gpw-rpbe-water.out
 # record TOTAL ENERGY [Ha] into REFERENCE.md; tighten absolute tol
 ```
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/gpw/gpw-rpbe-water/REFERENCE.md)
+Source: pin notes
 (2026-07-25); queue/handoff **perf_exempt**.
 
 | Item | Value |
@@ -299,19 +299,19 @@ Source: [`REFERENCE.md`](../../../regressions/gpw/gpw-rpbe-water/REFERENCE.md)
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-rpbe-water/REFERENCE.md`
-- Regression consumer: `regressions/gpw/gpw-rpbe-water/reg_gpw-rpbe-water.cpp`
-- Oracle twin: `tools/cp2k_oracle/inputs/gpw-rpbe-water.inp`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-rpbe-water` pin
+- Regression consumer: `reg_gpw-rpbe-water.cpp`
+- Oracle twin: CP2K oracle
+- Oracle notes: CP2K oracle
 - Closed spec (git history): `.claude/specs/gpw-rpbe-water/` on
   `wf/gpw-rpbe-water`
 - Narrative GPW chapter: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Related method pages: [gpw-water-pbe-mt](gpw-water-pbe-mt.md) (PBE/MT energy
   foothold), [gpw-pbesol-si](gpw-pbesol-si.md) (PBEsol dual-gate pattern),
   [gpw-forces-water](gpw-forces-water.md) (analytic forces)
-- Public API: `include/atomiverse/cpu/gpw/gpw_solver.h`,
-  `include/atomiverse/cpu/gpw/gpw_evaluator.h`,
-  `include/atomiverse/cpu/scf/xc_functional.h`
+- Public API: `gpw_solver.h`,
+  `gpw_evaluator.h`,
+  `xc_functional.h`
 - B. Hammer, L. B. Hansen, J. K. Nørskov, *Phys. Rev. B* **59**, 7413 (1999)
   — RPBE.
 - J. P. Perdew, K. Burke, M. Ernzerhof, *Phys. Rev. Lett.* **77**, 3865 (1996)

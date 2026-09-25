@@ -13,6 +13,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -65,10 +66,14 @@ int main() {
     // Cheaper than forces pin (200 Ry / tol 1e-5) so cold SCF seed stays
     // inside the ≤60 s gate. CPMD production steps are single KS evals.
     constexpr double dt = 0.1; // fs — short step for electronic stability
-    cpu::gpw::GPWEvaluator gpw(
-        /*kinds*/ {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-        /*compute_forces*/ true);
+    cpu::gpw::GpwDft dft{{O, H}};
+    dft.cutoff_ry = 200.0;
+    dft.max_iter = 60;
+    dft.tol = 1e-5;
+    dft.mix = 0.3;
+    dft.xc = cpu::gpw::XcKind::PBE;
+    dft.nonperiodic = true;
+    cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
     // Heavier fictitious mass than plane-wave textbook 400 a.u. — AO residual
     // curvature on DZVP water is stiffer; 2000 keeps short NVE stable at 0.1 fs.
     cpu::electronic::CarParrinello eval{std::move(gpw), /*mu=*/2000.0};

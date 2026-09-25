@@ -24,12 +24,12 @@ reference, **UMP2 ≡ RMP2** — dual-gated against the
 Atomiverse public path (no Config bag, no factory):
 
 ```cpp
-cpu::gpw::GpwDft m;
+cpu::gpw::GpwDft m{{si_kind}};
 m.n_alpha = 4; m.n_beta = 4;   // UKS
 m.xc = XcKind::PBE;
-m.build(atoms);
-m.run(atoms);
-const cpu::gpw::Mp2Result& r = m.mp2(atoms);  // UMP2@UKS
+m.build(frame);
+m.run(frame);
+const cpu::gpw::Mp2Result& r = m.mp2();  // UMP2@UKS
 ```
 
 ## System

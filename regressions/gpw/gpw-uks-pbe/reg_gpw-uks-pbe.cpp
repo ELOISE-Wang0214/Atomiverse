@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/evaluate/single_point.h"
@@ -43,15 +44,16 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
         cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
-    cpu::gpw::GPWEvaluator eval({O});
-    eval.cutoff_ry = 400.0;
-    eval.max_iter = 200;
-    eval.tol = 1e-7;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = true;
-    eval.n_alpha = 7; // multiplicity 3, 12 valence e⁻
-    eval.n_beta = 5;
+    cpu::gpw::GpwDft dft{{O}};
+    dft.cutoff_ry = 400.0;
+    dft.max_iter = 200;
+    dft.tol = 1e-7;
+    dft.mix = 0.4;
+    dft.xc = cpu::gpw::XcKind::PBE;
+    dft.nonperiodic = true;
+    dft.n_alpha = 7; // multiplicity 3, 12 valence e⁻
+    dft.n_beta = 5;
+    cpu::gpw::GPWEvaluator eval(std::move(dft));
 
     const auto t0 = clock::now();
     cpu::single_point(frame, eval);

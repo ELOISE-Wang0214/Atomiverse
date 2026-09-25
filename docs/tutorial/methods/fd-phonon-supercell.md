@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `fd-phonon-supercell` |
-| Regression | `regressions/pw/fd-phonon-supercell/` |
 | Public API | `cpu::vib::Phonon` (ctor `na,nb,nc` / members) + `cpu::vib::PhononResult` + `cpu::vib::expand_supercell` |
 | Roadmap | [dft.md](../../roadmap/dft.md) § Finite-displacement phonons ✓; enables `dfpt-phonon-si` |
 
@@ -19,7 +18,7 @@ spectrum in **cm⁻¹**. Product surface is the preset `cpu::vib::Phonon` over
 molecule translations/rotations and has no supercell). Force engines are
 **user-bound** on `vib::Phase::force` (classical `Potential`, PW, GPW, …), same
 composition rule as AIMD / molecular vib. Product gate:
-`regressions/pw/fd-phonon-supercell` (`reg_fd-phonon-supercell`) — diamond Si
+`fd-phonon-supercell` (`reg_fd-phonon-supercell`) — diamond Si
 **Stillinger–Weber** 64-atom twin (acoustic sum rule + optical band).
 Performance: **`perf_exempt`** (no offline CP2K `VIBRATIONAL_ANALYSIS` wall on
 the pin host).
@@ -106,7 +105,7 @@ Frequencies and force constants live on **`PhononResult`**, not on Frame
 
 Public surface only (`cpu::Frame` + ctor args / public members; no `PhononConfig`,
 no factories). Headers:
-`include/atomiverse/cpu/vibration/phonon.h`,
+`phonon.h`,
 `phonon_result.h`, `supercell.h`, `phonon_diagonalizer.h`.
 
 Minimal sequence (matches `reg_fd-phonon-supercell.cpp` — Frame already is the
@@ -156,23 +155,23 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_fd-phonon-supercell -j$(nproc)
-  ./build/regressions/reg_fd-phonon-supercell
+  reg_fd-phonon-supercell
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/vibration/phonon.h` | `cpu::vib::Phonon` preset |
-| `include/atomiverse/cpu/vibration/phonon_result.h` | `PhononResult` |
-| `include/atomiverse/cpu/vibration/supercell.h` | `expand_supercell` |
-| `include/atomiverse/cpu/vibration/phonon_diagonalizer.h` | full \(3N\) eigensolve |
+| `phonon.h` | `cpu::vib::Phonon` preset |
+| `phonon_result.h` | `PhononResult` |
+| `supercell.h` | `expand_supercell` |
+| `phonon_diagonalizer.h` | full \(3N\) eigensolve |
 | `src/cpu/vibration/phonon.cpp` | `run()` / expand + FD loop |
 | `tests/cpu/vibration/test_phonon_supercell.cpp` | unit: expand, acoustics, missing-force reject |
-| `regressions/pw/fd-phonon-supercell/` | e2e + `REFERENCE.md` |
+| `fd-phonon-supercell` | e2e + pin notes |
 
 ## Validation (vs CP2K / literature)
 
-Source: [`regressions/pw/fd-phonon-supercell/REFERENCE.md`](../../../regressions/pw/fd-phonon-supercell/REFERENCE.md).
+Source: case `fd-phonon-supercell` pin.
 Oracle priority: offline **CP2K `VIBRATIONAL_ANALYSIS`** when a binary is
 available; **this pin host had no CP2K module** — surrogate is the acoustic
 sum rule plus the published Stillinger–Weber optical scale. **Never** live
@@ -220,11 +219,11 @@ NaN) without freezing Atomiverse’s own first-run digits as a golden snapshot.
 **CP2K.** When `cp2k.psmp` is available offline: run a fixed
 `VIBRATIONAL_ANALYSIS` input on diamond Si (same \(a\), comparable force model
 or Quickstep), record \(\omega\) [cm⁻¹] and wall time in REFERENCE.md with CP2K
-version. Skeleton inputs may live under `tools/cp2k_oracle/inputs/`.
+version. Skeleton inputs may live under CP2K oracle.
 
 ## Performance
 
-Source: `regressions/pw/fd-phonon-supercell/REFERENCE.md`. Queue / handoff:
+Source: case `fd-phonon-supercell` pin. Queue / handoff:
 **`perf_exempt`**.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -256,10 +255,9 @@ REFERENCE.md, require \(r \le 10\).
 
 ## References
 
-- Offline pin: [`regressions/pw/fd-phonon-supercell/REFERENCE.md`](../../../regressions/pw/fd-phonon-supercell/REFERENCE.md)
-- Regression: [`regressions/pw/fd-phonon-supercell/reg_fd-phonon-supercell.cpp`](../../../regressions/pw/fd-phonon-supercell/reg_fd-phonon-supercell.cpp)
+- Offline pin: case `fd-phonon-supercell` pin
 - Closed acceptance (git): `wf/fd-phonon-supercell` / `.claude/specs/fd-phonon-supercell/`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Oracle notes: CP2K oracle
 - Narrative style refs: [Chapter 8 — Plane-Wave DFT](../ch08-plane-wave.md),
   [Chapter 9 — GPW](../ch09-gpw.md)
 - F. H. Stillinger and T. A. Weber, *Phys. Rev. B* **31**, 5262 (1985)

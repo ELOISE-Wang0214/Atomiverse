@@ -9,10 +9,11 @@
 
 #include <cmath>
 #include <cstdio>
-#include <vector>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/electronic/second_gen_cp.h"
@@ -42,17 +43,21 @@ int main() {
     // same SCF fixed point (the ot-kpoints pin level, |ΔE| ≤ 1e-4 Ha) —
     // the OT corrector is the same functional, only the minimizer differs.
     {
-        const double ra[3] = {0.5 * L_bohr - 0.5 * r0_bohr, 0.5 * L_bohr,
-                              0.5 * L_bohr};
-        const double rb[3] = {0.5 * L_bohr + 0.5 * r0_bohr, 0.5 * L_bohr,
-                              0.5 * L_bohr};
-        std::vector<cpu::gpw::GpwAtom> atoms;
-        atoms.emplace_back(ra, bH, pH, 1);
-        atoms.emplace_back(rb, bH, pH, 1);
+        // Geometry defined in Bohr, converted to Å with the library constant
+        // so the method's Å→Bohr read-back is exact.
+        cpu::Frame fa(2);
+        const double xa[2] = {0.5 * L_bohr - 0.5 * r0_bohr,
+                              0.5 * L_bohr + 0.5 * r0_bohr};
+        for (int i = 0; i < 2; ++i) {
+            fa.span(kAtom_type)[i] = 1;
+            fa.span(kAtom_x)[i] = xa[i] * units::kBohrInAngstrom;
+            fa.span(kAtom_y)[i] = 0.5 * L_bohr * units::kBohrInAngstrom;
+            fa.span(kAtom_z)[i] = 0.5 * L_bohr * units::kBohrInAngstrom;
+        }
+        fa.box = cpu::Box::cubic(L_bohr * units::kBohrInAngstrom);
 
         auto make = [&](bool ot) {
-            cpu::gpw::GpwDft m;
-            m.cell[0] = m.cell[1] = m.cell[2] = L_bohr;
+            cpu::gpw::GpwDft m{{cpu::gpw::Kind{molrs::Element::H, bH, pH}}};
             m.cutoff_ry = 100.0;
             m.n_occ = 1;
             m.max_iter = 200;
@@ -66,11 +71,11 @@ int main() {
             return m;
         };
         cpu::gpw::GpwDft diag = make(false);
-        diag.build(atoms);
-        const auto rd = diag.run(atoms);
+        diag.build(fa);
+        const auto rd = diag.run(fa);
         cpu::gpw::GpwDft ot = make(true);
-        ot.build(atoms);
-        const auto ro = ot.run(atoms);
+        ot.build(fa);
+        const auto ro = ot.run(fa);
         if (!rd.converged || !ro.converged) {
             std::printf("FAIL: A/B baseline SCF not converged "
                         "(diag=%d ot=%d)\n",
@@ -121,15 +126,17 @@ int main() {
     constexpr double rmin = 0.4;
     constexpr double rmax = 1.5;
 
-    cpu::gpw::GPWEvaluator gpw(
-        /*kinds*/ {H}, /*cutoff_ry*/ 100.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-        /*compute_forces*/ true);
-    gpw.k_mesh[0] = 1;
-    gpw.k_mesh[1] = 1;
-    gpw.k_mesh[2] = 2;
-    gpw.k_time_reversal = false;
-    gpw.use_ot = true; // OT partial-SCF corrector (this slug)
+    cpu::gpw::GpwDft dft{{H}};
+    dft.cutoff_ry = 100.0;
+    dft.max_iter = 60;
+    dft.tol = 1e-5;
+    dft.mix = 0.3;
+    dft.k_mesh[0] = 1;
+    dft.k_mesh[1] = 1;
+    dft.k_mesh[2] = 2;
+    dft.k_time_reversal = false;
+    dft.use_ot = true; // OT partial-SCF corrector (this slug)
+    cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
     cpu::electronic::SecondGenCp eval{std::move(gpw), 1, corrector_budget};
 
     cpu::md::MD sim;

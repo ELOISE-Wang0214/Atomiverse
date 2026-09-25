@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-uks-blyp` |
-| Regression | `regressions/gpw/gpw-uks-blyp/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`n_alpha`/`n_beta`, `XcKind::BLYP`, `nonperiodic`); `cpu::single_point` |
+| Public API | `cpu::gpw::GpwDft` (`n_alpha`/`n_beta`, `XcKind::BLYP`, `nonperiodic`) bound by `cpu::gpw::GPWEvaluator`; `cpu::single_point` |
 | Roadmap | `docs/roadmap/dft.md` — Γ-UKS BLYP spin-GGA (productized) |
 | Fair wall | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \approx \mathbf{2.48}\) (≤10×) |
 
@@ -19,18 +18,19 @@ Löwdin \(\langle S^2\rangle\) against offline **CP2K 2026.1 Quickstep**
 (`LSD`, `MULTIPLICITY 3`, `XC_FUNCTIONAL BLYP`) with **Martyna–Tuckerman**
 isolated electrostatics.
 
-Public path: construct `cpu::gpw::GPWEvaluator` with one `Kind` per element
+Public path: construct `cpu::gpw::GpwDft` with one `Kind` per element
 (lookup constructors `GaussianBasis` / `GthPotential`), set members
 (`n_alpha`, `n_beta`, `cutoff_ry`, `xc = XcKind::BLYP`, `nonperiodic`, …),
-run `cpu::single_point(frame, eval)`. Energy on `frame.meta` is **eV**;
+bind it with `cpu::gpw::GPWEvaluator(std::move(dft))`, run
+`cpu::single_point(frame, eval)`. Energy on `frame.meta` is **eV**;
 Hartree and \(\langle S^2\rangle\) via `last_energy_hartree()` /
 `last_s2()`. Product gate: `reg_gpw-uks-blyp` — absolute energy vs CP2K
 plus a **dual-gate** \(|E_{\mathrm{BLYP}}-E_{\mathrm{PBE}}| > 10^{-4}\) Ha
 on the same geometry (functional activation).
 
 Related: Γ-UKS PADE foothold [`gpw-uks-o2-gamma`](gpw-uks-o2-gamma.md);
-Γ-UKS PBE sibling `regressions/gpw/gpw-uks-pbe`; closed-shell BLYP water
-`regressions/gpw/gpw-blyp-water`. Narrative: [Ch. 9 GPW](../ch09-gpw.md).
+Γ-UKS PBE sibling `gpw-uks-pbe`; closed-shell BLYP water
+`gpw-blyp-water`. Narrative: [Ch. 9 GPW](../ch09-gpw.md).
 Molecular all-electron UKS/BLYP is a PySCF-loop concern — not this page.
 
 ## Method
@@ -99,7 +99,7 @@ Ideal high-spin value for \(S=1\): \(S(S+1)=2\). Citation: Löwdin,
 
 ## Implementation
 
-Public surface only (`cpu::Frame`, concrete evaluator members; **no**
+Public surface only (`cpu::Frame`, concrete method members; **no**
 `*Config` bag, **no** `make_*` / `build_*` factories):
 
 ```cpp
@@ -108,6 +108,7 @@ Public surface only (`cpu::Frame`, concrete evaluator members; **no**
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
+#include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
@@ -131,15 +132,17 @@ cpu::gpw::Kind O{molrs::Element::O,
                  cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
                  cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
-cpu::gpw::GPWEvaluator eval({O});
-eval.cutoff_ry = 400.0;
-eval.max_iter = 200;
-eval.tol = 1e-7;
-eval.mix = 0.4;
-eval.xc = cpu::gpw::XcKind::BLYP;
-eval.nonperiodic = true;
-eval.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
-eval.n_beta = 5;
+cpu::gpw::GpwDft dft{{O}};
+dft.cutoff_ry = 400.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::BLYP;
+dft.nonperiodic = true;
+dft.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
+dft.n_beta = 5;
+
+cpu::gpw::GPWEvaluator eval(std::move(dft));
 
 cpu::single_point(frame, eval);
 
@@ -163,7 +166,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-uks-blyp -j$(nproc)
-  ./build/regressions/reg_gpw-uks-blyp
+  reg_gpw-uks-blyp
 '
 ```
 
@@ -171,16 +174,15 @@ Relevant sources:
 
 | Piece | Path |
 | ----- | ---- |
-| Evaluator | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| Solver (UKS SCF) | `include/atomiverse/cpu/gpw/gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
-| Spin-GGA BLYP grid | `include/atomiverse/cpu/gpw/internal/xc_grid_gga.h` (`xc_grid_blyp_spin`) |
+| Evaluator | `gpw_evaluator.h` |
+| Solver (UKS SCF) | `gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
+| Spin-GGA BLYP grid | `xc_grid_gga.h` (`xc_grid_blyp_spin`) |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_uks.cpp`, `test_cpu_gpw_xc_grid_gga.cpp` |
-| Regression | `regressions/gpw/gpw-uks-blyp/reg_gpw-uks-blyp.cpp` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/gpw-uks-blyp/o2_uks_blyp.inp` |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (CP2K)
 
-Source: `regressions/gpw/gpw-uks-blyp/REFERENCE.md` (offline pin; **never**
+Source: case `gpw-uks-blyp` pin (offline pin; **never**
 live CP2K in ctest). Engine: **CP2K 2026.1** (`cp2k.psmp`), module
 `CP2K/2026.1` on Arrhenius. Re-pin date: **2026-07-26**.
 
@@ -235,15 +237,15 @@ module load buildtool-easybuild/5.2.1-hpca3ef7d197 GCC/14.3.0 MPICH/4.3.2 CP2K/2
 export CP2K_DATA_DIR=$EBROOTCP2K/share/cp2k/data
 export OMP_NUM_THREADS=4
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_MOLOPT,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/gpw-uks-blyp/o2_uks_blyp.inp
+# copy <CP2K oracle input for this case>
 mpirun -np 1 cp2k.psmp -i o2_uks_blyp.inp -o o2_uks_blyp.out
 ```
 
 ## Performance
 
-Source: same `REFERENCE.md` fair-wall note (2026-07-26); handoff
-the case `REFERENCE.md` (wave 4). Not a ctest gate;
-optional offline twin under `tools/cp2k_oracle/`.
+Source: same pin notes fair-wall note (2026-07-26); handoff
+the case pin notes (wave 4). Not a ctest gate;
+optional offline twin under CP2K oracle.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | ---------------------------------------: | ---- | ------ |
@@ -270,10 +272,10 @@ Gate from closed spec: \(r \le 10\) or `perf_exempt`. Here \(r \approx 2.48\)
 
 ## References
 
-- Offline pin: [`regressions/gpw/gpw-uks-blyp/REFERENCE.md`](../../../regressions/gpw/gpw-uks-blyp/REFERENCE.md)
-- Regression consumer: [`reg_gpw-uks-blyp.cpp`](../../../regressions/gpw/gpw-uks-blyp/reg_gpw-uks-blyp.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/gpw-uks-blyp/`](../../../tools/cp2k_oracle/inputs/gpw-uks-blyp/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin: case `gpw-uks-blyp` pin
+- Regression consumer: `reg_gpw-uks-blyp.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Sibling tutorials: [`gpw-uks-o2-gamma`](gpw-uks-o2-gamma.md) (PADE LSD),
   closed-shell water BLYP reg `gpw-blyp-water`
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)

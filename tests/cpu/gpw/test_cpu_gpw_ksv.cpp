@@ -123,15 +123,18 @@ TEST(GpwBerryWrap, CenteredInterval) {
 
 TEST(GpwBerryComputeGates, MetallicAndEmptyThrow) {
     const double a = 5.43 * kA2B;
-    const GaussianBasis bSi(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-    const GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
-    const double pos[3] = {0, 0, 0};
-    std::vector<GpwAtom> atoms;
-    atoms.emplace_back(pos, bSi, pSi, 14);
+    const double b2a = ATV::units::kBohrInAngstrom;
+    ATV::cpu::Frame atoms(1);
+    atoms.span(ATV::kAtom_type)[0] = 14;
+    atoms.span(ATV::kAtom_x)[0] = 0.0;
+    atoms.span(ATV::kAtom_y)[0] = 0.0;
+    atoms.span(ATV::kAtom_z)[0] = 0.0;
+    atoms.box = ATV::cpu::Box::orthorhombic(a / std::sqrt(2.0) * b2a,
+                                            a / std::sqrt(2.0) * b2a, a * b2a);
 
-    GpwDft method;
-    method.cell[0] = method.cell[1] = a / std::sqrt(2.0);
-    method.cell[2] = a;
+    GpwDft method{{Kind{molrs::Element::Si,
+                        GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+                        GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
     method.cutoff_ry = 50.0;
     method.n_occ = 2;
     method.xc = XcKind::PADE;

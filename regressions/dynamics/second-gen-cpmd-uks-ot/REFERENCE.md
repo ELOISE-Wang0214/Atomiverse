@@ -15,7 +15,8 @@ Transformation (OT)** SCF as the partial-SCF corrector:
   predictors; each warm MD force step purifies the predicted density to
   **spin-resolved natural orbitals** that seed the OT manifolds, then runs a
   **partial OT** with iteration budget `second_gen_cp_max_iter` (not full BOMD)
-- Analytic forces at the post-corrector density (`gpw_forces_from_scf`)
+- Analytic forces at the post-corrector density
+  (`internal::gpw_forces_from_scf`)
 - Fixed cubic cell; MT / nonperiodic
 - Units on the public surface: energy eV, length Å, time fs, force eV/Å
 

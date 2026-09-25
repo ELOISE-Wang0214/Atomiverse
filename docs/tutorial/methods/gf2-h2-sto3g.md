@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gf2-h2-sto3g` |
-| Regression | `regressions/scf/gf2-h2-sto3g/` |
 | Public API | `cpu::scf::RHF::gf2()` → `GF2Result` |
 | Roadmap | [excited-states.md](../../roadmap/excited-states.md) § many-body / GF2 |
 
@@ -19,7 +18,7 @@ then the Dyson equation is solved **once** with the HF Fock matrix
 **HOMO–LUMO QP gap [eV]** (also IP / EA); Galitskii–Migdal correlation energy is
 reported and equals canonical MP2 on a pure HF reference. Public path:
 `RHF::run(frame)` then `RHF::gf2()` — no `*Config` bag, no factory. Regression
-binary: `reg_gf2-h2-sto3g` under `regressions/scf/gf2-h2-sto3g/`. Twin is PySCF
+binary: `reg_gf2-h2-sto3g` under `gf2-h2-sto3g`. Twin is PySCF
 2.14.0 `agf2.RAGF2` **one-shot** path (SE from `init_gf()` →
 `se.get_greens_function(F_HF)`), not full self-consistent AGF2.
 
@@ -65,7 +64,7 @@ AGF2 (outer density/Fock loop — separate roadmap row); open-shell GF2; CUDA.
 ## Implementation
 
 Frame in → RHF members → `run` → post-SCF `gf2()`. Headers:
-`include/atomiverse/cpu/scf/rhf.h`, `gf2.h`; impl `src/cpu/scf/gf2.cpp`.
+`rhf.h`, `gf2.h`; impl `src/cpu/scf/gf2.cpp`.
 
 ```cpp
 #include "atomiverse/cpu/frame/frame.h"
@@ -103,15 +102,15 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gf2-h2-sto3g -j$(nproc)
-  ./build/regressions/reg_gf2-h2-sto3g
+  reg_gf2-h2-sto3g
 '
 ```
 
-Source consumer: `regressions/scf/gf2-h2-sto3g/reg_gf2-h2-sto3g.cpp`.
+Source consumer: `reg_gf2-h2-sto3g.cpp`.
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/gf2-h2-sto3g/REFERENCE.md`](../../../regressions/scf/gf2-h2-sto3g/REFERENCE.md)
+Source: case `gf2-h2-sto3g` pin
 (offline pin only; PySCF never imported from CMake/ctest).
 
 | Setting | Value |
@@ -144,7 +143,7 @@ Sanity: gap > 0 and finite (enforced in the regression binary).
 Oracle repro:
 
 ```bash
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py gf2 \
+python <pyscf pin> gf2 \
   --geom h2 --basis sto-3g --conv-tol 1e-12
 ```
 
@@ -164,9 +163,9 @@ bash -lc '
   export RUSTUP_TOOLCHAIN=stable-x86_64-unknown-linux-gnu
   export LD_LIBRARY_PATH=$LIBRARY_PATH:$LD_LIBRARY_PATH
   export OMP_NUM_THREADS=1
-  ~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+  python <pyscf fair-bench> \
     --method gf2 --geom h2 --basis sto-3g --repeat 5 \
-    -- ./build/regressions/reg_gf2-h2-sto3g
+    -- reg_gf2-h2-sto3g
 '
 ```
 
@@ -191,13 +190,13 @@ throughput claim.
 
 ## References
 
-- Offline pin: `regressions/scf/gf2-h2-sto3g/REFERENCE.md`
+- Offline pin: case `gf2-h2-sto3g` pin
 - Perf (in REFERENCE; campaign queue records ratio **0.071**):
   (`gf2-h2-sto3g`)
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
-- Pin helper: `tools/pyscf_oracle/pin_scf.py` (`gf2`)
+- Pin helper: PySCF oracle (`gf2`)
 - Roadmap: `docs/roadmap/excited-states.md` (GF2 ✓ CPU; self-consistent GF2 ○)
-- Public headers: `include/atomiverse/cpu/scf/gf2.h`, `rhf.h`
+- Public headers: `gf2.h`, `rhf.h`
 - Impl: `src/cpu/scf/gf2.cpp`
 - Backhouse, Holzmann & Booth, *J. Chem. Theory Comput.* **17**, 3414 (2021)
   (PySCF auxiliary GF2)

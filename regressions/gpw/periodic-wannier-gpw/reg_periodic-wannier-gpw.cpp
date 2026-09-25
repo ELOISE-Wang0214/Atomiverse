@@ -12,6 +12,8 @@
 #include <limits>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -23,21 +25,19 @@ using namespace ATV::cpu::gpw;
 
 namespace {
 
-constexpr double kA2B = 1.0 / 0.52917720859; // Å → Bohr
-
-std::vector<GpwAtom> si_bct(double a_bohr) {
-    const double at = a_bohr / std::sqrt(2.0);
-    const GaussianBasis bSi(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-    const GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
+cpu::Frame si_bct(double a_ang) {
+    const double at = a_ang / std::sqrt(2.0);
     const double frac[4][3] = {
         {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}, {0.5, 0.0, 0.25}, {0.0, 0.5, 0.75}};
-    std::vector<GpwAtom> atoms;
+    cpu::Frame frame(4);
     for (int i = 0; i < 4; ++i) {
-        const double pos[3] = {frac[i][0] * at, frac[i][1] * at,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bSi, pSi, 14);
+        frame.span(kAtom_type)[i] = 14;
+        frame.span(kAtom_x)[i] = frac[i][0] * at;
+        frame.span(kAtom_y)[i] = frac[i][1] * at;
+        frame.span(kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = cpu::Box::orthorhombic(at, at, a_ang);
+    return frame;
 }
 
 double min_image_dist(const std::array<double, 3>& a,
@@ -100,19 +100,18 @@ int main() {
     constexpr double kMidTol = 0.90;      // bond-midpoint distance [Angstrom]
     constexpr double kSpreadRatio = 0.50; // Ω_final / Ω_init upper bound
 
-    const double a_bohr = kA * kA2B;
-    auto atoms = si_bct(a_bohr);
+    cpu::Frame frame = si_bct(kA);
 
-    GpwDft method;
-    method.cell[0] = method.cell[1] = a_bohr / std::sqrt(2.0);
-    method.cell[2] = a_bohr;
+    GpwDft method{{Kind{molrs::Element::Si,
+                        GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+                        GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
     method.cutoff_ry = kCutoffRy;
     method.n_occ = 8; // 4 Si × 4 valence e⁻ / 2
     method.max_iter = 60;
     method.tol = 1e-7;
     method.xc = XcKind::PADE;
     method.eps_default = 1e-7;
-    method.build(atoms);
+    method.build(frame);
 
     PeriodicWannier mlwf;
     mlwf.k_mesh = kMeshMlwf;
@@ -122,7 +121,7 @@ int main() {
     mlwf.use_projection = true;
     mlwf.proj_alpha_ang = 1.0;
 
-    const auto r = mlwf.compute(method, atoms);
+    const auto r = mlwf.compute(method, frame);
 
     if (!r.scf_converged) {
         std::printf("FAIL: SCF did not converge (E=%g Ha)\n", r.energy_ha);

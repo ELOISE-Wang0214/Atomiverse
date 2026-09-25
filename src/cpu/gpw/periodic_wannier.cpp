@@ -20,6 +20,8 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
+using internal::GpwAtom;
+
 namespace {
 
 using Cdouble = std::complex<double>;
@@ -1026,9 +1028,12 @@ center_from_diagonal_phases(const std::vector<std::array<double, 3>>& b_cart,
 
 // ── Main compute ──────────────────────────────────────────────────────────
 
-PeriodicWannierResult
-PeriodicWannier::compute(GpwDft& method,
-                         const std::vector<GpwAtom>& atoms) const {
+PeriodicWannierResult PeriodicWannier::compute(GpwDft& method,
+                                               Frame& frame) const {
+    internal::GpwDftAccess::set_cell(method,
+                                     internal::cell_from_box(frame.box));
+    const std::vector<GpwAtom> atoms =
+        internal::GpwDftAccess::atoms_from_frame(method, frame);
     if (method.smearing != Smearing::none)
         throw std::invalid_argument(
             "PeriodicWannier::compute: requires an insulator (no metallic "
@@ -1067,7 +1072,7 @@ PeriodicWannier::compute(GpwDft& method,
     method.k_points.clear();
     method.k_point_weights.clear();
 
-    const GpwResult& res = method.run(atoms);
+    const GpwResult& res = method.run(frame);
     PeriodicWannierResult out;
     out.scf_converged = res.converged;
     out.energy_ha = res.e_total;
@@ -1106,12 +1111,14 @@ PeriodicWannier::compute(GpwDft& method,
         rmax = std::max(rmax, radii[static_cast<std::size_t>(i)]);
     }
     int mimg[3];
-    pair_image_counts(method.cell, /*periodic=*/true, 2.0 * rmax, mimg);
+    pair_image_counts(method.cell_bohr().data(), /*periodic=*/true, 2.0 * rmax,
+                      mimg);
     const double screen = method.eps_default;
 
     const double a0 = units::kBohrInAngstrom;
-    const double L_ang[3] = {method.cell[0] * a0, method.cell[1] * a0,
-                             method.cell[2] * a0};
+    const double L_ang[3] = {method.cell_bohr()[0] * a0,
+                             method.cell_bohr()[1] * a0,
+                             method.cell_bohr()[2] * a0};
 
     const auto nb = build_neighbors(res.k_frac, N, L_ang);
     const int nk = res.n_kpts;
@@ -1138,12 +1145,12 @@ PeriodicWannier::compute(GpwDft& method,
             C[static_cast<std::size_t>(ik)] =
                 flatten_C_occ(res, ik, nbas, n_ch, /*spin=*/s);
 
-        const auto trials =
-            default_trials(n_ch, atoms, method.cell, trial_centers);
-        ChannelLoc ch =
-            localize_channel(C, n_ch, nk, res.k_frac, nb, basis, radii,
-                             method.cell, mimg, screen, trials, use_projection,
-                             proj_alpha_ang, a0, max_iter, tol, step);
+        const auto trials = default_trials(
+            n_ch, atoms, method.cell_bohr().data(), trial_centers);
+        ChannelLoc ch = localize_channel(
+            C, n_ch, nk, res.k_frac, nb, basis, radii,
+            method.cell_bohr().data(), mimg, screen, trials, use_projection,
+            proj_alpha_ang, a0, max_iter, tol, step);
 
         for (std::size_t i = 0; i < ch.centers.size(); ++i) {
             out.centers.push_back(ch.centers[i]);

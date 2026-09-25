@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ot-uks-kpoints` |
-| Regression | `regressions/gpw/ot-uks-kpoints/` |
 | Public API | `cpu::gpw::GpwDft` members `use_ot`, `n_alpha`/`n_beta`, `k_mesh` / `k_points`+`k_point_weights` |
 | Roadmap | `docs/roadmap/dft.md` §10 GPW — multi-k UKS OT ✓ (`reg_ot-uks-kpoints`) |
 
@@ -22,14 +21,14 @@ point as multi-k UKS DIIS on identical grids.
 Product surface: set `use_ot = true`, open-shell fillings `n_alpha` / `n_beta`,
 and either explicit `k_points`+`k_point_weights` or a Monkhorst–Pack `k_mesh`
 (optional `k_time_reversal`). No public `*Config` bag, no factories. Product
-gate: `regressions/gpw/ot-uks-kpoints` (`reg_ot-uks-kpoints`).
+gate: `ot-uks-kpoints` (`reg_ot-uks-kpoints`).
 
 **Oracle note (binding).** CP2K **2026.1** aborts OT with k-points at
 `qs_scf_initialization` (`OT not possible with kpoint calculations`). There is
 **no** fair CP2K OT+KPOINTS+UKS energy or wall twin on this release. Validation
 is **internal exactness** (OT↔DIIS, real-Γ↔k-path Γ) plus a frozen first-green
 absolute band; `perf_exempt = true`. Offline input
-`tools/cp2k_oracle/inputs/ot-uks-kpoints/` documents the DIAG multi-k UKS twin
+CP2K oracle documents the DIAG multi-k UKS twin
 only.
 
 ## Method
@@ -81,6 +80,9 @@ Public surface only (`cpu::gpw::GpwDft` members; no `*Config`, no factories).
 Match the regression (compact high-spin H₂, 8 Bohr cell, 100 Ry, PADE):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -88,18 +90,23 @@ Match the regression (compact high-spin H₂, 8 Bohr cell, 100 Ry, PADE):
 
 using namespace ATV;
 
-const double L = 8.0; // Bohr, cubic periodic
-const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-const double r0[3] = {0.5 * L - 0.7, 0.5 * L, 0.5 * L};
-const double r1[3] = {0.5 * L + 0.7, 0.5 * L, 0.5 * L};
-std::vector<cpu::gpw::GpwAtom> atoms;
-atoms.emplace_back(r0, bH, pH, 1);
-atoms.emplace_back(r1, bH, pH, 1);
+constexpr double b2a = units::kBohrInAngstrom;  // Frame is Å
+const double L = 8.0 * b2a;                     // 8 Bohr
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 1;
+    frame.span(kAtom_x)[i] = 0.5 * L + (i == 0 ? -0.7 : 0.7) * b2a;
+    frame.span(kAtom_y)[i] = 0.5 * L;
+    frame.span(kAtom_z)[i] = 0.5 * L;
+}
+frame.box = cpu::Box::cubic(L);
+
+const cpu::gpw::Kind H{molrs::Element::H,
+                       cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                       cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
 // Multi-k collinear UKS OT at κ = (1/4, 0, 0)
-cpu::gpw::GpwDft ot;
-ot.cell[0] = ot.cell[1] = ot.cell[2] = L;
+cpu::gpw::GpwDft ot{{H}};
 ot.cutoff_ry = 100.0;
 ot.n_alpha = 2;   // high-spin H₂: Nα=2, Nβ=0
 ot.n_beta = 0;
@@ -112,15 +119,15 @@ ot.use_ot = true;
 ot.k_points.push_back({0.25, 0.0, 0.0});
 ot.k_point_weights.push_back(1.0);
 
-ot.build(atoms);
-const auto& res = ot.run(atoms);
+ot.build(frame);
+const auto& res = ot.run(frame);
 // res.e_total [Hartree]; res.converged; res.s2; res.n_kpts; res.k_frac
 ```
 
 Monkhorst–Pack alternative (regression A3):
 
 ```cpp
-cpu::gpw::GpwDft ot_mp;
+cpu::gpw::GpwDft ot_mp{{H}};
 // ... same base UKS fields as above ...
 ot_mp.use_ot = true;
 ot_mp.k_mesh[0] = 2;
@@ -147,21 +154,21 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_ot-uks-kpoints -j$(nproc)
-  ./build/regressions/reg_ot-uks-kpoints
+  reg_ot-uks-kpoints
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | Public `GpwDft`: `use_ot`, UKS, k-mesh |
-| `include/atomiverse/cpu/gpw/internal/ot.h` | OT manifold / preconds (internal) |
+| `gpw_solver.h` | Public `GpwDft`: `use_ot`, UKS, k-mesh |
+| `ot.h` | OT manifold / preconds (internal) |
 | `tests/cpu/gpw/` | Unit coverage for OT / UKS / k paths (as applicable) |
-| `regressions/gpw/ot-uks-kpoints/` | E2E product gate + `REFERENCE.md` |
-| `tools/cp2k_oracle/inputs/ot-uks-kpoints/h2_uks_ot_kpoints.inp` | Offline CP2K DIAG multi-k UKS doc twin |
+| `ot-uks-kpoints` | E2E product gate + pin notes |
+| CP2K oracle | Offline CP2K DIAG multi-k UKS doc twin |
 
 ## Validation (vs CP2K)
 
-Source: [`regressions/gpw/ot-uks-kpoints/REFERENCE.md`](../../../regressions/gpw/ot-uks-kpoints/REFERENCE.md).
+Source: case `ot-uks-kpoints` pin.
 Oracle: offline **CP2K 2026.1** documentation twin only; **never** live in ctest.
 
 **Setup:**
@@ -208,14 +215,14 @@ Offline DIAG documentation twin (host with CP2K; **not** ctest):
 
 ```bash
 # CP2K 2026.1 rejects OT+KPOINTS; input is DIAG multi-k UKS only
-cp2k.psmp -i tools/cp2k_oracle/inputs/ot-uks-kpoints/h2_uks_ot_kpoints.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o h2_uks_ot_kpoints.out
 ```
 
 ## Performance
 
-Source: `regressions/gpw/ot-uks-kpoints/REFERENCE.md` and
-the case `REFERENCE.md` (wave 8).
+Source: case `ot-uks-kpoints` pin and
+the case pin notes (wave 8).
 
 | Item | Value |
 | ---- | ----- |
@@ -242,13 +249,13 @@ unrelated OT pins (`ot-minimizer-water`, `ot-uks-o2`).
 
 ## References
 
-- Offline pin + gates: `regressions/gpw/ot-uks-kpoints/REFERENCE.md`
-- Regression binary: `regressions/gpw/ot-uks-kpoints/reg_ot-uks-kpoints.cpp`
-- CP2K oracle input: `tools/cp2k_oracle/inputs/ot-uks-kpoints/h2_uks_ot_kpoints.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md` (offline only; never in ctest)
+- Offline pin + gates: case `ot-uks-kpoints` pin
+- Regression binary: `reg_ot-uks-kpoints.cpp`
+- CP2K oracle input: CP2K oracle
+- Oracle rules: CP2K oracle (offline only; never in ctest)
 - Related handbooks: [ot-minimizer-water](ot-minimizer-water.md) (Γ RKS OT),
-  `regressions/gpw/ot-kpoints` (multi-k RKS OT),
-  `regressions/gpw/ot-uks-o2` (Γ UKS OT + live CP2K OT pin),
+  `ot-kpoints` (multi-k RKS OT),
+  `ot-uks-o2` (Γ UKS OT + live CP2K OT pin),
   [gpw-uks-o2-gamma](gpw-uks-o2-gamma.md) (Γ UKS DIIS)
 - Roadmap: `docs/roadmap/dft.md` §10 (multi-k UKS OT ✓)
 - VandeVondele, J.; Hutter, J. *J. Chem. Phys.* **118**, 4365 (2003),

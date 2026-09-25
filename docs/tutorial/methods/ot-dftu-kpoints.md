@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ot-dftu-kpoints` |
-| Regression | `regressions/gpw/ot-dftu-kpoints/` |
 | Public API | `cpu::gpw::GpwDft` members `use_ot`, `k_mesh` / `k_points`, `plus_u` |
 | Roadmap | `docs/roadmap/dft.md` §10 GPW — multi-k OT+DFT+U ✓ (`reg_ot-dftu-kpoints`) |
 
@@ -84,7 +83,7 @@ density path. Citation: Dudarev et al., *Phys. Rev. B* **57**, 1505 (1998).
 
 **CP2K twin role (binding).** CP2K 2026.1 **cannot** run OT+kpoints (abort in
 `qs_scf_initialization.F`). The offline input
-`tools/cp2k_oracle/inputs/ot-dftu-kpoints/h2_ot_dftu_kpoints.inp` is the
+CP2K oracle is the
 **DIAGONALIZATION + multi-k PLUS_U** twin — same geometry, mesh, \(U\), and
 fixed point as ATV OT+U, **not** a fair OT wall twin.
 
@@ -100,10 +99,13 @@ fixed point as ATV OT+U, **not** a fair OT wall twin.
 
 Public surface only: concrete `cpu::gpw::GpwDft` members (`use_ot`,
 `k_mesh` / `k_points`, `plus_u`). No `*Config` bag, no `make_*` / `build_*`.
-Regression matches this sequence (cell / coords in **Bohr** on the solver
-path):
+Regression matches this sequence (Frame in Å; the 8 Bohr cell and ±0.7 Bohr
+offsets are converted with `units::kBohrInAngstrom`):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -116,17 +118,20 @@ using cpu::gpw::PlusU;
 using cpu::gpw::XcKind;
 
 // H2 toy: 8 Bohr cubic, ±0.7 Bohr from centre along x (as reg A3)
-const double L = 8.0;  // Bohr
-const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-const double r0[3] = {0.5 * L - 0.7, 0.5 * L, 0.5 * L};
-const double r1[3] = {0.5 * L + 0.7, 0.5 * L, 0.5 * L};
-std::vector<cpu::gpw::GpwAtom> atoms;
-atoms.emplace_back(r0, bH, pH, 1);
-atoms.emplace_back(r1, bH, pH, 1);
+constexpr double b2a = units::kBohrInAngstrom;  // Frame is Å
+const double L = 8.0 * b2a;                     // 8 Bohr
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 1;
+    frame.span(kAtom_x)[i] = 0.5 * L + (i == 0 ? -0.7 : 0.7) * b2a;
+    frame.span(kAtom_y)[i] = 0.5 * L;
+    frame.span(kAtom_z)[i] = 0.5 * L;
+}
+frame.box = cpu::Box::cubic(L);
 
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = L;
+GpwDft m{{cpu::gpw::Kind{molrs::Element::H,
+                          cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                          cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
 m.cutoff_ry = 100.0;
 m.n_occ = 1;
 m.max_iter = 200;
@@ -138,8 +143,8 @@ m.k_time_reversal = true;             // TR-fold → 4 k for 2×2×2
 m.use_ot = true;
 m.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_minus_j_ev=*/4.0});
 
-m.build(atoms);
-const GpwResult r = m.run(atoms);
+m.build(frame);
+const GpwResult& r = m.run(frame);   // also writes frame.meta[kEnergy] [eV]
 // r.e_total [Ha], r.e_dftu [Ha], r.converged, r.n_kpts, r.iters
 ```
 
@@ -165,24 +170,24 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_ot-dftu-kpoints
-  ./build/regressions/reg_ot-dftu-kpoints
+  reg_ot-dftu-kpoints
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | Public `GpwDft::{use_ot,k_mesh,k_points,plus_u}` |
-| `include/atomiverse/cpu/gpw/internal/ot.h` | OT manifold / fixed-k minimize (internal) |
-| `include/atomiverse/cpu/gpw/internal/dft_plus_u.h` | Dudarev E/V (internal) |
+| `gpw_solver.h` | Public `GpwDft::{use_ot,k_mesh,k_points,plus_u}` |
+| `ot.h` | OT manifold / fixed-k minimize (internal) |
+| `dft_plus_u.h` | Dudarev E/V (internal) |
 | `src/cpu/gpw/gpw_solver.cpp` | Multi-k OUTER_SCF OT+U wire-up |
 | `tests/cpu/gpw/test_cpu_gpw_ot.cpp` | Unit footholds (e2e pin is the regression) |
-| `regressions/gpw/ot-dftu-kpoints/` | E2E product gate + `REFERENCE.md` |
-| `tools/cp2k_oracle/inputs/ot-dftu-kpoints/` | Offline CP2K **DIIS** multi-k PLUS_U twin |
+| `ot-dftu-kpoints` | E2E product gate + pin notes |
+| CP2K oracle | Offline CP2K **DIIS** multi-k PLUS_U twin |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/ot-dftu-kpoints/REFERENCE.md`](../../../regressions/gpw/ot-dftu-kpoints/REFERENCE.md).
+case `ot-dftu-kpoints` pin.
 Oracle: offline **CP2K 2026.1** (`cp2k.psmp`); **never** live in ctest.
 Pin date: **2026-07-26**.
 
@@ -227,15 +232,15 @@ Offline oracle sketch (operator host with CP2K; not ctest):
 export LD_LIBRARY_PATH=$CP2K_ROOT/lib:$LD_LIBRARY_PATH
 export CP2K_DATA_DIR=$CP2K_ROOT/share/cp2k/data
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_SET,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/ot-dftu-kpoints/h2_ot_dftu_kpoints.inp
+# copy <CP2K oracle input for this case>
 OMP_NUM_THREADS=8 cp2k.psmp -i h2_ot_dftu_kpoints.inp -o diis_k_u.out
 # Expect DIAG path; OT+k would abort on CP2K 2026.1
 ```
 
 ## Performance
 
-Source: `regressions/gpw/ot-dftu-kpoints/REFERENCE.md` and
-the case `REFERENCE.md` (wave 8). Gate: **`perf_exempt`**.
+Source: case `ot-dftu-kpoints` pin and
+the case pin notes (wave 8). Gate: **`perf_exempt`**.
 
 | Twin | Wall [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
 | ---- | -------: | ----------------------------------------: | ---- | ------ |
@@ -266,12 +271,12 @@ algorithm and must not be ratioed against ATV OT. Same exemption pattern as
 ## References
 
 - Offline pin + gates:
-  [`regressions/gpw/ot-dftu-kpoints/REFERENCE.md`](../../../regressions/gpw/ot-dftu-kpoints/REFERENCE.md)
+  case `ot-dftu-kpoints` pin
 - Regression consumer:
-  [`reg_ot-dftu-kpoints.cpp`](../../../regressions/gpw/ot-dftu-kpoints/reg_ot-dftu-kpoints.cpp)
+  `reg_ot-dftu-kpoints.cpp`
 - CP2K DIIS multi-k PLUS_U twin:
-  [`tools/cp2k_oracle/inputs/ot-dftu-kpoints/`](../../../tools/cp2k_oracle/inputs/ot-dftu-kpoints/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+  CP2K oracle
+- Oracle contract: CP2K oracle
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md) §10 (multi-k OT+DFT+U ✓)
 - Related pages: [ot-minimizer-water](ot-minimizer-water.md),
   [gpw-dftu-nio](gpw-dftu-nio.md), [Ch. 9 GPW](../ch09-gpw.md)

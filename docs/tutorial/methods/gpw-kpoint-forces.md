@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-kpoint-forces` |
-| Regression | `regressions/gpw/gpw-kpoint-forces/` |
-| Public API | `cpu::gpw::GpwDft` (`k_mesh`); `gpw_forces_analytic` (RKS Bloch path) |
+| Public API | `cpu::gpw::GpwDft` (`k_mesh`); `GpwDft::forces(frame)` (RKS Bloch path) |
 | Roadmap / queue | `docs/roadmap/dft.md` — multi-k forces; queue **done** 2026-07-25 (`perf_exempt`) |
 
 ## Summary
@@ -19,8 +18,8 @@ assembles Hellmann–Feynman + Pulay terms k-summed with weights, reusing
 occupied MO coefficients from `GpwResult::C_occ_k`.
 
 Public surface: construct `cpu::gpw::GpwDft`, set members (`k_mesh`,
-`cutoff_ry`, `xc`, `local_pp_on_grid`, …), `build` / `run` for energy, then
-`gpw_forces_analytic(atoms, cfg)` for forces [Ha/Bohr]. No public `*Config`,
+`cutoff_ry`, `xc`, `local_pp_on_grid`, …), `build(frame)` / `run(frame)` for
+energy, `forces(frame)` for SCF + forces (`kAtom_f*` [eV/Å]). No public `*Config`,
 no `make_*` / `build_*` factories. Product gate:
 `reg_gpw-kpoint-forces`. Decisive correctness is **analytic vs finite-difference**
 identity on the k-path energy (max residual \(5.98\times 10^{-6}\) Ha/Bohr);
@@ -115,27 +114,36 @@ live CP2K digit match).
 ## Implementation
 
 Public / product surface used by the regression (`GpwDft` members +
-lookup constructors + `gpw_forces_analytic`; no `*Config`):
+lookup constructors + `GpwDft::forces`; no `*Config`):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
-const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
-const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+// Geometry in Bohr (A = (5.5,6,6), B = (6.5,6,6): 1.0 Bohr compressed bond),
+// converted to Å for the Frame; cubic 12 Bohr cell.
+const double b2a = units::kBohrInAngstrom;
+cpu::Frame frame(2);
+const double xs[2] = {5.5, 6.5};
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 1;
+    frame.span(kAtom_x)[i] = xs[i] * b2a;
+    frame.span(kAtom_y)[i] = 6.0 * b2a;
+    frame.span(kAtom_z)[i] = 6.0 * b2a;
+}
+frame.box = cpu::Box::cubic(12.0 * b2a);
 
-const double rA[3] = {5.5, 6.0, 6.0};
-const double rB[3] = {6.5, 6.0, 6.0};  // 1.0 Bohr compressed bond
-std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
-                              GpwAtom(rB, basis, pot, 1)};
-
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = 12.0;  // Bohr
+GpwDft m{{Kind{molrs::Element::H,
+               GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+               GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
 m.cutoff_ry = 100.0;
 m.n_occ = 1;
 m.tol = 1e-8;
@@ -148,12 +156,13 @@ m.k_mesh[0] = 1;
 m.k_mesh[1] = 1;
 m.k_mesh[2] = 2;
 
-m.build(atoms);
-const GpwResult er = m.run(atoms);  // er.e_total [Ha], er.n_kpts, er.C_occ_k
+m.build(frame);
+const GpwResult& er = m.run(frame);  // er.e_total [Ha], er.n_kpts, er.C_occ_k
 
-// Forces: one SCF + one gradient (or pass a matching cfg after energy)
-const auto F = gpw_forces_analytic(atoms, /*cfg with same members*/ m_copy);
-// F[a][0..2] in Ha/Bohr; Frame path (if used) still reports eV/Å on kAtom_f*
+// Forces: one SCF + one gradient pass
+m.forces(frame);
+// kAtom_fx/fy/fz [eV/Å]; divide by units::kHartreePerBohrInEvPerAngstrom
+// for Ha/Bohr
 ```
 
 Build and run the regression (CPU login; modules as in `AGENTS.md`):
@@ -169,29 +178,29 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-kpoint-forces
-  ./build/regressions/reg_gpw-kpoint-forces
+  reg_gpw-kpoint-forces
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft` (`k_mesh`, `k_points`, …), `GpwResult` (`C_occ_k`) |
-| `include/atomiverse/cpu/gpw/internal/gpw_forces.h` | `gpw_forces_analytic` / `gpw_forces_from_scf` |
-| `include/atomiverse/cpu/gpw/internal/kpoints.h` | Monkhorst–Pack, Bloch matrices, complex \(\chi^k\) |
-| `include/atomiverse/cpu/gpw/gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
-| `include/atomiverse/cpu/gpw/gth_potential.h` | `GthPotential(Element, name)` lookup |
+| `gpw_solver.h` | `GpwDft` (`k_mesh`, `k_points`, …), `GpwResult` (`C_occ_k`) |
+| `internal/gpw_forces.h` | Analytic force assembly behind `GpwDft::forces` |
+| `kpoints.h` | Monkhorst–Pack, Bloch matrices, complex \(\chi^k\) |
+| `gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
+| `gth_potential.h` | `GthPotential(Element, name)` lookup |
 | `src/cpu/gpw/gpw_solver.cpp` | k-point RKS SCF branch |
 | `src/cpu/gpw/internal/` | Force assembly (Bloch-phased derivatives) |
-| `regressions/gpw/gpw-kpoint-forces/reg_gpw-kpoint-forces.cpp` | Product gate |
-| `regressions/gpw/gpw-kpoint-forces/REFERENCE.md` | Offline pins + FD identity |
-| `tools/cp2k_oracle/inputs/gpw-kpoint-forces.inp` | CP2K ENERGY_FORCE twin (offline only) |
+| `reg_gpw-kpoint-forces.cpp` | Product gate |
+| case `gpw-kpoint-forces` pin | Offline pins + FD identity |
+| CP2K oracle | CP2K ENERGY_FORCE twin (offline only) |
 | `tests/cpu/gpw/test_cpu_gpw_forces.cpp` | Unit k-force / Γ-identity (not e2e) |
 
 ## Validation (vs CP2K / FD)
 
 Source:
-[`regressions/gpw/gpw-kpoint-forces/REFERENCE.md`](../../../regressions/gpw/gpw-kpoint-forces/REFERENCE.md).
-Oracle rules: offline pins only (`tools/cp2k_oracle/README.md`); **never** live
+case `gpw-kpoint-forces` pin.
+Oracle rules: offline pins only (CP2K oracle); **never** live
 CP2K from ctest. Absolute same-basis CP2K digits are **not** the product gate
 for this slug (basis mismatch); decisive gate is analytic \(\equiv\) FD of the
 k-path energy, plus frozen first-green ATV bands and Newton-3 / symmetry.
@@ -200,7 +209,7 @@ k-path energy, plus frozen first-green ATV bands and Newton-3 / symmetry.
 
 | Item | Value |
 | ---- | ----- |
-| Engine (ATV) | GPW RKS + analytic k-forces (`gpw_forces_analytic`) |
+| Engine (ATV) | GPW RKS + analytic k-forces (`GpwDft::forces`) |
 | System | H₂, charge 0, singlet, \(n_{\mathrm{occ}}=1\) |
 | Lattice | cubic \(a = 12\) Bohr, periodic |
 | Positions [Bohr] | H (5.5, 6.0, 6.0); H (6.5, 6.0, 6.0) |
@@ -234,7 +243,7 @@ k-path energy, plus frozen first-green ATV bands and Newton-3 / symmetry.
 | Field | Value |
 | ----- | ----- |
 | Engine | CP2K 2026.1 (Arrhenius offline) |
-| Input | `tools/cp2k_oracle/inputs/gpw-kpoint-forces.inp` |
+| Input | CP2K oracle |
 | Note | Twin uses DZVP-MOLOPT-GTH when DZV-GTH-PADE is absent from `BASIS_MOLOPT`; exploratory SZV-MOLOPT pin differs in basis/geometry (\(E\approx -1.026\) Ha, \|F_x\|\(\approx 0.18\) Ha/Bohr). Same-basis absolute twin pending CP2K data that exposes DZV-GTH-PADE. |
 
 Tolerance rationale: FD residual \(\sim 6\times 10^{-6}\) Ha/Bohr sets the
@@ -244,7 +253,7 @@ match to a different-basis CP2K deck.
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/gpw/gpw-kpoint-forces/REFERENCE.md);
+Source: pin notes;
 handoff / queue **perf_exempt** (2026-07-25).
 
 | Item | Value |
@@ -276,25 +285,25 @@ same host/core count (single-rank). Do not invent a speed ratio.
 - k-path **rejects** nonperiodic MT, OT, DFT+U, and multigrid at `build()`
   (periodic single-grid `local_pp_on_grid` only).
 - **CPU only** — CUDA GPW remains out of the CP2K loop scope.
-- Frame public forces (evaluator path) are eV/Å; this regression compares
-  Ha/Bohr from `gpw_forces_analytic` directly.
+- Frame forces are eV/Å; this regression converts them to Ha/Bohr
+  (`units::kHartreePerBohrInEvPerAngstrom`) for the pin comparison.
 - Basis/PP tables are static in-tree headers; unsupported element/name
   **throws** (no silent fallback).
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-kpoint-forces/REFERENCE.md`
-- Regression consumer: `regressions/gpw/gpw-kpoint-forces/reg_gpw-kpoint-forces.cpp`
-- Oracle twin: `tools/cp2k_oracle/inputs/gpw-kpoint-forces.inp`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-kpoint-forces` pin
+- Regression consumer: `reg_gpw-kpoint-forces.cpp`
+- Oracle twin: CP2K oracle
+- Oracle notes: CP2K oracle
 - Spec history: `.claude/specs/gpw-kpoint-forces/` (closed at done; git on
   `wf/gpw-kpoint-forces`)
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Related method pages: [gpw-forces-water](gpw-forces-water.md) (Γ MT forces),
   [gpw-analytic-stress](gpw-analytic-stress.md) / [gpw-stress-water](gpw-stress-water.md)
   (cell stress), `gpw-kpoints-si` / `gpw-kpoint-stress` regressions
-- Public API: `include/atomiverse/cpu/gpw/gpw_solver.h`,
-  `include/atomiverse/cpu/gpw/internal/gpw_forces.h`
+- Public API: `gpw_solver.h`,
+  `gpw_forces.h`
 - J. VandeVondele, M. Krack, F. Mohamed, M. Parrinello, T. Chassaing,
   J. Hutter, *Comput. Phys. Commun.* **167**, 103 (2005) — Quickstep GPW
   forces.

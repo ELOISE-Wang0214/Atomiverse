@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-gw-finite-q` |
-| Regression | `regressions/gpw/periodic-gw-finite-q/` |
-| Public API | `cpu::gpw::GpwDft::g0w0(atoms)` → `cpu::gpw::G0W0Result` (`cpu/gpw/g0w0.h`) |
+| Public API | `cpu::gpw::GpwDft::g0w0()` → `cpu::gpw::G0W0Result` (`cpu/gpw/g0w0.h`) |
 | Roadmap | residual close of Periodic GW ✓ — product multi-k path after Γ (`periodic-gw-si`) and k-diagonal (`periodic-gw-kpoints`) |
 | Ratio | **`perf_exempt`** (CP2K RI-G0W0 ≠ finite-\(q\) spectral + MT) |
 
@@ -25,10 +24,10 @@ periodic-HF path. Local \(v_{\mathrm{xc}}\) is PBE on the BZ-weighted density.
 
 This **supersedes** the multi-k **k-diagonal** foothold of
 `periodic-gw-kpoints` as the product multi-k G0W0 path. Public path:
-`GpwDft` members → `build` / `run` → `g0w0(atoms)` — no public `*Config`, no
+`GpwDft` members → `build(frame)` / `run(frame)` → `g0w0()` — no public `*Config`, no
 factory. Primary product observable: **minimum direct QP gap [eV]** over the
 sampled mesh. Oracle policy: offline CP2K twin input only
-(`tools/cp2k_oracle/`); never live CP2K in ctest.
+(CP2K oracle); never live CP2K in ctest.
 
 ## Method
 
@@ -119,13 +118,13 @@ Lookup constructors for basis/PP tables only. No public `*Config` bags, no
 
 using namespace ATV::cpu::gpw;
 
-// bct diamond Si₄: a = 5.43 Å → Bohr; four GpwAtom with
-// GaussianBasis(Si, "DZVP-MOLOPT-GTH"), GthPotential(Si, "GTH-PBE-q4")
-// and fractional images of a_t = a/√2, c = a (see reg_*.cpp).
+// bct diamond Si₄: a = 5.43 Å; a cpu::Frame `frame` with four Si
+// (Z = 14 in kAtom_type) at fractional images of a_t = a/√2, c = a [Å]
+// (see reg_*.cpp), frame.box = cpu::Box::orthorhombic(a / √2, a / √2, a).
 
-GpwDft m;
-m.cell[0] = m.cell[1] = a_bohr / std::sqrt(2.0);
-m.cell[2] = a_bohr;
+GpwDft m{{Kind{molrs::Element::Si,
+               GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+               GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 80.0;
 m.n_occ = 8;
 m.max_iter = 60;
@@ -141,10 +140,10 @@ m.k_mesh[1] = 1;
 m.k_mesh[2] = 1;
 m.k_time_reversal = false;
 m.diis_depth = 6;
-m.build(atoms);
-const GpwResult& scf = m.run(atoms);   // multi-k PBE SCF → C_k, eps_k
+m.build(frame);
+const GpwResult& scf = m.run(frame);   // multi-k PBE SCF → C_k, eps_k
 
-const G0W0Result& gw = m.g0w0(atoms);  // finite-q inter-k product
+const G0W0Result& gw = m.g0w0();       // finite-q inter-k product
 // gw.gap_ev [eV], gw.mf_gap_ev, gw.ip_ev, gw.ea_ev
 // gw.qp_energy_ha / mf_energy_ha (report k of min direct QP gap)
 // gw.n_kpts == 2, gw.ri, gw.converged
@@ -166,26 +165,26 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_periodic-gw-finite-q
-  ./build/regressions/reg_periodic-gw-finite-q
+  reg_periodic-gw-finite-q
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/g0w0.h` | Public `G0W0Result` |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::g0w0` |
+| `g0w0.h` | Public `G0W0Result` |
+| `gpw_solver.h` | `GpwDft::g0w0` |
 | `src/cpu/gpw/g0w0.cpp` | Γ + multi-k finite-\(q\) driver |
-| `include/atomiverse/cpu/gpw/internal/mp2_kernels.h` | `spectral_g0w0_rhf_kpoints` (private) |
-| `regressions/gpw/periodic-gw-finite-q/` | E2E product gate + `REFERENCE.md` |
-| `tools/cp2k_oracle/inputs/periodic-gw-finite-q.inp` | Offline CP2K twin (never ctest) |
+| `mp2_kernels.h` | `spectral_g0w0_rhf_kpoints` (private) |
+| `periodic-gw-finite-q` | E2E product gate + pin notes |
+| CP2K oracle | Offline CP2K twin (never ctest) |
 | `tests/cpu/gpw/` (`test_cpu_gpw_g0w0`) | Kernel Γ recovery (\(N_k=1\)) unit |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/periodic-gw-finite-q/REFERENCE.md`](../../../regressions/gpw/periodic-gw-finite-q/REFERENCE.md).
+case `periodic-gw-finite-q` pin.
 Oracle: offline **CP2K** input twin
-`tools/cp2k_oracle/inputs/periodic-gw-finite-q.inp` (multi-k GPW RKS PBE,
+CP2K oracle (multi-k GPW RKS PBE,
 MONKHORST-PACK 2 1 1, FULL_GRID / no symmetry ≈
 `k_time_reversal=false`, ADDED_MOS 2, `&RI_G0W0` with CORR_MOS_OCC 8 /
 CORR_MOS_VIRT 2). **Never** launch CP2K from ctest.
@@ -230,7 +229,7 @@ Offline re-pin (human only; never ctest):
 
 ```bash
 # when a CP2K binary is available — diagnostic only for this algorithm pair
-cp2k.psmp -i tools/cp2k_oracle/inputs/periodic-gw-finite-q.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o /tmp/periodic-gw-finite-q.out
 # do not invent absolute CP2K QP digits into the hard gate without a
 # same-algorithm (finite-q spectral) twin
@@ -238,8 +237,8 @@ cp2k.psmp -i tools/cp2k_oracle/inputs/periodic-gw-finite-q.inp \
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/gpw/periodic-gw-finite-q/REFERENCE.md),
-the case `REFERENCE.md`
+Source: pin notes,
+the case pin notes
 (wave 5, 2026-07-26).
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -269,14 +268,13 @@ the case `REFERENCE.md`
 
 ## References
 
-- Offline pin: `regressions/gpw/periodic-gw-finite-q/REFERENCE.md`
-- Product gate: `regressions/gpw/periodic-gw-finite-q/reg_periodic-gw-finite-q.cpp`
-- CP2K twin input: `tools/cp2k_oracle/inputs/periodic-gw-finite-q.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md` (offline only; never ctest)
+- Offline pin: case `periodic-gw-finite-q` pin
+- CP2K twin input: CP2K oracle
+- Oracle rules: CP2K oracle (offline only; never ctest)
 - Prior chain: Γ `periodic-gw-si` → k-diagonal `periodic-gw-kpoints` → **this**
   finite-\(q\) product; dielectric twin `periodic-rpa-finite-q`
 - Molecular spectral G0W0 (PySCF loop): [g0w0-h2-sto3g](g0w0-h2-sto3g.md)
 - Literature: Hybertsen & Louie, PRB **34**, 5390 (1986); Furche, JCP **114**,
   5982 (2001)
-- Public headers: `include/atomiverse/cpu/gpw/g0w0.h`, `gpw_solver.h`
+- Public headers: `g0w0.h`, `gpw_solver.h`
 - Impl: `src/cpu/gpw/g0w0.cpp`; private kernel `spectral_g0w0_rhf_kpoints`

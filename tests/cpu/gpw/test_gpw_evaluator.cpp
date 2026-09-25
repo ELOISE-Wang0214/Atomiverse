@@ -43,10 +43,13 @@ cpu::gpw::GPWEvaluator h2_eval() {
         molrs::Element::H,
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
-    return cpu::gpw::GPWEvaluator(
-        /*kinds*/ {H}, /*cutoff_ry*/ 60.0, /*max_iter*/ 1, /*tol*/ 1e-6,
-        /*mix*/ 0.3, cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-        /*compute_forces*/ false);
+    cpu::gpw::GpwDft dft{{H}};
+    dft.cutoff_ry = 60.0;
+    dft.max_iter = 1;
+    dft.tol = 1e-6;
+    dft.mix = 0.3;
+    dft.xc = cpu::gpw::XcKind::PADE;
+    return cpu::gpw::GPWEvaluator(std::move(dft), /*compute_forces=*/false);
 }
 
 } // namespace

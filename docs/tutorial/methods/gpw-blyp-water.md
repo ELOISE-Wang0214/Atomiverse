@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-blyp-water` |
-| Regression | `regressions/gpw/gpw-blyp-water/` |
-| Public API | `cpu::gpw::GPWEvaluator` + `cpu::single_point`; `xc = XcKind::BLYP`; `Kind` + `GaussianBasis` / `GthPotential` lookup ctors |
+| Public API | `cpu::gpw::GpwDft` + `run(frame)`; `xc = XcKind::BLYP`; `Kind` + `GaussianBasis` / `GthPotential` lookup ctors |
 | Roadmap | handoff ratio **perf_exempt** (dual-gate vs PBE); sibling PBE pin [gpw-water-pbe-mt](gpw-water-pbe-mt.md); narrative [ch09-gpw](../ch09-gpw.md) |
 
 ## Summary
@@ -17,8 +16,8 @@ energy for an **isolated** water molecule with the **BLYP** GGA functional
 `gpw-water-pbe-mt`: contracted MOLOPT Gaussians, uniform grid + FFT for Hartree
 and XC, GTH pseudopotentials, density cutoff **400 Ry**, Martyna–Tuckerman
 cluster electrostatics (`nonperiodic = true`). Public path is concrete
-`cpu::gpw::GPWEvaluator` (constructor args / members; no `*Config` bag) driven
-by `cpu::single_point(frame, eval)` with `xc = XcKind::BLYP`. Product gate
+`cpu::gpw::GpwDft` (kinds ctor arg + members; no `*Config` bag) run as
+`dft.run(frame)` with `xc = XcKind::BLYP`. Product gate
 `reg_gpw-blyp-water` asserts SCF convergence, a **dual-gate** against identical
 geometry PBE (\(|E_{\mathrm{BLYP}}-E_{\mathrm{PBE}}| > 10^{-4}\) Ha), and a soft
 absolute band on first-green Atomiverse \(E_{\mathrm{BLYP}}\) until an offline
@@ -106,15 +105,15 @@ the molecule to periodic images. Cell \(L = 10\) Å matches
 
 ## Implementation
 
-Public surface only (`cpu::Frame` + `GPWEvaluator` ctor args / members; lookup
+Public surface only (`cpu::Frame` + `GpwDft` ctor args / members; lookup
 constructors for basis/PP tables — not factories for a parallel world model).
 Matches `reg_gpw-blyp-water.cpp` (BLYP single-point + PBE dual-gate):
 
 ```cpp
-#include "atomiverse/cpu/evaluate/single_point.h"
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
-#include "atomiverse/cpu/gpw/gpw_evaluator.h"
+#include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
@@ -143,17 +142,18 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-cpu::gpw::GPWEvaluator eval(
-    /*kinds*/ {O, H}, /*cutoff_ry*/ 400.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::BLYP, /*nonperiodic*/ true);
-cpu::single_point(frame, eval);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 400.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::BLYP;  dft.nonperiodic = true;
+dft.build(frame);
+const cpu::gpw::GpwResult& r = dft.run(frame);
 
-const double e_ha = eval.last_energy_hartree();   // [Hartree]
-const bool ok = eval.last_result().converged;
+const double e_ha = r.e_total;   // [Hartree]
+const bool ok = r.converged;
 // frame.meta.get(kEnergy) is also set [eV]
 ```
 
-Dual-gate (product regression): second `GPWEvaluator` with
+Dual-gate (product regression): second `GpwDft` with
 `xc = XcKind::PBE` on the same geometry; require
 \(|E_{\mathrm{BLYP}}-E_{\mathrm{PBE}}| > 10^{-4}\) Ha.
 
@@ -170,32 +170,30 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-blyp-water -j$(nproc)
-  ./build/regressions/reg_gpw-blyp-water
+  reg_gpw-blyp-water
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | Public `Kind`, `GPWEvaluator` |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `XcKind::{PADE,PBE,PBEsol,BLYP}` |
-| `include/atomiverse/cpu/gpw/gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
-| `include/atomiverse/cpu/gpw/gth_potential.h` | `GthPotential(Element, name)` lookup |
-| `include/atomiverse/cpu/gpw/internal/xc_grid_gga.h` | `xc_grid_blyp` / shared GGA grid path |
-| `include/atomiverse/cpu/evaluate/single_point.h` | `single_point(frame, method)` |
+| `gpw_solver.h` | Public `Kind`, `GpwDft`, `XcKind::{PADE,PBE,PBEsol,BLYP}` |
+| `gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
+| `gth_potential.h` | `GthPotential(Element, name)` lookup |
+| `xc_grid_gga.h` | `xc_grid_blyp` / shared GGA grid path |
 | `src/cpu/gpw/` | GPW SCF / collocate / integrate (private) |
-| `regressions/gpw/gpw-blyp-water/reg_gpw-blyp-water.cpp` | Product gate |
-| `tools/cp2k_oracle/inputs/gpw-blyp-water.inp` | Offline CP2K twin (never ctest) |
+| `reg_gpw-blyp-water.cpp` | Product gate |
+| CP2K oracle | Offline CP2K twin (never ctest) |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/gpw-blyp-water/REFERENCE.md`](../../../regressions/gpw/gpw-blyp-water/REFERENCE.md).
+case `gpw-blyp-water` pin.
 Oracle: offline **CP2K Quickstep** twin (same geometry, DZVP-MOLOPT-GTH +
 GTH-PBE, CUTOFF 400, PERIODIC NONE / PSOLVER MT, `XC_FUNCTIONAL BLYP`).
 External-engine absolute digits were **not** available at pin time (no CP2K
 binary on host); the product therefore uses a **dual-gate** vs PBE plus a soft
 absolute first-green ATV band. **Never** launch CP2K from ctest. Twin input:
-`tools/cp2k_oracle/inputs/gpw-blyp-water.inp`. Sibling absolute CP2K pin for
+CP2K oracle. Sibling absolute CP2K pin for
 the PBE twin: [gpw-water-pbe-mt](gpw-water-pbe-mt.md)
 (\(E_{\mathrm{CP2K}}^{\mathrm{PBE}} = -17.212337\) Ha).
 
@@ -235,14 +233,14 @@ Offline re-pin (human only; never ctest):
 
 ```bash
 # when a CP2K binary is available
-cp2k.psmp -i tools/cp2k_oracle/inputs/gpw-blyp-water.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o /tmp/gpw-blyp-water.out
 # record TOTAL ENERGY [Ha] into REFERENCE.md; tighten kEnergyRef / kTol
 ```
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/gpw/gpw-blyp-water/REFERENCE.md)
+Source: pin notes
 (2026-07-25).
 
 | Item | Value |
@@ -268,7 +266,7 @@ Source: [`REFERENCE.md`](../../../regressions/gpw/gpw-blyp-water/REFERENCE.md)
   `gpw-forces-water` (PBE-era path; BLYP force parity is follow-on);
   UKS+GGA: `gpw-uks-pbe`; D3(BJ)/D4/TS: other queue slugs.
 - **Absolute CP2K pin deferred** — dual-gate + soft ATV band only until offline
-  CP2K is run on `tools/cp2k_oracle/inputs/gpw-blyp-water.inp`.
+  CP2K is run on CP2K oracle.
 - **No k-points** on this pin (Γ only); bulk GGA k-mesh is other slugs.
 - **CPU only** — `cuda-gpw` remains blocked on the CP2K loop.
 - **`perf_exempt`**: no fair \(r\) until an offline CP2K binary is timed on the
@@ -280,17 +278,17 @@ Source: [`REFERENCE.md`](../../../regressions/gpw/gpw-blyp-water/REFERENCE.md)
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-blyp-water/REFERENCE.md`
-- Regression consumer: `regressions/gpw/gpw-blyp-water/reg_gpw-blyp-water.cpp`
-- Oracle twin: `tools/cp2k_oracle/inputs/gpw-blyp-water.inp`
-- Oracle notes: `tools/cp2k_oracle/README.md`
-- Sibling PBE pin / tutorial: `regressions/gpw/gpw-water-pbe-mt/REFERENCE.md`,
+- Offline pin: case `gpw-blyp-water` pin
+- Regression consumer: `reg_gpw-blyp-water.cpp`
+- Oracle twin: CP2K oracle
+- Oracle notes: CP2K oracle
+- Sibling PBE pin / tutorial: case `gpw-water-pbe-mt` pin,
   [gpw-water-pbe-mt](gpw-water-pbe-mt.md)
 - Molecular all-electron BLYP (PySCF): [blyp-water-sto3g](blyp-water-sto3g.md)
 - Narrative chapter: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Closed spec (git history): `.claude/specs/gpw-blyp-water/`
-- Public API: `include/atomiverse/cpu/gpw/gpw_evaluator.h`,
-  `include/atomiverse/cpu/gpw/gpw_solver.h` (`XcKind::BLYP`)
+- Public API: `gpw_evaluator.h`,
+  `gpw_solver.h` (`XcKind::BLYP`)
 - A. D. Becke, *Phys. Rev. A* **38**, 3098 (1988) — B88 exchange.
 - C. Lee, W. Yang, R. G. Parr, *Phys. Rev. B* **37**, 785 (1988) — LYP
   correlation.

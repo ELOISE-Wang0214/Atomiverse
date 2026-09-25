@@ -27,73 +27,8 @@ namespace cpu {
 namespace gpw {
 
 namespace {
-const Kind& find_kind(const std::vector<Kind>& kinds, int z) {
-    for (const auto& k : kinds)
-        if (static_cast<int>(k.element) == z)
-            return k;
-    throw std::runtime_error(
-        "GPWEvaluator: no basis/potential configured for Z="
-        + std::to_string(z));
-}
-
-/// @brief Refuse a cell GPW cannot represent.
-///
-/// GPW carries the cell as three edge lengths and builds its lattice images
-/// from them, so a sheared frame would be solved on `diag(h)` — a *different*
-/// Bravais lattice. The Gamma-point Bloch sum would then run over the wrong
-/// images and every lattice-sum quantity (S, T, V_pp, V_nl, rho) would be wrong
-/// at O(shear), not O(shear^2), while `Box::volume()` still reported |det h|.
-/// There is no regime in which that is an approximation of the requested
-/// system, so it is refused rather than approximated.
-///
-/// @param box Frame cell [Angstrom].
-/// @param who Call site name, for the message.
-/// @throws std::invalid_argument if `box` has any non-zero off-diagonal entry.
-void require_orthorhombic(const cpu::Box& box, const char* who) {
-    if (box.is_orthorhombic())
-        return;
-    const Mat3& h = box.cell();
-    std::string msg = std::string(who)
-                      + ": GPW supports orthorhombic cells only, but the frame "
-                        "cell is sheared (";
-    bool first = true;
-    for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j) {
-            if (i == j || h(i, j) == 0.0)
-                continue;
-            if (!first)
-                msg += ", ";
-            first = false;
-            msg += "h(" + std::to_string(i) + "," + std::to_string(j)
-                   + ")=" + std::to_string(h(i, j));
-        }
-    msg += " [Angstrom]). Supply a diagonal cell matrix (e.g. "
-           "cpu::Box::orthorhombic(a, b, c)), or use a method that handles a "
-           "general cell.";
-    throw std::invalid_argument(msg);
-}
-} // namespace
-
-namespace {
-/// Assemble the GpwAtom set at the frame's current geometry (Å → Bohr).
-std::vector<GpwAtom> assemble_atoms(const cpu::Frame& frame,
-                                    const GPWEvaluator& self) {
-    const int n = frame.nlocal();
-    const int* __restrict sp_type = frame.span(kAtom_type);
-    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
-    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
-    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
-    std::vector<GpwAtom> atoms;
-    atoms.reserve(static_cast<std::size_t>(n));
-    for (int i = 0; i < n; ++i) {
-        const Kind& k = find_kind(self.kinds, sp_type[i]);
-        const double pos[3] = {sp_x[i] * units::kAngstromInBohr,
-                               sp_y[i] * units::kAngstromInBohr,
-                               sp_z[i] * units::kAngstromInBohr};
-        atoms.push_back(GpwAtom(pos, k.basis, k.pot, sp_type[i]));
-    }
-    return atoms;
-}
+using internal::GpwAtom;
+using internal::GpwDftAccess;
 
 /// Publish the two CPMD electronic energies [eV] on the frame, so Observers,
 /// Thermo and `cpu::md::CpmdConserved` see the adiabaticity signal that used
@@ -190,66 +125,12 @@ void GPWEvaluator::set_timestep(double dt_fs) {
 }
 
 void GPWEvaluator::build(const cpu::BuildContext& ctx) {
-    require_orthorhombic(ctx.frame.box, "GPWEvaluator::build");
+    // Frame → cell, kinds → atoms, derived n_occ, fail-fast validation: all
+    // owned by the method. This shell only checks its own AIMD mode bits.
+    method_.build(ctx.frame);
 
-    // Validate that every atom in the frame has a configured element, and
-    // count valence electrons for the closed-shell occupation.
-    const int n_build = ctx.frame.nlocal();
-    const int* __restrict sp_type_build = ctx.frame.span(kAtom_type);
-    double z_val_total = 0.0;
-    for (int i = 0; i < n_build; ++i)
-        z_val_total +=
-            static_cast<double>(find_kind(kinds, sp_type_build[i]).pot.zion);
-
-    // Assemble the solver from the build-time frame. Product path is the
-    // `use_ot` member; env `ATV_GPW_OT` remains a diagnostic force-on.
-    GpwDft cfg;
-    cfg.cell[0] = ctx.frame.box.length(0) * units::kAngstromInBohr;
-    cfg.cell[1] = ctx.frame.box.length(1) * units::kAngstromInBohr;
-    cfg.cell[2] = ctx.frame.box.length(2) * units::kAngstromInBohr;
-    cfg.cutoff_ry = cutoff_ry;
-    cfg.ngrids = ngrids;
-    cfg.rel_cutoff = rel_cutoff;
-    cfg.n_alpha = n_alpha;
-    cfg.n_beta = n_beta;
-    if (n_alpha + n_beta > 0) {
-        // UKS: occupations are explicit; n_occ unused.
-        cfg.n_occ = 0;
-    } else {
-        cfg.n_occ = static_cast<int>(std::lround(z_val_total / 2.0));
-    }
-    cfg.max_iter = max_iter;
-    cfg.tol = tol;
-    cfg.mix = mix;
-    cfg.xc = xc;
-    cfg.nonperiodic = nonperiodic;
-    cfg.d3 = d3;
-    cfg.d3bj = d3bj;
-    cfg.d3_atm = d3_atm;
-    cfg.d3_rcut_bohr = d3_rcut_bohr;
-    cfg.d4 = d4;
-    cfg.d4_atm = d4_atm;
-    cfg.ts = ts;
-    cfg.xdm = xdm;
-    cfg.mbd = mbd;
-    for (int d = 0; d < 3; ++d)
-        cfg.mbd_k_mesh[d] = mbd_k_mesh[d];
-    cfg.vdw_df = vdw_df;
-    cfg.vdw_df2 = vdw_df2;
-    cfg.rvv10 = rvv10;
-    cfg.hirshfeld = hirshfeld;
-    cfg.use_ot = use_ot || (std::getenv("ATV_GPW_OT") != nullptr);
-    cfg.plus_u = plus_u;
-    cfg.atom_spin_guess = atom_spin_guess;
-    for (int d = 0; d < 3; ++d)
-        cfg.k_mesh[d] = k_mesh[d];
-    cfg.k_time_reversal = k_time_reversal;
-    cfg.smearing = smearing;
-    cfg.degauss = degauss;
-    cfg.mp_order = mp_order;
-    cfg.extra_bands = extra_bands;
-
-    const bool multi_k = (k_mesh[0] != 1 || k_mesh[1] != 1 || k_mesh[2] != 1);
+    const bool multi_k = (method_.k_mesh[0] != 1 || method_.k_mesh[1] != 1
+                          || method_.k_mesh[2] != 1);
 
     // XL-BOMD guards (no-fallback): auxiliary-density guess on the
     // diagonalization path only.
@@ -262,7 +143,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
             "GPWEvaluator: xl_bomd_linearized requires xl_bomd=true "
             "(zero-SCF shadow forces ride on the XL auxiliary density)");
     if (xl_bomd) {
-        if (cfg.use_ot)
+        if (method_.use_ot)
             throw std::invalid_argument(
                 "GPWEvaluator: xl_bomd requires the diagonalization SCF path "
                 "(use_ot parameterizes orbitals, not the density)");
@@ -308,7 +189,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
             (void)electronic::XlBomd(xl_bomd_k); // throw early on bad K
         } else {
             xl_.emplace(xl_bomd_k);
-            if (n_alpha + n_beta > 0)
+            if (method_.n_alpha + method_.n_beta > 0)
                 xl_beta_.emplace(xl_bomd_k);
             else
                 xl_beta_.reset();
@@ -325,7 +206,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     // Car–Parrinello guards: RKS Γ, collinear Γ-UKS, multi-k RKS, or
     // multi-k collinear UKS (dual-spin Bloch C_k^σ).
     if (cpmd) {
-        if (cfg.use_ot)
+        if (method_.use_ot)
             throw std::invalid_argument(
                 "GPWEvaluator: cpmd requires the diagonalization SCF path for "
                 "the cold seed (use_ot is refused — no silent OT-CP hybrid)");
@@ -355,7 +236,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
                 "GPWEvaluator: CPMD stress path is not productized; "
                 "variable-cell CP is deferred");
         // UKS CPMD: alpha is the primary channel (mirrors XL dual setup).
-        if (n_alpha + n_beta > 0 && n_alpha < 1)
+        if (method_.n_alpha + method_.n_beta > 0 && method_.n_alpha < 1)
             throw std::invalid_argument(
                 "GPWEvaluator: cpmd UKS requires n_alpha >= 1");
         if (cpmd_thermostat) {
@@ -382,7 +263,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
             cpmd_->thermostat = cpmd_thermostat;
             cpmd_->ekin_target_ha = cpmd_ekin_target_ha;
             cpmd_->tau_e_fs = cpmd_tau_e;
-            if (n_alpha + n_beta > 0 && n_beta > 0) {
+            if (method_.n_alpha + method_.n_beta > 0 && method_.n_beta > 0) {
                 cpmd_beta_.emplace(cpmd_mu);
                 cpmd_beta_->thermostat = cpmd_thermostat;
                 cpmd_beta_->ekin_target_ha = cpmd_ekin_target_ha;
@@ -437,7 +318,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
             sgcp_aspc_k_beta_.clear();
         } else {
             sgcp_aspc_.emplace(second_gen_cp_k);
-            if (n_alpha + n_beta > 0)
+            if (method_.n_alpha + method_.n_beta > 0)
                 sgcp_aspc_beta_.emplace(second_gen_cp_k);
             else
                 sgcp_aspc_beta_.reset();
@@ -450,34 +331,21 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
         sgcp_aspc_k_.clear();
         sgcp_aspc_k_beta_.clear();
     }
-
-    solver_ = std::make_unique<GpwDft>(std::move(cfg));
-    solver_->build(assemble_atoms(ctx.frame, *this));
 }
 
 void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     cpu::Frame& frame = ctx.frame;
     const int n = frame.nlocal();
 
-    // Re-checked every launch, not only at build: this is the variable-cell
+    // Re-read every launch, not only at build: this is the variable-cell
     // path, and TriclinicCellRelax and ParrinelloRahmanNPT both write a general
-    // cell matrix back to the Frame between launches. A build-time-only guard
-    // would let those silently reduce the cell to its diagonal.
-    require_orthorhombic(frame.box, "GPWEvaluator::launch");
-
-    // Variable cell: re-target the solver to the frame's current orthorhombic
-    // box. GpwDft::run rebuilds every geometry-dependent structure (grids,
-    // lattice images, S/T/Vpp) from `cell` per call, so a box change between
-    // launches is well-defined — cell-relax drivers rescale box freely.
-    for (int d = 0; d < 3; ++d) {
-        const double now = frame.box.length(d) * units::kAngstromInBohr;
-        if (!(now > 0.0))
-            throw std::runtime_error(
-                "GPWEvaluator::launch: non-positive box edge");
-        solver_->cell[d] = now;
-    }
-
-    const auto atoms = assemble_atoms(frame, *this);
+    // cell matrix back to the Frame between launches. `cell_from_box` refuses
+    // a sheared cell rather than silently reducing it to its diagonal; the
+    // method rebuilds every geometry-dependent structure (grids, lattice
+    // images, S/T/Vpp) per call, so a box change between launches is
+    // well-defined.
+    GpwDftAccess::set_cell(method_, internal::cell_from_box(frame.box));
+    const auto atoms = GpwDftAccess::atoms_from_frame(method_, frame);
 
     // ── Car–Parrinello path ──────────────────────────────────────────────
     // Seed: one full SCF + BO analytic forces, then hand occupied C to Cpmd.
@@ -488,12 +356,12 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // RKS Γ: one real propagator (occ=2). UKS Γ: dual α/β (occ=1 each).
     // Multi-k RKS: one CpmdCplx per sampled k (occ=2). Multi-k UKS: one
     // CpmdCplx per (k, spin), occ=1 each (β set empty when n_beta == 0).
-    const bool cpmd_uks_k = (n_alpha + n_beta > 0);
+    const bool cpmd_uks_k = (method_.n_alpha + method_.n_beta > 0);
     const bool cpmd_multi_k = !cpmd_k_.empty() && cpmd_k_[0].ready() && [&]() {
         for (const auto& ch : cpmd_k_)
             if (!ch.ready())
                 return false;
-        if (cpmd_uks_k && n_beta > 0) {
+        if (cpmd_uks_k && method_.n_beta > 0) {
             if (cpmd_k_beta_.size() != cpmd_k_.size())
                 return false;
             for (const auto& ch : cpmd_k_beta_)
@@ -502,14 +370,14 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         }
         return true;
     }();
-    const bool cpmd_uks = cpmd_ && (n_alpha + n_beta > 0);
+    const bool cpmd_uks = cpmd_ && (method_.n_alpha + method_.n_beta > 0);
     const bool cpmd_ready =
         cpmd_multi_k
         || (cpmd_
-            && (cpmd_uks
-                    ? (cpmd_->ready()
-                       && (n_beta < 1 || (cpmd_beta_ && cpmd_beta_->ready())))
-                    : cpmd_->ready()));
+            && (cpmd_uks ? (cpmd_->ready()
+                            && (method_.n_beta < 1
+                                || (cpmd_beta_ && cpmd_beta_->ready())))
+                         : cpmd_->ready()));
     if (cpmd_ready && cpmd_multi_k) {
         // Multi-k CPMD: fixed-density {P_k} (RKS, occ 2) or {P_k^α, P_k^β}
         // (collinear UKS, occ 1 per spin) → forces → per-(k, σ) electronic VV.
@@ -524,40 +392,41 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 const auto& Ca = cpmd_k_[static_cast<std::size_t>(ik)].C();
                 if (cpmd_uks_k) {
                     cpmd_guess_p_k_[static_cast<std::size_t>(ik)] =
-                        density_from_cocc(Ca, n_alpha, /*occ=*/1.0);
+                        density_from_cocc(Ca, method_.n_alpha, /*occ=*/1.0);
                     // Half-metal edge (n_beta == 0): zero β density.
                     cpmd_guess_p_k_beta_[static_cast<std::size_t>(ik)] =
                         have_beta_k
                             ? density_from_cocc(
                                   cpmd_k_beta_[static_cast<std::size_t>(ik)]
                                       .C(),
-                                  n_beta, /*occ=*/1.0)
+                                  method_.n_beta, /*occ=*/1.0)
                             : linalg::CplxMatrix(
                                   xt::zeros<Cplx>({Ca.shape(0), Ca.shape(0)}));
                 } else {
                     cpmd_guess_p_k_[static_cast<std::size_t>(ik)] =
-                        density_from_cocc(Ca, solver_->n_occ, /*occ=*/2.0);
+                        density_from_cocc(Ca, method_.n_occ, /*occ=*/2.0);
                 }
             }
-            const int saved_max = solver_->max_iter;
-            solver_->max_iter = 0;
+            const int saved_max = method_.max_iter;
+            method_.max_iter = 0;
             try {
-                last_ = solver_->run(
-                    atoms, /*guess_C=*/nullptr, /*guess_P=*/nullptr,
+                last_ = GpwDftAccess::run(
+                    method_, atoms, /*guess_C=*/nullptr, /*guess_P=*/nullptr,
                     /*guess_P_beta=*/nullptr, &cpmd_guess_p_k_,
                     cpmd_uks_k ? &cpmd_guess_p_k_beta_ : nullptr);
             } catch (...) {
-                solver_->max_iter = saved_max;
+                method_.max_iter = saved_max;
                 throw;
             }
-            solver_->max_iter = saved_max;
+            method_.max_iter = saved_max;
         };
 
         // S_k is geometry-only: build it standalone, align the propagated
         // coefficients against it, then evaluate the KS matrices ONCE at the
         // aligned density. `GpwDft::overlap_k` runs the same phased assembly
         // the solve does, so these are the very S_k the eval would report.
-        const std::vector<linalg::CplxMatrix> S_k = solver_->overlap_k(atoms);
+        const std::vector<linalg::CplxMatrix> S_k =
+            GpwDftAccess::overlap_k(method_, atoms);
         if (static_cast<int>(S_k.size()) != nk)
             throw std::runtime_error(
                 "GPWEvaluator: multi-k CPMD standalone overlap_k size != nk");
@@ -613,7 +482,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             for (int ik = 0; ik < nk; ++ik) {
                 fill_channel(cpmd_k_[static_cast<std::size_t>(ik)].C(),
                              last_.H_ks_k[static_cast<std::size_t>(ik)],
-                             cpmd_uks_k ? n_alpha : solver_->n_occ,
+                             cpmd_uks_k ? method_.n_alpha : method_.n_occ,
                              last_.C_occ_k[static_cast<std::size_t>(ik)],
                              last_.eps_k[static_cast<std::size_t>(ik)]);
                 if (cpmd_uks_k) {
@@ -621,7 +490,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                         fill_channel(
                             cpmd_k_beta_[static_cast<std::size_t>(ik)].C(),
                             last_.H_ks_k_beta[static_cast<std::size_t>(ik)],
-                            n_beta,
+                            method_.n_beta,
                             last_.C_occ_k_beta[static_cast<std::size_t>(ik)],
                             last_.eps_k_beta[static_cast<std::size_t>(ik)]);
                     } else {
@@ -632,7 +501,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 }
             }
             last_.converged = true;
-            const auto F = gpw_forces_from_scf(atoms, *solver_, last_);
+            const auto F = internal::gpw_forces_from_scf(atoms, method_, last_);
             AccReal* __restrict sp_fx = frame.span(kAtom_fx);
             AccReal* __restrict sp_fy = frame.span(kAtom_fy);
             AccReal* __restrict sp_fz = frame.span(kAtom_fz);
@@ -688,15 +557,16 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             const int n_occ = static_cast<int>(C_occ.shape(1));
             const linalg::RealMatrix P =
                 linalg::build_density_matrix(C_occ, n_occ, nb, 2.0);
-            const int saved_max = solver_->max_iter;
-            solver_->max_iter = 0;
+            const int saved_max = method_.max_iter;
+            method_.max_iter = 0;
             try {
-                last_ = solver_->run(atoms, /*guess_C=*/nullptr, &P);
+                last_ =
+                    GpwDftAccess::run(method_, atoms, /*guess_C=*/nullptr, &P);
             } catch (...) {
-                solver_->max_iter = saved_max;
+                method_.max_iter = saved_max;
                 throw;
             }
-            solver_->max_iter = saved_max;
+            method_.max_iter = saved_max;
         };
         auto fixed_density_eval_uks = [&](const linalg::RealMatrix& Ca,
                                           const linalg::RealMatrix& Cb) {
@@ -715,21 +585,22 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                             : linalg::RealMatrix(xt::zeros<double>(
                                   {static_cast<std::size_t>(nb),
                                    static_cast<std::size_t>(nb)}));
-            const int saved_max = solver_->max_iter;
-            solver_->max_iter = 0;
+            const int saved_max = method_.max_iter;
+            method_.max_iter = 0;
             try {
-                last_ = solver_->run(atoms, /*guess_C=*/nullptr, &Pa, &Pb);
+                last_ = GpwDftAccess::run(method_, atoms, /*guess_C=*/nullptr,
+                                          &Pa, &Pb);
             } catch (...) {
-                solver_->max_iter = saved_max;
+                method_.max_iter = saved_max;
                 throw;
             }
-            solver_->max_iter = saved_max;
+            method_.max_iter = saved_max;
         };
 
         // S is geometry-only: build it standalone, align, then evaluate the
         // fixed-density KS matrix ONCE at the aligned coefficients.
         // `GpwDft::overlap` runs the same Γ assembly the solve does.
-        const linalg::RealMatrix S = solver_->overlap(atoms);
+        const linalg::RealMatrix S = GpwDftAccess::overlap(method_, atoms);
 
         if (cpmd_uks) {
             // Empty beta C when n_beta==0 (half-metal edge).
@@ -751,9 +622,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                     throw std::runtime_error(
                         "GPWEvaluator: UKS CPMD force path needs H_ks and "
                         "H_ks_beta from fixed-density eval");
-                const auto F = gpw_forces_at_density(
-                    atoms, *solver_, last_.P, Ca2, last_.H_ks, last_.P_beta,
-                    Cb2, last_.H_ks_beta);
+                const auto F = internal::gpw_forces_at_density(
+                    atoms, method_, last_.P, Ca2, last_.H_ks, last_.P_beta, Cb2,
+                    last_.H_ks_beta);
                 AccReal* __restrict sp_fx = frame.span(kAtom_fx);
                 AccReal* __restrict sp_fy = frame.span(kAtom_fy);
                 AccReal* __restrict sp_fz = frame.span(kAtom_fz);
@@ -794,8 +665,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             last_.e_total * ATV::units::kHartreeInEv;
 
         if (compute_forces) {
-            const auto F = gpw_forces_at_density(atoms, *solver_, last_.P,
-                                                 cpmd_->C(), last_.H_ks);
+            const auto F = internal::gpw_forces_at_density(
+                atoms, method_, last_.P, cpmd_->C(), last_.H_ks);
             AccReal* __restrict sp_fx = frame.span(kAtom_fx);
             AccReal* __restrict sp_fy = frame.span(kAtom_fy);
             AccReal* __restrict sp_fz = frame.span(kAtom_fz);
@@ -825,8 +696,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // multi-k RKS: complex P_k per k. multi-k UKS: dual P_k^α / P_k^β.
     if (second_gen_cp) {
         const bool multi_k_sgcp =
-            (k_mesh[0] != 1 || k_mesh[1] != 1 || k_mesh[2] != 1);
-        const bool uks_sgcp = (n_alpha + n_beta > 0);
+            (method_.k_mesh[0] != 1 || method_.k_mesh[1] != 1
+             || method_.k_mesh[2] != 1);
+        const bool uks_sgcp = (method_.n_alpha + method_.n_beta > 0);
 
         // ── multi-k complex ASPC on P_k ────────────────────────────────
         if (multi_k_sgcp) {
@@ -872,19 +744,19 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 }
             }
 
-            const int saved_max = solver_->max_iter;
+            const int saved_max = method_.max_iter;
             if (have_pred)
-                solver_->max_iter = second_gen_cp_max_iter;
+                method_.max_iter = second_gen_cp_max_iter;
             try {
-                last_ = solver_->run(atoms, /*guess_C=*/nullptr,
-                                     /*guess_P=*/nullptr,
-                                     /*guess_P_beta=*/nullptr, guess_p_k,
-                                     guess_p_k_beta);
+                last_ = GpwDftAccess::run(method_, atoms, /*guess_C=*/nullptr,
+                                          /*guess_P=*/nullptr,
+                                          /*guess_P_beta=*/nullptr, guess_p_k,
+                                          guess_p_k_beta);
             } catch (...) {
-                solver_->max_iter = saved_max;
+                method_.max_iter = saved_max;
                 throw;
             }
-            solver_->max_iter = saved_max;
+            method_.max_iter = saved_max;
 
             auto reseat_k =
                 [&](std::vector<electronic::ASPCPredictorCplx>& xs) {
@@ -973,7 +845,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                         "needs dual-spin k payloads from the corrector SCF");
                 GpwResult force_scf = last_;
                 force_scf.converged = true;
-                const auto F = gpw_forces_from_scf(atoms, *solver_, force_scf);
+                const auto F =
+                    internal::gpw_forces_from_scf(atoms, method_, force_scf);
                 AccReal* __restrict sp_fx = frame.span(kAtom_fx);
                 AccReal* __restrict sp_fy = frame.span(kAtom_fy);
                 AccReal* __restrict sp_fz = frame.span(kAtom_fz);
@@ -1006,7 +879,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             (last_.C.size() > 0) ? &last_.C : nullptr;
         const ATV::cpu::linalg::RealMatrix* guess_p = nullptr;
         const ATV::cpu::linalg::RealMatrix* guess_p_beta = nullptr;
-        const int saved_max = solver_->max_iter;
+        const int saved_max = method_.max_iter;
         if (have_pred) {
             // Layout convert: ASPC uses default-layout xtensor; GPW is
             // column-major RealMatrix.
@@ -1026,15 +899,16 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                         sgcp_guess_p_beta_(i, j) = P_pred_beta(i, j);
                 guess_p_beta = &sgcp_guess_p_beta_;
             }
-            solver_->max_iter = second_gen_cp_max_iter;
+            method_.max_iter = second_gen_cp_max_iter;
         }
         try {
-            last_ = solver_->run(atoms, guess_c, guess_p, guess_p_beta);
+            last_ = GpwDftAccess::run(method_, atoms, guess_c, guess_p,
+                                      guess_p_beta);
         } catch (...) {
-            solver_->max_iter = saved_max;
+            method_.max_iter = saved_max;
             throw;
         }
-        solver_->max_iter = saved_max;
+        method_.max_iter = saved_max;
 
         auto record_channel =
             [](electronic::ASPCPredictor& aspc, const linalg::RealMatrix& Pmat,
@@ -1060,22 +934,22 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 // re-eval with max_iter=0; OT forbids fixed-density eval —
                 // OT exit must export H_ks/S itself (second-gen-cpmd-ot).
                 if (last_.H_ks.size() == 0 || last_.S.size() == 0) {
-                    if (use_ot || solver_->use_ot)
+                    if (method_.use_ot)
                         throw std::runtime_error(
                             "GPWEvaluator: second_gen_cp OT corrector did not "
                             "export H_ks/S (required for forces at density)");
-                    const int saved = solver_->max_iter;
-                    solver_->max_iter = 0;
+                    const int saved = method_.max_iter;
+                    method_.max_iter = 0;
                     try {
-                        auto tmp =
-                            solver_->run(atoms, /*guess_C=*/nullptr, &last_.P);
+                        auto tmp = GpwDftAccess::run(
+                            method_, atoms, /*guess_C=*/nullptr, &last_.P);
                         last_.H_ks = std::move(tmp.H_ks);
                         last_.S = std::move(tmp.S);
                     } catch (...) {
-                        solver_->max_iter = saved;
+                        method_.max_iter = saved;
                         throw;
                     }
-                    solver_->max_iter = saved;
+                    method_.max_iter = saved;
                 }
             }
             record_channel(*sgcp_aspc_, last_.P, have_pred, P_pred);
@@ -1110,8 +984,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                         "P/C/eps for both spins from the corrector SCF");
                 GpwResult force_scf = last_;
                 force_scf.converged = true;
-                F = gpw_forces_from_scf(atoms, *solver_, force_scf);
-            } else if (use_ot || solver_->use_ot) {
+                F = internal::gpw_forces_from_scf(atoms, method_, force_scf);
+            } else if (method_.use_ot) {
                 // OT corrector: prefer forces-from-scf when C/eps present
                 // (partial OT may leave converged=false). Fall back to
                 // density path when H_ks was exported.
@@ -1119,19 +993,20 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                     && !last_.eps.empty()) {
                     GpwResult force_scf = last_;
                     force_scf.converged = true;
-                    F = gpw_forces_from_scf(atoms, *solver_, force_scf);
+                    F = internal::gpw_forces_from_scf(atoms, method_,
+                                                      force_scf);
                 } else if (last_.C.size() > 0 && last_.P.size() > 0
                            && last_.H_ks.size() > 0) {
                     const int nb = static_cast<int>(last_.C.shape(0));
-                    const int n_occ = solver_->n_occ;
+                    const int n_occ = method_.n_occ;
                     linalg::RealMatrix C_occ =
                         xt::zeros<double>({static_cast<std::size_t>(nb),
                                            static_cast<std::size_t>(n_occ)});
                     for (int mu = 0; mu < nb; ++mu)
                         for (int i = 0; i < n_occ; ++i)
                             C_occ(mu, i) = last_.C(mu, i);
-                    F = gpw_forces_at_density(atoms, *solver_, last_.P, C_occ,
-                                              last_.H_ks);
+                    F = internal::gpw_forces_at_density(atoms, method_, last_.P,
+                                                        C_occ, last_.H_ks);
                 } else {
                     throw std::runtime_error(
                         "GPWEvaluator: second_gen_cp OT force path needs "
@@ -1144,15 +1019,15 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                         "GPWEvaluator: second_gen_cp force path needs P, C, "
                         "H_ks from the corrector SCF");
                 const int nb = static_cast<int>(last_.C.shape(0));
-                const int n_occ = solver_->n_occ;
+                const int n_occ = method_.n_occ;
                 linalg::RealMatrix C_occ =
                     xt::zeros<double>({static_cast<std::size_t>(nb),
                                        static_cast<std::size_t>(n_occ)});
                 for (int mu = 0; mu < nb; ++mu)
                     for (int i = 0; i < n_occ; ++i)
                         C_occ(mu, i) = last_.C(mu, i);
-                F = gpw_forces_at_density(atoms, *solver_, last_.P, C_occ,
-                                          last_.H_ks);
+                F = internal::gpw_forces_at_density(atoms, method_, last_.P,
+                                                    C_occ, last_.H_ks);
             }
             AccReal* __restrict sp_fx = frame.span(kAtom_fx);
             AccReal* __restrict sp_fy = frame.span(kAtom_fy);
@@ -1178,22 +1053,22 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // (occ 1), E = Σ_σ [Tr(H^σ D^σ) − Tr(H^σ n^σ)] + E_KS[n^α,n^β].
     // Cold seed falls through to the SCF-XL path below (first advance
     // seeds the histories with D_scf / P^σ_scf).
-    const bool lin_uks = (n_alpha + n_beta > 0);
+    const bool lin_uks = (method_.n_alpha + method_.n_beta > 0);
     if (xl_bomd_linearized && xl_ && xl_->ready()
         && (!lin_uks || (xl_beta_ && xl_beta_->ready()))) {
         const linalg::RealMatrix& n_aux = xl_->aux();
         const linalg::RealMatrix* n_aux_beta =
             lin_uks ? &xl_beta_->aux() : nullptr;
-        const int saved_max = solver_->max_iter;
-        solver_->max_iter = 0;
+        const int saved_max = method_.max_iter;
+        method_.max_iter = 0;
         try {
-            last_ =
-                solver_->run(atoms, /*guess_C=*/nullptr, &n_aux, n_aux_beta);
+            last_ = GpwDftAccess::run(method_, atoms, /*guess_C=*/nullptr,
+                                      &n_aux, n_aux_beta);
         } catch (...) {
-            solver_->max_iter = saved_max;
+            method_.max_iter = saved_max;
             throw;
         }
-        solver_->max_iter = saved_max;
+        method_.max_iter = saved_max;
 
         if (last_.H_ks.size() == 0 || last_.S.size() == 0 || last_.P.size() == 0
             || (lin_uks
@@ -1232,7 +1107,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         std::vector<std::array<double, 3>> F;
 
         if (!lin_uks) {
-            const int n_occ = solver_->n_occ;
+            const int n_occ = method_.n_occ;
             if (n_occ < 1)
                 throw std::runtime_error(
                     "GPWEvaluator: xl_bomd_linearized needs n_occ >= 1");
@@ -1257,8 +1132,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
 
             if (compute_forces) {
                 // Forces of U(R,n) at fixed n: density D, KS matrix H[n].
-                F = gpw_forces_at_density(atoms, *solver_, D,
-                                          occupied_block(C, n_occ), last_.H_ks);
+                F = internal::gpw_forces_at_density(
+                    atoms, method_, D, occupied_block(C, n_occ), last_.H_ks);
             }
         } else {
             // Γ UKS: one generalized diagonalization per spin channel.
@@ -1267,9 +1142,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             auto [eig_b, Cb] =
                 linalg::diagonalize_fock_generalized(last_.H_ks_beta, last_.S);
             const linalg::RealMatrix Da =
-                linalg::build_density_matrix(Ca, n_alpha, nb, 1.0);
+                linalg::build_density_matrix(Ca, method_.n_alpha, nb, 1.0);
             const linalg::RealMatrix Db =
-                linalg::build_density_matrix(Cb, n_beta, nb, 1.0);
+                linalg::build_density_matrix(Cb, method_.n_beta, nb, 1.0);
 
             // Dual-spin shadow energy — recovers E_KS at D^σ = n^σ.
             last_.e_total = (tr_HM(last_.H_ks, Da) - tr_HM(last_.H_ks, last_.P))
@@ -1279,26 +1154,27 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
 
             // Löwdin ⟨S²⟩ at the shadow densities (same formula as the
             // converged-SCF store): s_z(s_z+1) + N_β − Σ|C_αᵀ S C_β|².
-            const double sz = 0.5 * static_cast<double>(n_alpha - n_beta);
+            const double sz =
+                0.5 * static_cast<double>(method_.n_alpha - method_.n_beta);
             double ov = 0.0;
-            if (n_alpha > 0 && n_beta > 0) {
+            if (method_.n_alpha > 0 && method_.n_beta > 0) {
                 // SCb = S·C_β_occ (nb × n_beta), then Sab = C_α_occᵀ·SCb.
-                linalg::RealMatrix SCb =
-                    xt::zeros<double>({static_cast<std::size_t>(nb),
-                                       static_cast<std::size_t>(n_beta)});
+                linalg::RealMatrix SCb = xt::zeros<double>(
+                    {static_cast<std::size_t>(nb),
+                     static_cast<std::size_t>(method_.n_beta)});
                 for (int mu = 0; mu < nb; ++mu)
                     for (int nu = 0; nu < nb; ++nu) {
                         const double s = last_.S(static_cast<std::size_t>(mu),
                                                  static_cast<std::size_t>(nu));
-                        for (int j = 0; j < n_beta; ++j)
+                        for (int j = 0; j < method_.n_beta; ++j)
                             SCb(static_cast<std::size_t>(mu),
                                 static_cast<std::size_t>(j)) +=
                                 s
                                 * Cb(static_cast<std::size_t>(nu),
                                      static_cast<std::size_t>(j));
                     }
-                for (int i = 0; i < n_alpha; ++i)
-                    for (int j = 0; j < n_beta; ++j) {
+                for (int i = 0; i < method_.n_alpha; ++i)
+                    for (int j = 0; j < method_.n_beta; ++j) {
                         double sab = 0.0;
                         for (int mu = 0; mu < nb; ++mu)
                             sab += Ca(static_cast<std::size_t>(mu),
@@ -1308,7 +1184,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                         ov += sab * sab;
                     }
             }
-            last_.s2 = sz * (sz + 1.0) + static_cast<double>(n_beta) - ov;
+            last_.s2 =
+                sz * (sz + 1.0) + static_cast<double>(method_.n_beta) - ov;
 
             last_.P = Da;
             last_.P_beta = Db;
@@ -1325,9 +1202,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             if (compute_forces) {
                 // Forces of U(R,n^α,n^β) at fixed n^σ: densities D^σ, KS
                 // matrices H^σ[n] (dual-spin fixed-density overload).
-                F = gpw_forces_at_density(
-                    atoms, *solver_, Da, occupied_block(Ca, n_alpha),
-                    last_.H_ks, Db, occupied_block(Cb, n_beta),
+                F = internal::gpw_forces_at_density(
+                    atoms, method_, Da, occupied_block(Ca, method_.n_alpha),
+                    last_.H_ks, Db, occupied_block(Cb, method_.n_beta),
                     last_.H_ks_beta);
             }
         }
@@ -1355,8 +1232,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             // payload (P = D = q[n], W from the H[n] eigenpairs) — the cell
             // analogue of gpw_forces_at_density. No reference SCF (zero-SCF
             // preserved); stress_use_fd is refused at build().
-            last_stress_ha_ = gpw_stress(atoms, *solver_, last_,
-                                         stress_strain_h, stress_axes);
+            last_stress_ha_ = internal::gpw_stress_at_state_impl(
+                atoms, method_, last_, stress_strain_h, stress_axes);
             add_stress_to_frame(frame, last_stress_ha_);
         }
         return;
@@ -1399,18 +1276,18 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 xl_guess_p_k_beta_[static_cast<std::size_t>(ik)] =
                     xl_k_beta_[static_cast<std::size_t>(ik)].aux();
         }
-        const int saved_max = solver_->max_iter;
-        solver_->max_iter = 0;
+        const int saved_max = method_.max_iter;
+        method_.max_iter = 0;
         try {
-            last_ = solver_->run(atoms, /*guess_C=*/nullptr,
-                                 /*guess_P=*/nullptr, /*guess_P_beta=*/nullptr,
-                                 &xl_guess_p_k_,
-                                 lin_uks ? &xl_guess_p_k_beta_ : nullptr);
+            last_ = GpwDftAccess::run(method_, atoms, /*guess_C=*/nullptr,
+                                      /*guess_P=*/nullptr,
+                                      /*guess_P_beta=*/nullptr, &xl_guess_p_k_,
+                                      lin_uks ? &xl_guess_p_k_beta_ : nullptr);
         } catch (...) {
-            solver_->max_iter = saved_max;
+            method_.max_iter = saved_max;
             throw;
         }
-        solver_->max_iter = saved_max;
+        method_.max_iter = saved_max;
 
         if (last_.n_kpts != nk || static_cast<int>(last_.H_ks_k.size()) != nk
             || static_cast<int>(last_.S_k.size()) != nk
@@ -1437,8 +1314,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             return t;
         };
 
-        const int n_occ_a = lin_uks ? n_alpha : solver_->n_occ;
-        const int n_occ_b = lin_uks ? n_beta : 0;
+        const int n_occ_a = lin_uks ? method_.n_alpha : method_.n_occ;
+        const int n_occ_b = lin_uks ? method_.n_beta : 0;
         if (n_occ_a < 1)
             throw std::runtime_error(
                 lin_uks ? "GPWEvaluator: multi-k UKS xl_bomd_linearized needs "
@@ -1460,7 +1337,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         for (int ik = 0; ik < nk; ++ik) {
             const std::size_t k = static_cast<std::size_t>(ik);
             const double wk = last_.k_weights[k];
-            const internal::KOrth orth(last_.S_k[k], solver_->lindep_threshold);
+            const internal::KOrth orth(last_.S_k[k], method_.lindep_threshold);
             auto [eps_a, Ca] = internal::diagonalize_k(last_.H_ks_k[k], orth);
             if (static_cast<int>(Ca.shape(1)) < n_occ_a)
                 throw std::runtime_error(
@@ -1511,7 +1388,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             // (D_k, ε_k, C_k^occ) payload — since C_k are exact
             // eigenvectors of H_k[n], W = C (C†HC) C† (the Γ product's
             // off-BO energy-weighted density) reduces to Σ f ε C C†.
-            const auto F = gpw_forces_from_scf(atoms, *solver_, last_);
+            const auto F = internal::gpw_forces_from_scf(atoms, method_, last_);
             AccReal* __restrict sp_fx = frame.span(kAtom_fx);
             AccReal* __restrict sp_fy = frame.span(kAtom_fy);
             AccReal* __restrict sp_fz = frame.span(kAtom_fz);
@@ -1529,8 +1406,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             // Shadow-density stress on the k path: k-summed fixed-{P_k,W_k}
             // Lagrangian at the warm payload (C_occ_k / eps_k just built) —
             // no reference SCF, zero-SCF preserved.
-            last_stress_ha_ = gpw_stress(atoms, *solver_, last_,
-                                         stress_strain_h, stress_axes);
+            last_stress_ha_ = internal::gpw_stress_at_state_impl(
+                atoms, method_, last_, stress_strain_h, stress_axes);
             add_stress_to_frame(frame, last_stress_ha_);
         }
         return;
@@ -1559,7 +1436,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         (xl_beta_ && xl_beta_->ready()) ? &xl_beta_->aux() : nullptr;
     if (guess_p == nullptr && last_.n_kpts == 0 && last_.P.size() > 0
         && last_.converged) {
-        if (n_alpha + n_beta > 0) {
+        if (method_.n_alpha + method_.n_beta > 0) {
             if (last_.P_beta.size() > 0) {
                 guess_p = &last_.P;
                 guess_p_beta = &last_.P_beta;
@@ -1591,7 +1468,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // into `last_` only after it returns (same lifetime story as `&last_.C`).
     if (guess_p_k == nullptr && last_.n_kpts > 0 && last_.converged
         && static_cast<int>(last_.P_k.size()) == last_.n_kpts) {
-        if (n_alpha + n_beta > 0) {
+        if (method_.n_alpha + method_.n_beta > 0) {
             if (static_cast<int>(last_.P_k_beta.size()) == last_.n_kpts) {
                 guess_p_k = &last_.P_k;
                 guess_p_k_beta = &last_.P_k_beta;
@@ -1600,8 +1477,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             guess_p_k = &last_.P_k;
         }
     }
-    last_ = solver_->run(atoms, guess, guess_p, guess_p_beta, guess_p_k,
-                         guess_p_k_beta);
+    last_ = GpwDftAccess::run(method_, atoms, guess, guess_p, guess_p_beta,
+                              guess_p_k, guess_p_k_beta);
     if (xl_) {
         if (last_.converged && last_.P.size() > 0) {
             xl_->advance(last_.P);
@@ -1621,7 +1498,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // Multi-k XL: advance one complex propagator per k from SCF P_k
     // (RKS total or UKS α). Multi-k UKS also advances β from P_k_beta.
     if (xl_bomd && last_.n_kpts > 0) {
-        const bool uks_k = (n_alpha + n_beta > 0);
+        const bool uks_k = (method_.n_alpha + method_.n_beta > 0);
         const bool have_a =
             last_.converged
             && static_cast<int>(last_.P_k.size()) == last_.n_kpts
@@ -1675,14 +1552,14 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             && static_cast<int>(last_.C_occ_k.size()) == last_.n_kpts
             && static_cast<int>(last_.eps_k.size()) == last_.n_kpts;
         if (gamma_payload || k_payload) {
-            F = gpw_forces_from_scf(atoms, *solver_, last_);
+            F = internal::gpw_forces_from_scf(atoms, method_, last_);
         } else {
             // XL mode warm-starts the force-pass SCF from the MO coefficients
             // just converged at this exact geometry. Default mode keeps the
             // cold solve unchanged.
-            F = gpw_forces_analytic(atoms, *solver_,
-                                    (xl_ && last_.C.size() > 0) ? &last_.C
-                                                                : nullptr);
+            F = internal::gpw_forces_analytic(
+                atoms, method_,
+                (xl_ && last_.C.size() > 0) ? &last_.C : nullptr);
         }
         // [Hartree/Bohr]; one SCF + gradient (was 6N+1 FD)
         AccReal* __restrict sp_fx = frame.span(kAtom_fx);
@@ -1703,14 +1580,15 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // Multi-k UKS: one per (k, spin) — α from C_k / C_occ_k (n_alpha
     // columns), β from C_k_beta / C_occ_k_beta (n_beta columns).
     if (cpmd && cpmd_k_.empty()
-        && (k_mesh[0] != 1 || k_mesh[1] != 1 || k_mesh[2] != 1)) {
+        && (method_.k_mesh[0] != 1 || method_.k_mesh[1] != 1
+            || method_.k_mesh[2] != 1)) {
         if (!last_.converged || last_.n_kpts < 1)
             throw std::runtime_error(
                 "GPWEvaluator: multi-k cpmd seed requires a converged multi-k "
                 "SCF");
         const int nk = last_.n_kpts;
-        const bool seed_uks = (n_alpha + n_beta > 0);
-        const int n_occ_a = seed_uks ? n_alpha : solver_->n_occ;
+        const bool seed_uks = (method_.n_alpha + method_.n_beta > 0);
+        const int n_occ_a = seed_uks ? method_.n_alpha : method_.n_occ;
         if (n_occ_a < 1)
             throw std::runtime_error(
                 seed_uks ? "GPWEvaluator: multi-k UKS CPMD seed requires "
@@ -1787,9 +1665,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             seed_channel(last_.C_k, last_.C_occ_k, n_occ_a,
                          seed_uks ? "C_k / C_occ_k (alpha)" : "C_k / C_occ_k");
         cpmd_k_beta_.clear();
-        if (seed_uks && n_beta > 0)
+        if (seed_uks && method_.n_beta > 0)
             cpmd_k_beta_ =
-                seed_channel(last_.C_k_beta, last_.C_occ_k_beta, n_beta,
+                seed_channel(last_.C_k_beta, last_.C_occ_k_beta, method_.n_beta,
                              "C_k_beta / C_occ_k_beta (beta)");
         // Seed step: the electronic coefficients have not been propagated, so
         // both electronic energies are exactly 0 (a re-`build()` after a warm
@@ -1803,44 +1681,44 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 "GPWEvaluator: cpmd seed requires a converged SCF with "
                 "occupied MO coefficients");
         const int nb = static_cast<int>(last_.C.shape(0));
-        if (n_alpha + n_beta > 0) {
+        if (method_.n_alpha + method_.n_beta > 0) {
             // Collinear UKS: seed α (and β when present) occupied blocks.
-            if (n_alpha < 1)
+            if (method_.n_alpha < 1)
                 throw std::runtime_error(
                     "GPWEvaluator: UKS CPMD seed requires n_alpha >= 1 "
                     "(alpha propagator is primary)");
-            if (static_cast<int>(last_.C.shape(1)) < n_alpha)
+            if (static_cast<int>(last_.C.shape(1)) < method_.n_alpha)
                 throw std::runtime_error(
                     "GPWEvaluator: UKS CPMD seed: alpha MO count < n_alpha");
             linalg::RealMatrix Ca =
                 xt::zeros<double>({static_cast<std::size_t>(nb),
-                                   static_cast<std::size_t>(n_alpha)});
+                                   static_cast<std::size_t>(method_.n_alpha)});
             for (int mu = 0; mu < nb; ++mu)
-                for (int i = 0; i < n_alpha; ++i)
+                for (int i = 0; i < method_.n_alpha; ++i)
                     Ca(mu, i) = last_.C(mu, i);
             cpmd_->seed(Ca);
-            if (n_beta > 0) {
+            if (method_.n_beta > 0) {
                 if (!cpmd_beta_)
                     throw std::runtime_error(
                         "GPWEvaluator: UKS CPMD missing beta propagator");
                 if (last_.C_beta.size() == 0
-                    || static_cast<int>(last_.C_beta.shape(1)) < n_beta)
+                    || static_cast<int>(last_.C_beta.shape(1)) < method_.n_beta)
                     throw std::runtime_error(
                         "GPWEvaluator: UKS CPMD seed requires beta MO "
                         "coefficients");
-                linalg::RealMatrix Cb =
-                    xt::zeros<double>({static_cast<std::size_t>(nb),
-                                       static_cast<std::size_t>(n_beta)});
+                linalg::RealMatrix Cb = xt::zeros<double>(
+                    {static_cast<std::size_t>(nb),
+                     static_cast<std::size_t>(method_.n_beta)});
                 for (int mu = 0; mu < nb; ++mu)
-                    for (int i = 0; i < n_beta; ++i)
+                    for (int i = 0; i < method_.n_beta; ++i)
                         Cb(mu, i) = last_.C_beta(mu, i);
                 cpmd_beta_->seed(Cb);
             }
         } else {
-            if (solver_->n_occ < 1)
+            if (method_.n_occ < 1)
                 throw std::runtime_error(
                     "GPWEvaluator: RKS CPMD seed requires n_occ >= 1");
-            const int n_occ = solver_->n_occ;
+            const int n_occ = method_.n_occ;
             linalg::RealMatrix C_occ =
                 xt::zeros<double>({static_cast<std::size_t>(nb),
                                    static_cast<std::size_t>(n_occ)});
@@ -1862,11 +1740,13 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         // masked axes (variable-cell relax of constrained boxes).
         const ATV::cpu::linalg::RealMatrix* stress_guess =
             last_.C.size() > 0 ? &last_.C : nullptr;
-        last_stress_ha_ = stress_use_fd
-                              ? gpw_stress_fd(atoms, *solver_, stress_strain_h,
-                                              stress_axes, stress_guess)
-                              : gpw_stress(atoms, *solver_, stress_strain_h,
-                                           stress_axes, stress_guess);
+        last_stress_ha_ =
+            stress_use_fd
+                ? internal::gpw_stress_fd_impl(atoms, method_, stress_strain_h,
+                                               stress_axes, stress_guess)
+                : internal::gpw_stress_analytic_impl(atoms, method_,
+                                                     stress_strain_h,
+                                                     stress_axes, stress_guess);
         add_stress_to_frame(frame, last_stress_ha_);
     }
 }

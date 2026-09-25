@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pw-spin-polarized-o2` |
-| Regression | `regressions/pw/pw-spin-polarized-o2/` |
 | Public API | `cpu::pw::PW` (`spin_polarized`, `multiplicity`) → `PWResult::magnetization` |
 | Track | CP2K capability wave 1 () |
 | Roadmap | PW collinear spin (Γ) — enables later `pw-uks-kmesh-fe` |
@@ -72,7 +71,7 @@ stress; GPW UKS (`gpw-uks-o2-gamma`); hybrid / meta-GGA XC; CUDA PW spin.
 
 Public surface only: construct `cpu::pw::PW`, set members (no `*Config` bag,
 no `make_*` / `build_*` factory), `build(frame)` → `run(frame)`. Header:
-`include/atomiverse/cpu/planewave/pw_solver.h`. Internals (density / XC /
+`pw_solver.h`. Internals (density / XC /
 workspace spin buffers) stay under `cpu/planewave/internal/`.
 
 ```cpp
@@ -124,7 +123,7 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_PW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_pw-spin-polarized-o2 -j$(nproc)
-  ./build/regressions/reg_pw-spin-polarized-o2
+  reg_pw-spin-polarized-o2
 '
 ```
 
@@ -132,17 +131,16 @@ bash -lc '
 
 | Role | Path |
 | ---- | ---- |
-| Public API | `include/atomiverse/cpu/planewave/pw_solver.h` |
+| Public API | `pw_solver.h` |
 | SCF / spin branch | `src/cpu/planewave/pw_solver.cpp` |
 | Density / XC spin | `src/cpu/planewave/internal/{density,xc}_builder.cpp` |
 | Unit test | `tests/cpu/planewave/test_pw_spin.cpp` |
-| Regression | `regressions/pw/pw-spin-polarized-o2/reg_pw-spin-polarized-o2.cpp` |
-| Offline pin | `regressions/pw/pw-spin-polarized-o2/REFERENCE.md` |
-| Oracle note | `tools/cp2k_oracle/inputs/pw-spin-polarized-o2.note` |
+| Offline pin | case `pw-spin-polarized-o2` pin |
+| Oracle note | CP2K oracle |
 
 ## Validation (CP2K)
 
-Source: [`regressions/pw/pw-spin-polarized-o2/REFERENCE.md`](../../../regressions/pw/pw-spin-polarized-o2/REFERENCE.md)
+Source: case `pw-spin-polarized-o2` pin
 (offline only; **no live CP2K or QE in ctest**).
 
 | Setting | Value |
@@ -180,13 +178,13 @@ occupation assignment (not a floating SCF observable).
 Absolute PW total energies shift with cutoff and PP family; the regression
 gate is **stability under the frozen method string**, not a literature
 chemical accuracy claim. Oracle note:
-`tools/cp2k_oracle/inputs/pw-spin-polarized-o2.note` — re-pin against QE with
+CP2K oracle — re-pin against QE with
 this UPF when an offline twin exists; magnetization remains the hard literature
 gate.
 
 ## Performance
 
-Source: `REFERENCE.md` § Perf; queue/handoff mark this slug **perf_exempt**.
+Source: pin notes § Perf; queue/handoff mark this slug **perf_exempt**.
 
 | Field | Value |
 | ----- | ----- |
@@ -223,12 +221,12 @@ reason above. Queue row: ratio **perf_exempt** (2026-07-23 wave 1).
 
 ## References
 
-- Offline pin: [`regressions/pw/pw-spin-polarized-o2/REFERENCE.md`](../../../regressions/pw/pw-spin-polarized-o2/REFERENCE.md)
-- Regression consumer: `regressions/pw/pw-spin-polarized-o2/reg_pw-spin-polarized-o2.cpp`
-- Oracle note: `tools/cp2k_oracle/inputs/pw-spin-polarized-o2.note`
+- Offline pin: case `pw-spin-polarized-o2` pin
+- Regression consumer: `reg_pw-spin-polarized-o2.cpp`
+- Oracle note: CP2K oracle
 - Narrative PW / GPW chapters: [ch08-plane-wave.md](../ch08-plane-wave.md),
   [ch09-gpw.md](../ch09-gpw.md)
-- Related Γ-UKS GPW (different basis/PP): `regressions/gpw/gpw-uks-o2-gamma`
+- Related Γ-UKS GPW (different basis/PP): `gpw-uks-o2-gamma`
 - Herzberg G., *Molecular Spectra and Molecular Structure* I (O₂ \(^3\Sigma_g^-\)
   ground multiplet)
 - Hamann D. R., optimized norm-conserving Vanderbilt pseudopotentials; SG15

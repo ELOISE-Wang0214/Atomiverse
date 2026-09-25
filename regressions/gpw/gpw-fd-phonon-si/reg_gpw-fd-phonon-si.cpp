@@ -20,6 +20,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -83,15 +84,16 @@ cpu::gpw::GPWEvaluator make_eval(bool forces) {
         molrs::Element::Si,
         cpu::gpw::GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
         cpu::gpw::GthPotential(molrs::Element::Si, "GTH-PBE-q4")};
-    cpu::gpw::GPWEvaluator eval({Si});
-    eval.cutoff_ry = kCutoffRy;
-    eval.max_iter = kMaxIter;
-    eval.tol = kTol;
-    eval.mix = kMix;
-    eval.xc = cpu::gpw::XcKind::PADE;
-    eval.nonperiodic = true;
-    eval.n_alpha = 5;
-    eval.n_beta = 3;
+    cpu::gpw::GpwDft dft{{Si}};
+    dft.cutoff_ry = kCutoffRy;
+    dft.max_iter = kMaxIter;
+    dft.tol = kTol;
+    dft.mix = kMix;
+    dft.xc = cpu::gpw::XcKind::PADE;
+    dft.nonperiodic = true;
+    dft.n_alpha = 5;
+    dft.n_beta = 3;
+    cpu::gpw::GPWEvaluator eval(std::move(dft));
     eval.compute_forces = forces;
     return eval;
 }

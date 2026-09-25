@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-optb88-vdw` |
-| Regression | `regressions/gpw/gpw-optb88-vdw/` |
-| Public API | `cpu::gpw::XcKind::OptB88VdW` + `GpwDft::vdw_df` / `GPWEvaluator::vdw_df`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::XcKind::OptB88VdW` + `GpwDft::vdw_df` (bound by `GPWEvaluator`); `GpwResult::e_disp` [Ha] |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -20,10 +19,10 @@ the same **periodic water-dimer cell** as `gpw-vdw-df-ice` / `gpw-rvv10-ice`
 (12 Å cubic, ice-relevant H-bonded pair — not bulk ice Ih).
 
 Public surface: enum member `xc = XcKind::OptB88VdW` and bool `vdw_df` on
-`cpu::gpw::GpwDft` and `cpu::gpw::GPWEvaluator` (no `*Config` bag). Nonlocal
+`cpu::gpw::GpwDft` (no `*Config` bag). Nonlocal
 energy is reported on `GpwResult::e_disp` [Hartree] and folded into `e_total`.
-Public Frame energy remains eV via the evaluator path. Product gate:
-`regressions/gpw/gpw-optb88-vdw` (`reg_gpw-optb88-vdw`). Wall ratio is
+Public Frame energy is eV (`frame.meta[kEnergy]`). Product gate:
+`gpw-optb88-vdw` (`reg_gpw-optb88-vdw`). Wall ratio is
 **perf_exempt** (XC combo + E_disp pin; full CP2K QS twin wall unavailable on
 the pin host — see Performance).
 
@@ -80,7 +79,7 @@ evaluation is **post-SCF** on the final total density (same kernel as
 &END vdW_POTENTIAL
 ```
 
-Input: `tools/cp2k_oracle/inputs/gpw-optb88-vdw/water_dimer_optb88_vdw.inp`.
+Input: CP2K oracle.
 
 **Electronic host.** Γ-RKS GPW, `DZVP-MOLOPT-SR-GTH` + `GTH-PBE-q*`, CUTOFF
 200 Ry, \(n_{\mathrm{occ}}=8\) (16 valence e⁻), mix 0.4, tol \(10^{-7}\),
@@ -101,28 +100,29 @@ self-consistent nonlocal potential productization).
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
+Public surface only (`GpwDft` members + `GPWEvaluator`; no `*Config`, no
 `make_*` / `build_*` factories). Regression uses the concrete solver:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
 
-// Geometry [Å] → Bohr — CP2K water dimer (REFERENCE.md).
-constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// Geometry [Å] — CP2K water dimer (REFERENCE.md).
+// … fill ATV::cpu::Frame frame(6): positions [Å], Z (8 / 1) in kAtom_type …
+frame.box = ATV::cpu::Box::cubic(12.0);   // [Å]
+// Kind O / H: DZVP-MOLOPT-SR-GTH + GTH-PBE-q6 / GTH-PBE-q1
 
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+GpwDft gpw{{O, H}};
 gpw.cutoff_ry = 200.0;
 gpw.n_occ = 8;         // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 40;
@@ -132,21 +132,22 @@ gpw.xc = XcKind::OptB88VdW;
 gpw.nonperiodic = false;
 gpw.vdw_df = true;     // DRSLL nonlocal; exclusive vs d3/d3bj/d4/ts/mbd/…
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp [Ha] — DRSLL on optB88 density
 // res.e_total includes e_disp [Ha]
 ```
 
-Driver / Frame path (component; same members):
+Driver path (component binding the same method):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/200.0, /*max_iter=*/40,
-                                 /*tol=*/1e-7, /*mix=*/0.4,
-                                 ATV::cpu::gpw::XcKind::OptB88VdW,
-                                 /*nonperiodic=*/false);
-eval.vdw_df = true;
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 200.0;  dft.max_iter = 40;  dft.tol = 1e-7;  dft.mix = 0.4;
+dft.xc = ATV::cpu::gpw::XcKind::OptB88VdW;
+dft.nonperiodic = false;
+dft.vdw_df = true;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft));
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 // frame.meta.get(kEnergy)    [eV] public surface
@@ -166,27 +167,27 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-optb88-vdw -j$(nproc)
-  ./build/regressions/reg_gpw-optb88-vdw
+  reg_gpw-optb88-vdw
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `XcKind::OptB88VdW`, `vdw_df`, `GpwResult::e_disp` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::vdw_df` |
-| `include/atomiverse/cpu/scf/xc_functional.h` | `XCType::OptB88VdW` (semi-local kernel) |
-| `include/atomiverse/cpu/gpw/internal/xc_grid_gga.h` | `xc_grid_optb88_vdw` / spin |
-| `include/atomiverse/cpu/gpw/internal/vdw_df.h` | DRSLL engine (private) |
-| `regressions/gpw/gpw-optb88-vdw/reg_gpw-optb88-vdw.cpp` | Product gate |
-| `regressions/gpw/gpw-optb88-vdw/REFERENCE.md` | Offline pins + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-optb88-vdw/` | CP2K twin input + notes |
+| `gpw_solver.h` | `GpwDft`, `XcKind::OptB88VdW`, `vdw_df`, `GpwResult::e_disp` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds the configured `GpwDft`) |
+| `xc_functional.h` | `XCType::OptB88VdW` (semi-local kernel) |
+| `xc_grid_gga.h` | `xc_grid_optb88_vdw` / spin |
+| `vdw_df.h` | DRSLL engine (private) |
+| `reg_gpw-optb88-vdw.cpp` | Product gate |
+| case `gpw-optb88-vdw` pin | Offline pins + perf_exempt |
+| CP2K oracle | CP2K twin input + notes |
 
 ## Validation (CP2K / offline pins)
 
 Source:
-[`regressions/gpw/gpw-optb88-vdw/REFERENCE.md`](../../../regressions/gpw/gpw-optb88-vdw/REFERENCE.md).
+case `gpw-optb88-vdw` pin.
 Oracle design: offline **CP2K** twin under
-`tools/cp2k_oracle/inputs/gpw-optb88-vdw/` (Hutter recipe:
+CP2K oracle (Hutter recipe:
 `XC_GGA_X_OPTB88_VDW` + `&PW92` + `TYPE DRSLL`). On the pin host, **CP2K is
 present but built without LIBXC** (`unknown subsection LIBXC`), so absolute
 CP2K QS digits are **not** invented. Hard gates use (1) a **semi-local dual
@@ -232,7 +233,7 @@ offline LIBXC-enabled CP2K twin replaces the freeze.
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 Nonlocal RPS is \(O(N_g \log N_g \times n_\alpha)\) with \(n_\alpha=20\);
 wall on the 6-atom cell is dominated by the electronic SCF, not the
@@ -255,7 +256,7 @@ a strict full-SCF twin later if product policy requires
   optB88-vdW + DRSLL parity; not a structural ice benchmark.
 - **Absolute CP2K QS digits deferred** until a LIBXC-enabled offline twin
   replaces the first-green ATV freeze (input already under
-  `tools/cp2k_oracle/inputs/gpw-optb88-vdw/`).
+  CP2K oracle).
 - **Post-SCF DRSLL on this pin** — self-consistent nonlocal potential/forces
   are productized under `gpw-vdw-scf-potential`, not re-gated here.
 - **Mutually exclusive dispersion flags** — `vdw_df` cannot combine with
@@ -267,9 +268,9 @@ a strict full-SCF twin later if product policy requires
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-optb88-vdw/REFERENCE.md`
-- Oracle inputs: `tools/cp2k_oracle/inputs/gpw-optb88-vdw/`
-- Oracle rules: `tools/cp2k_oracle/README.md` (offline pins only; never in ctest)
+- Offline pin: case `gpw-optb88-vdw` pin
+- Oracle inputs: CP2K oracle
+- Oracle rules: CP2K oracle (offline pins only; never in ctest)
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
 - Related product pins: `gpw-vdw-df-ice` (DRSLL kernel),
   `gpw-vdw-scf-potential` (SC nonlocal potential + forces)

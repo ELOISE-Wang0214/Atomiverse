@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pim-npt-polarizable-il` |
-| Regression | `regressions/md/pim-npt-polarizable-il/` |
 | Public API | `cpu::PimInducedDipole` (`Potential`) + `cpu::md::NoseHooverNPT` on `cpu::md::MD`; pin legs on `cpu::Evaluate` |
 | Roadmap | map §9 "Bulk polarizable IL / PIM-NPT" |
 | Oracle | **MetalWalls** bulk-PIM Thole form (offline numpy pin; MW JOSS 2020, Thole 1981) — not LAMMPS |
@@ -169,23 +168,23 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_pim-npt-polarizable-il -j"$(nproc)"
-  ./build/regressions/reg_pim-npt-polarizable-il
+  reg_pim-npt-polarizable-il
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/potentials/pim_induced_dipole.h` | Public `PimInducedDipole` (E4; virial into `kStress`) |
-| `include/atomiverse/cpu/dynamics/nose_hoover_npt.h` | MTK NPT integrator+thermostat+barostat |
-| `regressions/md/pim-npt-polarizable-il/reg_pim-npt-polarizable-il.cpp` | Product gate (3 legs) |
-| `tools/metalwalls_oracle/inputs/pim_npt_polarizable_il_pin.py` | Offline numpy pin script (never run at ctest time) |
+| `pim_induced_dipole.h` | Public `PimInducedDipole` (E4; virial into `kStress`) |
+| `nose_hoover_npt.h` | MTK NPT integrator+thermostat+barostat |
+| `reg_pim-npt-polarizable-il.cpp` | Product gate (3 legs) |
+| MetalWalls oracle | Offline numpy pin script (never run at ctest time) |
 
 ## Validation (vs MetalWalls-form offline numpy pin)
 
 Source:
-[`regressions/md/pim-npt-polarizable-il/REFERENCE.md`](../../../regressions/md/pim-npt-polarizable-il/REFERENCE.md)
+case `pim-npt-polarizable-il` pin
 and
-[`tools/metalwalls_oracle/pin_notes_pim-npt-polarizable-il.md`](../../../tools/metalwalls_oracle/pin_notes_pim-npt-polarizable-il.md)
+MetalWalls oracle
 (offline pin; **never** live MetalWalls in ctest).
 
 **Oracle:** MetalWalls JOSS **5**, 2373 (2020) bulk-PIM multipole form with
@@ -222,7 +221,7 @@ final volume.
 ## Performance
 
 Source: REFERENCE.md; handoff
-the case `REFERENCE.md`
+the case pin notes
 (wave 5, 2026-07-27).
 
 | Twin | \(T_{\mathrm{oracle}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -261,11 +260,10 @@ require \(\le 10\). Runtime of the regression itself is ≪ 60 s
 
 ## References
 
-- Offline pin: [`regressions/md/pim-npt-polarizable-il/REFERENCE.md`](../../../regressions/md/pim-npt-polarizable-il/REFERENCE.md)
-- Pin notes: [`tools/metalwalls_oracle/pin_notes_pim-npt-polarizable-il.md`](../../../tools/metalwalls_oracle/pin_notes_pim-npt-polarizable-il.md)
-- Product gate: [`regressions/md/pim-npt-polarizable-il/reg_pim-npt-polarizable-il.cpp`](../../../regressions/md/pim-npt-polarizable-il/reg_pim-npt-polarizable-il.cpp)
+- Offline pin: case `pim-npt-polarizable-il` pin
+- Pin notes: MetalWalls oracle
 - Sibling foothold page: [`pim-induced-dipole-bulk.md`](pim-induced-dipole-bulk.md) (E4 — the SCC physics and equations)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md)
+- Oracle notes: MetalWalls oracle
 - Literature: Marin-Laflèche et al., *J. Open Source Softw.* **5**, 2373
   (2020) (MetalWalls classical PIM); Thole, *Chem. Phys.* **59**, 341
   (1981); Tuckerman et al., *J. Phys. A* **39**, 5629 (2006) and Shinoda

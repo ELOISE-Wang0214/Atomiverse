@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-water-pbe-mt` |
-| Regression | `regressions/gpw/gpw-water-pbe-mt/` |
-| Public API | `cpu::gpw::GPWEvaluator` + `cpu::single_point`; `Kind` + `GaussianBasis` / `GthPotential` lookup ctors |
+| Public API | `cpu::gpw::GpwDft` + `cpu::gpw::GPWEvaluator` + `cpu::single_point`; `Kind` + `GaussianBasis` / `GthPotential` lookup ctors |
 | Roadmap | narrative twin [ch09-gpw](../ch09-gpw.md) |
 
 ## Summary
@@ -16,10 +15,10 @@ energy for an **isolated** water molecule: contracted MOLOPT Gaussians for the
 wavefunction, uniform real-space grid + FFT for Hartree and XC, GTH
 pseudopotentials, **PBE** XC, density cutoff **400 Ry**. Cluster electrostatics
 use the **Martyna–Tuckerman (MT)** Poisson solver (`nonperiodic = true`; CP2K
-`PERIODIC NONE` / `PSOLVER MT`). Public path is concrete
-`cpu::gpw::GPWEvaluator` (constructor args / members; no `*Config` bag) driven
-by `cpu::single_point(frame, eval)`. This is the **first** offline-CP2K-pinned
-e2e under `regressions/gpw/`: product gate
+`PERIODIC NONE` / `PSOLVER MT`). Public path is the concrete
+`cpu::gpw::GpwDft` (kinds + members; no `*Config` bag) moved into
+`cpu::gpw::GPWEvaluator` and driven by `cpu::single_point(frame, eval)`. This is the **first** offline-CP2K-pinned
+e2e under `gpw`: product gate
 `reg_gpw-water-pbe-mt` asserts SCF convergence and
 \(|E_{\mathrm{tot}} - E_{\mathrm{CP2K}}| \le 10^{-3}\) Ha. Fair wall vs CP2K is
 **`perf_exempt`** (no CP2K binary on the pin host).
@@ -48,7 +47,7 @@ would couple the molecule to its images. Martyna–Tuckerman replaces the
 reciprocal-space Coulomb kernel so that the electrostatic potential matches
 the free-space solution for a charge density localized inside the cell (here
 \(L = 10\) Å). Atomiverse exposes this as `nonperiodic = true` on
-`GPWEvaluator`.
+`GpwDft`.
 
 **What this pin includes**
 
@@ -72,7 +71,8 @@ the free-space solution for a charge density localized inside the cell (here
 
 ## Implementation
 
-Public surface only (`cpu::Frame` + `GPWEvaluator` ctor args / members; lookup
+Public surface only (`cpu::Frame` + `GpwDft` members bound through
+`GPWEvaluator`; lookup
 constructors for basis/PP tables — not factories for a parallel world model):
 
 ```cpp
@@ -80,6 +80,7 @@ constructors for basis/PP tables — not factories for a parallel world model):
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
+#include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
@@ -108,9 +109,15 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-cpu::gpw::GPWEvaluator eval(
-    /*kinds*/ {O, H}, /*cutoff_ry*/ 400.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 400.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = true;
+
+cpu::gpw::GPWEvaluator eval(std::move(dft));
 cpu::single_point(frame, eval);
 
 const double e_ha = eval.last_energy_hartree();   // [Hartree]
@@ -131,29 +138,29 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-water-pbe-mt -j$(nproc)
-  ./build/regressions/reg_gpw-water-pbe-mt
+  reg_gpw-water-pbe-mt
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | Public `Kind`, `GPWEvaluator` |
-| `include/atomiverse/cpu/gpw/gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
-| `include/atomiverse/cpu/gpw/gth_potential.h` | `GthPotential(Element, name)` lookup |
-| `include/atomiverse/cpu/evaluate/single_point.h` | `single_point(frame, method)` |
+| `gpw_evaluator.h` | Public `GPWEvaluator` |
+| `gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
+| `gth_potential.h` | `GthPotential(Element, name)` lookup |
+| `single_point.h` | `single_point(frame, method)` |
 | `src/cpu/gpw/` | GPW SCF / collocate / integrate (private) |
-| `regressions/gpw/gpw-water-pbe-mt/reg_gpw-water-pbe-mt.cpp` | Product gate |
-| `tools/cp2k_oracle/inputs/gpw-water-pbe-mt.inp` | Offline CP2K twin (never ctest) |
+| `reg_gpw-water-pbe-mt.cpp` | Product gate |
+| CP2K oracle | Offline CP2K twin (never ctest) |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/gpw-water-pbe-mt/REFERENCE.md`](../../../regressions/gpw/gpw-water-pbe-mt/REFERENCE.md).
+case `gpw-water-pbe-mt` pin.
 Oracle: offline **CP2K Quickstep** getting-started `h2o.inp` family (same
 geometry, DZVP-MOLOPT-GTH + GTH-PBE, CUTOFF 400, PERIODIC NONE / PSOLVER MT,
 PBE). External-engine pin — **not** a golden of Atomiverse’s own output; **never**
 launch CP2K from ctest. Twin input:
-`tools/cp2k_oracle/inputs/gpw-water-pbe-mt.inp`. Cross-recorded by
+CP2K oracle. Cross-recorded by
 `examples/09_gpw.cpp`, `examples/results/09_gpw.json`, and
 [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md).
 
@@ -200,14 +207,14 @@ Offline re-pin (human only; never ctest):
 
 ```bash
 # when a CP2K binary is available
-cp2k.psmp -i tools/cp2k_oracle/inputs/gpw-water-pbe-mt.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o /tmp/gpw-water-pbe-mt.out
 # record TOTAL ENERGY [Ha] into REFERENCE.md
 ```
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/gpw/gpw-water-pbe-mt/REFERENCE.md)
+Source: pin notes
 (2026-07-23).
 
 | Item | Value |
@@ -244,15 +251,15 @@ Source: [`REFERENCE.md`](../../../regressions/gpw/gpw-water-pbe-mt/REFERENCE.md)
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-water-pbe-mt/REFERENCE.md`
-- Regression consumer: `regressions/gpw/gpw-water-pbe-mt/reg_gpw-water-pbe-mt.cpp`
-- Oracle twin: `tools/cp2k_oracle/inputs/gpw-water-pbe-mt.inp`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-water-pbe-mt` pin
+- Regression consumer: `reg_gpw-water-pbe-mt.cpp`
+- Oracle twin: CP2K oracle
+- Oracle notes: CP2K oracle
 - Narrative chapter: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Example + JSON: `examples/09_gpw.cpp`, `examples/results/09_gpw.json`
 - Closed spec (git history): `.claude/specs/gpw-water-pbe-mt/` on
   `wf/gpw-water-pbe-mt` / `dc7ad1bc`
-- Public API: `include/atomiverse/cpu/gpw/gpw_evaluator.h`
+- Public API: `gpw_solver.h`, `gpw_evaluator.h`
 - G. Lippert, J. Hutter, M. Parrinello, *Mol. Phys.* **92**, 477 (1997);
   *Theor. Chem. Acc.* **103**, 124 (1999) — GPW / Quickstep.
 - S. Goedecker, M. Teter, J. Hutter, *Phys. Rev. B* **54**, 1703 (1996) — GTH.

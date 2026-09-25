@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-ts-forces` |
-| Regression | `regressions/gpw/gpw-ts-forces/` |
-| Public API | `cpu::gpw::GpwDft::ts` / `cpu::gpw::GPWEvaluator::ts`; `GpwResult::e_disp` [Ha]; force assembly via `compute_forces` / `gpw_forces_*` |
+| Public API | `cpu::gpw::GpwDft::ts` (bound by `cpu::gpw::GPWEvaluator`); `GpwResult::e_disp` [Ha]; force assembly via `GpwDft::forces(frame)` / `GPWEvaluator` `compute_forces` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -24,15 +23,15 @@ offline **libMBD** free-atom TS energy (`cmbd_ts_energy`) plus a **force
 dual-gate** (product analytic \(\nabla E_{\mathrm{disp}}\) vs independent
 central finite differences of that energy) and a **product wiring** check
 (\(F(\mathrm{ts})-F(\mathrm{plain})\) matches standalone `ts_pbe` forces). Twin
-notes live under `tools/cp2k_oracle/inputs/gpw-ts-forces/`. Same policy as
+notes live under CP2K oracle. Same policy as
 `gpw-ts-ice` / `gpw-mbd-forces`.
 
-Public surface: bool members `ts` on `cpu::gpw::GpwDft` and
+Public surface: bool member `ts` on `cpu::gpw::GpwDft`, bound by
 `cpu::gpw::GPWEvaluator` (no `*Config` bag). Dispersion is reported on
 `GpwResult::e_disp` [Hartree] and folded into `e_total`; force assembly adds
 geometry-only TS forces to electronic Hellmann–Feynman / Pulay terms.
 Mutually exclusive with `d3` / `d3bj` / `d4` / `mbd` / `xdm` / nonlocal vdW.
-Product gate: `regressions/gpw/gpw-ts-forces` (`reg_gpw-ts-forces`). Wall ratio
+Product gate: `gpw-ts-forces` (`reg_gpw-ts-forces`). Wall ratio
 is **perf_exempt** (E_disp + force dual-gate; no stock CP2K TS twin — see
 Performance).
 
@@ -78,8 +77,8 @@ ratios scale free-atom parameters as in TS
 \]
 
 Dual-gated against central FD of the same geometry-only energy
-(\(h=10^{-5}\) Bohr). On the product path, `assemble_gpw_forces` /
-`gpw_forces_from_scf` with `GpwDft::ts = true` **adds** these forces to the
+(\(h=10^{-5}\) Bohr). On the product path, `GpwDft::forces(frame)` with
+`GpwDft::ts = true` **adds** these forces to the
 electronic HF / Pulay / grid-core terms.
 
 **PBE-TS parameters (binding):**
@@ -120,21 +119,20 @@ standalone `ts_pbe` dual-gate:
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
-using ATV::cpu::gpw::gpw_forces_from_scf;
 using ATV::cpu::gpw::ts_pbe;
 using ATV::cpu::gpw::XcKind;
 
-// Geometry [Å] → Bohr — water dimer (REFERENCE.md).
+// Geometry [Å] — water dimer (REFERENCE.md).
 constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// … fill a 6-atom cpu::Frame (2×O + 4×H; positions [Å], Z in kAtom_type)
+//   and kinds = {O, H}: Kind{Element, DZVP-MOLOPT-SR-GTH, GTH-PBE-q*} …
 // … Z, pos [Bohr] for ts_pbe …
 
 // Isolated free-atom TS energy + analytic forces (libMBD pin dual-gate)
@@ -149,8 +147,8 @@ const double cell[3] = {L, L, L};
 const auto ts_per = ts_pbe(Z, pos, cell, /*periodic=*/true, 50.0 * kA2B);
 // |ts_per.energy + 6.099630773386013e-4| ≤ 1e-8 Ha
 
-GpwDft gpw;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+frame.box = ATV::cpu::Box::cubic(12.0);  // Å
+GpwDft gpw{kinds};
 gpw.cutoff_ry = 200.0;
 gpw.n_occ = 8;         // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 80;
@@ -161,24 +159,23 @@ gpw.nonperiodic = false;
 gpw.local_pp_on_grid = true;
 gpw.ts = true;         // exclusive vs d3 / d3bj / d4 / mbd / xdm / …
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.forces(frame);  // SCF + analytic forces → kAtom_f* [eV/Å]
 // res.e_disp [Ha] within 1e-8 of periodic pin; folded into res.e_total
 
-const auto F_ts = gpw_forces_from_scf(atoms, gpw, res);
-// F(ts) − F(plain) matches ts_per.forces within 1e-7 Ha/Bohr
+// F(ts) − F(plain), converted to Ha/Bohr (÷ units::kHartreePerBohrInEvPerAngstrom),
+// matches ts_per.forces within 1e-7 Ha/Bohr
 ```
 
 Driver / Frame path (component; same member):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/300.0, /*max_iter=*/200,
-                                 /*tol=*/1e-7, /*mix=*/0.3,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false,
-                                 /*compute_forces=*/true);
-eval.ts = true;
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 300.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;  dft.nonperiodic = false;
+dft.ts = true;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/true);
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 // frame.span(kAtom_f*) [eV/Å] includes TS contribution
@@ -198,26 +195,26 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-ts-forces -j$(nproc)
-  ./build/regressions/reg_gpw-ts-forces
+  reg_gpw-ts-forces
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `ts` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::ts` |
-| `include/atomiverse/cpu/gpw/internal/ts_dispersion.h` | `ts_pbe`, `TsResult` |
-| `include/atomiverse/cpu/gpw/basis_data/ts_tables.h` | Free-atom \(\alpha_0\), \(C_6\), \(R_{\mathrm{vdW}}\) |
+| `gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `ts` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds the `GpwDft`; `compute_forces`) |
+| `ts_dispersion.h` | `ts_pbe`, `TsResult` |
+| `ts_tables.h` | Free-atom \(\alpha_0\), \(C_6\), \(R_{\mathrm{vdW}}\) |
 | `src/cpu/gpw/internal/gpw_forces.cpp` | Product force assembly folds TS |
 | `tests/cpu/gpw/test_cpu_gpw_ts.cpp` | Unit energy + force + wiring gates |
-| `regressions/gpw/gpw-ts-forces/reg_gpw-ts-forces.cpp` | Product gate |
-| `regressions/gpw/gpw-ts-forces/REFERENCE.md` | Offline pins + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-ts-forces/` | Geometry + oracle policy note |
+| `reg_gpw-ts-forces.cpp` | Product gate |
+| case `gpw-ts-forces` pin | Offline pins + perf_exempt |
+| CP2K oracle | Geometry + oracle policy note |
 
 ## Validation (libMBD / force dual-gate)
 
 Source:
-[`regressions/gpw/gpw-ts-forces/REFERENCE.md`](../../../regressions/gpw/gpw-ts-forces/REFERENCE.md).
+case `gpw-ts-forces` pin.
 Oracle: offline **libMBD** free-atom TS energy (`cmbd_ts_energy`, git
 `88069c6`, ATV Å→Bohr) + **analytic-vs-FD dual-gate** + product wiring.
 External engine pin — not a golden of Atomiverse’s own output; **never**
@@ -255,7 +252,7 @@ exactly the geometry-only TS contribution without double-counting or omission.
 Offline re-pin notes (human only; never ctest):
 
 ```text
-# tools/cp2k_oracle/inputs/gpw-ts-forces/water_dimer_ts_forces.note
+# <CP2K oracle input for this case>
 # Isolated: libMBD cmbd_ts_energy on the six nuclei (ATV Å→Bohr)
 # Periodic: pure-RS rcut 50 Å (same as gpw-ts-ice)
 # Forces: product ∇E vs independent FD; optional libMBD C gradients on host
@@ -263,7 +260,7 @@ Offline re-pin notes (human only; never ctest):
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 TS evaluation is \(O(N^2\times N_{\mathrm{images}})\) over a 6-atom cell
 (microseconds). Full GPW SCF wall dominates when the short host SCF is run.
@@ -272,7 +269,7 @@ There is **no** stock CP2K `TYPE TS` twin for a fair
 
 | Twin | \(T_{\mathrm{oracle}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | ----------------------: | ----: | ---- | ------ |
-| Full QS ENERGY_FORCE | n/a (CP2K has no stock TS) | — | **perf_exempt** | — | Policy note under `tools/cp2k_oracle/inputs/gpw-ts-forces/` |
+| Full QS ENERGY_FORCE | n/a (CP2K has no stock TS) | — | **perf_exempt** | — | Policy note under CP2K oracle |
 | E_disp + force dual-gate | n/a | short SCF + TS (reg) | **perf_exempt** | — | Geometry-only deliverable + wiring |
 
 **perf_exempt = true.** Reason (from REFERENCE / handoff wave 11): primary
@@ -302,14 +299,14 @@ requires \(r\le 10\).
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-ts-forces/REFERENCE.md`
-- Oracle notes: `tools/cp2k_oracle/inputs/gpw-ts-forces/`,
-  `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-ts-forces` pin
+- Oracle notes: CP2K oracle,
+  CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
-- Related energy pin: `regressions/gpw/gpw-ts-ice/` (E_disp only)
-- Related many-body forces: `regressions/gpw/gpw-mbd-forces/`
-- Related XDM forces: `regressions/gpw/gpw-xdm-forces/`
-- Related D4 forces: `regressions/gpw/gpw-d4-forces/`
+- Related energy pin: `gpw-ts-ice` (E_disp only)
+- Related many-body forces: `gpw-mbd-forces`
+- Related XDM forces: `gpw-xdm-forces`
+- Related D4 forces: `gpw-d4-forces`
 - GPW analytic forces (no disp): [gpw-forces-water](gpw-forces-water.md)
 - GPW D4 energy: [gpw-d4-water](gpw-d4-water.md)
 - GPW narrative chapter: `docs/tutorial/ch09-gpw.md`

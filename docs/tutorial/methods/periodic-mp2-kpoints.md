@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-mp2-kpoints` |
-| Regression | `regressions/gpw/periodic-mp2-kpoints/` |
 | Public API | `cpu::gpw::GpwDft::{build,run,mp2}` → `cpu::gpw::Mp2Result` (`cpu/gpw/mp2.h`); members `k_mesh`, `k_time_reversal`, `mp2_ri`, `mp2_n_virt`, `mp2_os_scale`, `mp2_ss_scale` |
 | Roadmap | handoff **perf_exempt**; roadmap `dft.md` §10 multi-k RI-GPW MP2 closed |
 
@@ -24,7 +23,7 @@ diamond Si in the body-centred-tetragonal 4-atom cell (same geometry as
 virtual cap (`mp2_n_virt = 2`) for the ≤ 60 s regression budget. Fair wall vs
 CP2K is **`perf_exempt`** (no CP2K binary on the pin host); absolute CP2K digits
 are not invented — the offline twin is
-`tools/cp2k_oracle/inputs/periodic-mp2-kpoints.inp`.
+CP2K oracle.
 
 ## Method
 
@@ -122,20 +121,34 @@ Public surface only (`GpwDft` members + lookup constructors; matches
 `reg_periodic-mp2-kpoints.cpp`):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/mp2.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
-// bct diamond Si4: a = 5.43 Å → Bohr; positions via fractional coords
-// (0,0,0), (½,½,½), (½,0,¼), (0,½,¾) with DZVP-MOLOPT-GTH + GTH-PBE-q4.
+// bct diamond Si4: a = 5.43 Å, a_t = a/√2, c = a; fractional coords
+// (0,0,0), (½,½,½), (½,0,¼), (0,½,¾); Z = 14 in kAtom_type.
+constexpr double a = 5.43;                   // [Å]
+const double at = a / std::sqrt(2.0);
+const double frac[4][3] = {{0, 0, 0}, {0.5, 0.5, 0.5}, {0.5, 0, 0.25}, {0, 0.5, 0.75}};
+cpu::Frame frame(4);
+for (int i = 0; i < 4; ++i) {
+    frame.span(kAtom_type)[i] = 14;
+    frame.span(kAtom_x)[i] = frac[i][0] * at;
+    frame.span(kAtom_y)[i] = frac[i][1] * at;
+    frame.span(kAtom_z)[i] = frac[i][2] * a;
+}
+frame.box = cpu::Box::orthorhombic(at, at, a);
 
-GpwDft m;
-m.cell[0] = m.cell[1] = a_bohr / std::sqrt(2.0);
-m.cell[2] = a_bohr;
+GpwDft m{{Kind{molrs::Element::Si,
+               GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+               GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 80.0;
 m.n_occ = 8;
 m.max_iter = 60;
@@ -151,16 +164,16 @@ m.k_mesh[1] = 1;
 m.k_mesh[2] = 1;
 m.k_time_reversal = false;   // equal weights
 m.diis_depth = 6;
-m.build(atoms);
+m.build(frame);
 
-const GpwResult& scf = m.run(atoms);   // stores C_k / eps_k / k_frac / weights
-const Mp2Result& r = m.mp2(atoms);     // multi-k RI-GPW; r.ri && r.n_kpts == 2
+const GpwResult& scf = m.run(frame);   // stores C_k / eps_k / k_frac / weights
+const Mp2Result& r = m.mp2();          // multi-k RI-GPW; r.ri && r.n_kpts == 2
 // r.e_corr (< 0), r.e_corr_os / r.e_corr_ss, r.e_total = r.e_scf + r.e_corr
 ```
 
 ```bash
 cmake --build build -j$(nproc) --target atomiverse reg_periodic-mp2-kpoints
-./build/regressions/reg_periodic-mp2-kpoints
+reg_periodic-mp2-kpoints
 # or: cmake --build build --target run_reg_periodic-mp2-kpoints
 ```
 
@@ -174,19 +187,19 @@ Relevant paths:
 
 | Layer | Path |
 | ----- | ---- |
-| Public result type | `include/atomiverse/cpu/gpw/mp2.h` |
-| Method + members | `include/atomiverse/cpu/gpw/gpw_solver.h` |
+| Public result type | `mp2.h` |
+| Method + members | `gpw_solver.h` |
 | Implementation | `src/cpu/gpw/mp2.cpp` |
 | Kernels (private) | `cpu/gpw/internal/mp2_kernels.{h,cpp}` |
 | Unit (Γ recovery) | `tests/cpu/gpw/test_cpu_gpw_mp2.cpp` |
-| E2E | `regressions/gpw/periodic-mp2-kpoints/` |
-| Oracle twin | `tools/cp2k_oracle/inputs/periodic-mp2-kpoints.inp` |
+| E2E | `periodic-mp2-kpoints` |
+| Oracle twin | CP2K oracle |
 
 ## Validation (vs CP2K offline pin)
 
-Source: `regressions/gpw/periodic-mp2-kpoints/REFERENCE.md` (offline pin;
+Source: case `periodic-mp2-kpoints` pin (offline pin;
 **never** live CP2K in ctest). Oracle twin:
-`tools/cp2k_oracle/inputs/periodic-mp2-kpoints.inp`.
+CP2K oracle.
 
 ### Binding gates
 
@@ -218,7 +231,7 @@ is run offline; the regression gate is the ATV first-green band at **1e-4 Ha**.
 
 ## Performance
 
-Source: the case `REFERENCE.md` + REFERENCE.
+Source: the case pin notes + REFERENCE.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | ----: | ---- | ------ |
@@ -236,16 +249,16 @@ Never launch CP2K from ctest.
 - Multi-k path requires product RI (`mp2_ri`); Poisson multi-k not implemented.
 - Closed-shell RKS only; no UMP2 / ROMP2 on the k-mesh.
 - Absolute oracle digits pending offline CP2K re-pin of
-  `tools/cp2k_oracle/inputs/periodic-mp2-kpoints.inp`.
+  CP2K oracle.
 - Multi-k RPA / periodic GW remain open residuals (`dft.md` §10).
 
 ## References
 
-- Offline pin: `regressions/gpw/periodic-mp2-kpoints/REFERENCE.md`
-- Oracle twin: `tools/cp2k_oracle/inputs/periodic-mp2-kpoints.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md` (offline only; never in ctest)
+- Offline pin: case `periodic-mp2-kpoints` pin
+- Oracle twin: CP2K oracle
+- Oracle rules: CP2K oracle (offline only; never in ctest)
 - Roadmap: `docs/roadmap/dft.md` §10 Periodic MP2
 - Prior Γ products: [periodic-mp2-si](periodic-mp2-si.md) (Poisson foothold);
-  `regressions/gpw/periodic-ri-mp2-si` (Γ RI)
+  `periodic-ri-mp2-si` (Γ RI)
 - Literature: Del Ben, Hutter, VandeVondele, *J. Chem. Theory Comput.* **8**,
   4177 (2012) (RI-GPW MP2 / CP2K `MP2_GPW`)

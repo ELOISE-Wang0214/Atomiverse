@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-pbe-d3bj-ice` |
-| Regression | `regressions/gpw/gpw-pbe-d3bj-ice/` |
-| Public API | `cpu::gpw::GpwDft::d3bj` / `cpu::gpw::GPWEvaluator::d3bj`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::GpwDft::d3bj` (bind via `cpu::gpw::GPWEvaluator` for drivers); `GpwResult::e_disp` [Ha] |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -17,11 +16,11 @@ product pin uses a **periodic water-dimer cell** (ice-relevant H-bonded pair in
 a 12 Å cubic box — not a full ice Ih supercell) and gates the
 **dispersion energy** against offline **CP2K 2026.1** `TYPE DFTD3(BJ)`.
 
-Public surface: bool members `d3bj` on `cpu::gpw::GpwDft` and
-`cpu::gpw::GPWEvaluator` (no `*Config` bag). Dispersion is reported on
+Public surface: bool member `d3bj` on `cpu::gpw::GpwDft` (no `*Config`
+bag; `cpu::gpw::GPWEvaluator` binds the configured method). Dispersion is reported on
 `GpwResult::e_disp` [Hartree] and folded into `e_total`. Mutually exclusive
 with zero-damping `d3`. Product gate:
-`regressions/gpw/gpw-pbe-d3bj-ice` (`reg_gpw-pbe-d3bj-ice`). Wall ratio is
+`gpw-pbe-d3bj-ice` (`reg_gpw-pbe-d3bj-ice`). Wall ratio is
 **perf_exempt** (E_disp pin; full QS twin wall unfair — see Performance).
 
 ## Method
@@ -76,28 +75,35 @@ differences).
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
+Public surface only (`GpwDft` members, Frame in / Frame out; no `*Config`, no
 `make_*` / `build_*` factories). Regression uses the concrete solver:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::XcKind;
 
-// Geometry [Å] → Bohr — CP2K water dimer (REFERENCE.md).
-constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// Geometry [Å] — CP2K water dimer (REFERENCE.md).
+cpu::Frame frame(6);
+// … fill kAtom_type (Z) and kAtom_x/y/z [Å] for 2×O + 4×H …
+frame.box = cpu::Box::cubic(12.0);   // Å
 
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+GpwDft gpw{{Kind{molrs::Element::O,
+                  GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH"),
+                  GthPotential(molrs::Element::O, "GTH-PBE-q6")},
+             Kind{molrs::Element::H,
+                  GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
+                  GthPotential(molrs::Element::H, "GTH-PBE-q1")}}};
 gpw.cutoff_ry = 200.0; // e_disp is geometry-only; SCF only needs to run
 gpw.n_occ = 8;         // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 8;
@@ -107,22 +113,22 @@ gpw.xc = XcKind::PBE;
 gpw.nonperiodic = false;
 gpw.d3bj = true;       // mutually exclusive with gpw.d3
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp [Ha] within 1e-8 of offline CP2K pin
 // res.e_total includes e_disp
 ```
 
-Driver / Frame path (component; same member):
+Driver path (the same configured method bound as a component):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/300.0, /*max_iter=*/200,
-                                 /*tol=*/1e-7, /*mix=*/0.3,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false);
-eval.d3bj = true;
-// single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 300.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;  dft.nonperiodic = false;
+dft.d3bj = true;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft));
+// bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 ```
 
@@ -140,26 +146,25 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-pbe-d3bj-ice -j$(nproc)
-  ./build/regressions/reg_gpw-pbe-d3bj-ice
+  reg_gpw-pbe-d3bj-ice
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `d3bj` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::d3bj` |
-| `include/atomiverse/cpu/gpw/internal/dftd3.h` | CP2K-CN BJ engine (private) |
-| `regressions/gpw/gpw-pbe-d3bj-ice/reg_gpw-pbe-d3bj-ice.cpp` | Product gate |
-| `regressions/gpw/gpw-pbe-d3bj-ice/REFERENCE.md` | Offline pin + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-pbe-d3bj-ice/` | CP2K twin input |
+| `gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `d3bj` |
+| `dftd3.h` | CP2K-CN BJ engine (private) |
+| `reg_gpw-pbe-d3bj-ice.cpp` | Product gate |
+| case `gpw-pbe-d3bj-ice` pin | Offline pin + perf_exempt |
+| CP2K oracle | CP2K twin input |
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/gpw/gpw-pbe-d3bj-ice/REFERENCE.md`](../../../regressions/gpw/gpw-pbe-d3bj-ice/REFERENCE.md).
+case `gpw-pbe-d3bj-ice` pin.
 Oracle: offline **CP2K 2026.1** (`git:5e54ba2`, module
 `2026.1-gmpflf-2026.03` on Arrhenius), twin
-`tools/cp2k_oracle/inputs/gpw-pbe-d3bj-ice/water_dimer_d3bj.inp`. External
+CP2K oracle. External
 engine pin — not a golden of Atomiverse’s own output; **never** launch live
 CP2K from ctest.
 
@@ -188,7 +193,7 @@ Unit tests also check analytic BJ forces vs central FD and
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 D3 evaluation itself is \(O(N^2)\) over a 6-atom cell (microseconds). Full GPW
 SCF wall is dominated by the electronic structure, not D3. A fair
@@ -222,8 +227,8 @@ primary deliverable is E_disp pin parity; CP2K wall includes full Quickstep
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-pbe-d3bj-ice/REFERENCE.md`
-- Oracle inputs: `tools/cp2k_oracle/inputs/gpw-pbe-d3bj-ice/`
+- Offline pin: case `gpw-pbe-d3bj-ice` pin
+- Oracle inputs: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
 - GPW narrative chapter: `docs/tutorial/ch09-gpw.md`
 - Closed spec (git history): `.claude/specs/gpw-pbe-d3bj-ice/` (deleted at done)

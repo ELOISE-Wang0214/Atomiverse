@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -55,10 +56,15 @@ int main() {
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
     constexpr double dt = 0.1; // fs
-    cpu::gpw::GPWEvaluator gpw_base(
-        /*kinds*/ {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-        /*compute_forces*/ true);
+    cpu::gpw::GpwDft gpw_base_dft{{O, H}};
+    gpw_base_dft.cutoff_ry = 200.0;
+    gpw_base_dft.max_iter = 60;
+    gpw_base_dft.tol = 1e-5;
+    gpw_base_dft.mix = 0.3;
+    gpw_base_dft.xc = cpu::gpw::XcKind::PBE;
+    gpw_base_dft.nonperiodic = true;
+    cpu::gpw::GPWEvaluator gpw_base(std::move(gpw_base_dft),
+                                    /*compute_forces=*/true);
     cpu::electronic::CarParrinello eval{
         std::move(gpw_base), 2000.0,
         cpu::electronic::ElectronicThermostat{1e-5, 50.0}};

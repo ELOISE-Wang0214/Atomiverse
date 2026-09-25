@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/cpu/evaluate/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -41,9 +42,14 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval(
-        /*kinds*/ {O, H}, /*cutoff_ry*/ 400.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true);
+    cpu::gpw::GpwDft dft({O, H});
+    dft.cutoff_ry = 400.0;
+    dft.max_iter = 200;
+    dft.tol = 1e-7;
+    dft.mix = 0.3;
+    dft.xc = cpu::gpw::XcKind::PBE;
+    dft.nonperiodic = true;
+    cpu::gpw::GPWEvaluator eval(std::move(dft));
     cpu::single_point(frame, eval);
 
     // Offline CP2K pin (getting-started h2o.inp family). See REFERENCE.md.

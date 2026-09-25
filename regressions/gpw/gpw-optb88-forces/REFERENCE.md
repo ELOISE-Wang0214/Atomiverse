@@ -15,13 +15,16 @@
 Public API:
 
 ```cpp
-cpu::gpw::GPWEvaluator eval({O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 80,
-                            /*tol*/ 1e-7, /*mix*/ 0.4,
-                            cpu::gpw::XcKind::OptB88VdW,
-                            /*nonperiodic*/ false, /*compute_forces*/ true);
-eval.ngrids = 4;
-eval.rel_cutoff = 40.0;
-eval.vdw_df = true;
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 80;
+dft.tol = 1e-7;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::OptB88VdW;
+dft.ngrids = 4;
+dft.rel_cutoff = 40.0;
+dft.vdw_df = true;
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/true);
 // Frame forces [eV/Å]; last_result().e_disp [Ha]
 ```
 

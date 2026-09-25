@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/evaluate/single_point.h"
@@ -79,15 +80,16 @@ int main() {
         cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
     cpu::Frame frame_o2 = make_o2();
-    cpu::gpw::GPWEvaluator eval_o2({O});
-    eval_o2.cutoff_ry = 400.0;
-    eval_o2.max_iter = 200;
-    eval_o2.tol = 1e-7;
-    eval_o2.mix = 0.4;
-    eval_o2.xc = cpu::gpw::XcKind::PBE;
-    eval_o2.n_alpha = 7; // multiplicity 3, 12 valence e⁻
-    eval_o2.n_beta = 5;
-    eval_o2.vdw_df = true;
+    cpu::gpw::GpwDft dft_o2({O});
+    dft_o2.cutoff_ry = 400.0;
+    dft_o2.max_iter = 200;
+    dft_o2.tol = 1e-7;
+    dft_o2.mix = 0.4;
+    dft_o2.xc = cpu::gpw::XcKind::PBE;
+    dft_o2.n_alpha = 7; // multiplicity 3, 12 valence e⁻
+    dft_o2.n_beta = 5;
+    dft_o2.vdw_df = true;
+    cpu::gpw::GPWEvaluator eval_o2(std::move(dft_o2));
 
     const auto t0 = clock::now();
     cpu::single_point(frame_o2, eval_o2);
@@ -131,17 +133,17 @@ int main() {
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
     auto make_dimer_eval = [&]() {
-        cpu::gpw::GPWEvaluator ev({Osr, Hsr});
-        ev.cutoff_ry = 200.0;
-        ev.max_iter = 120;
-        ev.tol = 1e-7;
-        ev.mix = 0.4;
-        ev.xc = cpu::gpw::XcKind::PBE;
-        ev.vdw_df = true;
-        return ev;
+        cpu::gpw::GpwDft dft_ev({Osr, Hsr});
+        dft_ev.cutoff_ry = 200.0;
+        dft_ev.max_iter = 120;
+        dft_ev.tol = 1e-7;
+        dft_ev.mix = 0.4;
+        dft_ev.xc = cpu::gpw::XcKind::PBE;
+        dft_ev.vdw_df = true;
+        return cpu::gpw::GPWEvaluator(std::move(dft_ev));
     };
 
-    // RKS: leave n_alpha/n_beta at 0 → evaluator auto-sets n_occ = valence/2.
+    // RKS: leave n_alpha/n_beta at 0 → build() derives n_occ = valence/2.
     cpu::Frame frame_rks = make_water_dimer();
     cpu::gpw::GPWEvaluator eval_rks = make_dimer_eval();
     cpu::single_point(frame_rks, eval_rks);
@@ -149,8 +151,8 @@ int main() {
     // UKS closed-shell: nα = nβ = 8 (16 valence electrons, spin-paired).
     cpu::Frame frame_uks = make_water_dimer();
     cpu::gpw::GPWEvaluator eval_uks = make_dimer_eval();
-    eval_uks.n_alpha = 8;
-    eval_uks.n_beta = 8;
+    eval_uks.method().n_alpha = 8;
+    eval_uks.method().n_beta = 8;
     cpu::single_point(frame_uks, eval_uks);
     const auto t2 = clock::now();
 

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gfn0-xtb-analytic-hessian` |
-| Regression | `regressions/semiempirical/gfn0-xtb-analytic-hessian/` |
 | Public API | `cpu::semiempirical::GFN0` (`with_forces = true`) on `cpu::vib::Hessian` at `vib::Phase::force` |
 | Related narrative | [Ch. 17 Semiempirical AM1](../ch17-semiempirical-am1.md) (SE product surface); [Ch. 14 Vibrations](../ch14-vibrations.md) (`cpu::vib::Hessian` FD driver) |
 | Queue | TB method loop — wave 9 done (`d4582d31` / `30a6be4c`) |
@@ -103,7 +102,7 @@ not solve CPHF). PBC / spin / solvent. IPEA FD Hessian is
 | Conversion | \(a_0=0.52917726\) Å (GFN0 table); \(1\,\mathrm{Ha}=27.211386245988\) eV |
 | Thermo ctor | \(T=298.15\) K, \(P=101325\) Pa, multiplicity 1, \(\sigma=1\); empty recorder paths |
 
-**Geometry [Å]** (`tools/tb_oracle/inputs/xtb/h2o_gfn0_hess/mol.xyz`):
+**Geometry [Å]** (TB oracle (OpenMOPAC / DFTB+ / xtb)):
 
 | Atom | \(Z\) | \(x\) | \(y\) | \(z\) |
 | ---- | ----: | ----: | ----: | ----: |
@@ -212,21 +211,21 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/gfn0.h` | Public `GFN0` (`charge`, `with_forces`) |
-| `include/atomiverse/cpu/semiempirical/basis_data/gfn0_tables.h` | Static H/C/N/O GFN0 rows + \(a_0=0.52917726\) Å |
+| `gfn0.h` | Public `GFN0` (`charge`, `with_forces`) |
+| `gfn0_tables.h` | Static H/C/N/O GFN0 rows + \(a_0=0.52917726\) Å |
 | `src/cpu/semiempirical/gfn0.cpp` | EEQ + EHT + analytic \(\nabla E\) |
-| `include/atomiverse/cpu/vibration/hessian.h` | `cpu::vib::Hessian` FD preset |
-| `include/atomiverse/cpu/vibration/hessian_result.h` | `HessianResult` (\(H\), \(\omega\), \(n_{\mathrm{imag}}\)) |
-| `include/atomiverse/cpu/vibration/hessian_workspace.h` | \(h=10^{-3}\) Å (`kHessianStepAngstrom`) |
-| `regressions/semiempirical/gfn0-xtb-analytic-hessian/reg_gfn0-xtb-analytic-hessian.cpp` | Product gate |
-| `regressions/semiempirical/gfn0-xtb-analytic-hessian/REFERENCE.md` | Offline pins + oracle line |
-| `tools/tb_oracle/inputs/xtb/h2o_gfn0_hess/` | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `hessian.txt`, `vibspectrum.txt`) |
+| `hessian.h` | `cpu::vib::Hessian` FD preset |
+| `hessian_result.h` | `HessianResult` (\(H\), \(\omega\), \(n_{\mathrm{imag}}\)) |
+| `hessian_workspace.h` | \(h=10^{-3}\) Å (`kHessianStepAngstrom`) |
+| `reg_gfn0-xtb-analytic-hessian.cpp` | Product gate |
+| case `gfn0-xtb-analytic-hessian` pin | Offline pins + oracle line |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `hessian.txt`, `vibspectrum.txt`) |
 | `tests/cpu/semiempirical/test_xtb_gfn0_hessian.cpp` | Unit: `Hessian::build` accepts GFN0 force kind (no `run`) |
 
 ## Validation (xtb)
 
 Source:
-[`regressions/semiempirical/gfn0-xtb-analytic-hessian/REFERENCE.md`](../../../regressions/semiempirical/gfn0-xtb-analytic-hessian/REFERENCE.md).
+case `gfn0-xtb-analytic-hessian` pin.
 Oracle: **`xtb`** `--gfn 0 --hess` (Pracht et al., ChemRxiv 2019; Bannwarth et
 al., *WIREs Comput. Mol. Sci.* **11**, e01493 (2021)).
 `oracle_version`: **6.7.1**.
@@ -243,7 +242,7 @@ oracle_version: 6.7.1
 | ---- | ----- |
 | Engine (identity) | ATV GFN0-xTB closed shell, H/C/N/O tables + `cpu::vib::Hessian` |
 | Oracle family | xtb (not OpenMOPAC, not DFTB+) |
-| Offline twin | `tools/tb_oracle/inputs/xtb/h2o_gfn0_hess/` |
+| Offline twin | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 | Command | `xtb mol.xyz --gfn 0 --chrg 0 --uhf 0 --acc 1.0 --hess` (`OMP_NUM_THREADS=1`) |
 | Atomiverse path | `GFN0` on `Hessian` at `vib::Phase::force`, `with_forces=true` |
 | FD protocol | Central of analytic \(G\), \(h=10^{-3}\) Å (xtb: \(0.005\,a_0\)) |
@@ -292,7 +291,7 @@ mass-weighting error on the stiff stretches (\(\sim 3500\) cm⁻¹).
 
 ## Performance
 
-Source: `REFERENCE.md`. Fair wall asserted in
+Source: pin notes. Fair wall asserted in
 `reg_gfn0-xtb-analytic-hessian` (\(r\le 10\)). Same algorithm class: analytic
 \(G\), numerical \(H\) (18 force evaluations + finalize vs xtb `--hess`).
 
@@ -333,14 +332,14 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{oracle}} \le 10\) when a twin exists.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/gfn0-xtb-analytic-hessian/REFERENCE.md`](../../../regressions/semiempirical/gfn0-xtb-analytic-hessian/REFERENCE.md)
-- Twin: `tools/tb_oracle/inputs/xtb/h2o_gfn0_hess/` (`mol.xyz`,
+- Offline pin: case `gfn0-xtb-analytic-hessian` pin
+- Twin: TB oracle (OpenMOPAC / DFTB+ / xtb) (`mol.xyz`,
   `xtb.out.txt`, `hessian.txt`, `vibspectrum.txt`)
 - Force sibling: [`gfn0-xtb-forces.md`](gfn0-xtb-forces.md) /
-  `regressions/semiempirical/gfn0-xtb-forces/REFERENCE.md`
-- Energy sibling: `regressions/semiempirical/gfn0-beyond-toy/REFERENCE.md`
-- SE Hessian foothold (DFTB2/H₂, structural): `regressions/semiempirical/se-analytic-hessian/REFERENCE.md`
-- Oracle README: `tools/tb_oracle/README.md`
+  case `gfn0-xtb-forces` pin
+- Energy sibling: case `gfn0-beyond-toy` pin
+- SE Hessian foothold (DFTB2/H₂, structural): case `se-analytic-hessian` pin
+- Oracle README: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: `docs/roadmap/semiempirical.md`
 - IPEA Hessian sibling: [`ipea-xtb-analytic-hessian.md`](ipea-xtb-analytic-hessian.md)
 - IPEA VIP/VEA sibling: [`ipea-xtb-vip.md`](ipea-xtb-vip.md)

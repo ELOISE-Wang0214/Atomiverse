@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d4-kpoint-forces` |
-| Regression | `regressions/gpw/gpw-d4-kpoint-forces/` |
-| Public API | `cpu::gpw::GPWEvaluator` / `GpwDft`: `k_mesh = {1,1,2}`, `d4 = true`, `d4_atm = false`, `compute_forces = true` |
+| Public API | `cpu::gpw::GpwDft`: `k_mesh = {1,1,2}`, `d4 = true`, `d4_atm = false`; `GpwDft::forces(frame)` / `GPWEvaluator(std::move(dft), /*compute_forces=*/true)` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion + §10 Periodic KS |
 | Oracle | **CP2K 2026.1** multi-k `ENERGY_FORCE` (libdftd4 rebuild) + **dftd4 3.7.0** geometry dual |
 

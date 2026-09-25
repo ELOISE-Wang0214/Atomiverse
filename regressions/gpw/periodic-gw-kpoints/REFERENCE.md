@@ -16,13 +16,13 @@ product multi-k \(W\) is finite-\(q\) (see `periodic-gw-finite-q`).
 Public path:
 
 ```cpp
-cpu::gpw::GpwDft m;
+cpu::gpw::GpwDft m{{si_kind}};
 m.k_mesh[0] = 2; m.k_mesh[1] = 1; m.k_mesh[2] = 1;
 m.k_time_reversal = false;
 m.mp2_ri = true;
 m.mp2_n_virt = 2;
-// build(); run(atoms);
-const cpu::gpw::G0W0Result& gw = m.g0w0(atoms);  // multi-k, no throw
+// build(frame); run(frame);  // frame: Å positions, Z, box
+const cpu::gpw::G0W0Result& gw = m.g0w0();  // multi-k, no throw
 // gw.n_kpts == 2; gw.gap_ev = min_k direct QP gap [eV]
 ```
 

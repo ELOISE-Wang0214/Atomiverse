@@ -5,12 +5,11 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `xl-bomd-kpoints` |
-| Regression | `regressions/dynamics/xl-bomd-kpoints/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{…, compute_forces=true, k_mesh, k_time_reversal}, k=5}` bound with `set_evaluator_ref`; complex propagator `cpu::electronic::XlBomdCplx` (one per sampled \(k\)) |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{cpu::gpw::GpwDft{…, k_mesh, k_time_reversal}, compute_forces=true}, k=5}` bound with `set_evaluator_ref`; complex propagator `cpu::electronic::XlBomdCplx` (one per sampled \(k\)) |
 | Roadmap | MD roadmap XL-BOMD multi-k RKS |
 | Dual gate | Correctness: NVE drift envelope + multi-k \(P_k\) payload; speed **`perf_exempt`** (no offline CP2K multi-k AIMD twin wall) |
 | Wave | CP2K capability loop — harness wave 10 (2026-07-26) |
-| Oracle | Offline CP2K pins / twin input only (`tools/cp2k_oracle/`); never live in ctest |
+| Oracle | Offline CP2K pins / twin input only (CP2K oracle); never live in ctest |
 
 ## Summary
 
@@ -127,7 +126,7 @@ non-trivial after warm-up; all coordinates finite; soft H–H window
 
 ## Implementation
 
-Public surface only (`cpu::Frame` + `GPWEvaluator` members / ctor args;
+Public surface only (`cpu::Frame` + `GpwDft` members / `GPWEvaluator` ctor args;
 no `*Config` bags, no `make_*` / `build_*` factories). Match
 `reg_xl-bomd-kpoints`:
 
@@ -167,14 +166,17 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
-cpu::gpw::GPWEvaluator gpw(
-    /*kinds*/ {H}, /*cutoff_ry*/ 100.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-    /*compute_forces*/ true);
-gpw.k_mesh[0] = 1;
-gpw.k_mesh[1] = 1;
-gpw.k_mesh[2] = 2;
-gpw.k_time_reversal = false;   // two sampled k (unreduced)
+cpu::gpw::GpwDft dft{{H}};
+dft.cutoff_ry = 100.0;
+dft.max_iter = 60;
+dft.tol = 1e-5;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.k_mesh[0] = 1;
+dft.k_mesh[1] = 1;
+dft.k_mesh[2] = 2;
+dft.k_time_reversal = false;   // two sampled k (unreduced)
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // XL is the wrapper type; K = 5 is the Table-I dissipation order.
 cpu::electronic::XlBomdForce eval{std::move(gpw), /*k=*/5};
 
@@ -187,7 +189,7 @@ sim.run(frame, 1);              // warm-up seeds XL histories
 sim.run(frame, 4);              // production; gate |ΔE|/scale ≤ 0.05
 ```
 
-Complex propagator primitive (`include/atomiverse/cpu/electronic/xl_bomd.h`) —
+Complex propagator primitive (`xl_bomd.h`) —
 consumed by the evaluator when multi-k XL is active; callable for
 unit/protocol tests:
 
@@ -199,13 +201,12 @@ const auto& guess = xl.aux();   // complex P_{n+1} for next SCF
 
 Relevant paths:
 
-- Public: `include/atomiverse/cpu/gpw/gpw_evaluator.h`,
-  `include/atomiverse/cpu/electronic/xl_bomd_force.h`,
-  `include/atomiverse/cpu/electronic/xl_bomd.h`
+- Public: `gpw_evaluator.h`,
+  `xl_bomd_force.h`,
+  `xl_bomd.h`
 - Impl: `src/cpu/gpw/gpw_evaluator.cpp` (multi-k XL advance / `guess_P_k`)
 - Unit: `tests/cpu/gpw/test_gpw_xl_bomd.cpp` (Table-I coefficients, real + complex)
-- Regression: `regressions/dynamics/xl-bomd-kpoints/`
-- Oracle twin sketch: `tools/cp2k_oracle/inputs/xl-bomd-kpoints/h2_xl_bomd_kpoints_nve.inp`
+- Oracle twin sketch: CP2K oracle
 
 ### Build and run (scoped)
 
@@ -229,7 +230,7 @@ ctest --test-dir build -R '^test_cpu_gpw_xl_bomd$' --output-on-failure
 
 ## Validation (vs offline CP2K / literature)
 
-Source: `regressions/dynamics/xl-bomd-kpoints/REFERENCE.md`. Offline pins
+Source: case `xl-bomd-kpoints` pin. Offline pins
 only — **CP2K is never invoked from ctest**. Multi-k force absolute
 quality lives in `gpw-kpoint-forces`; this slug gates **MD binding +
 multi-k XL guess plumbing + NVE envelope**.
@@ -249,7 +250,7 @@ multi-k XL guess plumbing + NVE envelope**.
 module on the worker host used for this pin (same as `xl-bomd-water` /
 `xl-bomd-uks`). Twin sketch (short NVE Quickstep MD with ASPC-class
 extrapolation + `&KPOINTS`) is kept at
-`tools/cp2k_oracle/inputs/xl-bomd-kpoints/`. When a binary is available,
+CP2K oracle. When a binary is available,
 re-run offline and replace REFERENCE with version + measured drift +
 fair wall; do **not** wire live CP2K into ctest.
 
@@ -291,13 +292,12 @@ slug).
 
 ## References
 
-- Offline pin: `regressions/dynamics/xl-bomd-kpoints/REFERENCE.md`
-- Regression: `regressions/dynamics/xl-bomd-kpoints/reg_xl-bomd-kpoints.cpp`
-- CP2K twin sketch: `tools/cp2k_oracle/inputs/xl-bomd-kpoints/`
-- Oracle rules: `tools/cp2k_oracle/README.md` (offline only; never live ctest)
+- Offline pin: case `xl-bomd-kpoints` pin
+- CP2K twin sketch: CP2K oracle
+- Oracle rules: CP2K oracle (offline only; never live ctest)
 - Γ XL tutorial: [xl-bomd-water.md](xl-bomd-water.md)
 - Multi-k forces family: [gpw-kpoint-forces](../../roadmap/dft.md) product row /
-  `regressions/gpw/gpw-kpoint-forces`
+  `gpw-kpoint-forces`
 - A. M. N. Niklasson, *Phys. Rev. Lett.* **100**, 123004 (2008)
 - A. M. N. Niklasson et al., *J. Chem. Phys.* **130**, 214109 (2009) — Table I
 - J. VandeVondele et al., *Comput. Phys. Commun.* **167**, 103 (2005) — GPW

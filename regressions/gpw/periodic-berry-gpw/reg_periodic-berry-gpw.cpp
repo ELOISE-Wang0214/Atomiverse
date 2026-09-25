@@ -18,6 +18,8 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/berry_polarization.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
@@ -29,12 +31,8 @@ using namespace ATV::cpu::gpw;
 
 namespace {
 
-constexpr double kA2B = 1.0 / 0.52917720859; // Å → Bohr
-
-std::vector<GpwAtom> si_bct(double a_bohr, double delta_frac_z) {
-    const double at = a_bohr / std::sqrt(2.0);
-    const GaussianBasis bSi(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-    const GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
+cpu::Frame si_bct(double a_ang, double delta_frac_z) {
+    const double at = a_ang / std::sqrt(2.0);
     // Diamond BCT fractional sites; atom 1 optionally displaced along c.
     double frac[4][3] = {
         {0.0, 0.0, 0.0},
@@ -44,13 +42,15 @@ std::vector<GpwAtom> si_bct(double a_bohr, double delta_frac_z) {
     };
     // Keep fractional z in [0,1) for the displaced site.
     frac[1][2] -= std::floor(frac[1][2]);
-    std::vector<GpwAtom> atoms;
+    cpu::Frame frame(4);
     for (int i = 0; i < 4; ++i) {
-        const double pos[3] = {frac[i][0] * at, frac[i][1] * at,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bSi, pSi, 14);
+        frame.span(kAtom_type)[i] = 14;
+        frame.span(kAtom_x)[i] = frac[i][0] * at;
+        frame.span(kAtom_y)[i] = frac[i][1] * at;
+        frame.span(kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = cpu::Box::orthorhombic(at, at, a_ang);
+    return frame;
 }
 
 } // namespace
@@ -66,19 +66,18 @@ int main() {
     constexpr double kSymTol = 0.08; // distance to {0, Q/2} lattice [e]
     constexpr double kBornTol = 0.5; // |Z*| upper bound [e]
 
-    const double a_bohr = kA * kA2B;
-    auto atoms0 = si_bct(a_bohr, 0.0);
+    cpu::Frame frame0 = si_bct(kA, 0.0);
 
-    GpwDft method;
-    method.cell[0] = method.cell[1] = a_bohr / std::sqrt(2.0);
-    method.cell[2] = a_bohr;
+    GpwDft method{{Kind{molrs::Element::Si,
+                        GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+                        GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
     method.cutoff_ry = kCutoffRy;
     method.n_occ = 8; // 4 Si × 4 valence e⁻ / 2
     method.max_iter = 60;
     method.tol = 1e-7;
     method.xc = XcKind::PADE;
     method.eps_default = 1e-8;
-    method.build(atoms0);
+    method.build(frame0);
 
     BerryPolarization berry;
     // One transverse string is enough for centrosymmetric Si (phase is
@@ -87,7 +86,7 @@ int main() {
     berry.k_string = 4;
 
     // ── Ideal centrosymmetric diamond Si (BCT) ─────────────────────────
-    const auto r0 = berry.compute(method, atoms0);
+    const auto r0 = berry.compute(method, frame0);
     if (!r0.scf_converged) {
         std::printf("FAIL: ideal-Si SCF did not converge (E=%g Ha)\n",
                     r0.energy_ha);
@@ -132,10 +131,10 @@ int main() {
     berry_z.k_string = 4;
     berry_z.directions = {false, false, true};
 
-    auto atoms1 = si_bct(a_bohr, kDelta);
-    // Positions changed → rebuild validation against new geometry (build
-    // only validates structure once; run rebuilds geometry-dependent bits).
-    const auto r1 = berry_z.compute(method, atoms1);
+    cpu::Frame frame1 = si_bct(kA, kDelta);
+    // Positions changed → run re-reads the geometry from the Frame (build
+    // only validates structure once).
+    const auto r1 = berry_z.compute(method, frame1);
     if (!r1.scf_converged) {
         std::printf("FAIL: displaced-Si SCF did not converge (E=%g Ha)\n",
                     r1.energy_ha);

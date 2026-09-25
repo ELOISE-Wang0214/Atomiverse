@@ -34,6 +34,7 @@
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/fft_cache.h"
+#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/cpu/gpw/internal/gpw_workspace.h"
 #include "atomiverse/cpu/gpw/internal/grid_fft.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
@@ -76,6 +77,8 @@
 namespace ATV {
 namespace cpu {
 namespace gpw {
+
+using internal::GpwAtom;
 
 namespace {
 
@@ -921,8 +924,8 @@ const std::vector<std::vector<std::vector<CartTerm>>>& harmonics() {
 }
 } // namespace
 
-GpwAtom::GpwAtom(const double pos[3], const GaussianBasis& basis,
-                 const GthPotential& pot, int z) {
+internal::GpwAtom::GpwAtom(const double pos[3], const GaussianBasis& basis,
+                           const GthPotential& pot, int z) {
     this->z_val = static_cast<double>(pot.zion);
     this->z = z;
     this->pos[0] = pos[0];
@@ -1043,13 +1046,14 @@ static GpwResult run_gpw_scf_kpoints(
         k_setup_clk_early = now;
     };
     std::vector<CplxMatrix> S_k, T_k;
-    internal::build_overlap_kinetic_k(basis, radii, cfg.cell, mimg,
-                                      kBuildScreen, kpts, S_k, T_k);
+    internal::build_overlap_kinetic_k(basis, radii, cfg.cell_bohr().data(),
+                                      mimg, kBuildScreen, kpts, S_k, T_k);
     k_setup_mark_early("ST_k");
     std::vector<CplxMatrix> Vnl_k(static_cast<std::size_t>(nk),
                                   CplxMatrix(xt::zeros<Cplx>({nb, nb})));
-    internal::add_nonlocal_kb_k(Vnl_k, basis, atoms, radii, cfg.cell, mimg,
-                                kBuildScreen, kpts);
+    internal::add_nonlocal_kb_k(Vnl_k, basis, atoms, radii,
+                                cfg.cell_bohr().data(), mimg, kBuildScreen,
+                                kpts);
     k_setup_mark_early("Vnl_k");
 
     // Canonical orthogonalization per k (drops near-null Bloch directions).
@@ -1118,14 +1122,15 @@ static GpwResult run_gpw_scf_kpoints(
     ProductSet& products = ws.products;
     if (use_mg) {
         k_setup_clk_early = std::chrono::steady_clock::now();
-        mg =
-            make_multigrid(cfg.cell, cfg.cutoff_ry, cfg.ngrids, cfg.rel_cutoff);
+        mg = make_multigrid(cfg.cell_bohr().data(), cfg.cutoff_ry, cfg.ngrids,
+                            cfg.rel_cutoff);
         if (mg.levels[0].n[0] != grid.n[0] || mg.levels[0].n[1] != grid.n[1]
             || mg.levels[0].n[2] != grid.n[2])
             throw std::logic_error(
                 "GPW kpoints: multigrid finest level n[] != SCF grid n[]");
-        products = build_products(mg, basis, cfg.cell, cfg.rel_cutoff,
-                                  cfg.eps_default, /*periodic=*/true);
+        products =
+            build_products(mg, basis, cfg.cell_bohr().data(), cfg.rel_cutoff,
+                           cfg.eps_default, /*periodic=*/true);
         k_setup_mark_early("products_mg");
     }
     const std::size_t n_tcells = products.cells.size();
@@ -1409,7 +1414,7 @@ static GpwResult run_gpw_scf_kpoints(
                 pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
             }
             out.volume_ratios = hirshfeld_volume_ratios(
-                grid, rho, Z, pos, cfg.cell, periodic_cell);
+                grid, rho, Z, pos, cfg.cell_bohr().data(), periodic_cell);
             if (cfg.mbd) {
                 const bool mbd_per = cfg.mbd_k_mesh[0] > 0
                                      || cfg.mbd_k_mesh[1] > 0
@@ -1418,16 +1423,18 @@ static GpwResult run_gpw_scf_kpoints(
                     throw std::runtime_error(
                         "GPW MBD: mbd_k_mesh requires a periodic cell "
                         "(!nonperiodic)");
-                out.e_disp = mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0,
-                                           out.volume_ratios,
-                                           mbd_per ? cfg.mbd_k_mesh : nullptr)
-                                 .energy;
+                out.e_disp =
+                    mbd_rsscs_pbe(Z, pos, cfg.cell_bohr().data(), mbd_per, 0.83,
+                                  6.0, out.volume_ratios,
+                                  mbd_per ? cfg.mbd_k_mesh : nullptr)
+                        .energy;
             } else {
                 constexpr double kAng2Bohr = 1.0 / 0.52917720859;
                 constexpr double kRcutBohr = 50.0 * kAng2Bohr;
-                out.e_disp = ts_pbe(Z, pos, cfg.cell, periodic_cell, kRcutBohr,
-                                    0.94, 20.0, out.volume_ratios)
-                                 .energy;
+                out.e_disp =
+                    ts_pbe(Z, pos, cfg.cell_bohr().data(), periodic_cell,
+                           kRcutBohr, 0.94, 20.0, out.volume_ratios)
+                        .energy;
             }
             out.e_total += out.e_disp;
             return;
@@ -2357,12 +2364,13 @@ static GpwResult run_gpw_scf_kpoints_uks(
         ++n_kpts_local;
 
     std::vector<CplxMatrix> S_k, T_k;
-    internal::build_overlap_kinetic_k(basis, radii, cfg.cell, mimg,
-                                      kBuildScreen, kpts, S_k, T_k);
+    internal::build_overlap_kinetic_k(basis, radii, cfg.cell_bohr().data(),
+                                      mimg, kBuildScreen, kpts, S_k, T_k);
     std::vector<CplxMatrix> Vnl_k(static_cast<std::size_t>(nk),
                                   CplxMatrix(xt::zeros<Cplx>({nb, nb})));
-    internal::add_nonlocal_kb_k(Vnl_k, basis, atoms, radii, cfg.cell, mimg,
-                                kBuildScreen, kpts);
+    internal::add_nonlocal_kb_k(Vnl_k, basis, atoms, radii,
+                                cfg.cell_bohr().data(), mimg, kBuildScreen,
+                                kpts);
 
     std::vector<internal::KOrth> orth;
     orth.reserve(static_cast<std::size_t>(nk));
@@ -2442,14 +2450,15 @@ static GpwResult run_gpw_scf_kpoints_uks(
     MultiGrid& mg = ws.mg;
     ProductSet& products = ws.products;
     if (use_mg) {
-        mg =
-            make_multigrid(cfg.cell, cfg.cutoff_ry, cfg.ngrids, cfg.rel_cutoff);
+        mg = make_multigrid(cfg.cell_bohr().data(), cfg.cutoff_ry, cfg.ngrids,
+                            cfg.rel_cutoff);
         if (mg.levels[0].n[0] != grid.n[0] || mg.levels[0].n[1] != grid.n[1]
             || mg.levels[0].n[2] != grid.n[2])
             throw std::logic_error(
                 "GPW k-UKS: multigrid finest level n[] != SCF grid n[]");
-        products = build_products(mg, basis, cfg.cell, cfg.rel_cutoff,
-                                  cfg.eps_default, /*periodic=*/true);
+        products =
+            build_products(mg, basis, cfg.cell_bohr().data(), cfg.rel_cutoff,
+                           cfg.eps_default, /*periodic=*/true);
     }
     const std::size_t n_tcells = products.cells.size();
     std::vector<std::vector<Cplx>> tcell_phase(static_cast<std::size_t>(nk));
@@ -2824,7 +2833,7 @@ static GpwResult run_gpw_scf_kpoints_uks(
                 pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
             }
             out.volume_ratios = hirshfeld_volume_ratios(
-                grid, rho, Z, pos, cfg.cell, periodic_cell_uks);
+                grid, rho, Z, pos, cfg.cell_bohr().data(), periodic_cell_uks);
             if (cfg.mbd) {
                 const bool mbd_per = cfg.mbd_k_mesh[0] > 0
                                      || cfg.mbd_k_mesh[1] > 0
@@ -2833,16 +2842,18 @@ static GpwResult run_gpw_scf_kpoints_uks(
                     throw std::runtime_error(
                         "GPW MBD: mbd_k_mesh requires a periodic cell "
                         "(!nonperiodic)");
-                out.e_disp = mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0,
-                                           out.volume_ratios,
-                                           mbd_per ? cfg.mbd_k_mesh : nullptr)
-                                 .energy;
+                out.e_disp =
+                    mbd_rsscs_pbe(Z, pos, cfg.cell_bohr().data(), mbd_per, 0.83,
+                                  6.0, out.volume_ratios,
+                                  mbd_per ? cfg.mbd_k_mesh : nullptr)
+                        .energy;
             } else {
                 constexpr double kAng2Bohr = 1.0 / 0.52917720859;
                 constexpr double kRcutBohr = 50.0 * kAng2Bohr;
-                out.e_disp = ts_pbe(Z, pos, cfg.cell, periodic_cell_uks,
-                                    kRcutBohr, 0.94, 20.0, out.volume_ratios)
-                                 .energy;
+                out.e_disp =
+                    ts_pbe(Z, pos, cfg.cell_bohr().data(), periodic_cell_uks,
+                           kRcutBohr, 0.94, 20.0, out.volume_ratios)
+                        .energy;
             }
             out.e_total += out.e_disp;
             return;
@@ -3959,7 +3970,8 @@ GpwDft::run_impl_(const std::vector<GpwAtom>& atoms, const RealMatrix* guess_C,
     // Flattened basis, Gaussian-tail radii, and the Γ pair-image extent —
     // constructed through the same type `GpwDft::overlap` / `overlap_k` use, so
     // the standalone overlaps sum exactly the images the SCF's S does.
-    const OneElectronSetup setup(atoms, cfg.cell, periodic, eps_default);
+    const OneElectronSetup setup(atoms, cfg.cell_bohr().data(), periodic,
+                                 eps_default);
     const std::vector<GridBasisFunction>& basis = setup.basis;
     const std::vector<double>& radii = setup.radii;
     const int* const mimg = setup.mimg;
@@ -3979,7 +3991,7 @@ GpwDft::run_impl_(const std::vector<GpwAtom>& atoms, const RealMatrix* guess_C,
     // build their own). Grid is filled here so Γ aliases and k call sites
     // share one make_uniform_grid.
     internal::GpwWorkspace ws;
-    ws.grid = make_uniform_grid(cfg.cell, cfg.cutoff_ry);
+    ws.grid = make_uniform_grid(cfg.cell_bohr().data(), cfg.cutoff_ry);
     const UniformGrid& grid = ws.grid;
     // GGA spectral grad/div goes through howmany=3 plans whose 3×-sized real and
     // complex buffers are allocated lazily on the first many_* call. Warm them
@@ -4049,29 +4061,34 @@ GpwDft::run_impl_(const std::vector<GpwAtom>& atoms, const RealMatrix* guess_C,
                     throw std::runtime_error(
                         "GPW MBD: mbd_k_mesh requires a periodic cell "
                         "(!nonperiodic)");
-                e_d3 = mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0, {},
-                                     mbd_per ? cfg.mbd_k_mesh : nullptr)
-                           .energy;
+                e_d3 =
+                    mbd_rsscs_pbe(Z, pos, cfg.cell_bohr().data(), mbd_per, 0.83,
+                                  6.0, {}, mbd_per ? cfg.mbd_k_mesh : nullptr)
+                        .energy;
             }
         } else if (cfg.xdm) {
             constexpr double kAng2Bohr = 1.0 / 0.52917720859;
             constexpr double kRcutBohr = 50.0 * kAng2Bohr;
-            e_d3 = xdm_pbe(Z, pos, cfg.cell, periodic, kRcutBohr).energy;
+            e_d3 = xdm_pbe(Z, pos, cfg.cell_bohr().data(), periodic, kRcutBohr)
+                       .energy;
         } else if (cfg.ts) {
             // Free-atom TS (volume ratio = 1). Deferred when hirshfeld=true.
             if (!cfg.hirshfeld) {
                 constexpr double kAng2Bohr = 1.0 / 0.52917720859;
                 constexpr double kRcutBohr = 50.0 * kAng2Bohr;
-                e_d3 = ts_pbe(Z, pos, cfg.cell, periodic, kRcutBohr).energy;
+                e_d3 =
+                    ts_pbe(Z, pos, cfg.cell_bohr().data(), periodic, kRcutBohr)
+                        .energy;
             }
         } else if (cfg.d4) {
             const double s9 = cfg.d4_atm ? 1.0 : 0.0;
-            e_d3 = cpu::scf::dftd4_energy(Z, pos, cfg.cell, periodic,
-                                          /*s6=*/1.0, /*s8=*/0.95948085,
-                                          /*a1=*/0.38574991, /*a2=*/4.80688534,
-                                          /*ga=*/3.0, /*gc=*/2.0, /*wf=*/6.0,
-                                          /*charge=*/0.0, /*cn_cut=*/30.0,
-                                          /*disp2_cut=*/60.0, s9);
+            e_d3 =
+                cpu::scf::dftd4_energy(Z, pos, cfg.cell_bohr().data(), periodic,
+                                       /*s6=*/1.0, /*s8=*/0.95948085,
+                                       /*a1=*/0.38574991, /*a2=*/4.80688534,
+                                       /*ga=*/3.0, /*gc=*/2.0, /*wf=*/6.0,
+                                       /*charge=*/0.0, /*cn_cut=*/30.0,
+                                       /*disp2_cut=*/60.0, s9);
         } else {
             // In-tree D3 tables only (basis_data/dftd3_tables.h).
             for (int z : Z)
@@ -4083,14 +4100,15 @@ GpwDft::run_impl_(const std::vector<GpwAtom>& atoms, const RealMatrix* guess_C,
             // cutoff (cfg.d3_rcut_bohr, CP2K doubled convention) so energy,
             // force and stress all differentiate the same functional.
             if (cfg.d3)
-                e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{},
-                                 cfg.d3_rcut_bohr, cfg.d3_atm)
+                e_d3 = dftd3_pbe(Z, pos, cfg.cell_bohr().data(), periodic,
+                                 D3Params{}, cfg.d3_rcut_bohr, cfg.d3_atm)
                            .energy;
             else
-                e_d3 = dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
-                                    cfg.d3_rcut_bohr, 1.0, 0.7875, 0.4289,
-                                    4.4407, /*cp2k_cn=*/true, cfg.d3_atm)
-                           .energy;
+                e_d3 =
+                    dftd3_pbe_bj(Z, pos, cfg.cell_bohr().data(), periodic,
+                                 D3Params{}, cfg.d3_rcut_bohr, 1.0, 0.7875,
+                                 0.4289, 4.4407, /*cp2k_cn=*/true, cfg.d3_atm)
+                        .energy;
         }
     }
 
@@ -4123,7 +4141,8 @@ GpwDft::run_impl_(const std::vector<GpwAtom>& atoms, const RealMatrix* guess_C,
     // The Γ real S/T/Vpp lattice sums serve the Γ paths only; the k-point
     // branch builds its own phased (complex) matrices per k.
     if (!use_kpath)
-        setup.gamma(atoms, cfg.cell, periodic, grid_loc, S, &T, &Vpp);
+        setup.gamma(atoms, cfg.cell_bohr().data(), periodic, grid_loc, S, &T,
+                    &Vpp);
     const RealMatrix H0 = T + Vpp;
     smark("STVpp_build");
 
@@ -4417,9 +4436,9 @@ GpwDft::run_impl_(const std::vector<GpwAtom>& atoms, const RealMatrix* guess_C,
         const double rcut = use_mg
                                 ? cfg.rel_cutoff
                                 : cfg.cutoff_ry; // 1 level → all products on it
-        mg = make_multigrid(cfg.cell, cfg.cutoff_ry, nlev, rcut);
-        products =
-            build_products(mg, basis, cfg.cell, rcut, eps_default, periodic);
+        mg = make_multigrid(cfg.cell_bohr().data(), cfg.cutoff_ry, nlev, rcut);
+        products = build_products(mg, basis, cfg.cell_bohr().data(), rcut,
+                                  eps_default, periodic);
     }
 
     // Total density on the finest grid from a flattened P. Single-grid:
@@ -4443,8 +4462,8 @@ GpwDft::run_impl_(const std::vector<GpwAtom>& atoms, const RealMatrix* guess_C,
                 Z[i] = atoms[i].z;
                 pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
             }
-            out.volume_ratios =
-                hirshfeld_volume_ratios(grid, rho, Z, pos, cfg.cell, periodic);
+            out.volume_ratios = hirshfeld_volume_ratios(
+                grid, rho, Z, pos, cfg.cell_bohr().data(), periodic);
             if (cfg.mbd) {
                 const bool mbd_per = cfg.mbd_k_mesh[0] > 0
                                      || cfg.mbd_k_mesh[1] > 0
@@ -4453,15 +4472,16 @@ GpwDft::run_impl_(const std::vector<GpwAtom>& atoms, const RealMatrix* guess_C,
                     throw std::runtime_error(
                         "GPW MBD: mbd_k_mesh requires a periodic cell "
                         "(!nonperiodic)");
-                out.e_disp = mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0,
-                                           out.volume_ratios,
-                                           mbd_per ? cfg.mbd_k_mesh : nullptr)
-                                 .energy;
+                out.e_disp =
+                    mbd_rsscs_pbe(Z, pos, cfg.cell_bohr().data(), mbd_per, 0.83,
+                                  6.0, out.volume_ratios,
+                                  mbd_per ? cfg.mbd_k_mesh : nullptr)
+                        .energy;
             } else {
                 constexpr double kAng2Bohr = 1.0 / 0.52917720859;
                 constexpr double kRcutBohr = 50.0 * kAng2Bohr;
-                out.e_disp = ts_pbe(Z, pos, cfg.cell, periodic, kRcutBohr, 0.94,
-                                    20.0, out.volume_ratios)
+                out.e_disp = ts_pbe(Z, pos, cfg.cell_bohr().data(), periodic,
+                                    kRcutBohr, 0.94, 20.0, out.volume_ratios)
                                  .energy;
             }
             out.e_total += out.e_disp;
@@ -5492,7 +5512,7 @@ GpwDft::run_impl_(const std::vector<GpwAtom>& atoms, const RealMatrix* guess_C,
 
 // ── GpwDft — the public solver face over run_gpw_scf_impl ────────
 
-void GpwDft::build(const std::vector<GpwAtom>& reference) {
+void GpwDft::build_atoms_(const std::vector<GpwAtom>& reference) {
     if (reference.empty())
         throw std::invalid_argument(
             "GpwDft::build: empty atom set (nothing to solve)");
@@ -5531,11 +5551,11 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
     }
     if (!nonperiodic) {
         for (int d = 0; d < 3; ++d)
-            if (!(cell[d] > 0.0))
+            if (!(cell_[d] > 0.0))
                 throw std::invalid_argument("GpwDft::build: periodic cell edge "
                                             + std::to_string(d)
                                             + " must be > 0 Bohr (got "
-                                            + std::to_string(cell[d]) + ")");
+                                            + std::to_string(cell_[d]) + ")");
     } else {
         // Martyna-Tuckerman cluster boundaries assume the charge density is
         // *contained* in the cell: the collocation does not wrap in this mode,
@@ -5550,15 +5570,15 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
         // the check cannot itself depend on the basis being loaded.
         constexpr double kMtMarginFraction = 0.15;
         for (int d = 0; d < 3; ++d) {
-            if (!(cell[d] > 0.0))
+            if (!(cell_[d] > 0.0))
                 throw std::invalid_argument(
                     "GpwDft::build: nonperiodic (MT) cell edge "
                     + std::to_string(d) + " must be > 0 Bohr (got "
-                    + std::to_string(cell[d]) + ")");
-            const double margin = kMtMarginFraction * cell[d];
+                    + std::to_string(cell_[d]) + ")");
+            const double margin = kMtMarginFraction * cell_[d];
             for (std::size_t a = 0; a < reference.size(); ++a) {
                 const double p = reference[a].pos[d];
-                if (p < margin || p > cell[d] - margin)
+                if (p < margin || p > cell_[d] - margin)
                     throw std::invalid_argument(
                         "GpwDft::build: nonperiodic (Martyna-Tuckerman) "
                         "boundaries require the system to sit inside the cell, "
@@ -5567,8 +5587,8 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
                         + " coordinate " + std::to_string(p)
                         + " Bohr, outside the allowed ["
                         + std::to_string(margin) + ", "
-                        + std::to_string(cell[d] - margin)
-                        + "] Bohr window (cell edge " + std::to_string(cell[d])
+                        + std::to_string(cell_[d] - margin)
+                        + "] Bohr window (cell edge " + std::to_string(cell_[d])
                         + " Bohr). Centre the molecule in the cell (or enlarge "
                           "the cell); an isolated system's absolute position "
                           "is "
@@ -5662,11 +5682,11 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
     built_ = true;
 }
 
-GpwResult& GpwDft::run(const std::vector<GpwAtom>& atoms,
-                       const RealMatrix* guess_C, const RealMatrix* guess_P,
-                       const RealMatrix* guess_P_beta,
-                       const std::vector<linalg::CplxMatrix>* guess_P_k,
-                       const std::vector<linalg::CplxMatrix>* guess_P_k_beta) {
+GpwResult&
+GpwDft::run_atoms_(const std::vector<GpwAtom>& atoms, const RealMatrix* guess_C,
+                   const RealMatrix* guess_P, const RealMatrix* guess_P_beta,
+                   const std::vector<linalg::CplxMatrix>* guess_P_k,
+                   const std::vector<linalg::CplxMatrix>* guess_P_k_beta) {
     if (!built_)
         throw std::logic_error(
             "GpwDft::run called before build() — validate the "
@@ -5707,10 +5727,11 @@ GpwResult& GpwDft::run(const std::vector<GpwAtom>& atoms,
             "guess_P_k (alpha) and guess_P_k_beta (no partial spin guess)");
     result_ = run_impl_(atoms, guess_C, guess_P, guess_P_beta, guess_P_k,
                         guess_P_k_beta);
+    last_atoms_ = atoms;
     return result_;
 }
 
-RealMatrix GpwDft::overlap(const std::vector<GpwAtom>& atoms) const {
+RealMatrix GpwDft::overlap_atoms_(const std::vector<GpwAtom>& atoms) const {
     if (!built_)
         throw std::logic_error(
             "GpwDft::overlap called before build() — validate the "
@@ -5718,22 +5739,24 @@ RealMatrix GpwDft::overlap(const std::vector<GpwAtom>& atoms) const {
     if (uses_kpath(*this))
         throw std::invalid_argument(
             "GpwDft::overlap: this configuration solves on the k-point path "
-            "(k_mesh / k_points / smearing) and has no real Γ overlap — call "
-            "overlap_k() instead");
+            "(k_mesh / k_points / smearing) and has no real Γ overlap — use "
+            "the "
+            "multi-k overlap instead");
     const bool periodic = !nonperiodic;
     // Same setup + same assembly routine run_gpw_scf_impl uses; T and Vpp are
     // simply not requested, which leaves S bit-identical (every element is an
     // independent screened pair contraction).
-    const OneElectronSetup setup(atoms, cell, periodic, eps_default);
+    const OneElectronSetup setup(atoms, cell_.data(), periodic, eps_default);
     const int nb = setup.nb();
     RealMatrix S = xt::zeros<double>({nb, nb});
-    setup.gamma(atoms, cell, periodic, local_pp_on_grid, S, /*T=*/nullptr,
+    setup.gamma(atoms, cell_.data(), periodic, local_pp_on_grid, S,
+                /*T=*/nullptr,
                 /*Vpp=*/nullptr);
     return S;
 }
 
 std::vector<linalg::CplxMatrix>
-GpwDft::overlap_k(const std::vector<GpwAtom>& atoms) const {
+GpwDft::overlap_k_atoms_(const std::vector<GpwAtom>& atoms) const {
     if (!built_)
         throw std::logic_error(
             "GpwDft::overlap_k called before build() — validate the "
@@ -5741,14 +5764,14 @@ GpwDft::overlap_k(const std::vector<GpwAtom>& atoms) const {
     if (!uses_kpath(*this))
         throw std::invalid_argument(
             "GpwDft::overlap_k: this configuration solves at Γ (no k_mesh / "
-            "k_points / smearing) — call overlap() instead");
+            "k_points / smearing) — use the Γ overlap instead");
     const bool periodic = !nonperiodic;
-    const OneElectronSetup setup(atoms, cell, periodic, eps_default);
+    const OneElectronSetup setup(atoms, cell_.data(), periodic, eps_default);
     // internal::build_overlap_kinetic_k is the one phased S_k/T_k image sweep
     // the multi-k SCF branches call; T_k is built with S_k in that sweep and
     // discarded here.
     std::vector<linalg::CplxMatrix> S_k, T_k;
-    internal::build_overlap_kinetic_k(setup.basis, setup.radii, cell,
+    internal::build_overlap_kinetic_k(setup.basis, setup.radii, cell_.data(),
                                       setup.mimg, kBuildScreen,
                                       sampled_kpoints(*this), S_k, T_k);
     return S_k;
@@ -5765,11 +5788,155 @@ GpwAtom displaced(GpwAtom a, int axis, double d) {
 }
 } // namespace
 
-namespace {
-GpwDft copy_gpw(const GpwDft& m) {
-    GpwDft p;
-    for (int d = 0; d < 3; ++d)
-        p.cell[d] = m.cell[d];
+std::vector<std::array<double, 3>>
+gpw_forces_fd(const Frame& frame, const GpwDft& method, double h) {
+    const std::vector<GpwAtom> atoms =
+        internal::GpwDftAccess::atoms_from_frame(method, frame);
+    const std::array<double, 3> cell = internal::cell_from_box(frame.box);
+    const double h_bohr = h * units::kAngstromInBohr;
+    const int na = static_cast<int>(atoms.size());
+    std::vector<std::array<double, 3>> forces(na, {0.0, 0.0, 0.0});
+    auto energy_at = [&](const std::vector<GpwAtom>& at) {
+        GpwDft solver = internal::GpwDftAccess::clone(method);
+        internal::GpwDftAccess::set_cell(solver, cell);
+        internal::GpwDftAccess::build(solver, at);
+        return internal::GpwDftAccess::run(solver, at).e_total;
+    };
+    for (int a = 0; a < na; ++a) {
+        for (int k = 0; k < 3; ++k) {
+            std::vector<GpwAtom> plus = atoms, minus = atoms;
+            plus[a] = displaced(atoms[a], k, +h_bohr);
+            minus[a] = displaced(atoms[a], k, -h_bohr);
+            // F = -dE/dR [Ha/Bohr] → eV/Å.
+            forces[a][k] = -(energy_at(plus) - energy_at(minus))
+                           / (2.0 * h_bohr)
+                           * units::kHartreePerBohrInEvPerAngstrom;
+        }
+    }
+    return forces;
+}
+
+// ── GpwDft — Frame entries ──────────────────────────────────────────────────
+
+void GpwDft::build(const Frame& reference) {
+    cell_ = internal::cell_from_box(reference.box);
+    const std::vector<GpwAtom> atoms =
+        internal::GpwDftAccess::atoms_from_frame(*this, reference);
+    if (!is_uks() && n_occ == 0) {
+        double z_val = 0.0;
+        for (const GpwAtom& a : atoms)
+            z_val += a.z_val;
+        const long n_elec = std::lround(z_val);
+        if (n_elec % 2 != 0)
+            throw std::invalid_argument(
+                "GpwDft::build: closed-shell RKS needs an even valence "
+                "electron count, but the Frame carries "
+                + std::to_string(n_elec)
+                + " — set n_alpha/n_beta for an open-shell (UKS) run, or "
+                  "n_occ explicitly");
+        n_occ = static_cast<int>(n_elec / 2);
+    }
+    build_atoms_(atoms);
+}
+
+GpwResult& GpwDft::run(Frame& frame) {
+    if (!built_)
+        throw std::logic_error(
+            "GpwDft::run called before build(frame) — validate the "
+            "configuration first (no silent auto-build)");
+    cell_ = internal::cell_from_box(frame.box);
+    GpwResult& res =
+        run_atoms_(internal::GpwDftAccess::atoms_from_frame(*this, frame));
+    frame.meta.get(kEnergy) = res.e_total * units::kHartreeInEv;
+    return res;
+}
+
+GpwResult& GpwDft::forces(Frame& frame) {
+    GpwResult& res = run(frame);
+    if (!res.converged)
+        throw std::runtime_error(
+            "GpwDft::forces: SCF did not converge — raise max_iter or loosen "
+            "tol; forces at an unconverged density are not a gradient");
+    const std::vector<std::array<double, 3>> F =
+        internal::gpw_forces_from_scf(last_atoms_, *this, res);
+    AccReal* __restrict fx = frame.span(kAtom_fx);
+    AccReal* __restrict fy = frame.span(kAtom_fy);
+    AccReal* __restrict fz = frame.span(kAtom_fz);
+    const int n = frame.nlocal();
+    for (int i = 0; i < n; ++i) {
+        const auto& f = F[static_cast<std::size_t>(i)];
+        fx[i] = f[0] * units::kHartreePerBohrInEvPerAngstrom;
+        fy[i] = f[1] * units::kHartreePerBohrInEvPerAngstrom;
+        fz[i] = f[2] * units::kHartreePerBohrInEvPerAngstrom;
+    }
+    return res;
+}
+
+// ── internal::GpwDftAccess — the atom-level door ────────────────────────────
+
+namespace internal {
+
+std::array<double, 3> cell_from_box(const Box& box) {
+    if (!box.is_orthorhombic()) {
+        const Mat3& h = box.cell();
+        std::string msg = "GpwDft: GPW supports orthorhombic cells only, but "
+                          "the frame cell is sheared (";
+        bool first = true;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j) {
+                if (i == j || h(i, j) == 0.0)
+                    continue;
+                if (!first)
+                    msg += ", ";
+                first = false;
+                msg += "h(" + std::to_string(i) + "," + std::to_string(j)
+                       + ")=" + std::to_string(h(i, j));
+            }
+        msg += " [Angstrom]). Supply a diagonal cell matrix (e.g. "
+               "cpu::Box::orthorhombic(a, b, c)), or use a method that "
+               "handles a general cell.";
+        throw std::invalid_argument(msg);
+    }
+    return {box.length(0) * units::kAngstromInBohr,
+            box.length(1) * units::kAngstromInBohr,
+            box.length(2) * units::kAngstromInBohr};
+}
+
+void GpwDftAccess::set_cell(GpwDft& m, const std::array<double, 3>& cell_bohr) {
+    m.cell_ = cell_bohr;
+}
+
+void GpwDftAccess::build(GpwDft& m, const std::vector<GpwAtom>& reference) {
+    m.build_atoms_(reference);
+}
+
+GpwResult&
+GpwDftAccess::run(GpwDft& m, const std::vector<GpwAtom>& atoms,
+                  const RealMatrix* guess_C, const RealMatrix* guess_P,
+                  const RealMatrix* guess_P_beta,
+                  const std::vector<linalg::CplxMatrix>* guess_P_k,
+                  const std::vector<linalg::CplxMatrix>* guess_P_k_beta) {
+    return m.run_atoms_(atoms, guess_C, guess_P, guess_P_beta, guess_P_k,
+                        guess_P_k_beta);
+}
+
+RealMatrix GpwDftAccess::overlap(const GpwDft& m,
+                                 const std::vector<GpwAtom>& atoms) {
+    return m.overlap_atoms_(atoms);
+}
+
+std::vector<linalg::CplxMatrix>
+GpwDftAccess::overlap_k(const GpwDft& m, const std::vector<GpwAtom>& atoms) {
+    return m.overlap_k_atoms_(atoms);
+}
+
+GpwDft GpwDftAccess::clone(const GpwDft& m) {
+    // Every public parameter, the kinds and the cell — the one copy of the
+    // method's configuration (strained-cell stress samples, FD oracles and
+    // the analytic-force cold solve all go through here, so a new member is
+    // added in exactly one place).
+    GpwDft p(m.kinds);
+    p.cell_ = m.cell_;
     p.cutoff_ry = m.cutoff_ry;
     p.ngrids = m.ngrids;
     p.rel_cutoff = m.rel_cutoff;
@@ -5808,37 +5975,59 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.k_points = m.k_points;
     p.k_point_weights = m.k_point_weights;
     p.plus_u = m.plus_u;
-    p.atom_spin_guess = m.atom_spin_guess;
     p.mp2_n_virt = m.mp2_n_virt;
+    p.mp2_ri = m.mp2_ri;
     p.mp2_os_scale = m.mp2_os_scale;
     p.mp2_ss_scale = m.mp2_ss_scale;
+    p.atom_spin_guess = m.atom_spin_guess;
     p.smearing = m.smearing;
     p.degauss = m.degauss;
     p.mp_order = m.mp_order;
     p.extra_bands = m.extra_bands;
     return p;
 }
-} // namespace
-std::vector<std::array<double, 3>>
-gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& cfg, double h) {
-    const int na = static_cast<int>(atoms.size());
-    std::vector<std::array<double, 3>> forces(na, {0.0, 0.0, 0.0});
-    for (int a = 0; a < na; ++a) {
-        for (int k = 0; k < 3; ++k) {
-            std::vector<GpwAtom> plus = atoms, minus = atoms;
-            plus[a] = displaced(atoms[a], k, +h);
-            minus[a] = displaced(atoms[a], k, -h);
-            GpwDft plus_solver = copy_gpw(cfg);
-            plus_solver.build(plus);
-            const double e_plus = plus_solver.run(plus).e_total;
-            GpwDft minus_solver = copy_gpw(cfg);
-            minus_solver.build(minus);
-            const double e_minus = minus_solver.run(minus).e_total;
-            forces[a][k] = -(e_plus - e_minus) / (2.0 * h); // F = -dE/dR
-        }
+
+std::vector<GpwAtom> GpwDftAccess::atoms_from_frame(const GpwDft& m,
+                                                    const Frame& frame) {
+    const int n = frame.nlocal();
+    if (n < 1)
+        throw std::invalid_argument(
+            "GpwDft: empty Frame (nothing to solve) — fill kAtom_x/y/z and "
+            "kAtom_type (Z) first");
+    const int* __restrict sp_type = frame.span(kAtom_type);
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+    std::vector<GpwAtom> atoms;
+    atoms.reserve(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        const int z = sp_type[i];
+        const Kind* kind = nullptr;
+        for (const Kind& k : m.kinds)
+            if (static_cast<int>(k.element) == z) {
+                kind = &k;
+                break;
+            }
+        if (kind == nullptr)
+            throw std::invalid_argument(
+                "GpwDft: atom " + std::to_string(i)
+                + " has Z=" + std::to_string(z)
+                + " but no Kind is configured for it — add "
+                  "Kind{element, GaussianBasis(element, \"<basis>\"), "
+                  "GthPotential(element, \"<pp>\")} to GpwDft::kinds");
+        const double pos[3] = {sp_x[i] * units::kAngstromInBohr,
+                               sp_y[i] * units::kAngstromInBohr,
+                               sp_z[i] * units::kAngstromInBohr};
+        atoms.emplace_back(pos, kind->basis, kind->pot, z);
     }
-    return forces;
+    return atoms;
 }
+
+const std::vector<GpwAtom>& GpwDftAccess::last_atoms(const GpwDft& m) {
+    return m.last_atoms_;
+}
+
+} // namespace internal
 
 // ── GpwDft Driver node: multi-path DIIS stages ──────────────────────────────
 

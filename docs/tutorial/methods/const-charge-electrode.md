@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `const-charge-electrode` |
-| Regression | `regressions/md/const-charge-electrode/` |
 | Public API | `cpu::md::ConstPotBO::add_electrode_charge` (Component on `cpu::md::MD`, default `pre_force`) |
 | Roadmap | map §1 "Constant-charge electrodes (control)" |
 | Oracle | **LAMMPS** ELECTRODE package (`fix electrode/conq`; madelung conp log anchor) |
@@ -69,7 +68,7 @@ MW-only physics (e.g. the Thomas–Fermi sibling).
 
 ### System (LAMMPS ELECTRODE madelung twin)
 
-Same geometry as `regressions/md/const-pot-bo-parallel-plate/`:
+Same geometry as `const-pot-bo-parallel-plate`:
 
 | Species | Type | z [Å] | q [e] |
 | --- | --- | --- | --- |
@@ -206,25 +205,25 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_const-charge-electrode -j"$(nproc)"
-  ./build/regressions/reg_const-charge-electrode
+  reg_const-charge-electrode
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/const_pot_bo.h` | Public `ConstPotBO` (`add_electrode_charge`, `electrode_potential`, `delta_psi`) |
+| `const_pot_bo.h` | Public `ConstPotBO` (`add_electrode_charge`, `electrode_potential`, `delta_psi`) |
 | `src/cpu/dynamics/const_pot_bo.cpp` | Reduced SPD system \(M\psi = r\) on the dense and CG paths |
-| `regressions/md/const-charge-electrode/reg_const-charge-electrode.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/lammps/in.conq_madelung` | Exact conq twin input (re-pin on any `PKG_ELECTRODE` host) |
+| `reg_const-charge-electrode.cpp` | Product gate |
+| MetalWalls oracle | Exact conq twin input (re-pin on any `PKG_ELECTRODE` host) |
 
 ## Validation (vs LAMMPS ELECTRODE)
 
 Source:
-[`regressions/md/const-charge-electrode/REFERENCE.md`](../../../regressions/md/const-charge-electrode/REFERENCE.md)
+case `const-charge-electrode` pin
 (offline log pin; **never** live LAMMPS in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md)
+MetalWalls oracle
 and
-[`tools/metalwalls_oracle/pin_notes_const-charge-electrode.md`](../../../tools/metalwalls_oracle/pin_notes_const-charge-electrode.md).
+MetalWalls oracle.
 
 **Oracle:** LAMMPS ELECTRODE package, 3 Nov 2022 (madelung example log
 `log.1Dec2022.madelung-ewald-ew3dc.g++.1` + `graph-il/in.conq`
@@ -262,13 +261,13 @@ cd $LAMMPS_DIR/examples/PACKAGES/electrode/madelung
 lmp -in in.ewald-ew3dc            # conp: Q_top at dV = 1 V (run 0)
 cd ../graph-il && lmp -in in.conq # conq: f_conq[e] potentials, v_dv
 # Exact twin of this regression:
-#   tools/metalwalls_oracle/inputs/lammps/in.conq_madelung
+#   <MetalWalls oracle input for this case>
 ```
 
 ## Performance
 
 Source: REFERENCE.md perf block; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{LAMMPS}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -283,7 +282,7 @@ the case `REFERENCE.md`.
 
 Do **not** invent wall-clock ratios. When a `PKG_ELECTRODE` LAMMPS binary is
 available, re-run the fair twin offline
-(`tools/metalwalls_oracle/inputs/lammps/in.conq_madelung`), record version +
+(MetalWalls oracle), record version +
 walls, and replace `perf_exempt` in REFERENCE.
 
 ## Limitations
@@ -306,10 +305,8 @@ walls, and replace `perf_exempt` in REFERENCE.
 
 ## References
 
-- Offline pin: [`regressions/md/const-charge-electrode/REFERENCE.md`](../../../regressions/md/const-charge-electrode/REFERENCE.md)
-- Product gate: [`regressions/md/const-charge-electrode/reg_const-charge-electrode.cpp`](../../../regressions/md/const-charge-electrode/reg_const-charge-electrode.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/const_pot_bo.h`](../../../include/atomiverse/cpu/dynamics/const_pot_bo.h)
-- Pin notes: [`tools/metalwalls_oracle/pin_notes_const-charge-electrode.md`](../../../tools/metalwalls_oracle/pin_notes_const-charge-electrode.md); twin input `tools/metalwalls_oracle/inputs/lammps/in.conq_madelung`
+- Offline pin: case `const-charge-electrode` pin
+- Pin notes: MetalWalls oracle; twin input MetalWalls oracle
 - Capability map: `.claude/notes/metalwalls-capability-map.md` (§1 constant-charge control)
 - Literature: Ahrens-Iwers, Janssen, Tee, Meißner, *J. Chem. Phys.* **157**, 084801 (2022), DOI [10.1063/5.0099239](https://doi.org/10.1063/5.0099239) (LAMMPS ELECTRODE, `fix electrode/conq`); Griffiths, *Introduction to Electrodynamics*, 4th ed., §2.5.4 (sheet term); Glasser & Zucker, *Theoretical Chemistry: Advances and Perspectives* **5**, 67 (1980) (square-lattice Madelung constant)
 - Related siblings: [`const-pot-bo-parallel-plate.md`](const-pot-bo-parallel-plate.md) (conp E1 foothold), [`thomas-fermi-electrode.md`](thomas-fermi-electrode.md) (finite metallicity)

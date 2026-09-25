@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `const-pot-cg-large-electrode` |
-| Regression | `regressions/md/const-pot-cg-large-electrode/` |
 | Public API | `cpu::md::ConstPotCG` (Component on `cpu::md::MD`, default `pre_force`) |
 | Roadmap | map slice E2 |
 | Oracle | **MetalWalls** algorithm class (Jacobi-PCG electrode charge solve); dual numeric twin = in-tree `cpu::md::ConstPotBO` |
@@ -172,25 +171,25 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_const-pot-cg-large-electrode -j"$(nproc)"
-  ./build/regressions/reg_const-pot-cg-large-electrode
+  reg_const-pot-cg-large-electrode
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/const_pot_cg.h` | Public `ConstPotCG` |
+| `const_pot_cg.h` | Public `ConstPotCG` |
 | `src/cpu/dynamics/const_pot_cg.cpp` | Elastance \(A\), Jacobi-PCG, neutrality, write-back |
-| `include/atomiverse/cpu/dynamics/const_pot_bo.h` | Dense dual twin `ConstPotBO` |
-| `include/atomiverse/cpu/dynamics/md.h` | Host preset `cpu::md::MD` |
-| `regressions/md/const-pot-cg-large-electrode/reg_const-pot-cg-large-electrode.cpp` | Product gate |
+| `const_pot_bo.h` | Dense dual twin `ConstPotBO` |
+| `md.h` | Host preset `cpu::md::MD` |
+| `reg_const-pot-cg-large-electrode.cpp` | Product gate |
 | `tests/cpu/dynamics/test_const_pot_cg.cpp` | Unit surface (not e2e) |
 
 ## Validation (vs MetalWalls algorithm class / dense BO dual twin)
 
 Source:
-[`regressions/md/const-pot-cg-large-electrode/REFERENCE.md`](../../../regressions/md/const-pot-cg-large-electrode/REFERENCE.md)
+case `const-pot-cg-large-electrode` pin
 (offline pin; **never** live MetalWalls or LAMMPS in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
+MetalWalls oracle.
 
 **Oracle:** **MetalWalls** (algorithm class: iterative Jacobi-PCG electrode
 charge solve for large \(N_{\mathrm{elec}}\); map E2). Binding **numeric**
@@ -225,7 +224,7 @@ Related unit surface (not the e2e pin):
 
 ```bash
 # MD-only build, then product gate only (no LAMMPS/MetalWalls launch):
-./build/regressions/reg_const-pot-cg-large-electrode
+reg_const-pot-cg-large-electrode
 # asserts CG vs BO site charges; prints wall_ms CG / wall_ms BO (internal)
 ```
 
@@ -236,7 +235,7 @@ keep ctest free of the binary.
 ## Performance
 
 Source: REFERENCE.md dual-gate summary; handoff
-the case `REFERENCE.md`;
+the case pin notes;
 | Twin | \(T_{\mathrm{oracle}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | -----------------------: | ----: | ---- | ------ |
 | MW multi-site CG / ATV `ConstPotCG` | — | — | **perf_exempt** | n/a | No MetalWalls runtime binary on worker PATH for fair CG twin |
@@ -274,11 +273,9 @@ available offline, re-run fair bench, record version + walls, and replace
 
 ## References
 
-- Offline pin: [`regressions/md/const-pot-cg-large-electrode/REFERENCE.md`](../../../regressions/md/const-pot-cg-large-electrode/REFERENCE.md)
-- Product gate: [`regressions/md/const-pot-cg-large-electrode/reg_const-pot-cg-large-electrode.cpp`](../../../regressions/md/const-pot-cg-large-electrode/reg_const-pot-cg-large-electrode.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/const_pot_cg.h`](../../../include/atomiverse/cpu/dynamics/const_pot_cg.h)
-- Dense dual twin: [`include/atomiverse/cpu/dynamics/const_pot_bo.h`](../../../include/atomiverse/cpu/dynamics/const_pot_bo.h)
+- Offline pin: case `const-pot-cg-large-electrode` pin
+- Dense dual twin: `const_pot_bo.h`
 - Sibling E1 report: [`const-pot-bo-parallel-plate.md`](const-pot-bo-parallel-plate.md)
-- Capability map: [`.claude/notes/metalwalls-capability-map.md`](../../../.claude/notes/metalwalls-capability-map.md)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md)
+- Capability map: `.claude/notes/metalwalls-capability-map.md`
+- Oracle notes: MetalWalls oracle
 - Literature / method basis: Siepmann–Sprik Gaussian electrode charges; MetalWalls constant-potential CG electrode solve (map E2); dual twin aligned with dense BO / LAMMPS ELECTRODE `symm` projector (Ahrens-Iwers et al., *J. Chem. Phys.* **157**, 084801 (2022) for the ELECTRODE formulation context)

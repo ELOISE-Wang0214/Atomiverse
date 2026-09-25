@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `eom-cc2-h2` |
-| Regression | `regressions/scf/eom-cc2-h2/` |
 | Public API | `cpu::scf::RHF::eom_cc2(Frame&, n_states)` → `EOMCC2Result` |
 | Roadmap | [Excited states §3 EOM-CC](../../roadmap/excited-states.md) |
 
@@ -20,7 +19,7 @@ EOM-EE-CCSD / PySCF `eom_gccsd`), returning singlet roots \(\omega\) [eV] plus
 CC2 energetics [Ha]. Foothold case is H₂ / STO-3G. Offline pin is PySCF 2.14.0
 `cc.rccsd.RCCSD` with `cc2=True` then `eomee_ccsd_singlet` (stock PySCF has no
 top-level `EOMCC2`; never live in ctest). End-to-end gate:
-`regressions/scf/eom-cc2-h2` → binary `reg_eom-cc2-h2`. Fair-bench ratio
+`eom-cc2-h2` → binary `reg_eom-cc2-h2`. Fair-bench ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} = 0.300\) (within 10×;
 startup-dominated).
 
@@ -93,7 +92,7 @@ const cpu::scf::EOMCC2Result eom = rhf.eom_cc2(frame, /*n_states=*/1);
 // eom.cc2_iterations; eom.converged
 ```
 
-`EOMCC2Result` (`include/atomiverse/cpu/scf/eom_cc2.h`): `energy_ev`
+`EOMCC2Result` (`eom_cc2.h`): `energy_ev`
 (ascending singlets [eV]), `e_corr_ha`, `e_cc2_ha` [Hartree],
 `cc2_iterations`, `converged`. Pack-level
 `eom_cc2_energies` is private engine code.
@@ -114,21 +113,21 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_eom-cc2-h2 -j$(nproc)
-  ./build/regressions/reg_eom-cc2-h2
+  reg_eom-cc2-h2
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/eom_cc2.h` | Public `EOMCC2Result` |
-| `include/atomiverse/cpu/scf/rhf.h` | `RHF::eom_cc2(Frame&, n_states)` |
-| `include/atomiverse/cpu/scf/internal/eom_cc2_pack.h` | Private pack entry |
+| `eom_cc2.h` | Public `EOMCC2Result` |
+| `rhf.h` | `RHF::eom_cc2(Frame&, n_states)` |
+| `eom_cc2_pack.h` | Private pack entry |
 | `src/cpu/scf/eom_ee_ccsd.cpp` | CC2 amplitudes + EE Jacobian / singlet select |
-| `regressions/scf/eom-cc2-h2/reg_eom-cc2-h2.cpp` | E2E consumer |
+| `reg_eom-cc2-h2.cpp` | E2E consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/eom-cc2-h2/REFERENCE.md`](../../../regressions/scf/eom-cc2-h2/REFERENCE.md)
+Source: case `eom-cc2-h2` pin
 (offline pin; PySCF never in ctest). Protocol:
 `docs/tutorial/appendix-pyscf-oracle.md`.
 
@@ -159,17 +158,17 @@ CC2 amplitudes shift the root by ~0.20 eV).
 Oracle repro (human / offline only):
 
 ```bash
-bash tools/setup_pyscf_env.sh
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py eom-cc2 \
+bash <pyscf env setup>
+python <pyscf pin> eom-cc2 \
     --geom h2 --basis sto-3g --nstates 1 --conv-tol 1e-12
 ```
 
 ## Performance
 
 Source: fair wall in
-[`regressions/scf/eom-cc2-h2/REFERENCE.md`](../../../regressions/scf/eom-cc2-h2/REFERENCE.md)
+case `eom-cc2-h2` pin
 (2026-07-23; login node; `OMP_NUM_THREADS=1`; median of ≥3). Campaign rollup
-ratio **0.300** (the case `REFERENCE.md`). No standing comparison table in-tree at draft time.
+ratio **0.300** (the case pin notes). No standing comparison table in-tree at draft time.
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | -------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -177,9 +176,9 @@ ratio **0.300** (the case `REFERENCE.md`). No standing comparison table in-tree 
 
 ```bash
 export OMP_NUM_THREADS=1
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
     --method eom-cc2 --geom h2 --basis sto-3g --nstates 1 --repeat 3 -- \
-    ./build/regressions/reg_eom-cc2-h2
+    reg_eom-cc2-h2
 ```
 
 Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\). No ⚡ optimization pass
@@ -202,15 +201,15 @@ required on this case.
 
 ## References
 
-- Offline pin: `regressions/scf/eom-cc2-h2/REFERENCE.md`
-- Regression consumer: `regressions/scf/eom-cc2-h2/reg_eom-cc2-h2.cpp`
+- Offline pin: case `eom-cc2-h2` pin
+- Regression consumer: `reg_eom-cc2-h2.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Roadmap: `docs/roadmap/excited-states.md` (§3 Equation-of-Motion Coupled Cluster);
   ground-state CC2: `docs/roadmap/post-hf.md` (§3), handbook
   [cc2-h2-sto3g](cc2-h2-sto3g.md)
 - Related handbook: [eom-ee-ccsd](eom-ee-ccsd.md)
-- Public API: `include/atomiverse/cpu/scf/eom_cc2.h`,
-  `include/atomiverse/cpu/scf/rhf.h`
+- Public API: `eom_cc2.h`,
+  `rhf.h`
 - O. Christiansen, H. Koch, P. Jørgensen, *The second-order approximate
   coupled cluster singles and doubles model CC2*, *Chem. Phys. Lett.*
   **243**, 409 (1995). DOI

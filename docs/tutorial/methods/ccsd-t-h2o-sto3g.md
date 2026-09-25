@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ccsd-t-h2o-sto3g` |
-| Regression | `regressions/scf/ccsd-t-h2o-sto3g/` |
 | Public API | `cpu::scf::RHF::ccsd_t(Frame&)` → `CCSDTResult` |
 | Roadmap | [Post-HF §3 Coupled cluster](../../roadmap/post-hf.md) |
 
@@ -18,7 +17,7 @@ triples correction, and returns
 `CCSDTResult{e_corr, e_tot, e_corr_ccsd, e_t, iterations, converged}` in
 Hartree (`e_corr = E_CCSD + E_(T)`). Offline oracle pin is PySCF 2.14.0
 `cc.CCSD` + `ccsd_t()` (never live in ctest). End-to-end gate:
-`regressions/scf/ccsd-t-h2o-sto3g` → binary `reg_ccsd-t-h2o-sto3g`. Fair-bench
+`ccsd-t-h2o-sto3g` → binary `reg_ccsd-t-h2o-sto3g`. Fair-bench
 ratio \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} = 0.333\) (within 10×;
 startup-dominated).
 
@@ -75,7 +74,7 @@ const cpu::scf::CCSDTResult ct = rhf.ccsd_t(frame);
 // ct.converged; ct.iterations; rhf.energy() = E_RHF [Ha]
 ```
 
-`CCSDTResult` fields (`include/atomiverse/cpu/scf/ccsd.h`): `e_corr`, `e_tot`,
+`CCSDTResult` fields (`ccsd.h`): `e_corr`, `e_tot`,
 `e_corr_ccsd`, `e_t` [Hartree], `iterations`, `converged`. Pack-level
 `ccsd_t_energy` is private engine code.
 
@@ -91,21 +90,21 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_ccsd-t-h2o-sto3g -j$(nproc)
-  ./build/regressions/reg_ccsd-t-h2o-sto3g
+  reg_ccsd-t-h2o-sto3g
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/ccsd.h` | Public `CCSDResult` / `CCSDTResult` |
-| `include/atomiverse/cpu/scf/mean_field_method.h` | `RHF::ccsd` / `RHF::ccsd_t` |
-| `include/atomiverse/cpu/scf/internal/ccsd_pack.h` | Private pack entries |
+| `ccsd.h` | Public `CCSDResult` / `CCSDTResult` |
+| `mean_field_method.h` | `RHF::ccsd` / `RHF::ccsd_t` |
+| `ccsd_pack.h` | Private pack entries |
 | `src/cpu/scf/ccsd.cpp` | Gauss–Stanton residual + (T) |
-| `regressions/scf/ccsd-t-h2o-sto3g/reg_ccsd-t-h2o-sto3g.cpp` | E2E consumer |
+| `reg_ccsd-t-h2o-sto3g.cpp` | E2E consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/ccsd-t-h2o-sto3g/REFERENCE.md`](../../../regressions/scf/ccsd-t-h2o-sto3g/REFERENCE.md)
+Source: case `ccsd-t-h2o-sto3g` pin
 (offline pin; PySCF never in ctest). Protocol:
 `docs/tutorial/appendix-pyscf-oracle.md`.
 
@@ -136,17 +135,17 @@ Source: [`regressions/scf/ccsd-t-h2o-sto3g/REFERENCE.md`](../../../regressions/s
 Oracle repro (human / offline only):
 
 ```bash
-bash tools/setup_pyscf_env.sh
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py ccsd-t \
+bash <pyscf env setup>
+python <pyscf pin> ccsd-t \
     --geom water --basis sto-3g --conv-tol 1e-12
 ```
 
 ## Performance
 
 Source: fair wall in
-[`regressions/scf/ccsd-t-h2o-sto3g/REFERENCE.md`](../../../regressions/scf/ccsd-t-h2o-sto3g/REFERENCE.md)
+case `ccsd-t-h2o-sto3g` pin
 (2026-07-23; login node; `OMP_NUM_THREADS=1`; median of ≥3). Campaign rollup
-ratio **0.333** (the case `REFERENCE.md`). No standing comparison table in-tree at draft time.
+ratio **0.333** (the case pin notes). No standing comparison table in-tree at draft time.
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | -------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -154,9 +153,9 @@ ratio **0.333** (the case `REFERENCE.md`). No standing comparison table in-tree 
 
 ```bash
 export OMP_NUM_THREADS=1
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
     --method ccsd_t --geom water --basis sto-3g --repeat 3 -- \
-    ./build/regressions/reg_ccsd-t-h2o-sto3g
+    reg_ccsd-t-h2o-sto3g
 ```
 
 Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\). No ⚡ optimization pass
@@ -179,11 +178,11 @@ required on this case.
 
 ## References
 
-- Offline pin: `regressions/scf/ccsd-t-h2o-sto3g/REFERENCE.md`
-- Regression consumer: `regressions/scf/ccsd-t-h2o-sto3g/reg_ccsd-t-h2o-sto3g.cpp`
+- Offline pin: case `ccsd-t-h2o-sto3g` pin
+- Regression consumer: `reg_ccsd-t-h2o-sto3g.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Roadmap: `docs/roadmap/post-hf.md` (§3 Coupled cluster)
-- Public API: `include/atomiverse/cpu/scf/ccsd.h`
+- Public API: `ccsd.h`
 - Sibling CCSD foothold: `docs/tutorial/methods/ccsd-h2-sto3g.md`
 - K. Raghavachari, G. W. Trucks, J. A. Pople, M. Head-Gordon, *Chem. Phys.
   Lett.* **157**, 479 (1989). DOI

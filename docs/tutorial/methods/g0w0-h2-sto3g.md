@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `g0w0-h2-sto3g` |
-| Regression | `regressions/scf/g0w0-h2-sto3g/` |
 | Public API | `cpu::scf::RHF::g0w0()` → `G0W0Result` |
 | Roadmap | [excited-states.md](../../roadmap/excited-states.md) §5 G0W0 |
 
@@ -16,7 +15,7 @@ reference: direct-RPA (dRPA) screening of \(W\), frequency-exact diagonal
 correlation self-energy, non-linear Newton QP equation per MO. Primary
 observable on this pin is the **HOMO–LUMO QP gap [eV]** (also IP / EA). Public
 path is `RHF::run(frame)` then `RHF::g0w0()` — no `*Config` bag, no factory.
-Regression binary: `reg_g0w0-h2-sto3g` under `regressions/scf/g0w0-h2-sto3g/`.
+Regression binary: `reg_g0w0-h2-sto3g` under `g0w0-h2-sto3g`.
 Twin is PySCF 2.14.0 `gw.gw_exact.GWExact` + `tdscf.dRPA` on HF density
 (`dft.RKS` with `xc='hf'`), not the analytic-continuation `gw.GW` path.
 
@@ -61,7 +60,7 @@ scGW; BSE; RPA total energies; open-shell G0W0; CUDA.
 ## Implementation
 
 Frame in → RHF members → `run` → post-SCF `g0w0()`. Headers:
-`include/atomiverse/cpu/scf/rhf.h`, `g0w0.h`; impl `src/cpu/scf/g0w0.cpp`.
+`rhf.h`, `g0w0.h`; impl `src/cpu/scf/g0w0.cpp`.
 
 ```cpp
 #include "atomiverse/cpu/frame/frame.h"
@@ -100,15 +99,15 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_g0w0-h2-sto3g -j$(nproc)
-  ./build/regressions/reg_g0w0-h2-sto3g
+  reg_g0w0-h2-sto3g
 '
 ```
 
-Source consumer: `regressions/scf/g0w0-h2-sto3g/reg_g0w0-h2-sto3g.cpp`.
+Source consumer: `reg_g0w0-h2-sto3g.cpp`.
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/g0w0-h2-sto3g/REFERENCE.md`](../../../regressions/scf/g0w0-h2-sto3g/REFERENCE.md)
+Source: case `g0w0-h2-sto3g` pin
 (offline pin only; PySCF never imported from CMake/ctest).
 
 | Setting | Value |
@@ -141,7 +140,7 @@ Sanity: G0W0 gap > HF gap on this system (enforced in the regression binary).
 Oracle repro:
 
 ```bash
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py g0w0 \
+python <pyscf pin> g0w0 \
   --geom h2 --basis sto-3g --conv-tol 1e-12
 ```
 
@@ -155,9 +154,9 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\) unless exempted.
 | spectral G0W0 | 0.1148 | 0.0125 | **0.109** | ✓ | ATV binary = RHF + spectral G0W0; PySCF = RKS(hf)+dRPA+GWExact |
 
 ```bash
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
   --method g0w0 --geom h2 --basis sto-3g --repeat 5 \
-  -- ./build/regressions/reg_g0w0-h2-sto3g
+  -- reg_g0w0-h2-sto3g
 ```
 
 **Twin caveats.** (1) Method class match is spectral / exact-frequency only —
@@ -184,12 +183,12 @@ large-basis throughput claim.
 
 ## References
 
-- Offline pin: `regressions/scf/g0w0-h2-sto3g/REFERENCE.md`
-- Perf (in REFERENCE; no separate `` row file in tree at
+- Offline pin: case `g0w0-h2-sto3g` pin
+- Perf (in REFERENCE; no separate ` row file in tree at
   write time): fair_bench numbers above; handoff
-  the case `REFERENCE.md` records ratio **0.109**
+  the case pin notes records ratio **0.109**
 - Roadmap: `docs/roadmap/excited-states.md` (G0W0 ✓ CPU)
-- Public headers: `include/atomiverse/cpu/scf/g0w0.h`, `rhf.h`
+- Public headers: `g0w0.h`, `rhf.h`
 - Impl: `src/cpu/scf/g0w0.cpp`
 - Hybertsen & Louie, *Phys. Rev. B* **34**, 5390 (1986), DOI
   10.1103/PhysRevB.34.5390

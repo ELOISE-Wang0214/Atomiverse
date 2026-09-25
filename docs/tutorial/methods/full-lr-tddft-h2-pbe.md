@@ -3,7 +3,7 @@
 *(Technical-report draft; narrative house style TBD — rewrite later.)*
 
 Casida **A/B** (RPA) response on pure GGA RKS (PBE), beyond TDA.
-Regression: `regressions/scf/full-lr-tddft-h2-pbe`. Hybrid TDA:
+Regression: `full-lr-tddft-h2-pbe`. Hybrid TDA:
 [h2-b3lyp-hybrid-tda](h2-b3lyp-hybrid-tda.md).
 
 ## Theory
@@ -31,7 +31,7 @@ auto ex = rks.tddft(/*n_states=*/3);   // full LR, not TDA
 ```
 
 ```bash
-./build/regressions/reg_full-lr-tddft-h2-pbe
+reg_full-lr-tddft-h2-pbe
 ```
 
 ## Results

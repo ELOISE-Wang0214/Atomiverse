@@ -20,18 +20,26 @@ using ATV::cpu::gpw::XcKind;
 
 namespace {
 
-std::vector<ATV::cpu::gpw::GpwAtom> h2_atoms() {
+std::vector<ATV::cpu::gpw::internal::GpwAtom> h2_atoms() {
     const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
     const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
     const double rA[3] = {5.5, 6.0, 6.0};
     const double rB[3] = {6.5, 6.0, 6.0};
-    return {ATV::cpu::gpw::GpwAtom(rA, basis, pot, 1),
-            ATV::cpu::gpw::GpwAtom(rB, basis, pot, 1)};
+    return {ATV::cpu::gpw::internal::GpwAtom(rA, basis, pot, 1),
+            ATV::cpu::gpw::internal::GpwAtom(rB, basis, pot, 1)};
+}
+
+void set_h2_cell(ATV::cpu::gpw::GpwDft& m) {
+    ATV::cpu::gpw::internal::GpwDftAccess::set_cell(m, {12.0, 12.0, 12.0});
+}
+
+void set_h2_cell(ATV::cuda::gpw::GpwDft& m) {
+    m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
 }
 
 template <typename Method>
 void set_h2_cfg(Method& m) {
-    m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+    set_h2_cell(m);
     m.cutoff_ry = 80.0;
     m.n_occ = 1;
     m.max_iter = 40;
@@ -98,8 +106,8 @@ TEST(CudaGpwKpoints, H2MeshEnergyDualGate) {
     cpu.k_mesh[1] = 1;
     cpu.k_mesh[2] = 1;
     cpu.k_time_reversal = false;
-    cpu.build(atoms);
-    const auto& rc = cpu.run(atoms);
+    ATV::cpu::gpw::internal::GpwDftAccess::build(cpu, atoms);
+    const auto& rc = ATV::cpu::gpw::internal::GpwDftAccess::run(cpu, atoms);
     ASSERT_TRUE(rc.converged) << "CPU multi-k SCF not converged";
     ASSERT_GE(rc.n_kpts, 2) << "expected multi-k mesh without TR fold";
 

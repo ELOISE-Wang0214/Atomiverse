@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `berry-spin-si` |
-| Regression | `regressions/pw/berry-spin-si/` |
 | Public API | `cpu::pw::PW` (`spin_polarized`, `multiplicity`) + `cpu::pw::BerryPolarization` / `BerryPolarizationResult` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 Berry-phase polarization (collinear spin ✓) |
 | Wave | CP2K capability loop — wave 10 / merged 2026-07-26 |
@@ -73,7 +72,7 @@ polarization wraps into \((-0.5,0.5]\) (quantum \(1\)).
 
 **Closed-shell contrast.** Restricted path (`spin_polarized == false`):
 spin factor \(f=2\), \(p^\mathrm{el}=2\varphi/2\pi\), wrap quantum \(2\).
-Unchanged by this slug — see `regressions/pw/berry-polarization`.
+Unchanged by this slug — see `berry-polarization`.
 
 **Ionic term.** Spin-independent:
 
@@ -136,7 +135,7 @@ path — this post-processor returns an owned result struct, not Frame meta.
 
 Public surface only (`cpu::Frame` + concrete method / post-processor
 members; no `*Config`, no factories). Headers:
-`include/atomiverse/cpu/planewave/berry_polarization.h`,
+`berry_polarization.h`,
 `pw_solver.h`. Implementation:
 `src/cpu/planewave/berry_polarization.cpp` (collinear SCF → freeze
 \(V_\mathrm{eff}^\sigma\) → NSCF string phases per spin → wrap quantum 1).
@@ -223,7 +222,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_berry-spin-si
-  ./build/regressions/reg_berry-spin-si
+  reg_berry-spin-si
 '
 ```
 
@@ -234,18 +233,17 @@ link-det phase math, `wrap_centered`, invalid-argument guards.
 
 | Role | Path |
 | ---- | ---- |
-| Public API | `include/atomiverse/cpu/planewave/berry_polarization.h` |
+| Public API | `berry_polarization.h` |
 | Implementation | `src/cpu/planewave/berry_polarization.cpp` |
-| PW method / collinear SCF | `include/atomiverse/cpu/planewave/pw_solver.h` |
+| PW method / collinear SCF | `pw_solver.h` |
 | Unit test | `tests/cpu/planewave/test_berry_polarization.cpp` |
-| Regression | `regressions/pw/berry-spin-si/reg_berry-spin-si.cpp` |
-| Offline pin | `regressions/pw/berry-spin-si/REFERENCE.md` |
-| CP2K oracle note | `tools/cp2k_oracle/inputs/si_berry_spin_note.inp` |
-| Closed-shell twin | `regressions/pw/berry-polarization/` |
+| Offline pin | case `berry-spin-si` pin |
+| CP2K oracle note | CP2K oracle |
+| Closed-shell twin | `berry-polarization` |
 
 ## Validation (vs literature / CP2K note)
 
-Source: [`regressions/pw/berry-spin-si/REFERENCE.md`](../../../regressions/pw/berry-spin-si/REFERENCE.md)
+Source: case `berry-spin-si` pin
 (offline pin; **never live CP2K or QE in ctest**). Scientific product is
 **symmetry-exact literature**, not absolute-phase parity with GTH Quickstep.
 
@@ -295,13 +293,13 @@ and even \(N_e\), collinear KSV must recover the same physics modulo the
 smaller nspin=2 quantum.
 
 **CP2K offline note.** Input echo (never executed at ctest time):
-`tools/cp2k_oracle/inputs/si_berry_spin_note.inp` — same diamond geometry,
+CP2K oracle — same diamond geometry,
 PADE / LSD, multiplicity 1, `&MOMENTS PERIODIC T`. Re-pin absolute phases
 only against a fair NC-UPF PW twin (e.g. QE) when available offline.
 
 ## Performance
 
-Source: `regressions/pw/berry-spin-si/REFERENCE.md`; queue / handoff mark
+Source: case `berry-spin-si` pin; queue / handoff mark
 this slug **`perf_exempt`**.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -339,10 +337,9 @@ not absolute-phase parity with GTH Quickstep.
 
 ## References
 
-- Offline pin: `regressions/pw/berry-spin-si/REFERENCE.md`
-- Regression: `regressions/pw/berry-spin-si/reg_berry-spin-si.cpp`
-- Closed-shell sibling: `regressions/pw/berry-polarization/REFERENCE.md`
-- CP2K oracle note: `tools/cp2k_oracle/inputs/si_berry_spin_note.inp`
+- Offline pin: case `berry-spin-si` pin
+- Closed-shell sibling: case `berry-polarization` pin
+- CP2K oracle note: CP2K oracle
 - Roadmap: [dft.md](../../roadmap/dft.md) §11 Berry-phase polarization
 - King-Smith & Vanderbilt, *Phys. Rev. B* **47**, 1651 (1993)
 - Resta, *Rev. Mod. Phys.* **66**, 899 (1994)

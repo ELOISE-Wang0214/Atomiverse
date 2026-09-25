@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dftb2-periodic-gamma` |
-| Regression | `regressions/semiempirical/dftb2-periodic-gamma/` |
 | Public API | `cpu::semiempirical::DFTB2` (members) + `cpu::Evaluate` |
 | Roadmap | [`semiempirical.md`](../../roadmap/semiempirical.md) — Periodic DFTB (Γ-point) ✓ |
 | Family oracle | **DFTB+** (absolute pin deferred to bit-identical SK; see Validation) |
@@ -99,7 +98,7 @@ runtime `.skf` reader; **not** bit-identical DFTB.org mio-1-1 for C–C.
 - Analytic nuclear **forces** under PBC (min-image molecular analytic path
   only; this regression is energy-only).
 - **Dispersion** (D3/D4) on DFTB → `dftb2-dispersion-d3` (○).
-- Live **DFTB+** at ctest time (offline pins only; see `tools/tb_oracle/`).
+- Live **DFTB+** at ctest time (offline pins only; see TB oracle (OpenMOPAC / DFTB+ / xtb)).
 - OpenMOPAC as reference (**forbidden** for the DFTB family).
 - GFN-xTB as a “DFTB3 successor” (**forbidden** framing; xtb oracle is a
   separate family).
@@ -108,11 +107,11 @@ runtime `.skf` reader; **not** bit-identical DFTB.org mio-1-1 for C–C.
 
 Public surface only (`cpu::Frame` + concrete method members; **no** `*Config`
 bag, **no** `make_*` / `build_*` factories). Headers:
-`include/atomiverse/cpu/semiempirical/dftb2.h`,
-`include/atomiverse/cpu/evaluate/evaluate.h`,
-`include/atomiverse/cpu/frame/frame.h`. Implementation:
+`dftb2.h`,
+`evaluate.h`,
+`frame.h`. Implementation:
 `src/cpu/semiempirical/dftb2.cpp` (lattice enumeration + Γ H⁰/S/γ/rep).
-Static tables: `include/atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h`.
+Static tables: `dftb_mio_tables.h`.
 
 Minimal sequence (matches `reg_dftb2-periodic-gamma.cpp`):
 
@@ -182,7 +181,7 @@ Unit footholds (finite energy; PBC vs molecular separation):
 
 ## Validation (vs offline pin)
 
-Source: `regressions/semiempirical/dftb2-periodic-gamma/REFERENCE.md`
+Source: case `dftb2-periodic-gamma` pin
 (offline pin; **never** live DFTB+ in ctest).
 
 ```text
@@ -209,14 +208,14 @@ molecular dimer.
 | \(\lvert E-E_{\mathrm{mol}}\rvert\) [eV] | \(> 0.05\) | sanity (same dimer, 20 Å cubic) | — | Lattice images must matter |
 
 Related absolute **DFTB+ 24.1** energy identity (different system: H₂
-mio-1-1): `regressions/semiempirical/dftb2-dftbplus-energy-pin/` —
+mio-1-1): `dftb2-dftbplus-energy-pin` —
 \(E=-18.36635052\) eV, tol \(10^{-3}\) eV. Use that path when claiming
 oracle-version parity; do **not** treat this C-chain pin as a DFTB+ digit
 match until bit-identical C–C SK tables ship.
 
 ## Performance
 
-Source: `REFERENCE.md`.
+Source: pin notes.
 
 ```text
 perf_exempt: true
@@ -243,11 +242,10 @@ slug. A related molecular energy pin
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/dftb2-periodic-gamma/REFERENCE.md`](../../../regressions/semiempirical/dftb2-periodic-gamma/REFERENCE.md)
-- Regression: [`reg_dftb2-periodic-gamma.cpp`](../../../regressions/semiempirical/dftb2-periodic-gamma/reg_dftb2-periodic-gamma.cpp)
-- Public API: [`include/atomiverse/cpu/semiempirical/dftb2.h`](../../../include/atomiverse/cpu/semiempirical/dftb2.h)
+- Offline pin: case `dftb2-periodic-gamma` pin
+- Public API: `dftb2.h`
 - Roadmap: [`docs/roadmap/semiempirical.md`](../../roadmap/semiempirical.md)
-- Oracle tooling: [`tools/tb_oracle/README.md`](../../../tools/tb_oracle/README.md)
+- Oracle tooling: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Literature: Elstner *et al.*, *Phys. Rev. B* **58**, 7260 (1998)
 - Related: H₂ DFTB+ energy pin `dftb2-dftbplus-energy-pin`; analytic
   forces `dftb2-analytic-forces`; spin `spin-dftb2-o2`

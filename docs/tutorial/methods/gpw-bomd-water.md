@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-bomd-water` |
-| Regression | `regressions/gpw/gpw-bomd-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true}` at `md::Phase::force` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{GpwDft{…}, compute_forces=true}` at `md::Phase::force` |
 | Roadmap | MD product path in [ch09-gpw.md](../ch09-gpw.md) / [ch10-classical-md.md](../ch10-classical-md.md) |
 | Dual gate | Correctness A4–A6; speed **`perf_exempt`** (no CP2K AIMD twin wall) |
 | Wave | CP2K capability loop — wave 2 **done** (merged 2026-07-24) |
@@ -122,8 +121,8 @@ public `*Config` bags / `make_*` factories; changes to analytic force math
 
 Public surface only: `cpu::Frame`, `cpu::gpw::Kind` / lookup constructors,
 `GPWEvaluator` constructor args / members, MD preset, explicit force-phase
-binding. Headers: `include/atomiverse/cpu/dynamics/md.h`,
-`velocity_verlet.h`, `include/atomiverse/cpu/gpw/gpw_evaluator.h`,
+binding. Headers: `md.h`,
+`velocity_verlet.h`, `gpw_evaluator.h`,
 `gaussian_basis.h`, `gth_potential.h`. Unit gate (not e2e):
 `tests/cpu/gpw/test_gpw_bomd.cpp`.
 
@@ -172,10 +171,10 @@ const cpu::gpw::Kind H{
 
 // Product twin family (forces pin is 400 Ry / 1e-7). BOMD uses a cheaper
 // same-method envelope so the ≤60 s gate holds.
-cpu::gpw::GPWEvaluator eval(
-    /*kinds*/ {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 200.0;  dft.max_iter = 60;  dft.tol = 1e-5;  dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;  dft.nonperiodic = true;
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/true);
 
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.5});
@@ -188,7 +187,8 @@ sim.run(frame, 4);   // production NVE
 
 Rules (architecture):
 
-- Parameters are **constructor arguments / members** of `GPWEvaluator` — no
+- Parameters are **members** of `GpwDft` (kinds are its constructor
+  argument); `GPWEvaluator` takes the configured method by value — no
   public `*Config` bag.
 - Force binding is explicit `on(md::Phase::force).add(...)` — no categorical
   electronic-structure setter.
@@ -209,25 +209,25 @@ bash -lc '
     -DATV_BUILD_GPW=ON -DATV_BUILD_CUDA=OFF \
     -DATV_BUILD_REGRESSIONS=ON -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-bomd-water -j"$(nproc)"
-  ./build/regressions/reg_gpw-bomd-water
+  reg_gpw-bomd-water
 '
 ```
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/gpw/gpw-bomd-water/REFERENCE.md`](../../../regressions/gpw/gpw-bomd-water/REFERENCE.md)
+case `gpw-bomd-water` pin
 (offline pin; **never** live CP2K in ctest). Oracle tooling:
-[`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md).
+CP2K oracle.
 Suggested twin input (when a binary is available):
-`tools/cp2k_oracle/inputs/h2o_bomd_mt.inp`.
+CP2K oracle.
 
 ### Offline CP2K status
 
 | Field | Value |
 | ----- | ----- |
 | CP2K binary on pin host | **unavailable** (no `cp2k` / `cp2k.psmp` / `cp2k.sopt`, no CP2K Lmod module on Arrhenius login-class inventory 2026-07-23) |
-| Twin design (when available) | Short NVE AIMD / MD Quickstep GPW on the same H₂O cell (PBE / DZVP-MOLOPT-GTH / GTH / MT); re-run offline via `tools/cp2k_oracle/`; record version + measured drift envelope + fair wall |
+| Twin design (when available) | Short NVE AIMD / MD Quickstep GPW on the same H₂O cell (PBE / DZVP-MOLOPT-GTH / GTH / MT); re-run offline via CP2K oracle; record version + measured drift envelope + fair wall |
 | Current pin basis | Literature NVE/BOMD energy conservation envelope + finite/bounded trajectory diagnostics |
 | Force twin (absolute) | `gpw-forces-water` vs **CP2K 2026.1** (max \|ΔF\| ≈ 3.4×10⁻⁴ Ha/Bohr at 400 Ry) |
 
@@ -255,8 +255,8 @@ Related unit surface (not the e2e pin): `tests/cpu/gpw/test_gpw_bomd.cpp` —
 ## Performance
 
 Source: REFERENCE.md dual-gate summary; queue/handoff
-``,
-``.
+`,
+`.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -299,13 +299,13 @@ this multi-step BOMD twin.
 
 ## References
 
-- Offline pin: [`regressions/gpw/gpw-bomd-water/REFERENCE.md`](../../../regressions/gpw/gpw-bomd-water/REFERENCE.md)
-- Regression source: [`regressions/gpw/gpw-bomd-water/reg_gpw-bomd-water.cpp`](../../../regressions/gpw/gpw-bomd-water/reg_gpw-bomd-water.cpp)
+- Offline pin: case `gpw-bomd-water` pin
+- Regression source: `reg_gpw-bomd-water.cpp`
 - Force absolute twin: [`gpw-forces-water`](gpw-forces-water.md) /
-  `regressions/gpw/gpw-forces-water/`
+  `gpw-forces-water`
 - Unit bind test: `tests/cpu/gpw/test_gpw_bomd.cpp`
-- Suggested CP2K input: `tools/cp2k_oracle/inputs/h2o_bomd_mt.inp`
-- Oracle: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Suggested CP2K input: CP2K oracle
+- Oracle: CP2K oracle
 - Narrative GPW / MD: [ch09-gpw.md](../ch09-gpw.md),
   [ch10-classical-md.md](../ch10-classical-md.md)
 - Related PW foothold: [pw-bomd-h](pw-bomd-h.md)

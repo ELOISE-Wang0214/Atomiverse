@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-wannier-uks` |
-| Regression | `regressions/pw/periodic-wannier-uks/` |
 | Public API | `cpu::pw::PW` (`spin_polarized`, `multiplicity`) + `cpu::pw::PeriodicWannier` / `PeriodicWannierResult` (`cpu/planewave/periodic_wannier.h`) |
 | Track | CP2K capability (); response / PW |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 MLWF; queue `periodic-wannier-uks` (done) |
@@ -16,7 +15,7 @@
 
 **Collinear spin-polarized multi-k maximally localized Wannier functions
 (MLWF)** on the CPU plane-wave stack — the spin productization of
-`periodic-wannier-si` (restricted Marzari–Vanderbilt; `regressions/pw/periodic-wannier-si`).
+`periodic-wannier-si` (restricted Marzari–Vanderbilt; `periodic-wannier-si`).
 Concrete method `cpu::pw::PW` with `spin_polarized = true` and
 `multiplicity = 1` (closed-shell collinear \(M = N_\uparrow - N_\downarrow = 0\))
 feeds `cpu::pw::PeriodicWannier::compute`. Occupied α and β manifolds are
@@ -26,7 +25,7 @@ gates: four valence MLWFs **per spin** at the tetrahedral Si–Si bond midpoints
 (Marzari & Vanderbilt 1997 §IV) and total spread reduction
 \(\Omega_{\mathrm{final}} < 0.25\,\Omega_{\mathrm{init}}\). Regression binary:
 `reg_periodic-wannier-uks`. **No live CP2K in ctest** — offline oracle pins
-only (`tools/cp2k_oracle/`).
+only (CP2K oracle).
 
 ## Method
 
@@ -110,7 +109,7 @@ are not accepted here.
 Public surface only: construct `cpu::pw::PW` and `cpu::pw::PeriodicWannier`, set
 **members** (no public `*Config` bag, no `make_*` / `build_*` factory), call
 `mlwf.compute(method, frame)`. Header:
-`include/atomiverse/cpu/planewave/periodic_wannier.h`. Internals stay under
+`periodic_wannier.h`. Internals stay under
 `cpu/planewave/internal/` (or implementation TU). Helper
 `diamond_bond_midpoints(a_ang)` is public pure geometry for pins/tests.
 
@@ -190,24 +189,23 @@ bash -lc '
 '
 ```
 
-Regression binary: `./build/regressions/reg_periodic-wannier-uks`.
+Regression binary: `reg_periodic-wannier-uks`.
 
 **File pointers**
 
 | Role | Path |
 | ---- | ---- |
-| Public API | `include/atomiverse/cpu/planewave/periodic_wannier.h` |
-| PW method | `include/atomiverse/cpu/planewave/pw_solver.h` |
+| Public API | `periodic_wannier.h` |
+| PW method | `pw_solver.h` |
 | Unit (midpoints, SMV math, spin gate) | `tests/cpu/planewave/test_periodic_wannier.cpp` |
-| Regression | `regressions/pw/periodic-wannier-uks/reg_periodic-wannier-uks.cpp` |
-| Offline pin | `regressions/pw/periodic-wannier-uks/REFERENCE.md` |
-| Oracle note | `tools/cp2k_oracle/inputs/si_periodic_wannier_uks.note` |
-| Restricted twin | `regressions/pw/periodic-wannier-si/` |
+| Offline pin | case `periodic-wannier-uks` pin |
+| Oracle note | CP2K oracle |
+| Restricted twin | `periodic-wannier-si` |
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/pw/periodic-wannier-uks/REFERENCE.md`](../../../regressions/pw/periodic-wannier-uks/REFERENCE.md)
+case `periodic-wannier-uks` pin
 (offline only; **no live CP2K in ctest**). Closed acceptance: collinear
 spin-polarized multi-k MLWF, bond midpoints **per spin** + spread reduction,
 `perf_exempt`.
@@ -267,7 +265,7 @@ product policy as restricted twin).
 ### CP2K oracle (algorithm twin, not energy-compared)
 
 Offline input echo:
-`tools/cp2k_oracle/inputs/si_periodic_wannier_uks.note` — Quickstep
+CP2K oracle — Quickstep
 `LSD` / `MULTIPLICITY 1` + `&LOCALIZE` (JACOBI) + print Wannier centers on
 diamond Si with GTH-PADE-q4 + DZVP-MOLOPT-SR-GTH. Shared content: **bond-midpoint
 geometry of the four valence MLWFs per spin channel at \(M=0\)**. Absolute
@@ -275,7 +273,7 @@ spreads and gauge are **not** compared to ONCV PW.
 
 ## Performance
 
-Source: `REFERENCE.md` § Performance; queue/handoff mark this slug
+Source: pin notes § Performance; queue/handoff mark this slug
 **`perf_exempt`**.
 
 | Field | Value |
@@ -312,15 +310,15 @@ binary is available: time the oracle note geometry, append
 
 ## References
 
-- Offline pin: [`regressions/pw/periodic-wannier-uks/REFERENCE.md`](../../../regressions/pw/periodic-wannier-uks/REFERENCE.md)
-- Regression consumer: `regressions/pw/periodic-wannier-uks/reg_periodic-wannier-uks.cpp`
-- Oracle note: `tools/cp2k_oracle/inputs/si_periodic_wannier_uks.note`
-- Restricted twin pin: `regressions/pw/periodic-wannier-si/REFERENCE.md`
-- Restricted twin oracle: `tools/cp2k_oracle/inputs/si_periodic_wannier_note.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md` (never live in ctest)
+- Offline pin: case `periodic-wannier-uks` pin
+- Regression consumer: `reg_periodic-wannier-uks.cpp`
+- Oracle note: CP2K oracle
+- Restricted twin pin: case `periodic-wannier-si` pin
+- Restricted twin oracle: CP2K oracle
+- Oracle rules: CP2K oracle (never live in ctest)
 - Roadmap: [dft.md](../../roadmap/dft.md) §11 MLWF
 - Related molecular Boys: [`wannier-centers`](wannier-centers.md)
-- Related restricted periodic MLWF: `regressions/pw/periodic-wannier-si`
+- Related restricted periodic MLWF: `periodic-wannier-si`
 - Related multi-k collinear UKS energy: [`pw-uks-kmesh-fe`](pw-uks-kmesh-fe.md)
 - Related bands/DOS: [`bands-dos-si`](bands-dos-si.md)
 - Marzari N., Vanderbilt D., *Phys. Rev. B* **56**, 12847 (1997)

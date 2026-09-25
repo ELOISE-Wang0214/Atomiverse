@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d3bj-stress` |
-| Regression | `regressions/gpw/gpw-d3bj-stress/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`d3bj`, `compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd` with `GpwDft::d3bj` |
+| Public API | `cpu::gpw::GpwDft` (`d3bj`) bound by `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd` with `GpwDft::d3bj` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -56,13 +55,16 @@ Public surface only — same shape as `gpw-d4-stress` with `d3bj` instead of
 `d4`:
 
 ```cpp
-cpu::gpw::GPWEvaluator eval({O, H});
-eval.cutoff_ry = 200.0;
-eval.tol = 1e-6;
-eval.mix = 0.4;
-eval.xc = cpu::gpw::XcKind::PBE;
-eval.nonperiodic = false;
-eval.d3bj = true;            // exclusive vs d3 / d4 / ts / xdm / mbd
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 200;
+dft.tol = 1e-6;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = false;
+dft.d3bj = true;             // exclusive vs d3 / d4 / ts / xdm / mbd
+
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 eval.compute_stress = true;  // analytic fixed-P (product default)
 eval.stress_use_fd = false;
 
@@ -77,15 +79,15 @@ const auto& san = eval.last_stress_ha_bohr3();  // [Ha/Bohr³] Voigt
 | Path | Role |
 | ---- | ---- |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | fixed-\(P\) Lagrangian + D3(BJ) rebuild (`energy_fixed_P` / `energy_fixed_P_k`) |
-| `include/atomiverse/cpu/gpw/internal/dftd3.h` | `dftd3_pbe_bj`, `kD3Cp2kPairCutoffBohr` |
+| `dftd3.h` | `dftd3_pbe_bj`, `kD3Cp2kPairCutoffBohr` |
 | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` | `GpwStress.AnalyticMatchesFdWithD3Bj` (cheap MT H₂) |
-| `regressions/gpw/gpw-d3bj-stress/` | product gate + REFERENCE.md pins |
-| `tools/cp2k_oracle/inputs/gpw-d3bj-stress/` | offline CP2K stress twins |
+| `gpw-d3bj-stress` | product gate + REFERENCE.md pins |
+| CP2K oracle | offline CP2K stress twins |
 
 ## Validation (offline CP2K 2026.1)
 
 Source:
-[`regressions/gpw/gpw-d3bj-stress/REFERENCE.md`](../../../regressions/gpw/gpw-d3bj-stress/REFERENCE.md).
+case `gpw-d3bj-stress` pin.
 Two runs (`mpirun -np 2`, OMP 2, `EPS_SCF 1e-8`, CUTOFF 300):
 `water_dimer_d3bj_stress.inp` and `water_dimer_plain_stress.inp`, both
 `STRESS_TENSOR NUMERICAL`.
@@ -120,7 +122,7 @@ product vs stress oracle — settings caveats in REFERENCE.md).
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-d3bj-stress/REFERENCE.md`
+- Offline pin: case `gpw-d3bj-stress` pin
 - S. Grimme, S. Ehrlich, L. Goerigk, *J. Comput. Chem.* **32**, 1456 (2011)
   (D3(BJ) damping)
 - S. Grimme et al., *J. Chem. Phys.* **132**, 154104 (2010) (DFT-D3)

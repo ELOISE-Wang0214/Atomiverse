@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `voronoi-volume-tf` |
-| Regression | `regressions/md/voronoi-volume-tf/` |
 | Public API | `cpu::VoronoiVolume::volumes(frame)` [Å³] (`cpu/observe/voronoi_volume.h`); `cpu::md::ConstPotBO::site_volume` (per-row \(v_i\) [Å³], Component on `cpu::md::MD`, default `pre_force`) |
 | Roadmap | companion of **E7** `thomas-fermi-electrode` (wave 2) |
 | Oracle | **MetalWalls** TF model / Scalfi et al. 2020 (offline algebraic pin; LAMMPS has no TF twin) |
@@ -70,7 +69,7 @@ bind to MetalWalls / Scalfi, not LAMMPS.
 1. **Bulk FCC Au**, 2×2×2 conventional cells (32 sites), \(a_0 = 4.07\) Å,
    cubic box \(2a_0\), fully periodic — input to `cpu::VoronoiVolume`.
 2. **Gold capacitor toy** — identical to
-   `regressions/md/thomas-fermi-electrode`: 3+3 electrode planes
+   `thomas-fermi-electrode`: 3+3 electrode planes
    (1 site/plane, types 1/2), \(L_x = L_y = a_0\), plane spacing \(a_0/2\),
    first-plane gap 20 Å, \(\Delta\Psi = 1\) V, Gaussian
    \(\eta = 1/0.56\) Å⁻¹ (MetalWalls \(w = 0.56\) Å), 2D \(xy\) image
@@ -80,7 +79,7 @@ bind to MetalWalls / Scalfi, not LAMMPS.
 ### Offline discrete pins
 
 Script:
-`tools/metalwalls_oracle/inputs/metalwalls/voronoi-volume-tf/pin_voronoi_tf.py`
+MetalWalls oracle
 (numpy 2.5.1, run offline 2026-07-27; same discrete ConstPotBO algebra as
 the MetalWalls TF model). Perfect-metal pin inherited from the wave-2
 `thomas-fermi-electrode` regression.
@@ -159,24 +158,24 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_voronoi-volume-tf -j"$(nproc)"
-  ./build/regressions/reg_voronoi-volume-tf
+  reg_voronoi-volume-tf
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/observe/voronoi_volume.h` | Public `VoronoiVolume` (periodic bisector-clipping tessellation) |
-| `include/atomiverse/cpu/dynamics/const_pot_bo.h` | `ConstPotBO::site_volume` (per-row \(v_i\), TF hardness \(4\pi k_e l_{\mathrm{TF}}^2/v_i\)) |
-| `regressions/md/voronoi-volume-tf/reg_voronoi-volume-tf.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/metalwalls/voronoi-volume-tf/pin_voronoi_tf.py` | Offline discrete pin |
-| `tools/metalwalls_oracle/pin_notes_voronoi-volume-tf.md` | Pin notes |
+| `voronoi_volume.h` | Public `VoronoiVolume` (periodic bisector-clipping tessellation) |
+| `const_pot_bo.h` | `ConstPotBO::site_volume` (per-row \(v_i\), TF hardness \(4\pi k_e l_{\mathrm{TF}}^2/v_i\)) |
+| `reg_voronoi-volume-tf.cpp` | Product gate |
+| MetalWalls oracle | Offline discrete pin |
+| MetalWalls oracle | Pin notes |
 
 ## Validation (vs MetalWalls / Scalfi TF model)
 
 Source:
-[`regressions/md/voronoi-volume-tf/REFERENCE.md`](../../../regressions/md/voronoi-volume-tf/REFERENCE.md)
+case `voronoi-volume-tf` pin
 (offline pin; **never** live MetalWalls in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
+MetalWalls oracle.
 
 ### Accuracy
 
@@ -198,13 +197,13 @@ and REFERENCE (match `reg_voronoi-volume-tf`).
 ### Offline pin repro (never ctest)
 
 ```bash
-python3 tools/metalwalls_oracle/inputs/metalwalls/voronoi-volume-tf/pin_voronoi_tf.py
+python <MetalWalls oracle pin for this case>
 ```
 
 ## Performance
 
 Source: REFERENCE.md perf block; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{MetalWalls}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -240,11 +239,10 @@ hardens the diagonal). Do **not** invent wall-clock ratios.
 
 ## References
 
-- Offline pin: [`regressions/md/voronoi-volume-tf/REFERENCE.md`](../../../regressions/md/voronoi-volume-tf/REFERENCE.md)
-- Product gate: [`regressions/md/voronoi-volume-tf/reg_voronoi-volume-tf.cpp`](../../../regressions/md/voronoi-volume-tf/reg_voronoi-volume-tf.cpp)
-- Public headers: [`include/atomiverse/cpu/observe/voronoi_volume.h`](../../../include/atomiverse/cpu/observe/voronoi_volume.h), [`include/atomiverse/cpu/dynamics/const_pot_bo.h`](../../../include/atomiverse/cpu/dynamics/const_pot_bo.h)
-- Pin script: [`tools/metalwalls_oracle/inputs/metalwalls/voronoi-volume-tf/pin_voronoi_tf.py`](../../../tools/metalwalls_oracle/inputs/metalwalls/voronoi-volume-tf/pin_voronoi_tf.py); notes: [`tools/metalwalls_oracle/pin_notes_voronoi-volume-tf.md`](../../../tools/metalwalls_oracle/pin_notes_voronoi-volume-tf.md)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md)
+- Offline pin: case `voronoi-volume-tf` pin
+- Public headers: `voronoi_volume.h`, `const_pot_bo.h`
+- Pin script: MetalWalls oracle; notes: MetalWalls oracle
+- Oracle notes: MetalWalls oracle
 - Capability map: `.claude/notes/metalwalls-capability-map.md` (§1 Voronoi volume (TF); E7 metallicity)
 - Literature: Scalfi, Dufils, Reeves, Rotenberg, Salanne, *J. Chem. Phys.* **153**, 174704 (2020), DOI [10.1063/5.0028232](https://doi.org/10.1063/5.0028232) (arXiv:1910.13341); MetalWalls per-species `thomas_fermi_length` + `voronoi_volume` inputs (Marin-Laflèche et al., *J. Open Source Softw.* **5**, 2373 (2020), DOI [10.21105/joss.02373](https://doi.org/10.21105/joss.02373))
 - Related pages: [`thomas-fermi-electrode.md`](thomas-fermi-electrode.md) (wave-2 E7 foothold), [`const-pot-bo-parallel-plate.md`](const-pot-bo-parallel-plate.md) (E1)

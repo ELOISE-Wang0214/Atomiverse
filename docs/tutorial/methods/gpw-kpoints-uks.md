@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-kpoints-uks` |
-| Regression | `regressions/gpw/gpw-kpoints-uks/` |
 | Public API | `cpu::gpw::GpwDft` (`n_alpha`/`n_beta`, `k_mesh` / `k_points`+`k_point_weights`, `k_time_reversal`, `XcKind`) |
 | Track | CP2K capability () |
 | Roadmap | [dft.md](../../roadmap/dft.md) — multi-k collinear UKS GPW; queue `gpw-kpoints-uks` (done 2026-07-25) |
@@ -24,8 +23,8 @@ DZV-GTH-PADE, wall ~4 s class): Γ-limit, closed-shell UKS ≡ RKS multi-k,
 time-reversal 8↔4, k-sampling activation, and a frozen absolute \(E_{\mathrm{tot}}\)
 pin. The **offline CP2K product twin** is **triplet O₂** UKS-PBE / DZVP-MOLOPT-GTH
 on a periodic \(2\times2\times2\) mesh (not re-run in ctest; wall exceeds the
-60 s class on dual Γ+MP MOLOPT). Public energy on `Frame` remains **eV** when
-routed through evaluators; this regression uses `GpwDft` internals in **Ha**.
+60 s class on dual Γ+MP MOLOPT). Public energy on `Frame` is **eV**
+(`kEnergy`); this regression reads the `GpwResult` fields in **Ha**.
 Gate: `reg_gpw-kpoints-uks`. **No live CP2K in ctest** — offline pins only.
 **perf_exempt** (fair twin would need ATV O₂ MOLOPT multi-k wall; H₂ has no
 CP2K twin).
@@ -97,13 +96,16 @@ internal exactness identities as `gpw-kpoints-si`, extended to UKS:
 ## Implementation
 
 Public surface only: construct `cpu::gpw::GpwDft`, set members (**no**
-`*Config` bag, **no** `make_*` / `build_*` factories), `build(atoms)` →
-`run(atoms)`. Lookup constructors for basis/PP only:
+`*Config` bag, **no** `make_*` / `build_*` factories), `build(frame)` →
+`run(frame)`. Lookup constructors for basis/PP only:
 `GaussianBasis(Element, name)`, `GthPotential(Element, name)`. Header:
-`include/atomiverse/cpu/gpw/gpw_solver.h`. Internals stay under
+`gpw_solver.h`. Internals stay under
 `cpu/gpw/internal/`.
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -113,18 +115,23 @@ using namespace ATV;
 using cpu::gpw::GpwDft;
 using cpu::gpw::XcKind;
 
-// High-spin H₂ toy (Bohr); matches reg_gpw-kpoints-uks main pin settings
+// High-spin H₂ toy (geometry given in Bohr, converted to Å for the Frame);
+// matches reg_gpw-kpoints-uks main pin settings
 const double L = 8.0;  // Bohr
-const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-const double r0[3] = {0.5 * L - 0.7, 0.5 * L, 0.5 * L};
-const double r1[3] = {0.5 * L + 0.7, 0.5 * L, 0.5 * L};
-std::vector<cpu::gpw::GpwAtom> atoms;
-atoms.emplace_back(r0, bH, pH, 1);
-atoms.emplace_back(r1, bH, pH, 1);
+const double b2a = units::kBohrInAngstrom;
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 1;
+    frame.span(kAtom_x)[i] = (0.5 * L + (i == 0 ? -0.7 : 0.7)) * b2a;
+    frame.span(kAtom_y)[i] = 0.5 * L * b2a;
+    frame.span(kAtom_z)[i] = 0.5 * L * b2a;
+}
+frame.box = cpu::Box::cubic(L * b2a);
 
-GpwDft mp;
-mp.cell[0] = mp.cell[1] = mp.cell[2] = L;
+GpwDft mp{{cpu::gpw::Kind{
+    molrs::Element::H,
+    cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+    cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
 mp.cutoff_ry = 120.0;
 mp.n_alpha = 2;                 // high-spin toy; M = 2
 mp.n_beta = 0;
@@ -133,8 +140,8 @@ mp.tol = 1e-7;
 mp.xc = XcKind::PADE;
 mp.k_mesh[0] = mp.k_mesh[1] = mp.k_mesh[2] = 2;  // multi-k UKS
 mp.k_time_reversal = true;      // 8 → 4 irreducible k
-mp.build(atoms);
-const cpu::gpw::GpwResult& r = mp.run(atoms);
+mp.build(frame);
+const cpu::gpw::GpwResult& r = mp.run(frame);
 // r.e_total [Ha], r.converged, r.n_kpts (== 4 under TR), r.eps_k, r.k_frac
 ```
 
@@ -157,7 +164,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-kpoints-uks -j$(nproc)
-  ./build/regressions/reg_gpw-kpoints-uks
+  reg_gpw-kpoints-uks
 '
 ```
 
@@ -165,17 +172,16 @@ bash -lc '
 
 | Role | Path |
 | ---- | ---- |
-| Public API | `include/atomiverse/cpu/gpw/gpw_solver.h` (`GpwDft`) |
+| Public API | `gpw_solver.h` (`GpwDft`) |
 | Solver impl | `src/cpu/gpw/gpw_solver.cpp` |
-| Regression | `regressions/gpw/gpw-kpoints-uks/reg_gpw-kpoints-uks.cpp` |
-| Offline pin | `regressions/gpw/gpw-kpoints-uks/REFERENCE.md` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/gpw-kpoints-uks/o2_uks_kpoints.inp` |
-| Related Γ UKS | `regressions/gpw/gpw-uks-o2-gamma`, `gpw-uks-pbe` |
-| Related RKS k | `regressions/gpw/gpw-kpoints-si` |
+| Offline pin | case `gpw-kpoints-uks` pin |
+| CP2K twin input | CP2K oracle |
+| Related Γ UKS | `gpw-uks-o2-gamma`, `gpw-uks-pbe` |
+| Related RKS k | `gpw-kpoints-si` |
 
 ## Validation (CP2K)
 
-Source: [`regressions/gpw/gpw-kpoints-uks/REFERENCE.md`](../../../regressions/gpw/gpw-kpoints-uks/REFERENCE.md)
+Source: case `gpw-kpoints-uks` pin
 (offline only; **never live CP2K in ctest**). Closed acceptance 2026-07-25;
 spec history under git (`.claude/specs/gpw-kpoints-uks/` deleted at done).
 
@@ -206,7 +212,7 @@ product energy is for future ATV re-twins).
 | Setting | Value |
 | ------- | ----- |
 | Engine | CP2K **2026.1** (`cp2k.psmp`, libcp2k 2026.1) |
-| Input | `tools/cp2k_oracle/inputs/gpw-kpoints-uks/o2_uks_kpoints.inp` |
+| Input | CP2K oracle |
 | System | O₂, \(R(\mathrm{O{-}O})=1.2075\) Å, cubic **8 Å**, `PERIODIC XYZ` |
 | Coordinates (Å) | O (4, 4, 3.39625), O (4, 4, 4.60375) |
 | Basis / PP | DZVP-MOLOPT-GTH / GTH-PBE-q6 |
@@ -232,16 +238,16 @@ Key CP2K log lines (from REFERENCE):
 Offline re-run (operator only; not ctest):
 
 ```bash
-# See tools/cp2k_oracle/README.md — load CP2K module / local install;
+# See the CP2K oracle notes — never invoke from ctest
 # never invoke from ctest.
 cd /tmp && # link BASIS_MOLOPT, GTH_POTENTIALS into cwd
-# copy tools/cp2k_oracle/inputs/gpw-kpoints-uks/o2_uks_kpoints.inp
+# copy <CP2K oracle input for this case>
 mpirun -np 1 cp2k.psmp -i o2_uks_kpoints.inp -o o2_uks_kpoints.out
 ```
 
 ## Performance
 
-Source: `REFERENCE.md` § Perf; queue/handoff mark this slug **perf_exempt**.
+Source: pin notes § Perf; queue/handoff mark this slug **perf_exempt**.
 
 | Field | Value |
 | ----- | ----- |
@@ -281,10 +287,10 @@ replace with measured \(r \le 10\).
 
 ## References
 
-- Offline pin: [`regressions/gpw/gpw-kpoints-uks/REFERENCE.md`](../../../regressions/gpw/gpw-kpoints-uks/REFERENCE.md)
-- Regression consumer: [`reg_gpw-kpoints-uks.cpp`](../../../regressions/gpw/gpw-kpoints-uks/reg_gpw-kpoints-uks.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/gpw-kpoints-uks/`](../../../tools/cp2k_oracle/inputs/gpw-kpoints-uks/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin: case `gpw-kpoints-uks` pin
+- Regression consumer: `reg_gpw-kpoints-uks.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md)
 - Related Γ-UKS GPW: [`gpw-uks-o2-gamma`](gpw-uks-o2-gamma.md)

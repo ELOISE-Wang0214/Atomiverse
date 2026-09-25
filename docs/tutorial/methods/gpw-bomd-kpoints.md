@@ -6,9 +6,8 @@ capability loop, 2026-07-31.)*
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-bomd-kpoints` |
-| Regression | `regressions/gpw/gpw-bomd-kpoints/` |
-| Public API | `cpu::md::MD` + `cpu::md::VelocityVerlet` + `cpu::gpw::GPWEvaluator{kinds, cutoff_ry, …, compute_forces=true}` with `k_mesh = {1,1,2}`, `k_time_reversal = false`; step-0 forces seeded by `cpu::single_point(frame, gpw)` |
-| Oracle | **CP2K 2026.1** Quickstep AIMD (`RUN_TYPE MD` + `&KPOINTS`), offline via `tools/cp2k_oracle/inputs/gpw-bomd-kpoints/` |
+| Public API | `cpu::md::MD` + `cpu::md::VelocityVerlet` + `cpu::gpw::GPWEvaluator{GpwDft{kinds} with cutoff_ry, …, k_mesh = {1,1,2}, k_time_reversal = false; compute_forces=true}`; step-0 forces seeded by `cpu::single_point(frame, gpw)` |
+| Oracle | **CP2K 2026.1** Quickstep AIMD (`RUN_TYPE MD` + `&KPOINTS`), offline via CP2K oracle |
 
 ## Summary
 
@@ -49,15 +48,18 @@ Public surface only — Frame in, Frame out; parameters are constructor
 arguments / members of the concrete method (no `*Config` bags).
 
 ```cpp
-// minimal call sequence — match regressions/gpw/gpw-bomd-kpoints/
+// minimal call sequence — match `gpw-bomd-kpoints`
 cpu::Frame frame(2);                      // periodic H2, cubic 12 Bohr cell
 // … fill kAtom_x/y/z, kAtom_type (Z=1), velocities; frame.box = …
 
-cpu::gpw::GPWEvaluator gpw{kinds, /*cutoff_ry=*/300.0, /*…*/};
-gpw.compute_forces    = true;
-gpw.k_mesh            = {1, 1, 2};
-gpw.k_time_reversal   = false;            // 2 k, w = 1/2 (CP2K FULL_GRID)
-gpw.tol               = 1e-7;
+cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry         = 300.0;
+dft.max_iter          = 200;
+dft.mix               = 0.3;
+dft.k_mesh[2]         = 2;                // 1×1×2
+dft.k_time_reversal   = false;            // 2 k, w = 1/2 (CP2K FULL_GRID)
+dft.tol               = 1e-7;
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 
 cpu::single_point(frame, gpw);            // VV bootstrap: step-0 forces
 
@@ -70,17 +72,17 @@ md.run(frame, 4);                         // 4 NVE steps
 
 ```bash
 cmake --build build --target reg_gpw-bomd-kpoints
-./build/regressions/reg_gpw-bomd-kpoints
+reg_gpw-bomd-kpoints
 ```
 
 Sources: `src/cpu/gpw/` (evaluator MD path + \(P_k\) warm start),
-`include/atomiverse/cpu/gpw/`. Unit gate: `test_cpu_gpw_bomd`
+`gpw`. Unit gate: `test_cpu_gpw_bomd`
 (same-geometry relaunch converges in strictly fewer iterations to the
 same fixed point, RKS and UKS multi-k).
 
 ## Validation (vs CP2K)
 
-Source: `regressions/gpw/gpw-bomd-kpoints/REFERENCE.md` — offline pins,
+Source: case `gpw-bomd-kpoints` pin — offline pins,
 never a live oracle at ctest time. Twin: periodic H₂ (bond 1.0 Bohr,
 cubic 12 Bohr cell), DZV-GTH-PADE / GTH-PADE-q1 / PADE, CUTOFF 300 Ry
 NGRIDS 1, MP 1×1×2 unreduced, NVE dt 0.5 fs × 4 steps, ATV `tol = 1e-7`
@@ -105,7 +107,7 @@ defect — the multi-k machinery contributes < 1e-5 on top.
 
 ## Performance
 
-Source: `regressions/gpw/gpw-bomd-kpoints/REFERENCE.md` (fair wall,
+Source: case `gpw-bomd-kpoints` pin (fair wall,
 same host, single rank, `OMP_NUM_THREADS=8`).
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -126,8 +128,8 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \le 10\); no exemption.
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-bomd-kpoints/REFERENCE.md`
-- Twin input: `tools/cp2k_oracle/inputs/gpw-bomd-kpoints/h2_bomd_kpoints_nve.inp`
+- Offline pin: case `gpw-bomd-kpoints` pin
+- Twin input: CP2K oracle
 - Marx & Hutter, *Ab Initio Molecular Dynamics* (CUP), BOMD chapter
 - VandeVondele et al., *Comput. Phys. Commun.* **167**, 103 (2005) (Quickstep GPW)
 - Monkhorst & Pack, *Phys. Rev. B* **13**, 5188 (1976)

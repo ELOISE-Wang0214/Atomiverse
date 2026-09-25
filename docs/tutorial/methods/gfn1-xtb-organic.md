@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gfn1-xtb-organic` |
-| Regression | `regressions/semiempirical/gfn1-xtb-organic/` |
 | Public API | `cpu::semiempirical::GFN1` + `cpu::Evaluate` |
 | Roadmap / queue | `docs/roadmap/semiempirical.md` §3 GFN1-xTB; queue **done** (`reg_gfn1-xtb-organic`) |
 | Oracle | **xtb 6.7.1** (family-locked; never OpenMOPAC / DFTB+; **not** a DFTB3 successor) |
@@ -179,7 +178,7 @@ bash -lc '
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse test_cpu_xtb_gfn1 \
         reg_gfn1-xtb-organic
-  ./build/regressions/reg_gfn1-xtb-organic
+  reg_gfn1-xtb-organic
   # or: cmake --build build --target run_reg_gfn1-xtb-organic
   ctest --test-dir build -R "^(test_cpu_xtb_gfn1)$" --output-on-failure
 '
@@ -187,17 +186,17 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/gfn1.h` | Public `GFN1` |
-| `include/atomiverse/cpu/semiempirical/basis_data/gfn1_tables.h` | Static GFN1 H/C/N/O (tblite `gfn1.f90` / xtb `param_gfn1-xtb.txt`) |
+| `gfn1.h` | Public `GFN1` |
+| `gfn1_tables.h` | Static GFN1 H/C/N/O (tblite `gfn1.f90` / xtb `param_gfn1-xtb.txt`) |
 | `src/cpu/semiempirical/gfn1.cpp` | Stewart overlap / EHT+SCC / rep / D3 (private) |
 | `tests/cpu/semiempirical/test_xtb_gfn1.cpp` | Unit: tables, Z throw, forces throw, finite \(E\) |
-| `regressions/semiempirical/gfn1-xtb-organic/reg_gfn1-xtb-organic.cpp` | Product gate |
-| `tools/tb_oracle/inputs/xtb/ch4_gfn1/` | Offline xtb 6.7.1 twin (`mol.xyz` + `xtb.out.txt`) |
+| `reg_gfn1-xtb-organic.cpp` | Product gate |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | Offline xtb 6.7.1 twin (`mol.xyz` + `xtb.out.txt`) |
 
 ## Validation (vs xtb)
 
 Source:
-[`regressions/semiempirical/gfn1-xtb-organic/REFERENCE.md`](../../../regressions/semiempirical/gfn1-xtb-organic/REFERENCE.md).
+case `gfn1-xtb-organic` pin.
 
 ```text
 oracle: xtb
@@ -205,8 +204,8 @@ oracle_version: 6.7.1
 ```
 
 Offline pin only — **never** launch xtb from ctest. Twin protocol:
-`tools/tb_oracle/README.md`, inputs under
-`tools/tb_oracle/inputs/xtb/ch4_gfn1/`.
+TB oracle (OpenMOPAC / DFTB+ / xtb), inputs under
+TB oracle (OpenMOPAC / DFTB+ / xtb).
 
 **Setup:**
 
@@ -259,14 +258,14 @@ once a later force slug forces the kernels bit-identical.
 Offline re-pin (human only; never ctest):
 
 ```bash
-# when xtb 6.7.1 is available; see tools/tb_oracle/inputs/xtb/ch4_gfn1/
+# when xtb is available — see the TB oracle notes for this case
 # --gfn 1 --chrg 0 --uhf 0 --acc 0.01, CH4 r_CH=1.09 Å
 # record TOTAL ENERGY [Eh] into REFERENCE.md → eV via 27.211386245988
 ```
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/semiempirical/gfn1-xtb-organic/REFERENCE.md).
+Source: pin notes.
 Informative only — **not** asserted in ctest. Gate convention (TB loop):
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{xtb}} \le 10\) unless `perf_exempt`.
 
@@ -301,9 +300,9 @@ Foothold ≠ closed: GFN1 organic energy is ✓; solvent, PBC, and spin stay ○
 
 ## References
 
-- Offline pin: `regressions/semiempirical/gfn1-xtb-organic/REFERENCE.md`
-- Oracle twin: `tools/tb_oracle/inputs/xtb/ch4_gfn1/`
-- Oracle rules: `tools/tb_oracle/README.md` (GFN-xTB → xtb only)
+- Offline pin: case `gfn1-xtb-organic` pin
+- Oracle twin: TB oracle (OpenMOPAC / DFTB+ / xtb)
+- Oracle rules: TB oracle (OpenMOPAC / DFTB+ / xtb) (GFN-xTB → xtb only)
 - Roadmap: `docs/roadmap/semiempirical.md` §3
 - Literature:
   - S. Grimme, C. Bannwarth, P. Shushkov, *J. Chem. Theory Comput.* **13**,

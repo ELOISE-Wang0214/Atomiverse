@@ -10,6 +10,10 @@ way it is, not to assume domain knowledge.
 
 ## What to read
 
+- **[CPU Workflow Reference](cpu-workflow-reference.md)** — the detailed
+  execution fragments accompanying the tutorial, maintained here and reused
+  directly by the print appendix.
+
 - **[Architecture](architecture.md)** — start here. One CUDA-free contract
   layer in `core/`, two execution backends, a host-side `cpu::Frame` throughout.
 - **[CPU Backend Internals](cpu-internals.md)** — *why* the CPU side has one
@@ -47,9 +51,9 @@ way it is, not to assume domain knowledge.
 
 | Directory | Role |
 |---|---|
-| `include/atomiverse/core` | the CUDA-free contract layer both backends share: precision tiers, `Mat3`, units, device tags, Frame schema, the `Driver<PhaseEnum, DeviceTag>` template, `Plan`, `Stage`, `Role`, `Verdict` |
-| `include/atomiverse/cpu`, `src/cpu` | CPU backend — frame, drivers, dynamics, montecarlo, minimize, scf, planewave, gpw, semiempirical, observe |
-| `include/atomiverse/cuda`, `src/cuda` | CUDA backend — staged components, transfers, async observer bridges |
+| `core` | the CUDA-free contract layer both backends share: precision tiers, `Mat3`, units, device tags, Frame schema, the `Driver<PhaseEnum, DeviceTag>` template, `Plan`, `Stage`, `Role`, `Verdict` |
+| `cpu`, `src/cpu` | CPU backend — frame, drivers, dynamics, montecarlo, minimize, scf, planewave, gpw, semiempirical, observe |
+| `cuda`, `src/cuda` | CUDA backend — staged components, transfers, async observer bridges |
 | `tests` | **unit tests only** — one function or method each, at millisecond scale |
 | `regressions` | end-to-end cases, one directory per delivered feature, each checked against a cited external or analytic value |
 | `benchmarks` | standing performance harnesses; never registered with ctest |
@@ -81,7 +85,7 @@ Ask in order:
    *topology* is genuinely new.
 6. Does it need a test? A single-function unit test in `tests/`. Anything
    end-to-end — a full solve, a convergence loop, a comparison against an
-   external engine — goes to `regressions/<domain>/<case>/` as an
+   external engine — goes to `<case>` as an
    out-of-library consumer, never to `tests/`.
 
 ## Maintaining these docs

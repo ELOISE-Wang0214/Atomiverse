@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d3-forces` |
-| Regression | `regressions/gpw/gpw-d3-forces/` |
-| Public API | `cpu::gpw::GPWEvaluator{d3 = true, compute_forces = true, nonperiodic = true}` |
+| Public API | `cpu::gpw::GpwDft{d3 = true, nonperiodic = true}` bound by `cpu::gpw::GPWEvaluator{…, compute_forces = true}` |
 | Roadmap / queue | `docs/roadmap/dft.md` §8 Dispersion; queue done 2026-07-26 |
 
 ## Summary
@@ -66,5 +65,5 @@ CP2K `ENERGY_FORCE` 12.3 s vs Atomiverse 17.8 s on the same host → ratio
 **1.4**, inside the 10× fair wall. The Atomiverse figure includes one extra plain
 SCF that only the wiring gate needs.
 
-See `regressions/gpw/gpw-d3-forces/REFERENCE.md` for the full pin tables and
+See case `gpw-d3-forces` pin for the full pin tables and
 tolerance justifications.

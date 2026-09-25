@@ -5,10 +5,9 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `roks-grad-o2-sto3g` |
-| Regression | `regressions/scf/roks-grad-o2-sto3g/` |
 | Public API | `cpu::scf::ROKS::forces(Frame&)` → `GradientResult` |
-| Energy sibling | `regressions/scf/roks-o2-sto3g` |
-| ROHF grad sibling | `regressions/scf/o2_rohf_grad` |
+| Energy sibling | `roks-o2-sto3g` |
+| ROHF grad sibling | `o2_rohf_grad` |
 
 ## Summary
 
@@ -18,8 +17,8 @@ Restricted open-shell Kohn–Sham (ROKS) analytic nuclear forces on high-spin O�
 `cpu::scf::ROKS` on a `cpu::Frame`; parameters are constructor args / members —
 no `*Config` bag. Forces return as `GradientResult` ([eV/Å]); the regression
 converts to Ha/Bohr for the pin. End-to-end gate:
-`regressions/scf/roks-grad-o2-sto3g` (`reg_roks-grad-o2-sto3g`). Offline oracle:
-PySCF 2.14.0 `dft.ROKS.nuc_grad_method` pinned in `REFERENCE.md` (never live in
+`roks-grad-o2-sto3g` (`reg_roks-grad-o2-sto3g`). Offline oracle:
+PySCF 2.14.0 `dft.ROKS.nuc_grad_method` pinned in pin notes (never live in
 ctest). Fair wall \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} = 1.117\).
 
 ## Method
@@ -61,11 +60,11 @@ W = O_\alpha F_\alpha O_\alpha + O_\beta F_\beta O_\beta,
 
 ## Implementation
 
-Headers: `include/atomiverse/cpu/scf/roks.h`,
-`include/atomiverse/cpu/scf/methods.h`,
-`include/atomiverse/cpu/scf/gradient_result.h`,
-`include/atomiverse/cpu/frame/frame.h`. SCF kernel / W path live under
-`include/atomiverse/cpu/scf/` (+ mirrored `src/` where implemented).
+Headers: `roks.h`,
+`methods.h`,
+`gradient_result.h`,
+`frame.h`. SCF kernel / W path live under
+`scf` (+ mirrored `src/` where implemented).
 
 ```cpp
 #include "atomiverse/core/units.h"
@@ -101,15 +100,15 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_roks-grad-o2-sto3g -j$(nproc)
-  ./build/regressions/reg_roks-grad-o2-sto3g
+  reg_roks-grad-o2-sto3g
 '
 ```
 
-Consumer source: `regressions/scf/roks-grad-o2-sto3g/reg_roks-grad-o2-sto3g.cpp`.
+Consumer source: `reg_roks-grad-o2-sto3g.cpp`.
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/roks-grad-o2-sto3g/REFERENCE.md`](../../../regressions/scf/roks-grad-o2-sto3g/REFERENCE.md)
+Source: case `roks-grad-o2-sto3g` pin
 (offline pin; PySCF never in ctest).
 
 | Field | Value |
@@ -140,16 +139,16 @@ PySCF analytic pin. Wrong \(W\) still fails by \(\ge 10^{-1}\).
 Oracle re-pin:
 
 ```bash
-# tools/setup_pyscf_env.sh  # once
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py roks \
+# <pyscf env setup>  # once
+python <pyscf pin> roks \
     --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN --conv-tol 1e-12 --grad
 ```
 
 ## Performance
 
-Source: `REFERENCE.md` fair-bench block (2026-07-23, login node,
+Source: pin notes fair-bench block (2026-07-23, login node,
 `OMP_NUM_THREADS=4`, `OMP_PROC_BIND=close`, median of \(n=3\)). Handoff ratio
-**1.117** (the case `REFERENCE.md`). Not yet a row in the
+**1.117** (the case pin notes). Not yet a row in the
 rollup (that table still lists energy-only
 `roks-o2-sto3g` with ROHF twin).
 
@@ -162,9 +161,9 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\).
 ```bash
 export PATH="$HOME/work/.x86_64/bin:$PATH"
 export LD_LIBRARY_PATH="$LIBRARY_PATH:${LD_LIBRARY_PATH:-}"
-python tools/pyscf_oracle/fair_bench.py --method roks_grad --geom o2 \
+python <pyscf fair-bench> --method roks_grad --geom o2 \
     --basis sto-3g --spin 2 --xc LDA,VWN --repeat 3 -- \
-    ./build/regressions/reg_roks-grad-o2-sto3g
+    reg_roks-grad-o2-sto3g
 ```
 
 **Twin caveats.** Reg binary includes full element-wise + translational checks;
@@ -185,14 +184,14 @@ this matched `roks_grad` pair.
 - Hessian / vibrational analysis on ROKS density: not this slug (ROHF Hessian
   is a separate queue item).
 - Perf rollup table may lag REFERENCE until a bulk refresh of
-  ``.
+  `.
 
 ## References
 
-- Offline pin: `regressions/scf/roks-grad-o2-sto3g/REFERENCE.md`
-- Energy sibling pin: `regressions/scf/roks-o2-sto3g/REFERENCE.md`
+- Offline pin: case `roks-grad-o2-sto3g` pin
+- Energy sibling pin: case `roks-o2-sto3g` pin
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`;
-  `tools/pyscf_oracle/pin_scf.py`, `tools/setup_pyscf_env.sh`
+  PySCF oracle, PySCF oracle
 - Energy handbook: [`roks-o2-sto3g.md`](roks-o2-sto3g.md)
 - Roothaan, *Rev. Mod. Phys.* **32**, 179 (1960)
 - Guest & Saunders, *Mol. Phys.* **28**, 819 (1974)

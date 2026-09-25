@@ -42,11 +42,12 @@
 #include <array>
 #include <vector>
 
-#include "atomiverse/cpu/gpw/gpw_solver.h" // GpwAtom, GpwDft
+#include "atomiverse/cpu/gpw/gpw_solver.h" // GpwDft, internal::GpwAtom
 
 namespace ATV {
 namespace cpu {
 namespace gpw {
+namespace internal {
 
 /// @brief Analytic GPW forces F_a = -dE/dR_a (one SCF + one gradient pass).
 ///
@@ -127,6 +128,7 @@ std::vector<std::array<double, 3>> gpw_forces_at_density(
     const linalg::RealMatrix& H_a, const linalg::RealMatrix& P_b,
     const linalg::RealMatrix& C_b, const linalg::RealMatrix& H_b);
 
+} // namespace internal
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV

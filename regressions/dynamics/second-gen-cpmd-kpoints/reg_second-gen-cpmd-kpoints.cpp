@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -61,14 +62,16 @@ int main() {
     constexpr double rmin = 0.4;
     constexpr double rmax = 1.5;
 
-    cpu::gpw::GPWEvaluator gpw(
-        /*kinds*/ {H}, /*cutoff_ry*/ 100.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-        /*compute_forces*/ true);
-    gpw.k_mesh[0] = 1;
-    gpw.k_mesh[1] = 1;
-    gpw.k_mesh[2] = 2;
-    gpw.k_time_reversal = false;
+    cpu::gpw::GpwDft dft{{H}};
+    dft.cutoff_ry = 100.0;
+    dft.max_iter = 60;
+    dft.tol = 1e-5;
+    dft.mix = 0.3;
+    dft.k_mesh[0] = 1;
+    dft.k_mesh[1] = 1;
+    dft.k_mesh[2] = 2;
+    dft.k_time_reversal = false;
+    cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
     cpu::electronic::SecondGenCp eval{std::move(gpw), 1, corrector_budget};
 
     cpu::md::MD sim;

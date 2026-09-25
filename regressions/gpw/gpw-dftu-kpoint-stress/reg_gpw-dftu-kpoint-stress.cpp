@@ -23,6 +23,9 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -41,30 +44,44 @@ void check(bool ok, const char* what) {
     }
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> h2_hs(double L) {
-    using namespace ATV::cpu::gpw;
-    const GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-    const GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
+/// H₂ toy in a cubic box of edge `L` [Bohr]; the Frame is in Å.
+ATV::cpu::Frame h2_hs(double L) {
+    using namespace ATV;
+    constexpr double b2a = units::kBohrInAngstrom;
     // Compressed bond along x (same as gpw-kpoint-uks-stress).
-    const double r0[3] = {0.5 * L - 0.5, 0.5 * L, 0.5 * L};
-    const double r1[3] = {0.5 * L + 0.5, 0.5 * L, 0.5 * L};
-    return {GpwAtom(r0, bH, pH, 1), GpwAtom(r1, bH, pH, 1)};
+    const double x[2] = {0.5 * L - 0.5, 0.5 * L + 0.5};
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_x)[i] = x[i] * b2a;
+        frame.span(kAtom_y)[i] = 0.5 * L * b2a;
+        frame.span(kAtom_z)[i] = 0.5 * L * b2a;
+    }
+    frame.box = cpu::Box::cubic(L * b2a);
+    return frame;
+}
+
+std::vector<ATV::cpu::gpw::Kind> h_kinds() {
+    using namespace ATV::cpu::gpw;
+    return {Kind{molrs::Element::H,
+                 GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                 GthPotential(molrs::Element::H, "GTH-PADE-q1")}};
 }
 
 } // namespace
 
 int main() {
+    using namespace ATV;
     using namespace ATV::cpu::gpw;
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();
 
     const double L = 12.0;
-    const auto atoms = h2_hs(L);
+    cpu::Frame frame = h2_hs(L);
     constexpr double kU_ev = 4.0;
 
     auto make_k = [&]() {
-        GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = L;
+        GpwDft m{h_kinds()};
         m.cutoff_ry = 100.0;
         m.n_alpha = 2;
         m.n_beta = 0;
@@ -83,8 +100,8 @@ int main() {
 
     // A1: SCF + DFT+U payload
     GpwDft energy = make_k();
-    energy.build(atoms);
-    const auto& er = energy.run(atoms);
+    energy.build(frame);
+    const auto& er = energy.run(frame);
     check(er.converged, "A1 SCF converged");
     check(std::isfinite(er.e_total) && std::isfinite(er.e_dftu),
           "A1 finite e_total / e_dftu");
@@ -98,8 +115,8 @@ int main() {
 
     // A2/A3: dual-gate analytic vs multi-SCF FD
     const double h = 2e-3;
-    const auto san = gpw_stress(atoms, make_k(), h);
-    const auto sfd = gpw_stress_fd(atoms, make_k(), h);
+    const auto san = gpw_stress(frame, make_k(), h);
+    const auto sfd = gpw_stress_fd(frame, make_k(), h);
 
     double max_diag_err = 0.0;
     const char* names[3] = {"xx", "yy", "zz"};
@@ -143,8 +160,8 @@ int main() {
     {
         GpwDft m0 = make_k();
         m0.plus_u.clear();
-        m0.build(atoms);
-        const auto r0 = m0.run(atoms);
+        m0.build(frame);
+        const auto r0 = m0.run(frame);
         check(r0.converged, "A6 U=0 converged");
         const double dU = std::fabs(er.e_total - r0.e_total);
         std::printf("A6: |E(U=4)-E(U=0)|=%.6e Ha\n", dU);
@@ -154,8 +171,7 @@ int main() {
     // A7: Γ-limit identity — complex k=Γ + U stress ≡ real Γ + U stress
     {
         auto make_g = [&]() {
-            GpwDft m;
-            m.cell[0] = m.cell[1] = m.cell[2] = L;
+            GpwDft m{h_kinds()};
             m.cutoff_ry = 100.0;
             m.n_alpha = 2;
             m.n_beta = 0;
@@ -171,8 +187,8 @@ int main() {
         GpwDft kg = make_g();
         kg.k_points = {{0.0, 0.0, 0.0}};
         kg.k_point_weights = {1.0};
-        const auto s_kG = gpw_stress(atoms, kg, h);
-        const auto s_G = gpw_stress(atoms, make_g(), h);
+        const auto s_kG = gpw_stress(frame, kg, h);
+        const auto s_G = gpw_stress(frame, make_g(), h);
         double max_id = 0.0;
         for (int a = 0; a < 3; ++a) {
             const double d = std::abs(s_kG[static_cast<std::size_t>(a)]

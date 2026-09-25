@@ -12,6 +12,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -66,14 +67,16 @@ cpu::gpw::GPWEvaluator h2_gpw(double tol) {
         molrs::Element::H,
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
-    cpu::gpw::GPWEvaluator gpw(
-        /*kinds*/ {H}, /*cutoff_ry*/ 100.0, /*max_iter*/ 80, /*tol*/ tol,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-        /*compute_forces*/ true);
-    gpw.k_mesh[0] = 1;
-    gpw.k_mesh[1] = 1;
-    gpw.k_mesh[2] = 2;
-    gpw.k_time_reversal = false;
+    cpu::gpw::GpwDft dft{{H}};
+    dft.cutoff_ry = 100.0;
+    dft.max_iter = 80;
+    dft.tol = tol;
+    dft.mix = 0.3;
+    dft.k_mesh[0] = 1;
+    dft.k_mesh[1] = 1;
+    dft.k_mesh[2] = 2;
+    dft.k_time_reversal = false;
+    cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
     return gpw;
 }
 
@@ -97,8 +100,8 @@ int main() {
 
         cpu::Frame frame_uks = h2_frame();
         cpu::gpw::GPWEvaluator uks = h2_gpw(/*tol=*/1e-7);
-        uks.n_alpha = 1;
-        uks.n_beta = 1;
+        uks.method().n_alpha = 1;
+        uks.method().n_beta = 1;
         cpu::single_point(frame_uks, uks);
         const double pe_uks = frame_uks.meta.get(kEnergy);
 
@@ -129,8 +132,8 @@ int main() {
     cpu::gpw::GPWEvaluator gpw = h2_gpw(/*tol=*/1e-5);
     // Closed-shell fillings on the UKS path: both spin channels non-empty
     // (dual per-(k, σ) Bloch CP), molecule bound.
-    gpw.n_alpha = 1;
-    gpw.n_beta = 1;
+    gpw.method().n_alpha = 1;
+    gpw.method().n_beta = 1;
     // Fictitious electron mass [a.u.] — constructor argument on the CP
     // wrapper (no public `cpmd_mu` flag), so the case owns what it prints.
     constexpr double mu_au = 400.0;

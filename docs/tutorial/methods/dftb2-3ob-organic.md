@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dftb2-3ob-organic` |
-| Regression | `regressions/semiempirical/dftb2-3ob-organic/` |
 | Public API | `cpu::semiempirical::DFTB2` + `DftbSkSet::ThreeOb`; `cpu::Evaluate` |
 | Roadmap | `docs/roadmap/semiempirical.md` |
 | Oracle | **DFTB+ 24.1** (family-locked; never OpenMOPAC / xtb for this pin) |
@@ -154,24 +153,24 @@ bash -lc '
         -DATV_BUILD_GPW=OFF -DATV_BUILD_KSPACE=OFF -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_dftb2-3ob-organic
-  ./build/regressions/reg_dftb2-3ob-organic
+  reg_dftb2-3ob-organic
   # or: cmake --build build --target run_reg_dftb2-3ob-organic
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/dftb2.h` | Public `DFTB2`, `DftbSkSet` |
-| `include/atomiverse/cpu/semiempirical/basis_data/dftb_3ob_tables.h` | Static 3ob-3-1 CHNO tables |
-| `include/atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h` | MioSketch foothold (other slugs) |
+| `dftb2.h` | Public `DFTB2`, `DftbSkSet` |
+| `dftb_3ob_tables.h` | Static 3ob-3-1 CHNO tables |
+| `dftb_mio_tables.h` | MioSketch foothold (other slugs) |
 | `src/cpu/semiempirical/dftb2.cpp` | SK assemble / SCC / energy (private) |
-| `regressions/semiempirical/dftb2-3ob-organic/reg_dftb2-3ob-organic.cpp` | Product gate |
-| `tools/tb_oracle/inputs/dftbplus/ch4_3ob_dftb2/` | Offline DFTB+ twin notes |
+| `reg_dftb2-3ob-organic.cpp` | Product gate |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | Offline DFTB+ twin notes |
 
 ## Validation (vs DFTB+)
 
 Source:
-[`regressions/semiempirical/dftb2-3ob-organic/REFERENCE.md`](../../../regressions/semiempirical/dftb2-3ob-organic/REFERENCE.md).
+case `dftb2-3ob-organic` pin.
 
 ```text
 oracle: dftb+
@@ -179,8 +178,8 @@ oracle_version: 24.1
 ```
 
 Offline pin only — **never** launch DFTB+ from ctest. Twin protocol:
-`tools/tb_oracle/README.md`, inputs under
-`tools/tb_oracle/inputs/dftbplus/ch4_3ob_dftb2/`.
+TB oracle (OpenMOPAC / DFTB+ / xtb), inputs under
+TB oracle (OpenMOPAC / DFTB+ / xtb).
 
 **Setup:**
 
@@ -220,15 +219,15 @@ implementation differences. A **50 meV** e2e band fails gross SK-set / geometry
 Offline re-pin (human only; never ctest):
 
 ```bash
-# when DFTB+ 24.1 is available; see tools/tb_oracle/inputs/dftbplus/ch4_3ob_dftb2/
+# when DFTB+ 24.1 is available; see <TB oracle input for this case>
 # SCC = Yes, no ThirdOrder, 3ob-3-1 SK, CH4 r_CH=1.09 Å
 # record Total Energy [H] into REFERENCE.md → eV via 27.211386245988
 ```
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/semiempirical/dftb2-3ob-organic/REFERENCE.md),
-the case `REFERENCE.md`
+Source: pin notes,
+the case pin notes
 (wave 1: all three greens `perf_exempt`).
 
 | Item | Value |
@@ -255,9 +254,9 @@ the case `REFERENCE.md`
 
 ## References
 
-- Offline pin: `regressions/semiempirical/dftb2-3ob-organic/REFERENCE.md`
-- Oracle notes: `tools/tb_oracle/inputs/dftbplus/ch4_3ob_dftb2/README.md`
-- Oracle rules: `tools/tb_oracle/README.md` (DFTB* → DFTB+ only)
+- Offline pin: case `dftb2-3ob-organic` pin
+- Oracle notes: TB oracle (OpenMOPAC / DFTB+ / xtb)
+- Oracle rules: TB oracle (OpenMOPAC / DFTB+ / xtb) (DFTB* → DFTB+ only)
 - Roadmap: `docs/roadmap/semiempirical.md`
 - Literature:
   - M. Elstner et al., *Phys. Rev. B* **58**, 7260 (1998)

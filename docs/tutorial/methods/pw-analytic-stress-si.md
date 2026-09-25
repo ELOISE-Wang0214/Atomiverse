@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pw-analytic-stress-si` |
-| Regression | `regressions/pw/pw-analytic-stress-si/` |
 | Public API | `cpu::pw::pw_stress` (analytic Voigt [eV/Å³]); oracle `cpu::pw::pw_stress_fd`; `PWEvaluator::with_stress(true)` → `frame.meta.get(kStress)` |
 | Roadmap | [dft.md](../../roadmap/dft.md) § Periodic response — analytic stress|
 
@@ -74,7 +73,7 @@ restricted closed shell; no metallic smearing on this twin.
 
 Public surface only (`cpu::Frame` + concrete `cpu::pw::PW` members; no `*Config`,
 no `make_*` / `build_*`). Headers:
-`include/atomiverse/cpu/planewave/pw_solver.h` (`pw_stress`, `pw_stress_fd`,
+`pw_solver.h` (`pw_stress`, `pw_stress_fd`,
 `PW`), `pw_evaluator.h` (`with_stress`), Frame schema `kStress`.
 
 Minimal sequence (matches `reg_pw-analytic-stress-si.cpp`):
@@ -145,7 +144,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_pw-analytic-stress-si -j$(nproc)
-  ./build/regressions/reg_pw-analytic-stress-si
+  reg_pw-analytic-stress-si
 '
 ```
 
@@ -154,18 +153,18 @@ UPF path is injected at compile time as `ATV_PW_UPF_PATH` →
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/planewave/pw_solver.h` | Public `pw_stress` / `pw_stress_fd` / `PW` |
-| `include/atomiverse/cpu/planewave/pw_evaluator.h` | `with_stress` → `kStress` |
-| `include/atomiverse/cpu/planewave/internal/pw_stress.h` | Private analytic + FD impl |
-| `regressions/pw/pw-analytic-stress-si/reg_pw-analytic-stress-si.cpp` | Product gate |
-| `regressions/pw/pw-analytic-stress-si/REFERENCE.md` | Offline FD pin + perf note |
+| `pw_solver.h` | Public `pw_stress` / `pw_stress_fd` / `PW` |
+| `pw_evaluator.h` | `with_stress` → `kStress` |
+| `pw_stress.h` | Private analytic + FD impl |
+| `reg_pw-analytic-stress-si.cpp` | Product gate |
+| case `pw-analytic-stress-si` pin | Offline FD pin + perf note |
 | `tests/cpu/planewave/test_pw_stress.cpp` | Unit dual-gate (H toy, symmetry) |
-| `tools/cp2k_oracle/inputs/si_lda_pw_note.inp` | Optional CP2K wall skeleton (not absolute stress twin) |
+| CP2K oracle | Optional CP2K wall skeleton (not absolute stress twin) |
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/pw/pw-analytic-stress-si/REFERENCE.md`](../../../regressions/pw/pw-analytic-stress-si/REFERENCE.md).
+case `pw-analytic-stress-si` pin.
 Primary science gate is **offline multi-SCF strain-FD** on the same NC-UPF twin
 (`pw_stress_fd`, \(h=2\times 10^{-3}\)), measured **2026-07-24** Arrhenius epyc
 (Release, `OMP_NUM_THREADS=16`). Hard-coded pins in the regression binary —
@@ -209,7 +208,7 @@ Primary science gate is **offline multi-SCF strain-FD** on the same NC-UPF twin
 plane-wave. Absolute `STRESS_TENSOR` values are **not** comparable to this
 NC-UPF twin. No CP2K binary was available on the pin host for a fair PW wall
 twin this shift. Optional skeleton:
-`tools/cp2k_oracle/inputs/si_lda_pw_note.inp` (same geometry / k-mesh; not an
+CP2K oracle (same geometry / k-mesh; not an
 absolute-stress oracle).
 
 **Literature / PseudoDojo context (EOS, not the hard stress pin).**
@@ -222,7 +221,7 @@ absolute-stress oracle).
 
 ## Performance
 
-Source: `regressions/pw/pw-analytic-stress-si/REFERENCE.md`. Queue / handoff:
+Source: case `pw-analytic-stress-si` pin. Queue / handoff:
 **`perf_exempt`** (no fair CP2K / QE / ABINIT NC-UPF PW stress wall twin on pin
 host).
 
@@ -259,11 +258,10 @@ append \(r = T_\mathrm{ATV}/T_\mathrm{oracle}\) to REFERENCE.md, require
 
 ## References
 
-- Offline pin: [`regressions/pw/pw-analytic-stress-si/REFERENCE.md`](../../../regressions/pw/pw-analytic-stress-si/REFERENCE.md)
-- Regression: [`regressions/pw/pw-analytic-stress-si/reg_pw-analytic-stress-si.cpp`](../../../regressions/pw/pw-analytic-stress-si/reg_pw-analytic-stress-si.cpp)
+- Offline pin: case `pw-analytic-stress-si` pin
 - Closed SPEC (git history): `.claude/specs/pw-analytic-stress-si/SPEC.md` (deleted at harness done)
 - Energy foothold twin: [pw-lda-si](pw-lda-si.md)
-- Optional CP2K wall skeleton: `tools/cp2k_oracle/inputs/si_lda_pw_note.inp`
+- Optional CP2K wall skeleton: CP2K oracle
 - Narrative style ref: [Chapter 8 — Plane-Wave DFT](../ch08-plane-wave.md)
 - O. H. Nielsen and R. M. Martin, *Phys. Rev. B* **32**, 3780 (1985)
 - D. R. Hamann, *Phys. Rev. B* **88**, 085117 (2013)

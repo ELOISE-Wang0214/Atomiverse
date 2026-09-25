@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `spin-dftb2-o2` |
-| Regression | `regressions/semiempirical/spin-dftb2-o2/` |
 | Public API | `cpu::semiempirical::DFTB2` (`multiplicity`, `spin_w_ha`, Mulliken `m`) |
 | Track | TB / SE method loop wave 1 () |
 | Roadmap | Spin-polarized DFTB (collinear) — ✓ foothold |
@@ -101,7 +100,7 @@ paths (different family oracles).
 Public surface only: construct `cpu::semiempirical::DFTB2`, set members
 (constructor args / members — **no** `*Config`), bind into `cpu::Evaluate`
 at `evaluate::Phase::evaluate`. Header:
-`include/atomiverse/cpu/semiempirical/dftb2.h`. That header already
+`dftb2.h`. That header already
 includes `basis_data/dftb_spin_constants.h`. SK data:
 `basis_data/dftb_mio_sk_tables.h` (transcribed mio-1-1). Internals stay
 private to the method object.
@@ -170,7 +169,7 @@ bash -lc '
         -DBLA_VENDOR=OpenBLAS
   # SCOPED — never bare cmake --build build
   cmake --build build -j$(nproc) --target atomiverse reg_spin-dftb2-o2
-  ./build/regressions/reg_spin-dftb2-o2
+  reg_spin-dftb2-o2
   # or: cmake --build build --target run_reg_spin-dftb2-o2
 '
 ```
@@ -179,18 +178,17 @@ bash -lc '
 
 | Role | Path |
 | ---- | ---- |
-| Public API | `include/atomiverse/cpu/semiempirical/dftb2.h` |
+| Public API | `dftb2.h` |
 | Implementation | `src/cpu/semiempirical/dftb2.cpp` |
-| Mio-1-1 SK (no \(W\)) | `include/atomiverse/cpu/semiempirical/basis_data/dftb_mio_sk_tables.h` |
-| PBE spin constants [Ha] | `include/atomiverse/cpu/semiempirical/basis_data/dftb_spin_constants.h` |
-| Regression | `regressions/semiempirical/spin-dftb2-o2/reg_spin-dftb2-o2.cpp` |
-| Offline pin | `regressions/semiempirical/spin-dftb2-o2/REFERENCE.md` |
-| Family oracle tooling | `tools/tb_oracle/README.md` |
+| Mio-1-1 SK (no \(W\)) | `dftb_mio_sk_tables.h` |
+| PBE spin constants [Ha] | `dftb_spin_constants.h` |
+| Offline pin | case `spin-dftb2-o2` pin |
+| Family oracle tooling | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 
 ## Validation (vs offline pin / DFTB+ family)
 
 Source:
-[`regressions/semiempirical/spin-dftb2-o2/REFERENCE.md`](../../../regressions/semiempirical/spin-dftb2-o2/REFERENCE.md)
+case `spin-dftb2-o2` pin
 (offline only; **no live DFTB+ in ctest**).
 
 ```text
@@ -227,11 +225,11 @@ This page’s energy gate is the retaken ATV / DFTB+ 24.1 mio-1-1 twin
 are literature multiplet / occupation physics. A previous sketch-\(W=-1\) eV
 pin sat at −177.2425823576 eV; the shift
 \(\Delta E_{\mathrm{spin}}=+0.238081185112\) eV is an identity for this
-homonuclear \(\Delta q\equiv 0\) case (see `REFERENCE.md`).
+homonuclear \(\Delta q\equiv 0\) case (see pin notes).
 
 ## Performance
 
-Source: `REFERENCE.md` § Perf; handoff marks wave-1 TB slugs **perf_exempt**.
+Source: pin notes § Perf; handoff marks wave-1 TB slugs **perf_exempt**.
 
 | Field | Value |
 | ----- | ----- |
@@ -270,11 +268,11 @@ reason above. Queue/handoff: **perf_exempt** (wall twin, not energy-class).
 ## References
 
 - Offline pin:
-  [`regressions/semiempirical/spin-dftb2-o2/REFERENCE.md`](../../../regressions/semiempirical/spin-dftb2-o2/REFERENCE.md)
+  case `spin-dftb2-o2` pin
 - Regression consumer:
-  `regressions/semiempirical/spin-dftb2-o2/reg_spin-dftb2-o2.cpp`
+  `reg_spin-dftb2-o2.cpp`
 - Roadmap: `docs/roadmap/semiempirical.md` (spin-polarized DFTB ✓ collinear)
-- Offline oracle tooling: `tools/tb_oracle/README.md`
+- Offline oracle tooling: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Related product pages (same family): [dftb2-3ob-organic](dftb2-3ob-organic.md),
   [dftb2-analytic-forces](dftb2-analytic-forces.md),
   [dftb2-spin-analytic-forces](dftb2-spin-analytic-forces.md)

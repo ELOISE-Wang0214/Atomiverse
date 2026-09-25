@@ -13,14 +13,14 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
-
-constexpr double kA2B = 1.0 / 0.52917720859;
 
 // Same water dimer as gpw-vdw-df-ice / gpw-vdw-multigrid [Å].
 const double kAng[6][3] = {
@@ -33,29 +33,31 @@ const double kAng[6][3] = {
 };
 const int kZ[6] = {8, 1, 1, 8, 1, 1};
 
-std::vector<ATV::cpu::gpw::GpwAtom> make_atoms() {
-    using namespace ATV::cpu::gpw;
-    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
-    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
-    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
-    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
-    std::vector<GpwAtom> atoms;
-    atoms.reserve(6);
+ATV::cpu::Frame make_frame() {
+    using namespace ATV;
+    cpu::Frame frame(6);
     for (int i = 0; i < 6; ++i) {
-        const double pos[3] = {kAng[i][0] * kA2B, kAng[i][1] * kA2B,
-                               kAng[i][2] * kA2B};
-        if (kZ[i] == 8)
-            atoms.emplace_back(pos, bO, pO, 8);
-        else
-            atoms.emplace_back(pos, bH, pH, 1);
+        frame.span(kAtom_type)[i] = kZ[i];
+        frame.span(kAtom_x)[i] = kAng[i][0];
+        frame.span(kAtom_y)[i] = kAng[i][1];
+        frame.span(kAtom_z)[i] = kAng[i][2];
     }
-    return atoms;
+    frame.box = cpu::Box::cubic(12.0);
+    return frame;
+}
+
+std::vector<ATV::cpu::gpw::Kind> water_kinds() {
+    using namespace ATV::cpu::gpw;
+    return {Kind{molrs::Element::O,
+                 GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH"),
+                 GthPotential(molrs::Element::O, "GTH-PBE-q6")},
+            Kind{molrs::Element::H,
+                 GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
+                 GthPotential(molrs::Element::H, "GTH-PBE-q1")}};
 }
 
 ATV::cpu::gpw::GpwDft make_base(int ngrids, double rel_cutoff) {
-    ATV::cpu::gpw::GpwDft gpw;
-    const double L = 12.0 * kA2B;
-    gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+    ATV::cpu::gpw::GpwDft gpw(water_kinds());
     gpw.cutoff_ry = 200.0;
     gpw.ngrids = ngrids;
     gpw.rel_cutoff = rel_cutoff;
@@ -85,7 +87,7 @@ int main() {
     // Γ-limit identity (k-path at Γ vs shipped Γ runner).
     constexpr double kGammaLimitTol = 1.0e-8; // Ha
 
-    const auto atoms = make_atoms();
+    ATV::cpu::Frame frame = make_frame();
     const auto t0 = Clock::now();
 
     // ── G1: Γ-limit identity (single-grid, cheap) ─────────────────────────
@@ -95,8 +97,8 @@ int main() {
     {
         GpwDft gamma = make_base(/*ngrids=*/1, /*rel_cutoff=*/0.0);
         // k_mesh default {1,1,1} → Γ runner.
-        gamma.build(atoms);
-        const GpwResult& rg = gamma.run(atoms);
+        gamma.build(frame);
+        const GpwResult& rg = gamma.run(frame);
         if (!rg.converged) {
             std::fprintf(stderr,
                          "FAIL: G1 Γ runner SCF did not converge (%d)\n",
@@ -109,8 +111,8 @@ int main() {
         GpwDft kgamma = make_base(/*ngrids=*/1, /*rel_cutoff=*/0.0);
         kgamma.k_points = {{0.0, 0.0, 0.0}};
         kgamma.k_point_weights = {1.0};
-        kgamma.build(atoms);
-        const GpwResult& rk = kgamma.run(atoms);
+        kgamma.build(frame);
+        const GpwResult& rk = kgamma.run(frame);
         if (!rk.converged) {
             std::fprintf(stderr,
                          "FAIL: G1 k-path Γ-limit SCF did not converge (%d)\n",
@@ -149,9 +151,9 @@ int main() {
         // the energy is machine-equivalent for this large cell but the
         // pin was taken without an explicit TR fold.
         mp.k_time_reversal = false;
-        mp.build(atoms);
+        mp.build(frame);
         const auto t_mp0 = Clock::now();
-        const GpwResult& rm = mp.run(atoms);
+        const GpwResult& rm = mp.run(frame);
         const double wall_mp =
             std::chrono::duration<double>(Clock::now() - t_mp0).count();
         if (!rm.converged) {

@@ -22,11 +22,11 @@
 #include <xtensor/generators/xbuilder.hpp>
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::make_uniform_grid;
 using ATV::cpu::gpw::UniformGrid;
 using ATV::cpu::gpw::XcKind;
+using ATV::cpu::gpw::internal::GpwAtom;
 using ATV::cuda::gpw::internal::CollocateGridDesc;
 using ATV::cuda::gpw::internal::DeviceForceAtom;
 using ATV::cuda::gpw::internal::kMaxCloc;

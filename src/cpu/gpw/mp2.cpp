@@ -17,6 +17,8 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
+using internal::GpwAtom;
+
 namespace {
 
 // Cap virtual count and check HOMO–LUMO gap for one spin channel.
@@ -52,7 +54,8 @@ int count_basis_(const std::vector<GpwAtom>& atoms) {
 
 } // namespace
 
-const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
+const Mp2Result& GpwDft::mp2() {
+    const std::vector<GpwAtom>& atoms = last_atoms_;
     if (!built_)
         throw std::logic_error(
             "GpwDft::mp2 called before build() — validate the configuration "
@@ -167,7 +170,7 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
                 throw std::invalid_argument(
                     "GpwDft::mp2: vanishing β HOMO-LUMO gap on the k-mesh");
 
-            const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+            const UniformGrid grid = make_uniform_grid(cell_.data(), cutoff_ry);
             std::vector<GridBasisFunction> basis;
             basis.reserve(static_cast<std::size_t>(nb));
             for (const auto& a : atoms)
@@ -278,7 +281,7 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
             cap_virt_(n_mo_b, n_ob, mp2_n_virt, result_.eps_beta, "β");
 
         const bool periodic = !nonperiodic;
-        const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+        const UniformGrid grid = make_uniform_grid(cell_.data(), cutoff_ry);
         std::vector<GridBasisFunction> basis;
         basis.reserve(static_cast<std::size_t>(nb));
         for (const auto& a : atoms)
@@ -403,7 +406,7 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
                 + std::to_string(min_gap)
                 + " Ha < 1e-6) — canonical MP2 denominators are singular");
 
-        const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+        const UniformGrid grid = make_uniform_grid(cell_.data(), cutoff_ry);
         std::vector<GridBasisFunction> basis;
         basis.reserve(static_cast<std::size_t>(nb));
         for (const auto& a : atoms)
@@ -496,7 +499,7 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
 
     // Same grid + Γ-image-summed compact AO representation as run().
     const bool periodic = !nonperiodic;
-    const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+    const UniformGrid grid = make_uniform_grid(cell_.data(), cutoff_ry);
     std::vector<GridBasisFunction> basis;
     basis.reserve(static_cast<std::size_t>(nb));
     for (const auto& a : atoms)

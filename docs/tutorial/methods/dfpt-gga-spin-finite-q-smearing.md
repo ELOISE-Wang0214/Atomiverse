@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-gga-spin-finite-q-smearing` |
-| Regression | `regressions/response/dfpt-gga-spin-finite-q-smearing/` |
 | Public API | `cpu::pw::DfptPhonon` (members, `q_frac`) + `cpu::pw::DfptPhononResult`; `PW.xc = XCType::PBE` + `PW.spin_polarized = true` + `PW.smearing = fermi_dirac` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — **finite-q × spin × pure GGA × smear** ✓ (`reg_dfpt-gga-spin-finite-q-smearing`) |
 | Dep | `dfpt-gga-spin-smearing` ✓; `dfpt-gga-spin-finite-q-si` ✓; `dfpt-finite-q-spin-smearing` ✓ |
@@ -108,7 +107,7 @@ cmake --build build --target run_reg_dfpt-gga-spin-finite-q-smearing
 
 ## Validation (vs offline pins)
 
-Source: `regressions/response/dfpt-gga-spin-finite-q-smearing/REFERENCE.md`.
+Source: case `dfpt-gga-spin-finite-q-smearing` pin.
 Measured 2026-08-01 (Release; OMP=1):
 
 | Quantity | Atomiverse / pin | Gate | Notes |
@@ -132,10 +131,9 @@ product path.
 
 ## References
 
-- Offline pins: `regressions/response/dfpt-gga-spin-finite-q-smearing/REFERENCE.md`
-- Regression: `regressions/response/dfpt-gga-spin-finite-q-smearing/reg_dfpt-gga-spin-finite-q-smearing.cpp`
-- Oracle note + CP2K input: `tools/cp2k_oracle/inputs/dfpt-gga-spin-finite-q-smearing.note`,
-  `tools/cp2k_oracle/inputs/dfpt-gga-spin-finite-q-smearing/si4_uks_pbe_smear_vib.inp`
+- Offline pins: case `dfpt-gga-spin-finite-q-smearing` pin
+- Oracle note + CP2K input: CP2K oracle,
+  CP2K oracle
 - Parents: `docs/tutorial/methods/dfpt-gga-spin-smearing.md`,
   `docs/tutorial/methods/dfpt-gga-spin-finite-q-si.md`,
   `docs/tutorial/methods/dfpt-finite-q-spin-smearing.md`

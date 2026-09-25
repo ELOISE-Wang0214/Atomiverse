@@ -57,19 +57,27 @@ int main() {
     constexpr double kEnergyRef = -17.1982170663; // Ha
     constexpr double kTol = 1.0e-3;               // Ha
 
+    // Isolated (MT) water, 400 Ry; SCF max_iter 200 / tol 1e-7 / mix 0.3.
+    auto make_dft = [&](cpu::gpw::XcKind xc) {
+        cpu::gpw::GpwDft dft{{O, H}};
+        dft.cutoff_ry = 400.0;
+        dft.max_iter = 200;
+        dft.tol = 1e-7;
+        dft.mix = 0.3;
+        dft.xc = xc;
+        dft.nonperiodic = true;
+        return dft;
+    };
+
     cpu::Frame frame_blyp = make_water_mt();
-    cpu::gpw::GPWEvaluator eval_blyp(
-        /*kinds*/ {O, H}, /*cutoff_ry*/ 400.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::BLYP, /*nonperiodic*/ true);
+    cpu::gpw::GPWEvaluator eval_blyp(make_dft(cpu::gpw::XcKind::BLYP));
 
     const auto t0 = std::chrono::steady_clock::now();
     cpu::single_point(frame_blyp, eval_blyp);
     const auto t1 = std::chrono::steady_clock::now();
 
     cpu::Frame frame_pbe = make_water_mt();
-    cpu::gpw::GPWEvaluator eval_pbe(
-        /*kinds*/ {O, H}, /*cutoff_ry*/ 400.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true);
+    cpu::gpw::GPWEvaluator eval_pbe(make_dft(cpu::gpw::XcKind::PBE));
     cpu::single_point(frame_pbe, eval_pbe);
     const auto t2 = std::chrono::steady_clock::now();
 

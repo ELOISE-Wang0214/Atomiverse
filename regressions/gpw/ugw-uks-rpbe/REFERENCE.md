@@ -20,11 +20,11 @@ When \(C^\alpha \approx C^\beta\), **UGW ≡ RGW** — dual-gated against
 closed-shell `GpwDft::g0w0` on the **same RPBE** deck in this binary.
 
 ```cpp
-cpu::gpw::GpwDft m;
+cpu::gpw::GpwDft m{{si_kind}};
 m.n_alpha = 4; m.n_beta = 4;   // UKS
 m.xc = cpu::gpw::XcKind::RPBE;
-// ... members; build(); run(atoms);
-const cpu::gpw::G0W0Result& gw = m.g0w0(atoms);
+// ... members; build(frame); run(frame);  // frame: Å positions, Z, box
+const cpu::gpw::G0W0Result& gw = m.g0w0();
 // gw.gap_ev [eV] = α HOMO→LUMO QP gap
 ```
 

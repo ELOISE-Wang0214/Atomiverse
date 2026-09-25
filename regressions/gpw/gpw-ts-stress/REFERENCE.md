@@ -27,7 +27,7 @@ compared here via `last_stress_ha_bohr3()`.
 | ---- | ------ |
 | A. \(E_{\mathrm{disp}}\) unstrained | offline **libMBD Fortran** `get_ts_energy`, pure-RS branch (`ewald_on = .false.`, `dipole_cutoff = 50 Å`, ATV Å→Bohr) — the genuine-oracle anchor of the `gpw-ts-ice` periodic pin |
 | B. \(E_{\mathrm{disp}}\) **under strain** (±h per axis) | fresh offline libMBD pins at each strained cell (below) — the strain derivative being folded is externally validated point by point |
-| C. \(\sigma\) | **multi-SCF strain-FD** (`gpw_stress_fd_impl`): full re-SCF at each strained cell, TS folded through the energy path |
+| C. \(\sigma\) | **multi-SCF strain-FD** (`gpw_stress_fd`): full re-SCF at each strained cell, TS folded through the energy path |
 | D. TS actually folded | \(\sigma(\mathrm{ts}) - \sigma(\mathrm{plain})\) equals the libMBD strain-FD term \(-\Delta E_{\mathrm{disp}}/(2h\Omega)\) per axis |
 
 ### Why not CP2K QS?

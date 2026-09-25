@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `cpmd-uks-kpoints` |
-| Regression | `regressions/dynamics/cpmd-uks-kpoints/` |
-| Public API | `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{…, n_alpha, n_beta, k_mesh}, mu_au}` bound with `set_evaluator_ref`; one `CpmdCplx` propagator per (k, spin). CP mode is the wrapper type — `cpmd`/`cpmd_mu` are private on `GPWEvaluator`. The nuclear dt is pushed from the MD integrator into the wrapper (`TimestepProvider` → `TimestepConsumer`) |
+| Public API | `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{GpwDft{…} with n_alpha, n_beta, k_mesh, compute_forces=true}, mu_au}` bound with `set_evaluator_ref`; one `CpmdCplx` propagator per (k, spin). CP mode is the wrapper type — `cpmd`/`cpmd_mu` are private on `GPWEvaluator`. The nuclear dt is pushed from the MD integrator into the wrapper (`TimestepProvider` → `TimestepConsumer`) |
 | Roadmap / queue | `docs/roadmap/dft.md` (AIMD); queue done 2026-07-31 |
 
 ## Summary
@@ -32,9 +31,9 @@ production step). Electronic kinetic energy is
 \(T_e = \sum_k w_k \sum_\sigma \tfrac12 \mu \lVert \dot C_k^\sigma
 \rVert_F^2\). The multi-k **electronic thermostat** (one NH per (k, σ)
 channel, k-weighted totals) ships as `cpmd-thermostat-kpoints`
-(RKS; `regressions/dynamics/cpmd-thermostat-kpoints/`) **and** the
+(RKS; `cpmd-thermostat-kpoints`) **and** the
 multi-k UKS eNH combo pin `cpmd-uks-thermostat-kpoints`
-(`regressions/dynamics/cpmd-uks-thermostat-kpoints/`); this pin is NVE
+(`cpmd-uks-thermostat-kpoints`); this pin is NVE
 electrons.
 
 ## System
@@ -61,12 +60,12 @@ const cpu::gpw::Kind H{
     molrs::Element::H,
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
-cpu::gpw::GPWEvaluator gpw({H}, /*cutoff_ry=*/100.0, /*max_iter=*/80,
-                           /*tol=*/1e-5, /*mix=*/0.3,
-                           cpu::gpw::XcKind::PADE, /*nonperiodic=*/false,
-                           /*compute_forces=*/true);
-gpw.n_alpha = 1;  gpw.n_beta = 1;          // collinear UKS, closed-shell fillings
-gpw.k_mesh[2] = 2;  gpw.k_time_reversal = false;   // 1×1×2, n_k = 2
+cpu::gpw::GpwDft dft{{H}};
+dft.cutoff_ry = 100.0;  dft.max_iter = 80;  dft.tol = 1e-5;  dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PADE;  dft.nonperiodic = false;
+dft.n_alpha = 1;  dft.n_beta = 1;          // collinear UKS, closed-shell fillings
+dft.k_mesh[2] = 2;  dft.k_time_reversal = false;   // 1×1×2, n_k = 2
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 
 // CP wrapper: one CpmdCplx per (k, spin); dt pushed from the MD integrator
 cpu::electronic::CarParrinello cp{std::move(gpw), /*mu_au=*/400.0};
@@ -79,7 +78,7 @@ md.run(frame, /*steps=*/6);        // 1 SCF seed + 1 CP baseline + 4 production
 
 ```bash
 cmake --build build --target reg_cpmd-uks-kpoints
-./build/regressions/reg_cpmd-uks-kpoints
+reg_cpmd-uks-kpoints
 ```
 
 Headers: `cpu/electronic/car_parrinello.h`, `cpu/electronic/cpmd_cplx.h`
@@ -88,7 +87,7 @@ export `GpwResult::H_ks_k` / `H_ks_k_beta`).
 
 ## Validation (vs CP2K-anchored surface + literature envelope)
 
-Source: `regressions/dynamics/cpmd-uks-kpoints/REFERENCE.md` (offline pins;
+Source: case `cpmd-uks-kpoints` pin (offline pins;
 never live in ctest). The CP propagator itself has no CP2K twin (family
 lock, below); the **BO surface underneath is CP2K-anchored** through the
 shipped multi-k UKS pins.
@@ -134,10 +133,10 @@ input, so no fair same-method wall twin exists (same policy as
 
 ## References
 
-- Offline pin: `regressions/dynamics/cpmd-uks-kpoints/REFERENCE.md`
+- Offline pin: case `cpmd-uks-kpoints` pin
 - Car & Parrinello, *Phys. Rev. Lett.* **55**, 2471 (1985)
 - Marx & Hutter, *Ab Initio Molecular Dynamics* (CUP) — CP conserved energy
 - Andersen, *J. Comput. Phys.* **52**, 24 (1983) — electronic RATTLE
 - Parents: [cpmd-kpoints](cpmd-kpoints.md) (multi-k RKS Bloch CP),
   [cpmd-uks](cpmd-uks.md) (Γ dual-spin CP); BO anchors
-  `regressions/gpw/gpw-kpoints-uks`, `gpw-kpoint-uks-forces` (CP2K)
+  `gpw-kpoints-uks`, `gpw-kpoint-uks-forces` (CP2K)

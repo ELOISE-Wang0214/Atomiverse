@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `per-electrode-eta` |
-| Regression | `regressions/md/per-electrode-eta/` |
 | Public API | `cpu::md::ConstPotBO::add_electrode(type, Psi, eta)` (3-arg overload; per-group Gaussian width) on the existing `ConstPotBO` Component (`cpu::md::MD`, default `pre_force`) |
 | Roadmap | map slice "Multi-electrode, per-electrode \(V,\eta\)" (**P0**) |
 | Oracle | **literature** closed form — Reed–Lanning–Madden 2007, Scalfi et al. 2020, MetalWalls JOSS 2020 (no MW binary on the agent host) |
@@ -59,10 +58,10 @@ PBC, electroneutrality projector so \(\sum_i Q_i = 0\).
 
 **Why literature (not a live oracle):** the loop row is oracle=metalwalls,
 but no MetalWalls binary is installed on the host, and the LAMMPS ELECTRODE
-fix exposes a single `eta` per fix — per the `tools/metalwalls_oracle`
+fix exposes a single `eta` per fix — per the MetalWalls oracle
 contract the pin is the exact literature closed form with full citation. The
 would-be MW twin input is preserved at
-`tools/metalwalls_oracle/inputs/metalwalls/per-electrode-eta/runtime.inpt`
+MetalWalls oracle
 (never run in ctest).
 
 ### Case 1 — two-site vacuum capacitor, dissimilar η (exact pin)
@@ -182,24 +181,24 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_per-electrode-eta -j"$(nproc)"
-  ./build/regressions/reg_per-electrode-eta
+  reg_per-electrode-eta
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/const_pot_bo.h` | Public `ConstPotBO` (`add_electrode(type, Psi, eta)` 3-arg overload; per-group `eta`) |
+| `const_pot_bo.h` | Public `ConstPotBO` (`add_electrode(type, Psi, eta)` 3-arg overload; per-group `eta`) |
 | `src/cpu/dynamics/const_pot_bo.cpp` | Per-row \(\eta_i\), mixed \(\eta_{ij}\) elastance + RHS |
-| `regressions/md/per-electrode-eta/reg_per-electrode-eta.cpp` | Product gate |
-| `tools/metalwalls_oracle/pin_notes_per-electrode-eta.md` | Pin derivation |
-| `tools/metalwalls_oracle/inputs/metalwalls/per-electrode-eta/runtime.inpt` | Would-be MW twin input (preserved, never run) |
+| `reg_per-electrode-eta.cpp` | Product gate |
+| MetalWalls oracle | Pin derivation |
+| MetalWalls oracle | Would-be MW twin input (preserved, never run) |
 
 ## Validation (vs literature closed form)
 
 Source:
-[`regressions/md/per-electrode-eta/REFERENCE.md`](../../../regressions/md/per-electrode-eta/REFERENCE.md)
+case `per-electrode-eta` pin
 (offline pin; **never** a live oracle in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
+MetalWalls oracle.
 
 **Oracle:** literature — Reed–Lanning–Madden *JCP* **126**, 084704 (2007);
 Scalfi et al. *JCP* **153**, 174704 (2020); MetalWalls JOSS **5**(53), 2373
@@ -227,15 +226,15 @@ Elastance intermediates fixed by the pin: \(A_{11}=22.737234510126967\),
 ### Offline pin repro (never ctest)
 
 ```bash
-# Derivation: tools/metalwalls_oracle/pin_notes_per-electrode-eta.md
+# Derivation: MetalWalls pin notes for per-electrode-eta
 # Optional, if a MetalWalls binary is installed:
-#   run tools/metalwalls_oracle/inputs/metalwalls/per-electrode-eta/runtime.inpt
+#   run <MetalWalls oracle input for this case>
 ```
 
 ## Performance
 
 Source: REFERENCE.md; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{oracle}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -269,11 +268,9 @@ run the preserved `runtime.inpt` twin, record version + walls, and replace
 
 ## References
 
-- Offline pin: [`regressions/md/per-electrode-eta/REFERENCE.md`](../../../regressions/md/per-electrode-eta/REFERENCE.md)
-- Product gate: [`regressions/md/per-electrode-eta/reg_per-electrode-eta.cpp`](../../../regressions/md/per-electrode-eta/reg_per-electrode-eta.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/const_pot_bo.h`](../../../include/atomiverse/cpu/dynamics/const_pot_bo.h)
-- Pin derivation: [`tools/metalwalls_oracle/pin_notes_per-electrode-eta.md`](../../../tools/metalwalls_oracle/pin_notes_per-electrode-eta.md)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md)
+- Offline pin: case `per-electrode-eta` pin
+- Pin derivation: MetalWalls oracle
+- Oracle notes: MetalWalls oracle
 - Capability map: `.claude/notes/metalwalls-capability-map.md` (multi-electrode \(V,\eta\), P0)
 - Literature: Reed, Lanning, Madden, *J. Chem. Phys.* **126**, 084704 (2007), DOI [10.1063/1.2464084](https://doi.org/10.1063/1.2464084); Scalfi, Dufils, Reeves, Rotenberg, Salanne, *J. Chem. Phys.* **153**, 174704 (2020), DOI [10.1063/5.0028232](https://doi.org/10.1063/5.0028232); Marin-Laflèche et al., *J. Open Source Softw.* **5**(53), 2373 (2020), DOI [10.21105/joss.02373](https://doi.org/10.21105/joss.02373); Ahrens-Iwers et al., *J. Chem. Phys.* **157**, 084801 (2022) (η = 1.979 Å⁻¹ default)
 - Related footholds: [`const-pot-bo-parallel-plate.md`](const-pot-bo-parallel-plate.md), [`thomas-fermi-electrode.md`](thomas-fermi-electrode.md)

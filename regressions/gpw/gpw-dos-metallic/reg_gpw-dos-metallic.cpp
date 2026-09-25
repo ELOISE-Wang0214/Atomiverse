@@ -13,8 +13,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
-#include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/bands_dos.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
@@ -22,8 +23,6 @@
 #include "atomiverse/molrs.hpp"
 
 namespace {
-
-constexpr double kA2B = 1.0 / 0.52917720859; // Å → Bohr
 
 // Offline ATV free-energy freeze (see REFERENCE.md). Absolute F vs CP2K is
 // not dual-gated (~0.6 Ha grid/table residual, same as gpw-metallic-smearing).
@@ -38,19 +37,19 @@ constexpr double kEFermiTolHa = 0.02; // Ha — algorithm class, not sub-mHa pin
 constexpr double kNelec = 18.0;   // 2 Na × GTH-PBE-q9
 constexpr double kNelecTol = 2.0; // Gaussian DOS tails (class of gpw-dos-si)
 
-/// BCC conventional cubic: 2 Na at (0,0,0) and (½,½,½).
-std::vector<ATV::cpu::gpw::GpwAtom> na_bcc(double a_bohr) {
+/// BCC conventional cubic of edge `a_ang` [Å]: 2 Na at (0,0,0) and (½,½,½).
+ATV::cpu::Frame na_bcc(double a_ang) {
     using namespace ATV;
-    const cpu::gpw::GaussianBasis bNa(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH");
-    const cpu::gpw::GthPotential pNa(molrs::Element::Na, "GTH-PBE-q9");
     const double frac[2][3] = {{0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}};
-    std::vector<cpu::gpw::GpwAtom> atoms;
+    cpu::Frame frame(2);
     for (int i = 0; i < 2; ++i) {
-        const double pos[3] = {frac[i][0] * a_bohr, frac[i][1] * a_bohr,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bNa, pNa, 11);
+        frame.span(kAtom_type)[i] = 11;
+        frame.span(kAtom_x)[i] = frac[i][0] * a_ang;
+        frame.span(kAtom_y)[i] = frac[i][1] * a_ang;
+        frame.span(kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = cpu::Box::cubic(a_ang);
+    return frame;
 }
 
 } // namespace
@@ -63,11 +62,12 @@ int main() {
     using cpu::gpw::Smearing;
     using cpu::gpw::XcKind;
 
-    const double a = 4.225 * kA2B;
-    auto atoms = na_bcc(a);
+    cpu::Frame frame = na_bcc(4.225); // Å
 
-    GpwDft method;
-    method.cell[0] = method.cell[1] = method.cell[2] = a;
+    GpwDft method{{cpu::gpw::Kind{
+        molrs::Element::Na,
+        cpu::gpw::GaussianBasis(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH"),
+        cpu::gpw::GthPotential(molrs::Element::Na, "GTH-PBE-q9")}}};
     method.cutoff_ry = 150.0;
     method.n_occ = 9; // Ne/2 seed for metallic path
     method.max_iter = 80;
@@ -80,7 +80,7 @@ int main() {
     method.smearing = Smearing::fermi_dirac;
     method.degauss = 0.02; // Ry → same class as CP2K Te = 3157.75 K
     method.extra_bands = 4;
-    method.build(atoms);
+    method.build(frame);
 
     Dos dos;
     dos.k_mesh = 2;
@@ -89,7 +89,7 @@ int main() {
     // Full AO spectrum (n_bands = 0).
 
     const auto t0 = std::chrono::steady_clock::now();
-    const DosResult dr = dos.compute(method, atoms);
+    const DosResult dr = dos.compute(method, frame);
     const auto t1 = std::chrono::steady_clock::now();
     const double wall_s = std::chrono::duration<double>(t1 - t0).count();
 

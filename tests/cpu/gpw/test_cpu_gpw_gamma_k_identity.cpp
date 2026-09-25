@@ -24,6 +24,8 @@
 #include "atomiverse/cpu/gpw/gth_potential.h"
 
 using namespace ATV::cpu::gpw;
+using ATV::cpu::gpw::internal::GpwAtom;
+using ATV::cpu::gpw::internal::GpwDftAccess;
 using ATV::cpu::linalg::CplxMatrix;
 using ATV::cpu::linalg::RealMatrix;
 
@@ -42,7 +44,7 @@ std::vector<GpwAtom> h2_atoms() {
 // the grid through more than one lattice image.
 GpwDft fixed_density_cfg() {
     GpwDft m;
-    m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+    GpwDftAccess::set_cell(m, {12.0, 12.0, 12.0});
     m.cutoff_ry = 100.0;
     m.n_alpha = 2;
     m.n_beta = 0;
@@ -101,17 +103,17 @@ TEST(GpwGammaKIdentity, FixedDensityOperatorsMatch) {
     const RealMatrix Pb = trial_P(nb, 0.2);
 
     GpwDft fg = fixed_density_cfg();
-    fg.build(atoms);
-    const GpwResult& eg = fg.run(atoms, nullptr, &Pa, &Pb);
+    GpwDftAccess::build(fg, atoms);
+    const GpwResult& eg = GpwDftAccess::run(fg, atoms, nullptr, &Pa, &Pb);
 
     GpwDft fk = fixed_density_cfg();
     fk.k_points = {{0.0, 0.0, 0.0}};
     fk.k_point_weights = {1.0};
-    fk.build(atoms);
+    GpwDftAccess::build(fk, atoms);
     std::vector<CplxMatrix> Pk_a = {to_cplx(Pa)};
     std::vector<CplxMatrix> Pk_b = {to_cplx(Pb)};
     const GpwResult& ek =
-        fk.run(atoms, nullptr, nullptr, nullptr, &Pk_a, &Pk_b);
+        GpwDftAccess::run(fk, atoms, nullptr, nullptr, nullptr, &Pk_a, &Pk_b);
 
     // Same functional: every energy term identical.
     EXPECT_NEAR(eg.e_total, ek.e_total, 1e-12);

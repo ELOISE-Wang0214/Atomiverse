@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ot-uks-smearing` |
-| Regression | `regressions/gpw/ot-uks-smearing/` |
 | Public API | `cpu::gpw::GpwDft` members `use_ot`, `n_alpha`/`n_beta`, `smearing`, `degauss` [Ry], `extra_bands`, `k_mesh` |
 | Roadmap | `docs/roadmap/dft.md` §10 GPW — OT+metallic smear **UKS** ✓ (`reg_ot-uks-smearing`) |
 ## Summary
@@ -19,7 +18,7 @@ surface is public members on the concrete method `cpu::gpw::GpwDft` — **no**
 `*Config` bag, **no** factories. Textbook pin: **BCC Na** conventional
 cubic (\(a=4.225\) Å, 2 atoms), PADE/LSD, GTH-PBE-q9, DZVP-MOLOPT-SR-GTH,
 MP \(2\times2\times2\), `degauss = 0.02` Ry. Product gate:
-`regressions/gpw/ot-uks-smearing` (`reg_ot-uks-smearing`). Fair OT-only wall
+`ot-uks-smearing` (`reg_ot-uks-smearing`). Fair OT-only wall
 ratio \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \approx 0.12\) (OMP=4, ≪10×).
 CP2K 2026.1 hard-aborts OT with k-points, so the offline twin is **DIIS +
 LSD + FERMI_DIRAC** only; product accuracy is **internal exactness**
@@ -32,8 +31,8 @@ LSD, contracted short-range MOLOPT Gaussians, GTH pseudopotentials, and
 periodic XYZ electrostatics. Wavefunction in the Gaussian AO basis;
 density / Hartree / XC on a uniform real-space grid with plane-wave cutoff
 \(E_{\mathrm{cut}}\) [Ry]. Method channel energy is Hartree
-(`GpwResult::e_total`); public Frame energy remains eV when the evaluator
-path is used. This regression exercises the concrete method `GpwDft`
+(`GpwResult::e_total`); `run(frame)` also writes the public Frame energy in
+eV (`kEnergy`). This regression exercises the concrete method `GpwDft`
 directly.
 
 **UKS occupations under smear.** Seed integers `n_alpha` / `n_beta` set the
@@ -116,10 +115,12 @@ identical grids — the product identity gate.
 ## Implementation
 
 Public surface only: construct `cpu::gpw::GpwDft`, assign members, `build` /
-`run` on `std::vector<GpwAtom>`. **No** `*Config`, **no** `make_*` /
+`run` on a `cpu::Frame`. **No** `*Config`, **no** `make_*` /
 `build_*` factories. Matches the regression:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -129,22 +130,22 @@ using namespace ATV;
 using cpu::gpw::GpwDft;
 using cpu::gpw::Smearing;
 
-constexpr double kA2B = 1.0 / 0.52917720859; // Å → Bohr
-const double a_ang = 4.225;
-const double a = a_ang * kA2B;
+const double a = 4.225; // Å
 
-// BCC conventional cubic: 2 Na at (0,0,0) and (½,½,½) [Bohr]
-const cpu::gpw::GaussianBasis bNa(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH");
-const cpu::gpw::GthPotential pNa(molrs::Element::Na, "GTH-PBE-q9");
+// BCC conventional cubic: 2 Na at (0,0,0) and (½,½,½) [Å]
 const double frac[2][3] = {{0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}};
-std::vector<cpu::gpw::GpwAtom> atoms;
+cpu::Frame frame(2);
 for (int i = 0; i < 2; ++i) {
-    const double pos[3] = {frac[i][0] * a, frac[i][1] * a, frac[i][2] * a};
-    atoms.emplace_back(pos, bNa, pNa, /*Z=*/11);
+    frame.span(kAtom_type)[i] = 11;
+    frame.span(kAtom_x)[i] = frac[i][0] * a;
+    frame.span(kAtom_y)[i] = frac[i][1] * a;
+    frame.span(kAtom_z)[i] = frac[i][2] * a;
 }
+frame.box = cpu::Box::cubic(a);
 
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = a;
+GpwDft m{{cpu::gpw::Kind{molrs::Element::Na,
+                          cpu::gpw::GaussianBasis(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH"),
+                          cpu::gpw::GthPotential(molrs::Element::Na, "GTH-PBE-q9")}}};
 m.cutoff_ry = 150.0;
 m.n_occ = 0;
 m.n_alpha = 10; // ferro seed; free under smear
@@ -162,8 +163,8 @@ m.degauss = 0.02; // Ry
 m.extra_bands = 4;
 m.use_ot = true;
 
-m.build(atoms);
-const auto& r = m.run(atoms);
+m.build(frame);
+const auto& r = m.run(frame);
 // r.e_total [Ha] free energy F; r.e_fermi [Ha]; r.n_elec_occ ≈ 18;
 // r.e_entropy [Ha]; r.converged; r.n_kpts > 1
 ```
@@ -183,23 +184,23 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_ot-uks-smearing
-  ./build/regressions/reg_ot-uks-smearing
+  reg_ot-uks-smearing
   # or: cmake --build build --target run_reg_ot-uks-smearing
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | Public `GpwDft::{use_ot,smearing,degauss,n_alpha,n_beta,k_mesh,…}` |
-| `include/atomiverse/cpu/gpw/internal/ot.h` | OT parameterization / fractional-occ gradient (internal) |
-| `regressions/gpw/ot-uks-smearing/` | E2E product gate + `REFERENCE.md` |
-| `tools/cp2k_oracle/inputs/ot-uks-smearing/` | Offline DIIS+LSD+FD twin + README |
-| `regressions/gpw/ot-smearing/` | Closed-shell RKS OT+FD sibling |
-| `regressions/gpw/gpw-uks-smearing/` | Multi-k UKS DIIS+FD sibling |
+| `gpw_solver.h` | Public `GpwDft::{use_ot,smearing,degauss,n_alpha,n_beta,k_mesh,…}` |
+| `ot.h` | OT parameterization / fractional-occ gradient (internal) |
+| `ot-uks-smearing` | E2E product gate + pin notes |
+| CP2K oracle | Offline DIIS+LSD+FD twin + README |
+| `ot-smearing` | Closed-shell RKS OT+FD sibling |
+| `gpw-uks-smearing` | Multi-k UKS DIIS+FD sibling |
 
 ## Validation (vs CP2K / internal exactness)
 
-Source: [`regressions/gpw/ot-uks-smearing/REFERENCE.md`](../../../regressions/gpw/ot-uks-smearing/REFERENCE.md).
+Source: case `ot-uks-smearing` pin.
 Oracle: offline **CP2K 2026.1** for wall class + DIIS LSD twin input; **never**
 live in ctest. Product free-energy accuracy is **ATV-internal** (OT ≡ DIIS)
 plus a frozen first-green pin.
@@ -251,7 +252,7 @@ Offline oracle sketch (host with CP2K module; **not** ctest):
 ```bash
 module load ... CP2K/2026.1
 export CP2K_DATA_DIR=.../share/cp2k/data
-cp2k.psmp -i tools/cp2k_oracle/inputs/ot-uks-smearing/na_bcc_uks_fermi_dirac.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o na_uks_fd.out
 # twin = DIAG/DIIS + LSD + SMEAR; OT + KPOINTS is hard-aborted by CP2K
 ```
@@ -259,8 +260,8 @@ cp2k.psmp -i tools/cp2k_oracle/inputs/ot-uks-smearing/na_bcc_uks_fermi_dirac.inp
 ## Performance
 
 Source: fair wall table in
-`regressions/gpw/ot-uks-smearing/REFERENCE.md` and
-the case `REFERENCE.md` (wave 9, 2026-07-26). Queue record:
+case `ot-uks-smearing` pin and
+the case pin notes (wave 9, 2026-07-26). Queue record:
 ratio **~0.12**. Gate \(r\le 10\).
 
 Comparable settings: cutoff 150 Ry, PADE, multi-k \(2^3\), single rank,
@@ -297,10 +298,10 @@ sparse/linear-scaling OT. (4) `within_10x=true`; no optimize pass required.
 
 ## References
 
-- Offline pin + fair wall: `regressions/gpw/ot-uks-smearing/REFERENCE.md`
-- Regression binary: `regressions/gpw/ot-uks-smearing/reg_ot-uks-smearing.cpp`
+- Offline pin + fair wall: case `ot-uks-smearing` pin
+- Regression binary: `reg_ot-uks-smearing.cpp`
 - Closed spec (git history): `.claude/specs/ot-uks-smearing/` (deleted at done)
-- CP2K oracle inputs: `tools/cp2k_oracle/inputs/ot-uks-smearing/`
+- CP2K oracle inputs: CP2K oracle
 - Sibling tutorials: [ot-minimizer-water](ot-minimizer-water.md) (Γ RKS OT),
   [pw-smearing-al](pw-smearing-al.md) (PW FD metals)
 - Roadmap: `docs/roadmap/dft.md` §10 (UKS OT+smear ✓ on GPW)

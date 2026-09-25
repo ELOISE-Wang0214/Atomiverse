@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-wannier-si` |
-| Regression | `regressions/pw/periodic-wannier-si/` |
 | Public API | `cpu::pw::PW` + `cpu::pw::PeriodicWannier` / `PeriodicWannierResult` (`cpu/planewave/periodic_wannier.h`) |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 MLWF |
 | Dual gate | Bond-midpoint geometry + spread reduction (REFERENCE.md); speed **`perf_exempt`** |
@@ -24,7 +23,7 @@ Centers come from the Berry-phase formula; spreads use the Souza–Marzari–Van
 This is the **periodic multi-k** product path (`cpu::pw::PeriodicWannier`).
 The molecular closed-shell Foster–Boys foothold is a separate slug
 ([wannier-centers](wannier-centers.md)). Product regression:
-`regressions/pw/periodic-wannier-si` (`reg_periodic-wannier-si`). Scientific
+`periodic-wannier-si` (`reg_periodic-wannier-si`). Scientific
 gate is **literature bond-midpoint geometry** for diamond Si valence MLWFs
 (Marzari & Vanderbilt 1997 §IV), not absolute-spread parity with CP2K
 Quickstep GTH+Gaussian. Performance: **`perf_exempt`** (no fair CP2K wall twin
@@ -120,7 +119,7 @@ manifold for elemental Si.
 
 Public surface only (`cpu::Frame` + concrete method / post-processor members;
 no `*Config`, no factories). Headers:
-`include/atomiverse/cpu/planewave/periodic_wannier.h`,
+`periodic_wannier.h`,
 `pw_solver.h`. Implementation:
 `src/cpu/planewave/periodic_wannier.cpp` (SCF → freeze \(V_\mathrm{eff}\) →
 NSCF occupied manifold → \(M^{(\mathbf k,\mathbf b)}\) → projection + MV SD →
@@ -209,7 +208,7 @@ cubic SMV weight, `center_from_diagonal_phases`, invalid-arg throws on
 
 ## Validation (vs literature / CP2K note)
 
-Source: `regressions/pw/periodic-wannier-si/REFERENCE.md` (offline pin; never
+Source: case `periodic-wannier-si` pin (offline pin; never
 live third party in ctest). Queue / handoff: done, **`perf_exempt`**.
 
 ### Pseudopotential
@@ -220,7 +219,7 @@ live third party in ctest). Queue / handoff: done, **`perf_exempt`**.
 | Family | PseudoDojo ONCVPSP-LDA-SR-noCC v0.4 |
 | Generator | ONCVPSP 3.3.0 (D. R. Hamann), \(Z_\mathrm{val}=4\), no NLCC |
 | Cite | Hamann, *Phys. Rev. B* **88**, 085117 (2013); van Setten et al., *Comput. Phys. Commun.* **226**, 39 (2018) |
-| Same family as | `regressions/pw/pw-lda-si`, `bands-dos-si` |
+| Same family as | `pw-lda-si`, `bands-dos-si` |
 
 ### Literature pin (geometry)
 
@@ -275,12 +274,12 @@ PP/basis.
 DZVP-MOLOPT**, not ONCV plane waves. Absolute spreads and gauge are **not**
 comparable. Bond-midpoint geometry of the four valence MLWFs is the shared
 scientific content. Optional offline wall / character skeleton:
-`tools/cp2k_oracle/inputs/si_periodic_wannier_note.inp` (same geometry;
+CP2K oracle (same geometry;
 `METHOD JACOBI`, `MAX_ITER 200`).
 
 ## Performance
 
-Source: `regressions/pw/periodic-wannier-si/REFERENCE.md`. Queue / handoff row:
+Source: case `periodic-wannier-si` pin. Queue / handoff row:
 **`perf_exempt`** (literature midpoint + spread gates; no fair GTH twin wall on
 pin host).
 
@@ -298,7 +297,7 @@ pin host).
 | Wall budget | e2e ≤ 60 s single-rank CPU (PASS) |
 
 When a CP2K binary is available offline: time the same geometry with
-`tools/cp2k_oracle/inputs/si_periodic_wannier_note.inp`, append
+CP2K oracle, append
 \(r = T_\mathrm{ATV}/T_\mathrm{CP2K}\) to REFERENCE.md, require \(r\le 10\).
 Wall comparison is same-geometry only, not absolute-spread parity
 (GTH+Gaussian vs NC-UPF PW).
@@ -323,10 +322,9 @@ Wall comparison is same-geometry only, not absolute-spread parity
 
 ## References
 
-- Offline pin: [`regressions/pw/periodic-wannier-si/REFERENCE.md`](../../../regressions/pw/periodic-wannier-si/REFERENCE.md)
-- Regression: [`regressions/pw/periodic-wannier-si/reg_periodic-wannier-si.cpp`](../../../regressions/pw/periodic-wannier-si/reg_periodic-wannier-si.cpp)
-- Public API: [`include/atomiverse/cpu/planewave/periodic_wannier.h`](../../../include/atomiverse/cpu/planewave/periodic_wannier.h)
-- Optional CP2K wall / character skeleton: `tools/cp2k_oracle/inputs/si_periodic_wannier_note.inp`
+- Offline pin: case `periodic-wannier-si` pin
+- Public API: `periodic_wannier.h`
+- Optional CP2K wall / character skeleton: CP2K oracle
 - Molecular Boys foothold: [wannier-centers](wannier-centers.md)
 - Related energy / bands footholds: [pw-lda-si](pw-lda-si.md),
   [bands-dos-si](bands-dos-si.md)

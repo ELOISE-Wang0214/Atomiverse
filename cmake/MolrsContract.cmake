@@ -28,8 +28,9 @@
 #     version check.
 set(ATV_MOLRS_CXX_API_VERSION 1)
 set(ATV_MOLRS_CXX_REQUIRED_CAPABILITIES 7) # Frame-block v2 | Element | AM1-BCC
-set(ATV_MOLRS_GIT_REF "f33996297e3bafa2c4d2e7f1288552514699886a" CACHE STRING
-    "Documented MolCrafts/molrs ref matching the ./molrs submodule pin (dev)")
+set(ATV_MOLRS_GIT_REF "86237f8942ca559c3de19b005759a8ce2d7a46c0" CACHE STRING
+    "Documented MolCrafts/molrs ref for the sibling checkout (0.15 / cgsmiles); "
+    "./molrs gitlink may lag — bump both together when advancing the pin")
 
 function(atv_validate_molrs_source_contract molrs_root)
     set(version_file "${molrs_root}/molrs-cxxapi/CXX_API_VERSION")

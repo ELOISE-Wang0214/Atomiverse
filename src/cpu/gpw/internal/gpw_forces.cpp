@@ -52,54 +52,9 @@
 namespace ATV {
 namespace cpu {
 namespace gpw {
+namespace internal {
 
 namespace {
-GpwDft copy_gpw(const GpwDft& m) {
-    GpwDft p;
-    for (int d = 0; d < 3; ++d)
-        p.cell[d] = m.cell[d];
-    p.cutoff_ry = m.cutoff_ry;
-    p.ngrids = m.ngrids;
-    p.rel_cutoff = m.rel_cutoff;
-    p.n_occ = m.n_occ;
-    p.max_iter = m.max_iter;
-    p.tol = m.tol;
-    p.eps_default = m.eps_default;
-    p.mix = m.mix;
-    p.diis_depth = m.diis_depth;
-    p.lindep_threshold = m.lindep_threshold;
-    p.level_shift = m.level_shift;
-    p.xc = m.xc;
-    p.nonperiodic = m.nonperiodic;
-    p.local_pp_on_grid = m.local_pp_on_grid;
-    p.d3 = m.d3;
-    p.d3bj = m.d3bj;
-    p.d3_atm = m.d3_atm;
-    p.d3_rcut_bohr = m.d3_rcut_bohr;
-    p.d4 = m.d4;
-    p.d4_atm = m.d4_atm;
-    p.ts = m.ts;
-    p.xdm = m.xdm;
-    p.mbd = m.mbd;
-    for (int d = 0; d < 3; ++d)
-        p.mbd_k_mesh[d] = m.mbd_k_mesh[d];
-    p.hirshfeld = m.hirshfeld;
-    p.use_ot = m.use_ot;
-    for (int d = 0; d < 3; ++d)
-        p.k_mesh[d] = m.k_mesh[d];
-    p.k_time_reversal = m.k_time_reversal;
-    p.k_points = m.k_points;
-    p.k_point_weights = m.k_point_weights;
-    p.plus_u = m.plus_u;
-    p.atom_spin_guess = m.atom_spin_guess;
-    p.n_alpha = m.n_alpha;
-    p.n_beta = m.n_beta;
-    p.smearing = m.smearing;
-    p.degauss = m.degauss;
-    p.mp_order = m.mp_order;
-    p.extra_bands = m.extra_bands;
-    return p;
-}
 
 bool uses_kpath(const GpwDft& cfg) {
     // Match SCF dispatch: metallic smear always rides the Bloch path
@@ -128,7 +83,8 @@ ts_mbd_vol_ratio(const GpwDft& cfg, const UniformGrid& grid,
     if (rho.empty())
         throw std::runtime_error(
             "GPW forces: hirshfeld requires density or SCF volume_ratios");
-    return hirshfeld_volume_ratios(grid, rho, Z, pos, cfg.cell, periodic);
+    return hirshfeld_volume_ratios(grid, rho, Z, pos, cfg.cell_bohr().data(),
+                                   periodic);
 }
 
 // Solver-side (Z, ℓ, U_ha) tables + per-AO shell tags for cfg.plus_u.
@@ -361,8 +317,8 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     // that the energy's own lattice sum kept. The truncation only bites when
     // images reach at all, which is why it vanished in a large enough cell.
     int mimg[3];
-    pair_image_counts(cfg.cell, periodic, std::max(2.0 * rmax, drmax + rmax),
-                      mimg);
+    pair_image_counts(cfg.cell_bohr().data(), periodic,
+                      std::max(2.0 * rmax, drmax + rmax), mimg);
 
     // ── Dudarev DFT+U geometric term ───────────────────────────────────────
     // n = ½(PS+SP)|shell depends on geometry through S, so at fixed P the +U
@@ -383,8 +339,8 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 for (int nu = 0; nu < nb; ++nu) {
                     const double reach = radii[static_cast<std::size_t>(mu)]
                                          + radii[static_cast<std::size_t>(nu)];
-                    S(mu, nu) =
-                        overlap(basis[mu], basis[nu], cfg.cell, mimg, reach);
+                    S(mu, nu) = overlap(basis[mu], basis[nu],
+                                        cfg.cell_bohr().data(), mimg, reach);
                 }
             W_fold = W;
             if (uks) {
@@ -404,7 +360,7 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     }
 
     // Grid + multi-image collocation (same window as the SCF density).
-    UniformGrid grid = make_uniform_grid(cfg.cell, cfg.cutoff_ry);
+    UniformGrid grid = make_uniform_grid(cfg.cell_bohr().data(), cfg.cutoff_ry);
     const long ng = grid.npts();
     const double wgt = grid.weight();
     // Reuse SCF cbg when single-grid SCF filled it (p2-force-kbg-reuse).
@@ -623,14 +579,15 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     const double reach =
                         rdmu + radii[static_cast<std::size_t>(nu)];
                     double s = 0.0, t = 0.0;
-                    contracted_ST_periodic(dmu, basis[nu], cfg.cell, mimg,
-                                           reach, s, t);
+                    contracted_ST_periodic(dmu, basis[nu],
+                                           cfg.cell_bohr().data(), mimg, reach,
+                                           s, t);
                     f += 2.0 * (*W_use)(mu, nu) * s; // + W dS (+U fold inside)
                     f -= 2.0 * Ptot(mu, nu) * t;     // - P dT
-                    f -=
-                        2.0 * Ptot(mu, nu)
-                        * vpp_images(dmu, basis[nu], all, cfg.cell, mimg, reach,
-                                     analytic_loc); // - P dV_pp(basis)
+                    f -= 2.0 * Ptot(mu, nu)
+                         * vpp_images(dmu, basis[nu], all,
+                                      cfg.cell_bohr().data(), mimg, reach,
+                                      analytic_loc); // - P dV_pp(basis)
                 }
             }
             // GTH operator-center derivative (∂_C, trans. inv.): +2 Σ_{μ,ν} P dμ·v_A·ν.
@@ -641,8 +598,9 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     const double reach =
                         rdmu + radii[static_cast<std::size_t>(nu)];
                     f += 2.0 * Ptot(mu, nu)
-                         * vpp_images(dmu, basis[nu], onlyA, cfg.cell, mimg,
-                                      reach, analytic_loc);
+                         * vpp_images(dmu, basis[nu], onlyA,
+                                      cfg.cell_bohr().data(), mimg, reach,
+                                      analytic_loc);
                 }
             }
             forces[A][k] = f;
@@ -753,43 +711,44 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             if (mbd_per && cfg.nonperiodic)
                 throw std::runtime_error(
                     "GPW forces MBD: mbd_k_mesh requires a periodic cell");
-            const MbdResult mbd =
-                mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0, vol_ratio,
-                              mbd_per ? cfg.mbd_k_mesh : nullptr);
+            const MbdResult mbd = mbd_rsscs_pbe(
+                Z, pos, cfg.cell_bohr().data(), mbd_per, 0.83, 6.0, vol_ratio,
+                mbd_per ? cfg.mbd_k_mesh : nullptr);
             for (int i = 0; i < na; ++i)
                 for (int k = 0; k < 3; ++k)
                     forces[i][k] += mbd.forces[static_cast<std::size_t>(i)][k];
         } else if (cfg.xdm) {
             constexpr double kRcutXdm = 50.0 * kAng2Bohr;
-            const XdmResult xdm = xdm_pbe(Z, pos, cfg.cell, periodic, kRcutXdm);
+            const XdmResult xdm =
+                xdm_pbe(Z, pos, cfg.cell_bohr().data(), periodic, kRcutXdm);
             for (int i = 0; i < na; ++i)
                 for (int k = 0; k < 3; ++k)
                     forces[i][k] += xdm.forces[static_cast<std::size_t>(i)][k];
         } else if (cfg.ts) {
             constexpr double kRcutTs = 50.0 * kAng2Bohr;
-            const TsResult ts = ts_pbe(Z, pos, cfg.cell, periodic, kRcutTs,
-                                       0.94, 20.0, vol_ratio);
+            const TsResult ts = ts_pbe(Z, pos, cfg.cell_bohr().data(), periodic,
+                                       kRcutTs, 0.94, 20.0, vol_ratio);
             for (int i = 0; i < na; ++i)
                 for (int k = 0; k < 3; ++k)
                     forces[i][k] += ts.forces[static_cast<std::size_t>(i)][k];
         } else if (cfg.d4) {
             const double s9 = cfg.d4_atm ? 1.0 : 0.0;
-            const cpu::scf::D4Result d4 =
-                cpu::scf::dftd4(Z, pos, cfg.cell, periodic, /*s6=*/1.0,
-                                /*s8=*/0.95948085, /*a1=*/0.38574991,
-                                /*a2=*/4.80688534, /*ga=*/3.0, /*gc=*/2.0,
-                                /*wf=*/6.0, /*charge=*/0.0, /*cn_cut=*/30.0,
-                                /*disp2_cut=*/60.0, s9);
+            const cpu::scf::D4Result d4 = cpu::scf::dftd4(
+                Z, pos, cfg.cell_bohr().data(), periodic, /*s6=*/1.0,
+                /*s8=*/0.95948085, /*a1=*/0.38574991,
+                /*a2=*/4.80688534, /*ga=*/3.0, /*gc=*/2.0,
+                /*wf=*/6.0, /*charge=*/0.0, /*cn_cut=*/30.0,
+                /*disp2_cut=*/60.0, s9);
             for (int i = 0; i < na; ++i)
                 for (int k = 0; k < 3; ++k)
                     forces[i][k] += d4.forces[static_cast<std::size_t>(i)][k];
         } else {
             const D3Result d3 =
-                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{},
-                                   cfg.d3_rcut_bohr, cfg.d3_atm)
-                       : dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
-                                      cfg.d3_rcut_bohr, 1.0, 0.7875, 0.4289,
-                                      4.4407,
+                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell_bohr().data(), periodic,
+                                   D3Params{}, cfg.d3_rcut_bohr, cfg.d3_atm)
+                       : dftd3_pbe_bj(Z, pos, cfg.cell_bohr().data(), periodic,
+                                      D3Params{}, cfg.d3_rcut_bohr, 1.0, 0.7875,
+                                      0.4289, 4.4407,
                                       /*cp2k_cn=*/true, cfg.d3_atm);
             for (int i = 0; i < na; ++i)
                 for (int k = 0; k < 3; ++k)
@@ -1134,7 +1093,7 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
             drmax = std::max(drmax,
                              basis_function_radius(deriv_bf(basis[u], k), eps));
     int mimg[3];
-    pair_image_counts(cfg.cell, /*periodic=*/true,
+    pair_image_counts(cfg.cell_bohr().data(), /*periodic=*/true,
                       std::max(2.0 * rmax, drmax + rmax), mimg);
 
     // ── Dudarev DFT+U geometric term (multi-k) ─────────────────────────────
@@ -1149,7 +1108,8 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
                                z_keys)) {
             constexpr double kBuildScreen = 1e-12; // matches the SCF S_k build
             std::vector<CplxMatrix> S_k, T_k;
-            internal::build_overlap_kinetic_k(basis, radii, cfg.cell, mimg,
+            internal::build_overlap_kinetic_k(basis, radii,
+                                              cfg.cell_bohr().data(), mimg,
                                               kBuildScreen, kpts, S_k, T_k);
             std::vector<double> weights(static_cast<std::size_t>(nk));
             for (int ik = 0; ik < nk; ++ik)
@@ -1183,7 +1143,7 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
             drad[u][k] = basis_function_radius(dphi[u][k], eps);
         }
 
-    UniformGrid grid = make_uniform_grid(cfg.cell, cfg.cutoff_ry);
+    UniformGrid grid = make_uniform_grid(cfg.cell_bohr().data(), cfg.cutoff_ry);
     const long ng = grid.npts();
     const double wgt = grid.weight();
     // Reuse SCF χ^k when single-grid multi-k SCF filled it.
@@ -1369,10 +1329,10 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
                 for (int nu = 0; nu < nb; ++nu) {
                     const double reach =
                         rdmu + radii[static_cast<std::size_t>(nu)];
-                    pair_ST_k(dmu, basis[nu], cfg.cell, mimg, reach, kpts, s_k,
-                              t_k);
-                    pair_Vnl_k(dmu, basis[nu], all, cfg.cell, mimg, reach, kpts,
-                               v_k);
+                    pair_ST_k(dmu, basis[nu], cfg.cell_bohr().data(), mimg,
+                              reach, kpts, s_k, t_k);
+                    pair_Vnl_k(dmu, basis[nu], all, cfg.cell_bohr().data(),
+                               mimg, reach, kpts, v_k);
                     for (int ik = 0; ik < nk; ++ik) {
                         const double wk =
                             kpts[static_cast<std::size_t>(ik)].weight;
@@ -1403,8 +1363,9 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
                     for (int nu = 0; nu < nb; ++nu) {
                         const double reach =
                             rdmu + radii[static_cast<std::size_t>(nu)];
-                        pair_Vnl_k(dmu, basis[nu], onlyA, cfg.cell, mimg, reach,
-                                   kpts, vA_k);
+                        pair_Vnl_k(dmu, basis[nu], onlyA,
+                                   cfg.cell_bohr().data(), mimg, reach, kpts,
+                                   vA_k);
                         for (int ik = 0; ik < nk; ++ik) {
                             const double wk =
                                 kpts[static_cast<std::size_t>(ik)].weight;
@@ -1582,8 +1543,8 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
                     throw std::runtime_error("GPW k-forces MBD: mbd_k_mesh "
                                              "requires a periodic cell");
                 const MbdResult mbd = mbd_rsscs_pbe(
-                    Z, pos, cfg.cell, mbd_per, 0.83, 6.0, vol_ratio,
-                    mbd_per ? cfg.mbd_k_mesh : nullptr);
+                    Z, pos, cfg.cell_bohr().data(), mbd_per, 0.83, 6.0,
+                    vol_ratio, mbd_per ? cfg.mbd_k_mesh : nullptr);
                 for (int i = 0; i < na; ++i)
                     for (int k = 0; k < 3; ++k)
                         forces[i][k] +=
@@ -1591,15 +1552,16 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
             } else if (cfg.xdm) {
                 constexpr double kRcutXdm = 50.0 * kAng2Bohr;
                 const XdmResult xdm =
-                    xdm_pbe(Z, pos, cfg.cell, periodic, kRcutXdm);
+                    xdm_pbe(Z, pos, cfg.cell_bohr().data(), periodic, kRcutXdm);
                 for (int i = 0; i < na; ++i)
                     for (int k = 0; k < 3; ++k)
                         forces[i][k] +=
                             xdm.forces[static_cast<std::size_t>(i)][k];
             } else if (cfg.ts) {
                 constexpr double kRcutTs = 50.0 * kAng2Bohr;
-                const TsResult ts = ts_pbe(Z, pos, cfg.cell, periodic, kRcutTs,
-                                           0.94, 20.0, vol_ratio);
+                const TsResult ts =
+                    ts_pbe(Z, pos, cfg.cell_bohr().data(), periodic, kRcutTs,
+                           0.94, 20.0, vol_ratio);
                 for (int i = 0; i < na; ++i)
                     for (int k = 0; k < 3; ++k)
                         forces[i][k] +=
@@ -1607,7 +1569,7 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
             } else if (cfg.d4) {
                 const double s9 = cfg.d4_atm ? 1.0 : 0.0;
                 const cpu::scf::D4Result d4 = cpu::scf::dftd4(
-                    Z, pos, cfg.cell, periodic, /*s6=*/1.0,
+                    Z, pos, cfg.cell_bohr().data(), periodic, /*s6=*/1.0,
                     /*s8=*/0.95948085, /*a1=*/0.38574991, /*a2=*/4.80688534,
                     /*ga=*/3.0, /*gc=*/2.0, /*wf=*/6.0, /*charge=*/0.0,
                     /*cn_cut=*/30.0, /*disp2_cut=*/60.0, s9);
@@ -1617,12 +1579,13 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
                             d4.forces[static_cast<std::size_t>(i)][k];
             } else {
                 const D3Result d3 =
-                    cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{},
-                                       cfg.d3_rcut_bohr, cfg.d3_atm)
-                           : dftd3_pbe_bj(Z, pos, cfg.cell, periodic,
-                                          D3Params{}, cfg.d3_rcut_bohr, 1.0,
-                                          0.7875, 0.4289, 4.4407,
-                                          /*cp2k_cn=*/true, cfg.d3_atm);
+                    cfg.d3
+                        ? dftd3_pbe(Z, pos, cfg.cell_bohr().data(), periodic,
+                                    D3Params{}, cfg.d3_rcut_bohr, cfg.d3_atm)
+                        : dftd3_pbe_bj(Z, pos, cfg.cell_bohr().data(), periodic,
+                                       D3Params{}, cfg.d3_rcut_bohr, 1.0,
+                                       0.7875, 0.4289, 4.4407,
+                                       /*cp2k_cn=*/true, cfg.d3_atm);
                 for (int i = 0; i < na; ++i)
                     for (int k = 0; k < 3; ++k)
                         forces[i][k] +=
@@ -1679,11 +1642,11 @@ gpw_forces_from_scf(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 std::vector<std::array<double, 3>>
 gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     const linalg::RealMatrix* guess_C) {
-    GpwDft solver = copy_gpw(cfg);
-    solver.build(atoms);
+    GpwDft solver = GpwDftAccess::clone(cfg);
+    GpwDftAccess::build(solver, atoms);
     // UKS has no guess_C warm-start on the energy path; keep the cold solve.
     const GpwResult scf =
-        cfg.is_uks() ? solver.run(atoms, nullptr) : solver.run(atoms, guess_C);
+        GpwDftAccess::run(solver, atoms, cfg.is_uks() ? nullptr : guess_C);
     if (!scf.converged)
         throw std::runtime_error("gpw_forces_analytic: SCF did not converge");
 
@@ -1784,6 +1747,7 @@ std::vector<std::array<double, 3>> gpw_forces_at_density(
     return assemble_gpw_forces(atoms, cfg, P_a, W, &P_b);
 }
 
+} // namespace internal
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV

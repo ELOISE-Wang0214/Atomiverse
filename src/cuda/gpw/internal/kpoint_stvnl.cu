@@ -364,7 +364,7 @@ void KpointStvnlDevice::ensure_built_() const {
 void KpointStvnlDevice::compute(
     cudaStream_t stream, const std::vector<cpu::gpw::GridBasisFunction>& basis,
     const std::vector<double>& radii,
-    const std::vector<cpu::gpw::GpwAtom>& atoms, const double cell[3],
+    const std::vector<cpu::gpw::internal::GpwAtom>& atoms, const double cell[3],
     const int mimg[3], double screen, const double* k_frac, int nk) {
     destroy();
     const int nb = static_cast<int>(basis.size());

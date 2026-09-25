@@ -5,9 +5,8 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ump2-grad-o2-sto3g` |
-| Regression | `regressions/scf/ump2-grad-o2-sto3g/` |
 | Public API | `cpu::scf::UHF::mp2_forces(Frame&, SCFInitialGuess*)` → `GradientResult` |
-| Energy sibling | `regressions/scf/ump2-o2-sto3g` |
+| Energy sibling | `ump2-o2-sto3g` |
 | Roadmap | post-HF UMP2 forces (PySCF campaign) |
 
 ## Summary
@@ -19,8 +18,8 @@ with Cartesian STO-3G. Public path is the concrete unrestricted method
 no `*Config` bag. Forces return as `GradientResult` ([eV/Å]); the regression
 converts to Ha/Bohr for the pin. Multi-minima O₂ UHF is warm-started from ROHF
 densities (same path as the energy sibling). End-to-end gate:
-`regressions/scf/ump2-grad-o2-sto3g` (`reg_ump2-grad-o2-sto3g`). Offline oracle:
-PySCF 2.14.0 `mp.UMP2(...).nuc_grad_method().kernel()` pinned in `REFERENCE.md`
+`ump2-grad-o2-sto3g` (`reg_ump2-grad-o2-sto3g`). Offline oracle:
+PySCF 2.14.0 `mp.UMP2(...).nuc_grad_method().kernel()` pinned in pin notes
 (never live in ctest). Fair wall
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} = 1.37\).
 
@@ -65,11 +64,11 @@ Ha/Bohr.
 
 ## Implementation
 
-Headers: `include/atomiverse/cpu/scf/methods.h` (concrete `UHF` / `ROHF`),
-`include/atomiverse/cpu/scf/mean_field_method.h` (`mp2_forces` API),
-`include/atomiverse/cpu/scf/gradient_result.h`,
-`include/atomiverse/cpu/frame/frame.h`. Private analytic kernel:
-`include/atomiverse/cpu/scf/internal/mp2_gradient.h`
+Headers: `methods.h` (concrete `UHF` / `ROHF`),
+`mean_field_method.h` (`mp2_forces` API),
+`gradient_result.h`,
+`frame.h`. Private analytic kernel:
+`mp2_gradient.h`
 (`ump2_analytic_forces`). Units: public forces [eV/Å]; pins [Ha/Bohr] via
 `units::convert`.
 
@@ -122,16 +121,16 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_ump2-grad-o2-sto3g -j$(nproc)
-  ./build/regressions/reg_ump2-grad-o2-sto3g
+  reg_ump2-grad-o2-sto3g
 '
 ```
 
 Consumer source:
-`regressions/scf/ump2-grad-o2-sto3g/reg_ump2-grad-o2-sto3g.cpp`.
+`reg_ump2-grad-o2-sto3g.cpp`.
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/ump2-grad-o2-sto3g/REFERENCE.md`](../../../regressions/scf/ump2-grad-o2-sto3g/REFERENCE.md)
+Source: case `ump2-grad-o2-sto3g` pin
 (offline pin; PySCF never in ctest).
 
 | Field | Value |
@@ -171,15 +170,15 @@ without masking a missing Z-vector or 2-RDM term (those errors are typically
 Oracle re-pin:
 
 ```bash
-# tools/setup_pyscf_env.sh  # once
-python tools/pyscf_oracle/pin_scf.py ump2 --geom o2 --basis sto-3g \
+# <pyscf env setup>  # once
+python <pyscf pin> ump2 --geom o2 --basis sto-3g \
     --spin 2 --conv-tol 1e-12 --grad
 ```
 
 ## Performance
 
-Source: `REFERENCE.md` fair-bench block. Handoff ratio **1.37**
-(the case `REFERENCE.md`).
+Source: pin notes fair-bench block. Handoff ratio **1.37**
+(the case pin notes).
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | -------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -189,9 +188,9 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\).
 
 ```bash
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
-python tools/pyscf_oracle/fair_bench.py --method ump2_grad --geom o2 \
+python <pyscf fair-bench> --method ump2_grad --geom o2 \
     --basis sto-3g --spin 2 --repeat 3 -- \
-    ./build/regressions/reg_ump2-grad-o2-sto3g
+    reg_ump2-grad-o2-sto3g
 ```
 
 **Twin caveats.** Reg binary includes ROHF warm-start, full element-wise +
@@ -212,14 +211,14 @@ has a separate fair wall (energy-only); do not conflate that ratio with this
 - Multi-minima UHF for O₂ requires an explicit density guess (ROHF warm-start
   in the regression); cold UHF may miss the PySCF minimum.
 - Perf rollup table may lag REFERENCE until a bulk refresh of
-  ``.
+  `.
 
 ## References
 
-- Offline pin: `regressions/scf/ump2-grad-o2-sto3g/REFERENCE.md`
-- Energy sibling pin: `regressions/scf/ump2-o2-sto3g/REFERENCE.md`
+- Offline pin: case `ump2-grad-o2-sto3g` pin
+- Energy sibling pin: case `ump2-o2-sto3g` pin
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`;
-  `tools/pyscf_oracle/pin_scf.py`, `tools/setup_pyscf_env.sh`
+  PySCF oracle, PySCF oracle
 - Energy handbook: [`ump2-o2-sto3g.md`](ump2-o2-sto3g.md)
 - Pople, Krishnan, Schlegel, Binkley, *Int. J. Quantum Chem. Symp.* **13**, 225
   (1979)

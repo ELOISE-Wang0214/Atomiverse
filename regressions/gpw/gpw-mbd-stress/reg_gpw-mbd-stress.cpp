@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -34,14 +35,11 @@
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_stress.h"
 #include "atomiverse/molrs.hpp"
 
 using namespace ATV;
 
 namespace {
-
-constexpr double kAng2Bohr = 1.0 / 0.52917720859;
 
 // Offline pure-Python pymbd pin, identical to regressions/gpw/gpw-mbd-periodic:
 // PBE-MBD@rsSCS, free-atom volumes, periodic 12 Å cube, MBD k-mesh 2×2×2.
@@ -91,15 +89,16 @@ int main() {
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
     // ── (1) Product analytic stress with periodic MBD ─────────────────────
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 200.0;
-    eval.max_iter = 120;
-    eval.tol = 1e-6;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = false;
-    eval.mbd = true;
-    eval.mbd_k_mesh[0] = eval.mbd_k_mesh[1] = eval.mbd_k_mesh[2] = 2;
+    cpu::gpw::GpwDft dft{{O, H}};
+    dft.cutoff_ry = 200.0;
+    dft.max_iter = 120;
+    dft.tol = 1e-6;
+    dft.mix = 0.4;
+    dft.xc = cpu::gpw::XcKind::PBE;
+    dft.nonperiodic = false;
+    dft.mbd = true;
+    dft.mbd_k_mesh[0] = dft.mbd_k_mesh[1] = dft.mbd_k_mesh[2] = 2;
+    cpu::gpw::GPWEvaluator eval(std::move(dft));
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
@@ -141,17 +140,7 @@ int main() {
     }
 
     // ── (2) Multi-SCF strain-FD oracle on the same method ─────────────────
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
-    for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double p[3] = {xs[i] * kAng2Bohr, ys[i] * kAng2Bohr,
-                             zs[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(p, k.basis, k.pot, z[i]));
-    }
-
-    cpu::gpw::GpwDft method;
-    method.cell[0] = method.cell[1] = method.cell[2] = L * kAng2Bohr;
+    cpu::gpw::GpwDft method{{O, H}};
     method.cutoff_ry = 200.0;
     method.n_occ = 8;
     method.max_iter = 120;
@@ -164,8 +153,7 @@ int main() {
     method.mbd_k_mesh[0] = method.mbd_k_mesh[1] = method.mbd_k_mesh[2] = 2;
 
     const auto t2 = clock::now();
-    const auto sfd =
-        cpu::gpw::internal::gpw_stress_fd_impl(atoms, method, 2e-3);
+    const auto sfd = cpu::gpw::gpw_stress_fd(frame, method, 2e-3);
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -195,8 +183,7 @@ int main() {
     }
 
     // ── (3) MBD must actually reach the stress ────────────────────────────
-    cpu::gpw::GpwDft plain;
-    plain.cell[0] = plain.cell[1] = plain.cell[2] = L * kAng2Bohr;
+    cpu::gpw::GpwDft plain{{O, H}};
     plain.cutoff_ry = 200.0;
     plain.n_occ = 8;
     plain.max_iter = 120;
@@ -206,8 +193,7 @@ int main() {
     plain.nonperiodic = false;
     plain.local_pp_on_grid = true;
     plain.mbd = false;
-    const auto s_plain =
-        cpu::gpw::internal::gpw_stress_analytic_impl(atoms, plain, 2e-3);
+    const auto s_plain = cpu::gpw::gpw_stress(frame, plain, 2e-3);
 
     double max_shift = 0.0;
     for (int a = 0; a < 3; ++a)

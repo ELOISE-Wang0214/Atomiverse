@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ipea-xtb-small` |
-| Regression | `regressions/semiempirical/ipea-xtb-small/` |
 | Public API | `cpu::semiempirical::IPEA` + `cpu::Evaluate` |
 | Related narrative | [Ch. 17 Semiempirical AM1](../ch17-semiempirical-am1.md) (SE product surface; IPEA is a GFN-family sibling, not NDDO) |
 | Queue | TB method loop — harness wave 10 done (`50066df7` / `4c278a20`) |
@@ -211,7 +210,7 @@ bash -lc '
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse test_cpu_xtb_ipea \
         reg_ipea-xtb-small
-  ./build/regressions/reg_ipea-xtb-small
+  reg_ipea-xtb-small
   # or: cmake --build build --target run_reg_ipea-xtb-small
   ctest --test-dir build -R "^(test_cpu_xtb_ipea)$" --output-on-failure
 '
@@ -219,17 +218,17 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/ipea.h` | Public `IPEA` (`scc_tol`, `max_scc`, `mix_beta`, `charge`, `multiplicity`, `with_forces`) |
-| `include/atomiverse/cpu/semiempirical/basis_data/ipea_tables.h` | Static IPEA H/C/N/O (tblite `ipea1.f90` / xtb `param_ipea-xtb.txt`) |
+| `ipea.h` | Public `IPEA` (`scc_tol`, `max_scc`, `mix_beta`, `charge`, `multiplicity`, `with_forces`) |
+| `ipea_tables.h` | Static IPEA H/C/N/O (tblite `ipea1.f90` / xtb `param_ipea-xtb.txt`) |
 | `src/cpu/semiempirical/ipea.cpp` | Stewart overlap / extra 3s / EHT+SCC / rep / D3 (private) |
 | `tests/cpu/semiempirical/test_xtb_ipea.cpp` | Unit: tables, Z throw, forces throw, finite H₂O \(E\) |
-| `regressions/semiempirical/ipea-xtb-small/reg_ipea-xtb-small.cpp` | Product gate |
-| `tools/tb_oracle/inputs/xtb/ch4_ipea/` | Offline xtb 6.7.1 twin (`mol.xyz` + `xtb.out.txt`) |
+| `reg_ipea-xtb-small.cpp` | Product gate |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | Offline xtb 6.7.1 twin (`mol.xyz` + `xtb.out.txt`) |
 
 ## Validation (vs xtb)
 
 Source:
-[`regressions/semiempirical/ipea-xtb-small/REFERENCE.md`](../../../regressions/semiempirical/ipea-xtb-small/REFERENCE.md).
+case `ipea-xtb-small` pin.
 
 ```text
 oracle: xtb
@@ -237,8 +236,8 @@ oracle_version: 6.7.1 (compiled 2026-06-09)
 ```
 
 Offline pin only — **never** launch xtb from ctest. Twin protocol:
-`tools/tb_oracle/README.md`, inputs under
-`tools/tb_oracle/inputs/xtb/ch4_ipea/`.
+TB oracle (OpenMOPAC / DFTB+ / xtb), inputs under
+TB oracle (OpenMOPAC / DFTB+ / xtb).
 
 **Setup:**
 
@@ -296,7 +295,7 @@ floor — not a missing Hamiltonian term. Polar-molecule residual vs water
 Offline re-pin (human only; never ctest):
 
 ```bash
-# when xtb 6.7.1 is available; see tools/tb_oracle/inputs/xtb/ch4_ipea/
+# when xtb is available — see the TB oracle notes for this case
 # XTBPATH with param_ipea as GFN1; --gfn 1 --chrg 0 --uhf 0 --sp
 # CH4 r_CH=1.09 Å; record TOTAL ENERGY [Eh] into REFERENCE.md
 # → eV via 27.211386245988
@@ -304,7 +303,7 @@ Offline re-pin (human only; never ctest):
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/semiempirical/ipea-xtb-small/REFERENCE.md).
+Source: pin notes.
 Fair 1-thread wall of `reg_ipea-xtb-small` (Release, `OMP_NUM_THREADS=1`).
 Gate convention (TB loop): \(r = T_{\mathrm{ATV}}/T_{\mathrm{xtb}} \le 10\)
 unless `perf_exempt`.
@@ -341,10 +340,10 @@ IPEA E+\(G\)+\(H\)+VIP is not the GFN product closed.
 
 ## References
 
-- Offline pin: `regressions/semiempirical/ipea-xtb-small/REFERENCE.md`
-- Oracle twin: `tools/tb_oracle/inputs/xtb/ch4_ipea/` (`mol.xyz`,
+- Offline pin: case `ipea-xtb-small` pin
+- Oracle twin: TB oracle (OpenMOPAC / DFTB+ / xtb) (`mol.xyz`,
   `xtb.out.txt`)
-- Oracle rules: `tools/tb_oracle/README.md` (GFN-xTB / IPEA → xtb only)
+- Oracle rules: TB oracle (OpenMOPAC / DFTB+ / xtb) (GFN-xTB / IPEA → xtb only)
 - Roadmap: `docs/roadmap/semiempirical.md` §3
 - Literature:
   - V. Ásgeirsson, C. Bauer, S. Grimme, *Chem. Sci.* **8**, 4879 (2017),

@@ -12,7 +12,7 @@
 ///      rcut 50 Å — the exact evaluation the stress Lagrangian folds) matches
 ///      fresh dual pure-Python pins at each of the 6 strained cells.
 ///   3. Analytic fixed-\(P\) stress vs the multi-SCF strain-FD oracle
-///      (`gpw_stress_fd_impl`, XDM folded through a full re-SCF per strain).
+///      (`gpw_stress_fd`, XDM folded through a full re-SCF per strain).
 ///   4. σ(xdm) − σ(plain) per axis equals the externally pinned XDM strain-FD
 ///      term −ΔE_disp/(2hΩ₀) — XDM is not silently dropped, and its stress
 ///      contribution is the pinned number.
@@ -24,6 +24,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -35,7 +36,6 @@
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_stress.h"
 #include "atomiverse/cpu/gpw/internal/xdm_dispersion.h"
 #include "atomiverse/molrs.hpp"
 
@@ -45,9 +45,9 @@ namespace {
 
 // Pin script / dual-python lattice sum (matches gpw-xdm-ice / pin_xdm_strain.py).
 constexpr double kPinAng2Bohr = 1.0 / 0.52917720859;
-// Frame / GPWEvaluator conversion (CODATA 2006; units::kAngstromInBohr).
-// Slightly different from the pin constant → product E_disp differs at ~1e-11 Ha.
-constexpr double kFrameAng2Bohr = units::kAngstromInBohr;
+// Frame / GPWEvaluator conversion is units::kAngstromInBohr (inside the
+// library). Slightly different from the pin constant → product E_disp
+// differs at ~1e-11 Ha.
 constexpr double kStrainH = 2e-3;
 
 // Offline dual pure-Python free-atom XDM pins
@@ -150,14 +150,15 @@ int main() {
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
     // ── (1) Product analytic stress with periodic free-atom XDM ───────────
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 200.0;
-    eval.max_iter = 120;
-    eval.tol = 1e-6;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = false;
-    eval.xdm = true;
+    cpu::gpw::GpwDft dft{{O, H}};
+    dft.cutoff_ry = 200.0;
+    dft.max_iter = 120;
+    dft.tol = 1e-6;
+    dft.mix = 0.4;
+    dft.xc = cpu::gpw::XcKind::PBE;
+    dft.nonperiodic = false;
+    dft.xdm = true;
+    cpu::gpw::GPWEvaluator eval(std::move(dft));
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
@@ -201,19 +202,9 @@ int main() {
     }
 
     // ── (3) Multi-SCF strain-FD oracle on the same method ─────────────────
-    // Frame-path Bohr conversion so twins share the product geometry (not the
-    // pin constant — that residual is gated separately on E_disp only).
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
-    for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double p[3] = {xs[i] * kFrameAng2Bohr, ys[i] * kFrameAng2Bohr,
-                             zs[i] * kFrameAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(p, k.basis, k.pot, z[i]));
-    }
-
-    cpu::gpw::GpwDft method;
-    method.cell[0] = method.cell[1] = method.cell[2] = L * kFrameAng2Bohr;
+    // Same Frame as the product path so twins share the product geometry
+    // (not the pin constant — that residual is gated separately on E_disp).
+    cpu::gpw::GpwDft method({O, H});
     method.cutoff_ry = 200.0;
     method.n_occ = 8;
     method.max_iter = 120;
@@ -225,8 +216,7 @@ int main() {
     method.xdm = true;
 
     const auto t2 = clock::now();
-    const auto sfd =
-        cpu::gpw::internal::gpw_stress_fd_impl(atoms, method, kStrainH);
+    const auto sfd = cpu::gpw::gpw_stress_fd(frame, method, kStrainH);
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -256,8 +246,7 @@ int main() {
     }
 
     // ── (4) The XDM stress contribution is the pinned number ──────────────
-    cpu::gpw::GpwDft plain;
-    plain.cell[0] = plain.cell[1] = plain.cell[2] = L * kFrameAng2Bohr;
+    cpu::gpw::GpwDft plain({O, H});
     plain.cutoff_ry = 200.0;
     plain.n_occ = 8;
     plain.max_iter = 120;
@@ -267,8 +256,7 @@ int main() {
     plain.nonperiodic = false;
     plain.local_pp_on_grid = true;
     plain.xdm = false;
-    const auto s_plain =
-        cpu::gpw::internal::gpw_stress_analytic_impl(atoms, plain, kStrainH);
+    const auto s_plain = cpu::gpw::gpw_stress(frame, plain, kStrainH);
 
     double max_shift_err = 0.0;
     for (int a = 0; a < 3; ++a) {

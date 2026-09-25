@@ -12,14 +12,14 @@
 #include <stdexcept>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
-
-constexpr double kA2B = 1.0 / 0.52917720859; // Å → Bohr
 
 int g_fail = 0;
 
@@ -33,23 +33,26 @@ void check(bool ok, const char* what) {
 }
 
 /// BCC conventional cubic: 2 Na at (0,0,0) and (½,½,½).
-std::vector<ATV::cpu::gpw::GpwAtom> na_bcc(double a_bohr) {
+ATV::cpu::Frame na_bcc(double a_ang) {
     using namespace ATV;
-    const cpu::gpw::GaussianBasis bNa(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH");
-    const cpu::gpw::GthPotential pNa(molrs::Element::Na, "GTH-PBE-q9");
     const double frac[2][3] = {{0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}};
-    std::vector<cpu::gpw::GpwAtom> atoms;
+    cpu::Frame frame(2);
     for (int i = 0; i < 2; ++i) {
-        const double pos[3] = {frac[i][0] * a_bohr, frac[i][1] * a_bohr,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bNa, pNa, 11);
+        frame.span(kAtom_type)[i] = 11;
+        frame.span(kAtom_x)[i] = frac[i][0] * a_ang;
+        frame.span(kAtom_y)[i] = frac[i][1] * a_ang;
+        frame.span(kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = cpu::Box::cubic(a_ang);
+    return frame;
 }
 
-ATV::cpu::gpw::GpwDft base_method(double a) {
-    ATV::cpu::gpw::GpwDft m;
-    m.cell[0] = m.cell[1] = m.cell[2] = a;
+ATV::cpu::gpw::GpwDft base_method() {
+    using namespace ATV;
+    cpu::gpw::GpwDft m{{cpu::gpw::Kind{
+        molrs::Element::Na,
+        cpu::gpw::GaussianBasis(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH"),
+        cpu::gpw::GthPotential(molrs::Element::Na, "GTH-PBE-q9")}}};
     m.cutoff_ry = 150.0;
     m.n_occ = 0;
     m.n_alpha = 10; // ferro seed; free under smear
@@ -76,16 +79,15 @@ int main() {
     using cpu::gpw::Smearing;
 
     const double a_ang = 4.225;
-    const double a = a_ang * kA2B;
     const double n_elec = 18.0;
-    const auto atoms = na_bcc(a);
+    cpu::Frame frame = na_bcc(a_ang);
 
     // ── A1: build accepts UKS OT + FD ─────────────────────────────────────
     {
-        GpwDft m = base_method(a);
+        GpwDft m = base_method();
         m.use_ot = true;
         try {
-            m.build(atoms);
+            m.build(frame);
             check(true, "A1 build accepts UKS OT + FD smear");
         } catch (const std::exception& e) {
             std::fprintf(stderr, "A1 threw: %s\n", e.what());
@@ -98,20 +100,20 @@ int main() {
     double f_diis = 0.0;
     double wall_ot = 0.0;
     {
-        GpwDft diis = base_method(a);
+        GpwDft diis = base_method();
         diis.use_ot = false;
-        diis.build(atoms);
-        const auto& rd = diis.run(atoms);
+        diis.build(frame);
+        const auto& rd = diis.run(frame);
         check(rd.converged, "A2 DIIS+FD converged");
         f_diis = rd.e_total;
         check(std::fabs(rd.n_elec_occ - n_elec) < 1e-5, "A2 DIIS Ne");
 
-        GpwDft ot = base_method(a);
+        GpwDft ot = base_method();
         ot.use_ot = true;
         ot.max_iter = 200;
-        ot.build(atoms);
+        ot.build(frame);
         const auto t2 = std::chrono::steady_clock::now();
-        const auto& ro = ot.run(atoms);
+        const auto& ro = ot.run(frame);
         const auto t3 = std::chrono::steady_clock::now();
         wall_ot = std::chrono::duration<double>(t3 - t2).count();
         check(ro.converged, "A2 OT+FD converged");

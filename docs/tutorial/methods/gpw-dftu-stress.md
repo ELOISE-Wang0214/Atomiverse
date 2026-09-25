@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-dftu-stress` |
-| Regression | `regressions/gpw/gpw-dftu-stress/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`plus_u`, `n_alpha`/`n_beta`, `compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd`; Frame `kStress` |
+| Public API | `cpu::gpw::GpwDft` (`plus_u`, `n_alpha`/`n_beta`) bound by `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd`; Frame `kStress` |
 | Roadmap | [`docs/roadmap/dft.md`](../../roadmap/dft.md) — DFT+U analytic stress (`reg_gpw-dftu-stress`) ✓ |
 
 ## Summary
@@ -146,17 +145,18 @@ const cpu::gpw::Kind O{
     cpu::gpw::GaussianBasis(molrs::Element::O, "SZV-GTH-PADE"),
     cpu::gpw::GthPotential(molrs::Element::O, "GTH-PADE-q6")};
 
-cpu::gpw::GPWEvaluator eval({Ni, O});
-eval.cutoff_ry = 250.0;
-eval.max_iter = 300;
-eval.tol = 1e-5;
-eval.mix = 0.35;
-eval.xc = cpu::gpw::XcKind::PADE;
-eval.nonperiodic = true;
-eval.n_alpha = 13;  // multiplicity 3, 24 valence e⁻
-eval.n_beta = 11;
-eval.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_minus_j_ev=*/6.0});
-eval.compute_forces = false;
+cpu::gpw::GpwDft dft{{Ni, O}};
+dft.cutoff_ry = 250.0;
+dft.max_iter = 300;
+dft.tol = 1e-5;
+dft.mix = 0.35;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.nonperiodic = true;
+dft.n_alpha = 13;  // multiplicity 3, 24 valence e⁻
+dft.n_beta = 11;
+dft.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_minus_j_ev=*/6.0});
+
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 eval.compute_stress = true;
 eval.stress_use_fd = false;   // product analytic fixed-P
 eval.stress_strain_h = 2e-3;
@@ -176,10 +176,9 @@ const auto& s_ha  = eval.last_stress_ha_bohr3();         // Voigt [Ha/Bohr³]
 Dual-gate oracle (regression only; multi-SCF, not product hot path):
 
 ```cpp
-// After method.build(atoms) with the same plus_u / UKS members:
+// Same geometry, same configured method (plus_u / UKS members):
 const auto sfd = cpu::gpw::gpw_stress_fd(
-    atoms, method, /*h=*/2e-3, /*axes*/ {true, true, true},
-    /*warm C*/ &eval.last_result().C);
+    frame, eval.method(), /*h=*/2e-3, /*axes*/ {true, true, true});
 // Assert max |s_ha[a] - sfd[a]| for a = xx,yy,zz
 ```
 
@@ -197,26 +196,26 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-dftu-stress
-  ./build/regressions/reg_gpw-dftu-stress
+  reg_gpw-dftu-stress
 '
 ```
 
 | Piece | Path |
 | ----- | ---- |
-| Public `PlusU` / `gpw_stress` / `gpw_stress_fd` | `include/atomiverse/cpu/gpw/gpw_solver.h` |
-| Evaluator `plus_u`, `compute_stress`, `stress_use_fd` | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| Dudarev E/V + fixed-\(P\) \(E_U\) (internal) | `include/atomiverse/cpu/gpw/internal/dft_plus_u.h` |
+| Public `PlusU` / `gpw_stress` / `gpw_stress_fd` | `gpw_solver.h` |
+| `GpwDft::plus_u`; evaluator `compute_stress`, `stress_use_fd` | `gpw_solver.h`, `gpw_evaluator.h` |
+| Dudarev E/V + fixed-\(P\) \(E_U\) (internal) | `dft_plus_u.h` |
 | Fixed-\(P\)+Pulay stress implementation | `src/cpu/gpw/internal/gpw_stress.cpp` |
-| Energy foothold regression | `regressions/gpw/gpw-dftu-nio/` |
-| Stress product gate | `regressions/gpw/gpw-dftu-stress/reg_gpw-dftu-stress.cpp` |
-| Offline pins | `regressions/gpw/gpw-dftu-stress/REFERENCE.md` |
-| CP2K NUMERICAL twin input | `tools/cp2k_oracle/inputs/gpw-dftu-stress/nio_mol_pade_u_stress_num.inp` |
-| CP2K ENERGY twin (soft) | `tools/cp2k_oracle/inputs/gpw-dftu-nio/nio_mol_pade_u.inp` |
+| Energy foothold regression | `gpw-dftu-nio` |
+| Stress product gate | `reg_gpw-dftu-stress.cpp` |
+| Offline pins | case `gpw-dftu-stress` pin |
+| CP2K NUMERICAL twin input | CP2K oracle |
+| CP2K ENERGY twin (soft) | CP2K oracle |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/gpw-dftu-stress/REFERENCE.md`](../../../regressions/gpw/gpw-dftu-stress/REFERENCE.md).
+case `gpw-dftu-stress` pin.
 Oracle: offline **CP2K 2026.1** Quickstep; **never** live in ctest. Pin date
 **2026-07-26** (first green). Decisive product gate is **analytic vs multi-SCF
 FD**; energy soft twin reuses `gpw-dftu-nio`.
@@ -268,7 +267,7 @@ on pin host 2026-07-26). Twin input ready for operator re-run:
 export LD_LIBRARY_PATH=$CP2K_ROOT/lib:$LD_LIBRARY_PATH
 export CP2K_DATA_DIR=$CP2K_ROOT/share/cp2k/data
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_SET,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/gpw-dftu-stress/nio_mol_pade_u_stress_num.inp
+# copy <CP2K oracle input for this case>
 OMP_NUM_THREADS=8 cp2k.psmp -i nio_mol_pade_u_stress_num.inp -o nio_stress.out
 ```
 
@@ -277,8 +276,8 @@ Bar → Ha/Bohr³ (CP2K internal table):
 
 ## Performance
 
-Source: `regressions/gpw/gpw-dftu-stress/REFERENCE.md` (2026-07-26). Handoff:
-the case `REFERENCE.md`
+Source: case `gpw-dftu-stress` pin (2026-07-26). Handoff:
+the case pin notes
 — ratio **`perf_exempt`**.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -315,15 +314,15 @@ fair ENERGY_FORCE / NUMERICAL twin on the same host and replace this section
 ## References
 
 - Offline pin + dual-gate walls:
-  [`regressions/gpw/gpw-dftu-stress/REFERENCE.md`](../../../regressions/gpw/gpw-dftu-stress/REFERENCE.md)
+  case `gpw-dftu-stress` pin
 - Regression consumer:
-  [`reg_gpw-dftu-stress.cpp`](../../../regressions/gpw/gpw-dftu-stress/reg_gpw-dftu-stress.cpp)
+  `reg_gpw-dftu-stress.cpp`
 - CP2K NUMERICAL twin:
-  [`tools/cp2k_oracle/inputs/gpw-dftu-stress/`](../../../tools/cp2k_oracle/inputs/gpw-dftu-stress/)
+  CP2K oracle
 - Energy twin / digits:
-  [`regressions/gpw/gpw-dftu-nio/REFERENCE.md`](../../../regressions/gpw/gpw-dftu-nio/REFERENCE.md)
+  case `gpw-dftu-nio` pin
 - Oracle contract:
-  [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+  CP2K oracle
 - Spec history (closed, deleted at done): `.claude/specs/gpw-dftu-stress/`
   (git log under `wf/gpw-dftu-stress` / merge into `dev`)
 - Related tutorials: [gpw-dftu-nio](gpw-dftu-nio.md),

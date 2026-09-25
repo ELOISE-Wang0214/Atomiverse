@@ -16,13 +16,13 @@ When \(C^\alpha \approx C^\beta\), **multi-k URPA ≡ multi-k RKS dRPA** —
 dual-gated against the `periodic-rpa-kpoints` first-green \(E_c\).
 
 ```cpp
-cpu::gpw::GpwDft m;
+cpu::gpw::GpwDft m{{si_kind}};
 m.n_alpha = 8; m.n_beta = 8;
 m.k_mesh[0] = 2; m.k_mesh[1] = 1; m.k_mesh[2] = 1;
 m.k_time_reversal = false;
 m.mp2_ri = true; m.mp2_n_virt = 2;
-// build(); run(atoms);
-const cpu::gpw::RpaResult& r = m.direct_rpa(atoms);  // multi-k URPA, no throw
+// build(frame); run(frame);  // frame: Å positions, Z, box
+const cpu::gpw::RpaResult& r = m.direct_rpa();  // multi-k URPA, no throw
 ```
 
 Kernel unit: \(N_k=1\) UHF α=β recovers real closed-shell / Γ URPA plasmon

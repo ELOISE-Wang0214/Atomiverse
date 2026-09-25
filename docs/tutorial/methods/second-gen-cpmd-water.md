@@ -5,12 +5,11 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `second-gen-cpmd-water` |
-| Regression | `regressions/dynamics/second-gen-cpmd-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{…}, aspc_k, corrector_max_iter}` bound with `set_evaluator_ref`; ASPC primitive `cpu::electronic::ASPCPredictor` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{cpu::gpw::GpwDft{…}}, aspc_k, corrector_max_iter}` bound with `set_evaluator_ref`; ASPC primitive `cpu::electronic::ASPCPredictor` |
 | Roadmap | MD roadmap second-generation CP |
 | Dual gate | Correctness envelope + method-identity (partial SCF); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — harness wave 1 **done** (merged 2026-07-25) |
-| Oracle | **CP2K** offline sketch (`tools/cp2k_oracle/inputs/second_gen_cpmd_water_nve.inp`); literature envelope on pin host |
+| Oracle | **CP2K** offline sketch (CP2K oracle); literature envelope on pin host |
 
 ## Summary
 
@@ -104,7 +103,7 @@ Soft \(\delta\) vs BOMD’s 0.05 reflects partial-SCF heat on a short trajectory
 
 **CP2K twin surface (offline only).** Quickstep GPW with
 `EXTRAPOLATION ASPC`, limited `MAX_SCF`, PBE / MOLOPT / GTH / MT — sketch at
-`tools/cp2k_oracle/inputs/second_gen_cpmd_water_nve.inp`. Never executed from
+CP2K oracle. Never executed from
 ctest.
 
 **Excluded.** Classical fictitious-mass CPMD; Niklasson XL-BOMD; full BOMD
@@ -115,12 +114,12 @@ ctest.
 ## Implementation
 
 Public surface only: `cpu::Frame`, `cpu::gpw::Kind` / lookup constructors,
-`GPWEvaluator` constructor args + members, MD preset, explicit force-phase
-binding. Headers: `include/atomiverse/cpu/dynamics/md.h`,
-`velocity_verlet.h`, `include/atomiverse/cpu/gpw/gpw_evaluator.h`,
+`cpu::gpw::GpwDft` members bound through `GPWEvaluator`, MD preset, explicit force-phase
+binding. Headers: `md.h`,
+`velocity_verlet.h`, `gpw_evaluator.h`,
 `gaussian_basis.h`, `gth_potential.h`,
-`include/atomiverse/cpu/electronic/second_gen_cp.h`,
-`include/atomiverse/cpu/electronic/aspc_predictor.h`.
+`second_gen_cp.h`,
+`aspc_predictor.h`.
 Unit gates: `tests/cpu/gpw/test_gpw_second_gen_cpmd.cpp`.
 
 ```cpp
@@ -150,10 +149,14 @@ const cpu::gpw::Kind H{
 
 constexpr double dt = 0.5; // fs
 constexpr int corrector_budget = 5;
-cpu::gpw::GPWEvaluator gpw(
-    /*kinds*/ {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 60;
+dft.tol = 1e-5;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = true;
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // Second-generation CP is a wrapper TYPE around the pure evaluator: the ASPC
 // order K (K+1 seed densities) and the corrector budget are constructor
 // arguments, and the mode bits they set are private on GPWEvaluator.
@@ -210,11 +213,11 @@ bash -lc '
 ## Validation (CP2K)
 
 Source:
-[`regressions/dynamics/second-gen-cpmd-water/REFERENCE.md`](../../../regressions/dynamics/second-gen-cpmd-water/REFERENCE.md)
+case `second-gen-cpmd-water` pin
 (offline pin; **never** live CP2K in ctest). Oracle tooling:
-[`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md). Twin
+CP2K oracle. Twin
 input (when a binary is available):
-`tools/cp2k_oracle/inputs/second_gen_cpmd_water_nve.inp`
+CP2K oracle
 (`EXTRAPOLATION ASPC`, limited `MAX_SCF`, PBE / MOLOPT / GTH / MT).
 
 ### Offline CP2K status
@@ -222,7 +225,7 @@ input (when a binary is available):
 | Field | Value |
 | ----- | ----- |
 | CP2K binary on pin host | **unavailable** (no `cp2k` / Lmod module on Arrhenius login-class inventory 2026-07-25; same as `cpmd-water` / `xl-bomd-water`) |
-| Twin design (when available) | Short NVE Quickstep GPW SGCP on the same H₂O cell; re-run offline via `tools/cp2k_oracle/`; record version + `.ener` drift + fair wall |
+| Twin design (when available) | Short NVE Quickstep GPW SGCP on the same H₂O cell; re-run offline via CP2K oracle; record version + `.ener` drift + fair wall |
 | Current pin basis | Literature SGCP method identity (ASPC + partial SCF) + NVE energy envelope + trajectory diagnostics |
 | Related absolute force twin | `gpw-forces-water` vs **CP2K 2026.1** (ENERGY_FORCE, not multi-step SGCP) |
 
@@ -252,8 +255,8 @@ Related unit surface (not the e2e pin):
 ## Performance
 
 Source: REFERENCE.md dual-gate summary; queue/handoff
-``,
-``.
+`,
+`.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -292,16 +295,16 @@ ratio **3.56**, within_10×) — not this multi-step SGCP twin.
 
 ## References
 
-- Offline pin: [`regressions/dynamics/second-gen-cpmd-water/REFERENCE.md`](../../../regressions/dynamics/second-gen-cpmd-water/REFERENCE.md)
-- Regression source: [`regressions/dynamics/second-gen-cpmd-water/reg_second-gen-cpmd-water.cpp`](../../../regressions/dynamics/second-gen-cpmd-water/reg_second-gen-cpmd-water.cpp)
+- Offline pin: case `second-gen-cpmd-water` pin
+- Regression source: `reg_second-gen-cpmd-water.cpp`
 - Unit gates: `tests/cpu/gpw/test_gpw_second_gen_cpmd.cpp`
-- Suggested CP2K input: `tools/cp2k_oracle/inputs/second_gen_cpmd_water_nve.inp`
-- ASPC primitive: `include/atomiverse/cpu/electronic/aspc_predictor.h`
-- SGCP wrapper: `include/atomiverse/cpu/electronic/second_gen_cp.h`
+- Suggested CP2K input: CP2K oracle
+- ASPC primitive: `aspc_predictor.h`
+- SGCP wrapper: `second_gen_cp.h`
 - Sibling AIMD pages: [gpw-bomd-water](gpw-bomd-water.md),
   [xl-bomd-water](xl-bomd-water.md), [cpmd-water](cpmd-water.md)
 - Roadmap: [`docs/roadmap/molecular-dynamics.md`](../../roadmap/molecular-dynamics.md) §AIMD
-- Oracle: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Oracle: CP2K oracle
 - T. D. Kühne, M. Krack, F. R. Mohamed, M. Parrinello, *Phys. Rev. Lett.*
   **98**, 066401 (2007) — second-generation CP
 - J. Kolafa, *J. Comput. Chem.* **25**, 335 (2004) — ASPC

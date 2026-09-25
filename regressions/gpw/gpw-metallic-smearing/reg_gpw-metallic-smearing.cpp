@@ -9,14 +9,14 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
-
-constexpr double kA2B = 1.0 / 0.52917720859; // Å → Bohr
 
 int g_fail = 0;
 
@@ -30,18 +30,24 @@ void check(bool ok, const char* what) {
 }
 
 /// BCC conventional cubic: 2 Na at (0,0,0) and (½,½,½).
-std::vector<ATV::cpu::gpw::GpwAtom> na_bcc(double a_bohr) {
-    using namespace ATV;
-    const cpu::gpw::GaussianBasis bNa(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH");
-    const cpu::gpw::GthPotential pNa(molrs::Element::Na, "GTH-PBE-q9");
+ATV::cpu::Frame na_bcc(double a_ang) {
     const double frac[2][3] = {{0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}};
-    std::vector<cpu::gpw::GpwAtom> atoms;
+    ATV::cpu::Frame frame(2);
     for (int i = 0; i < 2; ++i) {
-        const double pos[3] = {frac[i][0] * a_bohr, frac[i][1] * a_bohr,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bNa, pNa, 11);
+        frame.span(ATV::kAtom_type)[i] = 11;
+        frame.span(ATV::kAtom_x)[i] = frac[i][0] * a_ang;
+        frame.span(ATV::kAtom_y)[i] = frac[i][1] * a_ang;
+        frame.span(ATV::kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = ATV::cpu::Box::cubic(a_ang);
+    return frame;
+}
+
+std::vector<ATV::cpu::gpw::Kind> na_kinds() {
+    using namespace ATV::cpu::gpw;
+    return {Kind{molrs::Element::Na,
+                 GaussianBasis(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH"),
+                 GthPotential(molrs::Element::Na, "GTH-PBE-q9")}};
 }
 
 } // namespace
@@ -57,13 +63,11 @@ int main() {
     const double f_tol_ha = 1e-4;             // Ha
     const double ne_tol = 1e-5;
     const double a_ang = 4.225;
-    const double a = a_ang * kA2B;
     const double n_elec = 18.0; // 2 × GTH-PBE-q9
 
-    auto atoms = na_bcc(a);
+    auto frame = na_bcc(a_ang);
 
-    GpwDft m;
-    m.cell[0] = m.cell[1] = m.cell[2] = a;
+    GpwDft m{na_kinds()};
     m.cutoff_ry = 150.0;
     m.n_occ = 9; // Ne/2
     m.max_iter = 80;
@@ -78,10 +82,10 @@ int main() {
     m.degauss = 0.02; // Ry
     m.extra_bands = 4;
 
-    m.build(atoms);
+    m.build(frame);
 
     const auto t0 = std::chrono::steady_clock::now();
-    const auto& r = m.run(atoms);
+    const auto& r = m.run(frame);
     const auto t1 = std::chrono::steady_clock::now();
     const double wall_s = std::chrono::duration<double>(t1 - t0).count();
 

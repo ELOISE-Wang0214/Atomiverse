@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-forces-water` |
-| Regression | `regressions/gpw/gpw-forces-water/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`compute_forces = true`); `cpu::Evaluate` |
+| Public API | `cpu::gpw::GpwDft` bound by `cpu::gpw::GPWEvaluator` (`compute_forces = true`); `cpu::Evaluate` |
 | Related narrative | [Ch. 9 GPW](../ch09-gpw.md) |
 | Queue | CP2K capability loop — wave 1 done |
 
@@ -20,9 +19,9 @@ uniform real-space grid (cutoff 400 Ry); electrostatics use
 Martyna–Tuckerman isolated Poisson (`nonperiodic = true`). Forces are
 Hellmann–Feynman + Pulay + grid/core terms written to
 `frame.span(kAtom_f*)` in eV/Å after one SCF + gradient. Public surface:
-`cpu::gpw::GPWEvaluator` constructor args / members (no `*Config` bag) bound
-into `cpu::Evaluate`. Product gate:
-`regressions/gpw/gpw-forces-water` (`reg_gpw-forces-water`), offline CP2K
+`cpu::gpw::GpwDft` members (no `*Config` bag), bound by
+`cpu::gpw::GPWEvaluator` into `cpu::Evaluate`. Product gate:
+`gpw-forces-water` (`reg_gpw-forces-water`), offline CP2K
 **2026.1** pin. Fair wall ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} = 3.56\) (≤10×).
 
@@ -33,7 +32,7 @@ into `cpu::Evaluate`. Product gate:
 \(\rho\) onto a multigrid; FFT Poisson + grid XC; integrate potentials back
 to the AO KS matrix; diagonalize / mix until residual \(\le\) `tol`.
 
-**Ionic forces** (analytic product path, `gpw_forces_analytic`):
+**Ionic forces** (analytic product path, `GpwDft::forces`):
 
 \[
 \mathbf{F}_A = -\frac{\partial E}{\partial \mathbf{R}_A}
@@ -89,7 +88,7 @@ order 0.53 Ha/Bohr; the product path keeps both sides on grid PP
 ## Implementation
 
 Public surface only (`cpu::Frame`, `cpu::gpw::Kind` / lookup constructors,
-`GPWEvaluator` members; no public `*Config`, no `make_*` factories):
+`GpwDft` members + `GPWEvaluator`; no public `*Config`, no `make_*` factories):
 
 ```cpp
 #include "atomiverse/core/frame_schema.h"
@@ -99,6 +98,7 @@ Public surface only (`cpu::Frame`, `cpu::gpw::Kind` / lookup constructors,
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
+#include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 
 using namespace ATV;
@@ -127,10 +127,10 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-cpu::gpw::GPWEvaluator eval(
-    /*kinds*/ {O, H}, /*cutoff_ry*/ 400.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 400.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;  dft.nonperiodic = true;
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/true);
 
 cpu::Evaluate driver;
 driver.on(evaluate::Phase::evaluate).add_ref(eval);
@@ -154,25 +154,25 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-forces-water -j$(nproc)
-  ./build/regressions/reg_gpw-forces-water
+  reg_gpw-forces-water
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | Public `GPWEvaluator` / `Kind` |
-| `include/atomiverse/cpu/gpw/gaussian_basis.h` | MOLOPT lookup constructor |
-| `include/atomiverse/cpu/gpw/gth_potential.h` | GTH-PBE lookup constructor |
+| `gpw_evaluator.h` | Public `GPWEvaluator` (binds `GpwDft` / `Kind` from `gpw_solver.h`) |
+| `gaussian_basis.h` | MOLOPT lookup constructor |
+| `gth_potential.h` | GTH-PBE lookup constructor |
 | `src/cpu/gpw/internal/` | Private SCF + analytic force kernels |
-| `regressions/gpw/gpw-forces-water/reg_gpw-forces-water.cpp` | Product gate |
-| `regressions/gpw/gpw-forces-water/REFERENCE.md` | Offline CP2K pins + fair wall |
-| `tools/cp2k_oracle/inputs/h2o_forces_mt.inp` | CP2K twin input |
+| `reg_gpw-forces-water.cpp` | Product gate |
+| case `gpw-forces-water` pin | Offline CP2K pins + fair wall |
+| CP2K oracle | CP2K twin input |
 | `tests/cpu/gpw/test_cpu_gpw_forces.cpp` | Unit analytic-vs-FD (not CP2K e2e) |
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/gpw/gpw-forces-water/REFERENCE.md`](../../../regressions/gpw/gpw-forces-water/REFERENCE.md).
+case `gpw-forces-water` pin.
 Oracle: offline **CP2K 2026.1** (`cp2k.psmp`, EasyBuild
 `2026.1-gmpflf-2026.03`), Arrhenius epyc, `RUN_TYPE ENERGY_FORCE`. Hard-coded
 pins in the regression binary — **never** live CP2K from ctest.
@@ -183,9 +183,9 @@ pins in the regression binary — **never** live CP2K from ctest.
 | ---- | ----- |
 | Engine | CP2K 2026.1 Quickstep GPW |
 | Host | Arrhenius epyc (offline oracle) |
-| Twin input | `tools/cp2k_oracle/inputs/h2o_forces_mt.inp` |
+| Twin input | CP2K oracle |
 | Threads (pin wall) | `mpirun -n 1`, `OMP_NUM_THREADS=4` |
-| Atomiverse path | `GPWEvaluator` + `Evaluate`, `compute_forces=true`, product MT + PBE |
+| Atomiverse path | `GpwDft` in `GPWEvaluator` + `Evaluate`, `compute_forces=true`, product MT + PBE |
 
 **Offline CP2K FORCE_EVAL pins:**
 
@@ -216,10 +216,10 @@ scale.
 
 ## Performance
 
-Source: `REFERENCE.md` fair wall on Arrhenius epyc login (same host class as
+Source: pin notes fair wall on Arrhenius epyc login (same host class as
 pin), 4 OMP threads, `OMP_PROC_BIND=close`, single rank.
 
-- **ATV:** `./build/regressions/reg_gpw-forces-water` (one Evaluate pass with
+- **ATV:** `reg_gpw-forces-water` (one Evaluate pass with
   analytic forces).
 - **CP2K:** `mpirun -n 1 cp2k.psmp -i h2o_forces_mt.inp` (`ENERGY_FORCE`).
 
@@ -249,9 +249,9 @@ Handoff / queue record the same ratio **3.56** for wave-1 merge.
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-forces-water/REFERENCE.md`
-- Twin input: `tools/cp2k_oracle/inputs/h2o_forces_mt.inp`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-forces-water` pin
+- Twin input: CP2K oracle
+- Oracle notes: CP2K oracle
 - Narrative GPW: `docs/tutorial/ch09-gpw.md`
 - Spec history (closed, deleted at done): git `wf/gpw-forces-water` /
   commit `94e64ea9` (`.claude/specs/gpw-forces-water/spec.md`)

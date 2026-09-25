@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `constant-force-pull-ion` |
-| Regression | `regressions/md/constant-force-pull-ion/` |
 | Public API | `cpu::md::FixAddForce` (`Bias` Component; default `md::Phase::post_force`) |
 | Roadmap | `docs/roadmap/molecular-dynamics.md` → FixAddForce |
 | Oracle | **LAMMPS** `fix addforce` (metal units) |
@@ -152,25 +151,25 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_constant-force-pull-ion -j"$(nproc)"
-  ./build/regressions/reg_constant-force-pull-ion
+  reg_constant-force-pull-ion
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/fix_addforce.h` | Public `FixAddForce` |
+| `fix_addforce.h` | Public `FixAddForce` |
 | `src/cpu/dynamics/fix_addforce.cpp` | `launch` (constant path + bias energy) |
-| `regressions/md/constant-force-pull-ion/reg_constant-force-pull-ion.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/lammps/constant-force-pull-ion/in.addforce_pin` | Offline twin input |
+| `reg_constant-force-pull-ion.cpp` | Product gate |
+| MetalWalls oracle | Offline twin input |
 
 ## Validation (vs LAMMPS)
 
 Source:
-[`regressions/md/constant-force-pull-ion/REFERENCE.md`](../../../regressions/md/constant-force-pull-ion/REFERENCE.md)
+case `constant-force-pull-ion` pin
 (offline pin; **never** live LAMMPS in ctest). Oracle tooling notes:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
+MetalWalls oracle.
 Twin input:
-[`tools/metalwalls_oracle/inputs/lammps/constant-force-pull-ion/in.addforce_pin`](../../../tools/metalwalls_oracle/inputs/lammps/constant-force-pull-ion/in.addforce_pin).
+MetalWalls oracle.
 
 **Oracle:** LAMMPS **30 Mar 2026 - Development** (`develop` /
 `patch_30Mar2026-1074-g7f680de296`), metal units, `fix addforce 0 0 0.05` on
@@ -213,14 +212,14 @@ Geometry, parameters, and tolerances: **Method** table and REFERENCE (match
 
 ```bash
 # Requires a local LAMMPS binary with fix addforce (standard package)
-lmp -in tools/metalwalls_oracle/inputs/lammps/constant-force-pull-ion/in.addforce_pin
+lmp -in <LAMMPS oracle input for this case>
 # U / F / z / work pins recorded in REFERENCE.md (2026-07-24)
 ```
 
 ## Performance
 
 Source: REFERENCE.md; handoff
-the case `REFERENCE.md`;
+the case pin notes;
 Comparable pure-addforce workload (pair zero / inert, NVE, addforce on one
 type; OMP=1; same login node, 2026-07-24):
 
@@ -253,9 +252,7 @@ recorded in REFERENCE / handoff / queue for this slug.
 
 ## References
 
-- Offline pin: [`regressions/md/constant-force-pull-ion/REFERENCE.md`](../../../regressions/md/constant-force-pull-ion/REFERENCE.md)
-- Product gate: [`regressions/md/constant-force-pull-ion/reg_constant-force-pull-ion.cpp`](../../../regressions/md/constant-force-pull-ion/reg_constant-force-pull-ion.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/fix_addforce.h`](../../../include/atomiverse/cpu/dynamics/fix_addforce.h)
+- Offline pin: case `constant-force-pull-ion` pin
 - Roadmap: [`docs/roadmap/molecular-dynamics.md`](../../roadmap/molecular-dynamics.md) (`FixAddForce` / constant-force pull)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md), twin [`tools/metalwalls_oracle/inputs/lammps/constant-force-pull-ion/in.addforce_pin`](../../../tools/metalwalls_oracle/inputs/lammps/constant-force-pull-ion/in.addforce_pin)
+- Oracle notes: MetalWalls oracle, twin MetalWalls oracle
 - LAMMPS: <https://docs.lammps.org/fix_addforce.html>; source `src/fix_addforce.cpp` (constant force path)

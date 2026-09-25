@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ugw-uks-rpbe` |
-| Regression | `regressions/gpw/ugw-uks-rpbe/` |
-| Public API | `cpu::gpw::GpwDft` (`n_alpha`/`n_beta`, `XcKind::RPBE`, `g0w0(atoms)` → `G0W0Result`) |
+| Public API | `cpu::gpw::GpwDft` (`n_alpha`/`n_beta`, `XcKind::RPBE`, `g0w0()` → `G0W0Result`) |
 | Roadmap | `docs/roadmap/dft.md` — UGW@UKS with RPBE spin XC |
 
 ## Summary
@@ -20,14 +19,15 @@ is the product gate that RPBE is active on the UGW path (not only on the
 UKS SCF), dual-gated against closed-shell spectral G0W0@RPBE when
 \(n_\alpha=n_\beta\).
 
-Public path: construct `cpu::gpw::GpwDft`, set members (`cell`, `cutoff_ry`,
-`xc = XcKind::RPBE`, `n_alpha`/`n_beta`, …), `build(atoms)`, `run(atoms)`,
-then `g0w0(atoms)`. Quasiparticle gap on `G0W0Result::gap_ev` is **eV**
+Public path: construct `cpu::gpw::GpwDft` with one `Kind` per element, set
+members (`cutoff_ry`, `xc = XcKind::RPBE`, `n_alpha`/`n_beta`, …), then
+`build(frame)`, `run(frame)` (positions [Å], Z in `kAtom_type`, box [Å]),
+then `g0w0()`. Quasiparticle gap on `G0W0Result::gap_ev` is **eV**
 (α channel primary report). Product gate: `reg_ugw-uks-rpbe`. Fair wall vs
 CP2K: **`perf_exempt`** (CP2K RI-G0W0 ≠ spectral MT algorithm).
 
-Related: UGW@UKS-PBE twin `regressions/gpw/periodic-ugw-si`; Γ-UKS RPBE
-SCF without GW `regressions/gpw/gpw-uks-rpbe`; closed-shell G0W0
+Related: UGW@UKS-PBE twin `periodic-ugw-si`; Γ-UKS RPBE
+SCF without GW `gpw-uks-rpbe`; closed-shell G0W0
 `periodic-gw-si`. Narrative GPW: [Ch. 9](../ch09-gpw.md). Molecular
 all-electron G0W0 is a separate PySCF-loop concern (`g0w0-h2-sto3g`) —
 not this page.
@@ -91,32 +91,35 @@ small-gap artificial cell; eigenvalues used in denominators are unshifted.
 
 ## Implementation
 
-Public surface only (`GpwAtom` + `GpwDft` members; **no** `*Config` bag,
+Public surface only (`cpu::Frame` + `GpwDft` members; **no** `*Config` bag,
 **no** `make_*` / `build_*` factories):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/g0w0.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
-constexpr double kA2B = 1.8897259885789;
-const double a_bohr = 5.43 * kA2B;
+constexpr double a = 5.43; // Å
 
-// sc-Si₂: Si at (0,0,0) and (a/4,a/4,a/4) in Bohr
-const GaussianBasis bas(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-const GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
-const double pos0[3] = {0.0, 0.0, 0.0};
-const double pos1[3] = {a_bohr / 4.0, a_bohr / 4.0, a_bohr / 4.0};
-std::vector<GpwAtom> atoms;
-atoms.emplace_back(pos0, bas, pot, 14);
-atoms.emplace_back(pos1, bas, pot, 14);
+// sc-Si₂: Si at (0,0,0) and (a/4,a/4,a/4) [Å]
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 14;
+    frame.span(kAtom_x)[i] = frame.span(kAtom_y)[i] =
+        frame.span(kAtom_z)[i] = i * a / 4.0;
+}
+frame.box = cpu::Box::cubic(a);
 
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = a_bohr;
+GpwDft m{{Kind{molrs::Element::Si,
+               GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+               GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 30.0;
 m.max_iter = 80;
 m.tol = 1e-6;
@@ -126,11 +129,11 @@ m.xc = XcKind::RPBE;          // Hammer RPBE + PBE c (not revPBE)
 m.n_alpha = 4;
 m.n_beta = 4;                 // UKS with closed-shell occupations
 m.mp2_ri = true;              // product RI-GPW tensors for dRPA / G0W0
-m.build(atoms);
-const GpwResult& scf = m.run(atoms);
+m.build(frame);
+const GpwResult& scf = m.run(frame);
 
 m.mp2_n_virt = 0;             // 0 = all kept virtuals per spin
-const G0W0Result& gw = m.g0w0(atoms);
+const G0W0Result& gw = m.g0w0();
 // gw.gap_ev [eV]     α HOMO→LUMO QP gap
 // gw.mf_gap_ev [eV]  KS gap (diagnostic)
 // gw.qp_energy_ha    α QP spectrum [Ha]
@@ -154,7 +157,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_ugw-uks-rpbe
-  ./build/regressions/reg_ugw-uks-rpbe
+  reg_ugw-uks-rpbe
   # or: cmake --build build --target run_reg_ugw-uks-rpbe
 '
 ```
@@ -163,17 +166,16 @@ Relevant sources:
 
 | Piece | Path |
 | ----- | ---- |
-| Result type | `include/atomiverse/cpu/gpw/g0w0.h` |
-| Method (`GpwDft::g0w0`) | `include/atomiverse/cpu/gpw/gpw_solver.h`, `src/cpu/gpw/` |
-| RPBE spin XC | `include/atomiverse/cpu/gpw/internal/xc_grid_gga.h` (`xc_grid_rpbe_spin`) |
+| Result type | `g0w0.h` |
+| Method (`GpwDft::g0w0`) | `gpw_solver.h`, `src/cpu/gpw/` |
+| RPBE spin XC | `xc_grid_gga.h` (`xc_grid_rpbe_spin`) |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_g0w0.cpp` |
-| Regression | `regressions/gpw/ugw-uks-rpbe/reg_ugw-uks-rpbe.cpp` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/ugw-uks-rpbe.inp` |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (CP2K)
 
-Source: `regressions/gpw/ugw-uks-rpbe/REFERENCE.md` (offline pin; **never**
-live CP2K in ctest). Oracle contract: `tools/cp2k_oracle/README.md`.
+Source: case `ugw-uks-rpbe` pin (offline pin; **never**
+live CP2K in ctest). Oracle contract: CP2K oracle.
 CP2K twin input ships for operator re-pin only; Atomiverse gates are
 **internal + dual-gate**, not absolute CP2K QP digits (algorithm mismatch:
 frequency-integrated RI-G0W0 vs spectral UGW + MT exchange).
@@ -219,7 +221,7 @@ Offline re-run (operator only; not ctest):
 module load buildtool-easybuild/5.2.1-hpca3ef7d197 GCC/14.3.0 MPICH/4.3.2 CP2K/2026.1
 export CP2K_DATA_DIR=$EBROOTCP2K/share/cp2k/data
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_MOLOPT,BASIS_RI_MOLOPT,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/ugw-uks-rpbe.inp
+# copy <CP2K oracle input for this case>
 mpirun -np 1 cp2k.psmp -i ugw-uks-rpbe.inp -o ugw-uks-rpbe.out
 ```
 
@@ -228,7 +230,7 @@ the dual-gate band with uncited RI-GW digits.
 
 ## Performance
 
-Source: same `REFERENCE.md` / handoff (the case `REFERENCE.md`).
+Source: same pin notes / handoff (the case pin notes).
 **Not** a ctest gate.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
@@ -255,14 +257,14 @@ CP2K from ctest.
 
 ## References
 
-- Offline pin: [`regressions/gpw/ugw-uks-rpbe/REFERENCE.md`](../../../regressions/gpw/ugw-uks-rpbe/REFERENCE.md)
-- Regression consumer: [`reg_ugw-uks-rpbe.cpp`](../../../regressions/gpw/ugw-uks-rpbe/reg_ugw-uks-rpbe.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/ugw-uks-rpbe.inp`](../../../tools/cp2k_oracle/inputs/ugw-uks-rpbe.inp)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
-- PBE UGW twin: [`regressions/gpw/periodic-ugw-si/REFERENCE.md`](../../../regressions/gpw/periodic-ugw-si/REFERENCE.md)
+- Offline pin: case `ugw-uks-rpbe` pin
+- Regression consumer: `reg_ugw-uks-rpbe.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
+- PBE UGW twin: case `periodic-ugw-si` pin
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md)
-- Public headers: `include/atomiverse/cpu/gpw/g0w0.h`, `gpw_solver.h`
+- Public headers: `g0w0.h`, `gpw_solver.h`
 - G. Lippert, J. Hutter, M. Parrinello, *Mol. Phys.* **92**, 477 (1997) — GPW
 - B. Hammer, L. B. Hansen, J. K. Nørskov, *Phys. Rev. B* **59**, 7413 (1999) — RPBE
 - M. S. Hybertsen, S. G. Louie, *Phys. Rev. B* **34**, 5390 (1986) — G0W0

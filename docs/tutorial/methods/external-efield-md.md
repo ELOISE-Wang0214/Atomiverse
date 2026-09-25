@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `external-efield-md` |
-| Regression | `regressions/md/external-efield-md/` |
 | Public API | `cpu::md::FixEfield{Ex, Ey, Ez}` (`Bias` kind); `cpu::Evaluate` or default `md::Phase::post_force` on `cpu::md::MD` |
 | Queue / map | **E3**; map slice E3 in `.claude/notes/metalwalls-capability-map.md` |
 | Dual gate | Force + energy vs offline LAMMPS pin; fair wall \(r \le 10\) |
@@ -24,7 +23,7 @@ be registered on `cpu::Evaluate` for a single-point force/energy check.
 This is the **E3 constant-field foothold** for electrochemical MD (finite-field
 electrode work builds on it). The regression is **not** a self-golden of
 Atomiverse output: offline pins come from LAMMPS `fix efield` on
-`pair_style zero`. Product gate: `regressions/md/external-efield-md`
+`pair_style zero`. Product gate: `external-efield-md`
 (`reg_external-efield-md`). Fair wall
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{LAMMPS}} = 0.60\) (≤10×).
 
@@ -82,8 +81,8 @@ fields; finite-field single-electrode product (queue slug
 
 Public surface only: `cpu::Frame` charges + positions + (optional) image flags;
 `cpu::md::FixEfield(Ex, Ey, Ez)` with public members `Ex`/`Ey`/`Ez` [V/Å].
-Headers: `include/atomiverse/cpu/dynamics/fix_efield.h`,
-`include/atomiverse/cpu/evaluate/evaluate.h`. Unit gate (not e2e):
+Headers: `fix_efield.h`,
+`evaluate.h`. Unit gate (not e2e):
 `tests/cpu/dynamics/test_fix_efield.cpp`.
 
 **Single-point Evaluate (matches the regression):**
@@ -124,16 +123,16 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release \
   -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
   -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
 cmake --build build --target reg_external-efield-md -j"$(nproc)"
-./build/regressions/reg_external-efield-md
+reg_external-efield-md
 ```
 
 Relevant sources: `src/cpu/dynamics/fix_efield.cpp` (OMP force + unwrapped
 energy; accumulates into `kEnergy`). Offline twin input:
-`tools/metalwalls_oracle/inputs/lammps/in.external_efield`.
+MetalWalls oracle.
 
 ## Validation (oracle: LAMMPS)
 
-Source: `regressions/md/external-efield-md/REFERENCE.md` (offline pin; **never**
+Source: case `external-efield-md` pin (offline pin; **never**
 live LAMMPS in ctest).
 
 | Engine | Role |
@@ -144,7 +143,7 @@ live LAMMPS in ctest).
 **Oracle version:** LAMMPS 30 Mar 2026 - Development
 (`patch_30Mar2026-1074-g7f680de296`); binary recorded in REFERENCE as
 `/home/jicli594/.local/x86_64/bin/lmp`. Input:
-`tools/metalwalls_oracle/inputs/lammps/in.external_efield` (`lmp -in …`,
+MetalWalls oracle (`lmp -in …`,
 `run 0`).
 
 ### Accuracy (hard-coded pins)
@@ -196,12 +195,12 @@ step overhead against the LAMMPS twin.
 
 ## References
 
-- Offline pin + fair wall: `regressions/md/external-efield-md/REFERENCE.md`
-- Regression consumer: `regressions/md/external-efield-md/reg_external-efield-md.cpp`
-- Public API: `include/atomiverse/cpu/dynamics/fix_efield.h`
+- Offline pin + fair wall: case `external-efield-md` pin
+- Regression consumer: `reg_external-efield-md.cpp`
+- Public API: `fix_efield.h`
 - Unit tests: `tests/cpu/dynamics/test_fix_efield.cpp`
-- LAMMPS input twin: `tools/metalwalls_oracle/inputs/lammps/in.external_efield`
+- LAMMPS input twin: MetalWalls oracle
 - LAMMPS docs: <https://docs.lammps.org/fix_efield.html>
 - LAMMPS source (constant charge path): `src/fix_efield.cpp`
 - Capability map: `.claude/notes/metalwalls-capability-map.md` (E3)
-- Oracle tooling notes: `tools/metalwalls_oracle/README.md`
+- Oracle tooling notes: MetalWalls oracle

@@ -5,10 +5,9 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-rpa-kpoints` |
-| Regression | `regressions/gpw/periodic-rpa-kpoints/` |
-| Public API | `cpu::gpw::GpwDft::direct_rpa(atoms)` → `cpu::gpw::RpaResult` (`cpu/gpw/rpa.h`); members `k_mesh`, `k_time_reversal`, `mp2_ri`, `mp2_n_virt` |
+| Public API | `cpu::gpw::GpwDft::direct_rpa()` → `cpu::gpw::RpaResult` (`cpu/gpw/rpa.h`); members `k_mesh`, `k_time_reversal`, `mp2_ri`, `mp2_n_virt` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §10 Periodic RPA ✓ (multi-k k-diagonal) |
-| Oracle | CP2K offline twin `tools/cp2k_oracle/inputs/periodic-rpa-kpoints.inp` (never live in ctest) |
+| Oracle | CP2K offline twin CP2K oracle (never live in ctest) |
 
 ## Summary
 
@@ -78,27 +77,39 @@ after Γ `periodic-gw-si`); RPAX / SOSEX; CP2K-style minimax + Gaussian
 
 ## Implementation
 
-Public surface only (`GpwDft` members; `GpwAtom` + lookup constructors for
-basis/PP). Headers: `include/atomiverse/cpu/gpw/gpw_solver.h`,
+Public surface only (`GpwDft` members + a `cpu::Frame`; lookup constructors for
+basis/PP). Headers: `gpw_solver.h`,
 `rpa.h`, `gaussian_basis.h`, `gth_potential.h`. Kernels private under
 `cpu/gpw/internal/`.
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/rpa.h"
 #include "atomiverse/molrs.hpp"
 
-// Diamond Si bct 4-atom cell: a = 5.43 Å → Bohr; a_t = a/√2, c = a
-// frac: (0,0,0), (½,½,½), (½,0,¼), (0,½,¾) — same as gpw-kpoints-si
-std::vector<cpu::gpw::GpwAtom> atoms = /* build with
-    GaussianBasis(Si, "DZVP-MOLOPT-GTH"),
-    GthPotential(Si, "GTH-PBE-q4") */;
+using namespace ATV;
 
-cpu::gpw::GpwDft m;
-m.cell[0] = m.cell[1] = a_bohr / std::sqrt(2.0);
-m.cell[2] = a_bohr;
+// bct diamond Si4: a = 5.43 Å, a_t = a/√2, c = a; fractional coords
+// (0,0,0), (½,½,½), (½,0,¼), (0,½,¾); Z = 14 in kAtom_type.
+constexpr double a = 5.43;                   // [Å]
+const double at = a / std::sqrt(2.0);
+const double frac[4][3] = {{0, 0, 0}, {0.5, 0.5, 0.5}, {0.5, 0, 0.25}, {0, 0.5, 0.75}};
+cpu::Frame frame(4);
+for (int i = 0; i < 4; ++i) {
+    frame.span(kAtom_type)[i] = 14;
+    frame.span(kAtom_x)[i] = frac[i][0] * at;
+    frame.span(kAtom_y)[i] = frac[i][1] * at;
+    frame.span(kAtom_z)[i] = frac[i][2] * a;
+}
+frame.box = cpu::Box::orthorhombic(at, at, a);
+
+cpu::gpw::GpwDft m{{cpu::gpw::Kind{molrs::Element::Si,
+                                   cpu::gpw::GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+                                   cpu::gpw::GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 80.0;
 m.n_occ = 8;                 // 16 valence e⁻ / 2
 m.max_iter = 60;
@@ -114,10 +125,10 @@ m.k_mesh[0] = 2;
 m.k_mesh[1] = 1;
 m.k_mesh[2] = 1;
 m.k_time_reversal = false;   // FULL_GRID / no symmetry → 2 k, w = ½
-m.build(atoms);
-const cpu::gpw::GpwResult& scf = m.run(atoms);
+m.build(frame);
+const cpu::gpw::GpwResult& scf = m.run(frame);
 
-const cpu::gpw::RpaResult& r = m.direct_rpa(atoms);
+const cpu::gpw::RpaResult& r = m.direct_rpa();
 // r.e_corr, r.e_scf, r.e_total [Ha]; r.tr_A; r.omega_ha;
 // r.n_occ, r.n_virt, r.n_kpts, r.ri
 ```
@@ -140,19 +151,19 @@ bash -lc '
         -DATV_BUILD_HF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_periodic-rpa-kpoints
-  ./build/regressions/reg_periodic-rpa-kpoints
+  reg_periodic-rpa-kpoints
 '
 ```
 
 Source consumer:
-`regressions/gpw/periodic-rpa-kpoints/reg_periodic-rpa-kpoints.cpp`.
+`reg_periodic-rpa-kpoints.cpp`.
 Unit kernel Γ recovery (\(N_k=1\) multi-k ≡ real `direct_rpa_rhf_energy`):
 `tests/cpu/gpw/test_cpu_gpw_rpa.cpp`.
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/periodic-rpa-kpoints/REFERENCE.md`](../../../regressions/gpw/periodic-rpa-kpoints/REFERENCE.md)
+case `periodic-rpa-kpoints` pin
 (offline pin only; CP2K never launched from CMake/ctest).
 
 | Setting | Value |
@@ -166,7 +177,7 @@ Source:
 | k | **MP 2×1×1**, `k_time_reversal=false` → \(N_k=2\), \(w_k=\tfrac12\) |
 | SCF | DIIS 6, tol 1e-7, mix 0.3, **no level_shift** |
 | RPA | RI-GPW k-diagonal dRPA, **`mp2_n_virt = 2`** (e2e ≤ 60 s) |
-| Oracle input | `tools/cp2k_oracle/inputs/periodic-rpa-kpoints.inp` |
+| Oracle input | CP2K oracle |
 | Pin date | 2026-07-25 |
 
 ### Offline oracle status
@@ -207,7 +218,7 @@ covering OMP orbital scatter on the multi-k SCF; **not** a CP2K digit twin).
 
 ## Performance
 
-Source: REFERENCE + the case `REFERENCE.md` (ratio
+Source: REFERENCE + the case pin notes (ratio
 **perf_exempt**). Gate when a fair twin exists:
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \le 10\).
 
@@ -238,15 +249,15 @@ available, re-pin wall and accuracy in REFERENCE and handoff.
 
 ## References
 
-- Offline pin: `regressions/gpw/periodic-rpa-kpoints/REFERENCE.md`
-- Oracle input: `tools/cp2k_oracle/inputs/periodic-rpa-kpoints.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md`
+- Offline pin: case `periodic-rpa-kpoints` pin
+- Oracle input: CP2K oracle
+- Oracle rules: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §10 Periodic RPA ✓ (Γ + multi-k k-diagonal)
 - Γ foothold tutorial / reg: [periodic-mp2-si.md](periodic-mp2-si.md),
-  `regressions/gpw/periodic-rpa-si`
-- Multi-k MP2 peer: `regressions/gpw/periodic-mp2-kpoints`
+  `periodic-rpa-si`
+- Multi-k MP2 peer: `periodic-mp2-kpoints`
 - Molecular dRPA (Furche plasmon, exact MO-ERI): [direct-rpa-h2-sto3g.md](direct-rpa-h2-sto3g.md)
-- Public headers: `include/atomiverse/cpu/gpw/rpa.h`, `gpw_solver.h`
+- Public headers: `rpa.h`, `gpw_solver.h`
 - Literature:
   - Furche, *J. Chem. Phys.* **114**, 5982 (2001), DOI 10.1063/1.1353585
   - Ren et al., *New J. Phys.* **14**, 053020 (2012)

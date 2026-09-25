@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -19,32 +21,32 @@ namespace {
 
 // Direct GpwDft path (public headers) — avoids dual Evaluate overhead and
 // keeps the e2e case within the ≤ 60 s budget.
-std::vector<ATV::cpu::gpw::GpwAtom> make_si2_atoms() {
-    constexpr double kA2B = 1.8897259885789;
-    constexpr double a_ang = 5.43;
-    const double a = a_ang * kA2B;
+ATV::cpu::Frame make_si2_frame() {
+    constexpr double a = 5.43; // [Å]
     // Centred in the cell: the Martyna-Tuckerman cluster boundary condition is
     // not translation invariant, and GpwDft::build rejects off-centre
     // nonperiodic systems (a Gaussian clipped at a cell face corrupts the
     // forces while leaving the energy plausible). The fragment's own midpoint
     // is at a/8, so shift by a/2 - a/8 = 3a/8.
     const double s = 3.0 * a / 8.0;
-    const double pos0[3] = {s, s, s};
-    const double pos1[3] = {s + a / 4.0, s + a / 4.0, s + a / 4.0};
-    const ATV::cpu::gpw::GaussianBasis bas(molrs::Element::Si,
-                                           "DZVP-MOLOPT-GTH");
-    const ATV::cpu::gpw::GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
-    std::vector<ATV::cpu::gpw::GpwAtom> atoms;
-    atoms.emplace_back(pos0, bas, pot, 14);
-    atoms.emplace_back(pos1, bas, pot, 14);
-    return atoms;
+    ATV::cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        const double p = s + i * a / 4.0;
+        frame.span(ATV::kAtom_type)[i] = 14;
+        frame.span(ATV::kAtom_x)[i] = p;
+        frame.span(ATV::kAtom_y)[i] = p;
+        frame.span(ATV::kAtom_z)[i] = p;
+    }
+    frame.box = ATV::cpu::Box::cubic(a);
+    return frame;
 }
 
-ATV::cpu::gpw::GpwResult
-run_xc(ATV::cpu::gpw::XcKind xc,
-       const std::vector<ATV::cpu::gpw::GpwAtom>& atoms, double a_bohr) {
-    ATV::cpu::gpw::GpwDft m;
-    m.cell[0] = m.cell[1] = m.cell[2] = a_bohr;
+ATV::cpu::gpw::GpwResult run_xc(ATV::cpu::gpw::XcKind xc,
+                                ATV::cpu::Frame& frame) {
+    ATV::cpu::gpw::GpwDft m{{ATV::cpu::gpw::Kind{
+        molrs::Element::Si,
+        ATV::cpu::gpw::GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+        ATV::cpu::gpw::GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
     // 200 Ry: functional dual-gate + e2e budget; absolute pin is soft until
     // offline CP2K twin at the same settings.
     m.cutoff_ry = 200.0;
@@ -58,17 +60,14 @@ run_xc(ATV::cpu::gpw::XcKind xc,
     // MOLOPT image sums exceed the ≤ 60 s e2e budget on this host; dual-gate
     // still proves PBEsol activation on the GPW grid path.
     m.nonperiodic = true;
-    m.build(atoms);
-    return m.run(atoms);
+    m.build(frame);
+    return m.run(frame);
 }
 
 } // namespace
 
 int main() {
     using namespace ATV::cpu::gpw;
-    constexpr double kA2B = 1.8897259885789;
-    constexpr double a_bohr = 5.43 * kA2B;
-
     // Dual-gate floor [Ha].
     constexpr double kDeFloor = 1.0e-4;
     // Soft absolute band from first-green ATV (REFERENCE.md). Replace with
@@ -85,11 +84,11 @@ int main() {
     constexpr double kEnergyRef = -7.1730989307; // Ha
     constexpr double kTol = 1.0e-3;              // Ha
 
-    const auto atoms = make_si2_atoms();
+    auto frame = make_si2_frame();
     const auto t0 = std::chrono::steady_clock::now();
-    const auto r_sol = run_xc(XcKind::PBEsol, atoms, a_bohr);
+    const auto r_sol = run_xc(XcKind::PBEsol, frame);
     const auto t1 = std::chrono::steady_clock::now();
-    const auto r_pbe = run_xc(XcKind::PBE, atoms, a_bohr);
+    const auto r_pbe = run_xc(XcKind::PBE, frame);
     const auto t2 = std::chrono::steady_clock::now();
     const double e_sol = r_sol.e_total;
     const double e_pbe = r_pbe.e_total;

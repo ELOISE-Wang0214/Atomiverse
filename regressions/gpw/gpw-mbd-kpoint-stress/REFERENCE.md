@@ -32,7 +32,7 @@ Frame `kStress` [eV/Å³]; compared here via `last_stress_ha_bohr3()`.
 | ---- | ------ |
 | A. \(E_{\mathrm{disp}}\) unstrained | offline **pure-Python pymbd** `mbd_energy_species` — the same pin `gpw-mbd-periodic` / `gpw-mbd-stress` use; MBD is independent of the electronic k mesh, so the multi-k run must reproduce the Γ pin |
 | B. \(E_{\mathrm{disp}}\) **under strain** (±h per axis) | fresh offline pymbd pins at each strained geometry (below) — the strain derivative being folded is externally validated point by point |
-| C. \(\sigma\) | **multi-SCF strain-FD** (`gpw_stress_fd_impl`): full re-SCF at each strained cell on the same 1×1×2 mesh, MBD folded through the energy path |
+| C. \(\sigma\) | **multi-SCF strain-FD** (`gpw_stress_fd`): full re-SCF at each strained cell on the same 1×1×2 mesh, MBD folded through the energy path |
 | D. MBD actually folded | \(\sigma(\mathrm{mbd}) - \sigma(\mathrm{plain})\) equals the pymbd strain-FD term \(-\Delta E_{\mathrm{disp}}/(2h\Omega)\) per axis |
 
 CP2K 2026.1 stock `PAIR_POTENTIAL TYPE` has no MBD (only DFTD2/D3/D3BJ/D4),

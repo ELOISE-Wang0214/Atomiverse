@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `direct-rpa-h2-sto3g` |
-| Regression | `regressions/scf/direct-rpa-h2-sto3g/` |
 | Public API | `cpu::scf::RHF::direct_rpa()` → `DirectRPAResult` |
 | Roadmap | [excited-states.md](../../roadmap/excited-states.md) § Direct RPA |
 
@@ -17,7 +16,7 @@ reference: Coulomb-only Casida \(A,B\) (\(\alpha_{\mathrm{hf}}=0\)) and the
 \(E_{\mathrm{c}}^{\mathrm{dRPA}}\) [Ha]; total energy and poles are reported
 for gates. Public path is `RHF::run(frame)` then `RHF::direct_rpa()` — no
 `*Config` bag, no factory. Regression binary: `reg_direct-rpa-h2-sto3g` under
-`regressions/scf/direct-rpa-h2-sto3g/`. Twin is the exact MO-ERI plasmon rebuild
+`direct-rpa-h2-sto3g`. Twin is the exact MO-ERI plasmon rebuild
 on PySCF 2.14.0 RHF orbitals (not stock DF + Legendre `gw.rpa.RPA`). Same dRPA
 poles feed the G0W0 screening twin (`g0w0-h2-sto3g`).
 
@@ -72,7 +71,7 @@ CUDA.
 ## Implementation
 
 Frame in → RHF members → `run` → post-SCF `direct_rpa()`. Headers:
-`include/atomiverse/cpu/scf/rhf.h`, `rpa.h`; impl `src/cpu/scf/rpa.cpp`.
+`rhf.h`, `rpa.h`; impl `src/cpu/scf/rpa.cpp`.
 
 ```cpp
 #include "atomiverse/cpu/frame/frame.h"
@@ -110,15 +109,15 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_direct-rpa-h2-sto3g -j$(nproc)
-  ./build/regressions/reg_direct-rpa-h2-sto3g
+  reg_direct-rpa-h2-sto3g
 '
 ```
 
-Source consumer: `regressions/scf/direct-rpa-h2-sto3g/reg_direct-rpa-h2-sto3g.cpp`.
+Source consumer: `reg_direct-rpa-h2-sto3g.cpp`.
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/direct-rpa-h2-sto3g/REFERENCE.md`](../../../regressions/scf/direct-rpa-h2-sto3g/REFERENCE.md)
+Source: case `direct-rpa-h2-sto3g` pin
 (offline pin only; PySCF never imported from CMake/ctest).
 
 | Setting | Value |
@@ -149,7 +148,7 @@ from pieces within \(10^{-12}\) Ha.
 Oracle repro:
 
 ```bash
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py direct-rpa \
+python <pyscf pin> direct-rpa \
   --geom h2 --basis sto-3g --conv-tol 1e-12
 ```
 
@@ -163,9 +162,9 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\) unless exempted.
 | exact MO-ERI plasmon dRPA | 0.0217 | 0.0165 | **0.760** | ✓ | ATV = RHF + dRPA plasmon; PySCF twin = RHF + exact MO-ERI plasmon (not DF `gw.rpa.RPA`) |
 
 ```bash
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
   --method direct_rpa --geom h2 --basis sto-3g --repeat 5 \
-  -- ./build/regressions/reg_direct-rpa-h2-sto3g
+  -- reg_direct-rpa-h2-sto3g
 ```
 
 **Twin caveats.** (1) Method class match is non-DF plasmon only — do not A/B
@@ -192,13 +191,13 @@ ratio is informative for the foothold, not a large-basis throughput claim.
 
 ## References
 
-- Offline pin: `regressions/scf/direct-rpa-h2-sto3g/REFERENCE.md`
+- Offline pin: case `direct-rpa-h2-sto3g` pin
 - Perf (in REFERENCE): fair_bench numbers above; handoff
-  the case `REFERENCE.md` records ratio **0.760**
+  the case pin notes records ratio **0.760**
 - Roadmap: `docs/roadmap/excited-states.md` (Direct RPA ✓ CPU)
-- Public headers: `include/atomiverse/cpu/scf/rpa.h`, `rhf.h`
+- Public headers: `rpa.h`, `rhf.h`
 - Impl: `src/cpu/scf/rpa.cpp`
-- G0W0 twin (same dRPA poles): `regressions/scf/g0w0-h2-sto3g`,
+- G0W0 twin (same dRPA poles): `g0w0-h2-sto3g`,
   [g0w0-h2-sto3g.md](g0w0-h2-sto3g.md)
 - Furche, *J. Chem. Phys.* **114**, 5982 (2001), DOI 10.1063/1.1353585
 - Ren et al., *New J. Phys.* **14**, 053020 (2012)

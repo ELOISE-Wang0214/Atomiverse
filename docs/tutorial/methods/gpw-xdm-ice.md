@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-xdm-ice` |
-| Regression | `regressions/gpw/gpw-xdm-ice/` |
-| Public API | `cpu::gpw::GpwDft::xdm` / `cpu::gpw::GPWEvaluator::xdm`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::GpwDft::xdm` (bound through `cpu::gpw::GPWEvaluator`); `GpwResult::e_disp` [Ha] |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -26,13 +25,13 @@ geometry.
 `xdm_dispersion`. This slug therefore gates against an **offline dual
 pure-Python lattice sum** of the free-atom XDM formula (same policy as
 free-atom TS when stock CP2K is unavailable). Twin note retained under
-`tools/cp2k_oracle/inputs/gpw-xdm-ice/`.
+CP2K oracle.
 
-Public surface: bool members `xdm` on `cpu::gpw::GpwDft` and
-`cpu::gpw::GPWEvaluator` (no `*Config` bag). Dispersion is reported on
+Public surface: bool members `xdm` on `cpu::gpw::GpwDft` (bound through
+`cpu::gpw::GPWEvaluator`; no `*Config` bag). Dispersion is reported on
 `GpwResult::e_disp` [Hartree] and folded into `e_total`. Mutually exclusive
 with `d3` / `d3bj` / `d4` / `ts` / `mbd` / `vdw_df` / `vdw_df2` / `rvv10`.
-Product gate: `regressions/gpw/gpw-xdm-ice` (`reg_gpw-xdm-ice`). Wall ratio is
+Product gate: `gpw-xdm-ice` (`reg_gpw-xdm-ice`). Wall ratio is
 **perf_exempt** (E_disp pin; full QS twin wall unfair — see Performance).
 
 ## Method
@@ -112,28 +111,27 @@ OT/grid/DIIS differences vs any other engine).
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
+Public surface only (`GpwDft` members; no `*Config`, no
 `make_*` / `build_*` factories). Regression uses the concrete solver:
 
 ```cpp
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
 
-// Geometry [Å] → Bohr — periodic water dimer (REFERENCE.md).
-constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// Frame: periodic water dimer (REFERENCE.md) — positions [Å], Z in kAtom_type (2×O + 4×H).
+// kinds = {O, H} Kind{Element, GaussianBasis, GthPotential} with DZVP-MOLOPT-SR-GTH + GTH-PBE-q*
+frame.box = ATV::cpu::Box::cubic(12.0);  // Å
 
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+GpwDft gpw{kinds};
 gpw.cutoff_ry = 200.0; // e_disp is geometry-only; SCF only needs to run
 gpw.n_occ = 8;         // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 8;
@@ -143,8 +141,8 @@ gpw.xc = XcKind::PBE;
 gpw.nonperiodic = false;
 gpw.xdm = true;        // mutually exclusive with d3/d3bj/d4/ts/mbd/…
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp [Ha] within 1e-8 of offline dual-Python pin
 // res.e_total includes e_disp
 ```
@@ -153,11 +151,15 @@ Driver / Frame path (component; same member):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/300.0, /*max_iter=*/200,
-                                 /*tol=*/1e-7, /*mix=*/0.3,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false);
-eval.xdm = true;
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 300.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.3;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;
+dft.nonperiodic = false;
+dft.xdm = true;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft));
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 ```
@@ -176,28 +178,28 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-xdm-ice -j$(nproc)
-  ./build/regressions/reg_gpw-xdm-ice
+  reg_gpw-xdm-ice
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `xdm` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::xdm` |
-| `include/atomiverse/cpu/gpw/internal/xdm_dispersion.h` | `xdm_pbe` free-atom engine (private) |
-| `include/atomiverse/cpu/gpw/basis_data/xdm_tables.h` | Free-atom \(\alpha,M_n\); QE NC-PBE \(a_1,a_2\) |
-| `regressions/gpw/gpw-xdm-ice/reg_gpw-xdm-ice.cpp` | Product gate |
-| `regressions/gpw/gpw-xdm-ice/REFERENCE.md` | Offline pin + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-xdm-ice/` | CP2K-loop twin **note** (no stock XDM input) |
+| `gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `xdm` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds the configured `GpwDft`) |
+| `xdm_dispersion.h` | `xdm_pbe` free-atom engine (private) |
+| `xdm_tables.h` | Free-atom \(\alpha,M_n\); QE NC-PBE \(a_1,a_2\) |
+| `reg_gpw-xdm-ice.cpp` | Product gate |
+| case `gpw-xdm-ice` pin | Offline pin + perf_exempt |
+| CP2K oracle | CP2K-loop twin **note** (no stock XDM input) |
 
 ## Validation (offline dual-Python pin; CP2K capability loop)
 
 Source:
-[`regressions/gpw/gpw-xdm-ice/REFERENCE.md`](../../../regressions/gpw/gpw-xdm-ice/REFERENCE.md).
-Oracle context: **CP2K capability loop** (`tools/cp2k_oracle/`), but **no**
+case `gpw-xdm-ice` pin.
+Oracle context: **CP2K capability loop** (CP2K oracle), but **no**
 stock CP2K XDM energy — hard gate is dual pure-Python free-atom lattice sum
 (postg / QE combination rules). Twin note:
-`tools/cp2k_oracle/inputs/gpw-xdm-ice/water_dimer_xdm.note`. External offline
+CP2K oracle. External offline
 pin — not a golden of Atomiverse’s own output; **never** launch live CP2K (or
 postg/QE) from ctest.
 
@@ -228,7 +230,7 @@ forces vs central FD.
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 XDM evaluation is \(O(N^2\times N_{\mathrm{images}})\) over a 6-atom cell
 (microseconds). Full GPW SCF wall is dominated by the electronic structure, not
@@ -262,8 +264,8 @@ gate.
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-xdm-ice/REFERENCE.md`
-- Oracle note: `tools/cp2k_oracle/inputs/gpw-xdm-ice/water_dimer_xdm.note`
+- Offline pin: case `gpw-xdm-ice` pin
+- Oracle note: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
 - GPW narrative chapter: `docs/tutorial/ch09-gpw.md`
 - Closed spec (git history): `.claude/specs/gpw-xdm-ice/` (deleted at done)

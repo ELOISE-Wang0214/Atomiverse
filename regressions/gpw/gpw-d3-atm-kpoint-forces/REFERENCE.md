@@ -9,7 +9,7 @@ including the **Axilrod–Teller–Muto three-body C9** term
 (`CALCULATE_C9_TERM .TRUE.`) folded into the **ionic forces**.
 
 **Product forces** use the Hellmann–Feynman multi-k path
-(`cpu::gpw::GpwDft` / `gpw_forces_from_scf` with `d3 = true`,
+(`cpu::gpw::GpwDft::forces(frame)` with `d3 = true`,
 `d3_atm = true`, `k_mesh = {1,1,2}`): one multi-k SCF then one gradient
 pass; the geometry-only
 \(E_{\mathrm{disp}}^{\mathrm{D3+ATM}}(\{\mathbf{R}\},\mathbf{h})\)
@@ -121,7 +121,7 @@ largest component **6.90e−7** Ha/Bohr (O1 x). Residual vs Γ periodic ATM
 | \(E_{\mathrm{disp}}\) (ATM + two-body) | **1e−9 Ha** | Closed-form sum; bit-match Γ pin |
 | ATM-only force vs CP2K multi-k difference | **1e−8 Ha/Bohr** | Electronic cancels to ~1e−15; print floor ~1e−9; signal 6.9e−7 |
 | ATM signal nonzero | **≥ 1e−7 Ha/Bohr** | Engage gate |
-| Product multi-k wiring (H₂ 1×1×2) | **1e−7 Ha/Bohr** | Force assembly twice on same density vs standalone ATM ΔF; e2e budget |
+| Product multi-k wiring (H₂ 1×1×2) | **1e−7 Ha/Bohr** | `GpwDft::forces` with ATM on − off (D3 is geometry-only, so both SCFs reach the same density) vs standalone ATM ΔF; e2e budget |
 | Multi-k payload | `n_kpts ≥ 1`, `C_occ_k` | Product uses k path |
 | Wall (e2e reg) | **≤ 60 s** | e2e tier (H₂ wiring + standalone ATM) |
 | Fair ratio | **≤ 10** | \(T_{\mathrm{atv,fair}} / T_{\mathrm{cp2k,C9}}\) on water-dimer product |
@@ -145,7 +145,7 @@ largest component **6.90e−7** Ha/Bohr (O1 x). Residual vs Γ periodic ATM
   `GpwDftD3Atm.MultiKProductForcesFoldAtm`
   (`tests/cpu/gpw/test_cpu_gpw_dftd3.cpp`, heavy suite).
 - **Speed:** fair wall on the **matched water-dimer multi-k ENERGY_FORCE**
-  product (ATV SCF + one `gpw_forces_from_scf`, OMP 8, 150 Ry) vs CP2K C9
+  product (ATV SCF + gradient via one `GpwDft::forces`, OMP 8, 150 Ry) vs CP2K C9
   twin (1 MPI × 8 OMP, 300 Ry). Ratio ≤ 10. The e2e regression uses a cheap
   H₂ multi-k wiring twin for the ≤ 60 s budget; fair \(T_{\mathrm{atv}}\) is
   the water-dimer product wall above, not multi-gate reg wall.

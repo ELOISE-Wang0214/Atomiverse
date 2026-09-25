@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `phonon-dispersion-si` |
-| Regression | `regressions/response/phonon-dispersion-si/` |
 | Public API | `cpu::vib::PhononDispersion` (members) + `cpu::vib::PhononDispersionResult` + IFCs from `cpu::vib::Phonon` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 — phonon dispersions ω(q) ✓ (finite-q DFPT Sternheimer ○) |
 | Dep | `fd-phonon-supercell` ✓ (supercell FD Φ); `dfpt-phonon-si` ✓ is orthogonal (Γ DFPT, not this Fourier path) |
@@ -19,7 +18,7 @@ then mass-weighting and diagonalizing. Product surface:
 `cpu::vib::PhononDispersion` — phonopy-style IFC Fourier, not a second force
 loop and not finite-\(q\) DFPT. IFCs come from the existing crystal FD preset
 `cpu::vib::Phonon` (or any equivalent Cartesian Hessian in the same atom
-order). Product gate: `regressions/response/phonon-dispersion-si`
+order). Product gate: `phonon-dispersion-si`
 (`reg_phonon-dispersion-si`) — diamond Si **Stillinger–Weber**, conventional
 cubic 8-atom unit cell, 2×2×2 supercell Φ, high-symmetry path **Γ → X → L**.
 Performance: **`perf_exempt`** (no offline CP2K `VIBRATIONAL_ANALYSIS` wall
@@ -127,7 +126,7 @@ purity). Upstream forces on Frame remain eV/Å during the FD loop.
 
 Public surface only (`cpu::Frame` + members / ctor args; no `PhononDispersionConfig`,
 no factories). Headers:
-`include/atomiverse/cpu/vibration/phonon_dispersion.h`,
+`phonon_dispersion.h`,
 `phonon.h`, `phonon_result.h`, `supercell.h`. Implementation:
 `src/cpu/vibration/phonon_dispersion.cpp`.
 
@@ -190,22 +189,22 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_phonon-dispersion-si -j$(nproc)
-  ./build/regressions/reg_phonon-dispersion-si
+  reg_phonon-dispersion-si
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/vibration/phonon_dispersion.h` | `PhononDispersion` / `PhononDispersionResult` |
+| `phonon_dispersion.h` | `PhononDispersion` / `PhononDispersionResult` |
 | `src/cpu/vibration/phonon_dispersion.cpp` | Fourier \(D(\mathbf{q})\) + eigensolve |
-| `include/atomiverse/cpu/vibration/phonon.h` | upstream FD IFCs |
-| `include/atomiverse/cpu/vibration/supercell.h` | `expand_supercell` |
-| `regressions/response/phonon-dispersion-si/` | e2e + `REFERENCE.md` |
+| `phonon.h` | upstream FD IFCs |
+| `supercell.h` | `expand_supercell` |
+| `phonon-dispersion-si` | e2e + pin notes |
 
 ## Validation (vs CP2K / literature)
 
 Source:
-[`regressions/response/phonon-dispersion-si/REFERENCE.md`](../../../regressions/response/phonon-dispersion-si/REFERENCE.md).
+case `phonon-dispersion-si` pin.
 Oracle priority: offline **CP2K `VIBRATIONAL_ANALYSIS`** (+ band structure) when
 a binary is available; **this pin host had no CP2K module** — surrogate is the
 acoustic sum rule plus the published Stillinger–Weber optical / zone-boundary
@@ -260,11 +259,11 @@ systematically stiffer; compare the SW optical window used by
 `VIBRATIONAL_ANALYSIS` / phonon band input on diamond Si (same \(a\),
 comparable force model or Quickstep), record \(\omega(\Gamma/X/L)\) [cm⁻¹]
 and wall time in REFERENCE.md with CP2K version. Skeleton notes may live under
-`tools/cp2k_oracle/inputs/`.
+CP2K oracle.
 
 ## Performance
 
-Source: `regressions/response/phonon-dispersion-si/REFERENCE.md`. Queue /
+Source: case `phonon-dispersion-si` pin. Queue /
 handoff: **`perf_exempt`**.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -302,12 +301,11 @@ REFERENCE.md, require \(r \le 10\).
 
 ## References
 
-- Offline pin: [`regressions/response/phonon-dispersion-si/REFERENCE.md`](../../../regressions/response/phonon-dispersion-si/REFERENCE.md)
-- Regression: [`regressions/response/phonon-dispersion-si/reg_phonon-dispersion-si.cpp`](../../../regressions/response/phonon-dispersion-si/reg_phonon-dispersion-si.cpp)
+- Offline pin: case `phonon-dispersion-si` pin
 - Upstream Γ FD twin: [fd-phonon-supercell](fd-phonon-supercell.md),
   [dfpt-phonon-si](dfpt-phonon-si.md) (orthogonal PW Γ DFPT)
 - Roadmap: [dft.md](../../roadmap/dft.md) §11 phonons / DFPT
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Oracle notes: CP2K oracle
 - Narrative style refs: [Chapter 8 — Plane-Wave DFT](../ch08-plane-wave.md),
   [Chapter 14 — Vibrations](../ch14-vibrations.md)
 - F. H. Stillinger and T. A. Weber, *Phys. Rev. B* **31**, 5262 (1985)

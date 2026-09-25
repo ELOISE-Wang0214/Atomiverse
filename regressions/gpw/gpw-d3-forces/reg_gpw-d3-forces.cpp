@@ -24,6 +24,7 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
@@ -32,7 +33,6 @@
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/dftd3_params.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
 using namespace ATV;
@@ -179,15 +179,20 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 300.0; // CP2K CUTOFF 300
-    eval.max_iter = 120;
-    eval.tol = 1e-7; // CP2K EPS_SCF 1e-7
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = true; // CP2K PERIODIC NONE + PSOLVER MT
-    eval.d3 = true;
-    eval.compute_forces = true;
+    // Method parameters shared by the D3 product run and the plain twin.
+    auto make_method = [&](bool d3_on) {
+        cpu::gpw::GpwDft m{{O, H}};
+        m.cutoff_ry = 300.0; // CP2K CUTOFF 300
+        m.max_iter = 120;
+        m.tol = 1e-7; // CP2K EPS_SCF 1e-7
+        m.mix = 0.4;
+        m.xc = cpu::gpw::XcKind::PBE;
+        m.nonperiodic = true; // CP2K PERIODIC NONE + PSOLVER MT
+        m.d3 = d3_on;
+        return m;
+    };
+
+    cpu::gpw::GPWEvaluator eval(make_method(true), /*compute_forces=*/true);
     eval.compute_stress = false;
 
     const auto t0 = clock::now();
@@ -213,43 +218,38 @@ int main() {
     }
 
     // ── (3) Wiring + total forces ─────────────────────────────────────────
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
+    // F(D3) is the product evaluator's Frame force (eV/Å → Ha/Bohr); the
+    // plain twin is a fresh SCF + analytic forces on a copy of the geometry
+    // (D3 is geometry-only, so the density is the same).
+    const double kFConv = units::kHartreePerBohrInEvPerAngstrom;
+    std::vector<std::array<double, 3>> F_on(6);
     for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double p[3] = {xs[i] * kAng2Bohr, ys[i] * kAng2Bohr,
-                             zs[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(p, k.basis, k.pot, z[i]));
+        F_on[static_cast<std::size_t>(i)] = {
+            static_cast<double>(frame.span(kAtom_fx)[i]) / kFConv,
+            static_cast<double>(frame.span(kAtom_fy)[i]) / kFConv,
+            static_cast<double>(frame.span(kAtom_fz)[i]) / kFConv};
     }
 
-    cpu::gpw::GpwDft method_d3;
-    method_d3.cell[0] = method_d3.cell[1] = method_d3.cell[2] = L * kAng2Bohr;
-    method_d3.cutoff_ry = 300.0;
-    method_d3.n_occ = 8; // 2 x (q6 + q1 + q1) = 16 valence e-
-    method_d3.max_iter = 120;
-    method_d3.tol = 1e-7;
-    method_d3.mix = 0.4;
-    method_d3.xc = cpu::gpw::XcKind::PBE;
-    method_d3.nonperiodic = true;
-    method_d3.local_pp_on_grid = true;
-    method_d3.d3 = true;
-    method_d3.build(atoms);
-    const auto F_on =
-        cpu::gpw::gpw_forces_from_scf(atoms, method_d3, eval.last_result());
-
-    cpu::gpw::GpwDft plain; // GpwDft is non-copyable — build the twin fresh
-    plain.cell[0] = plain.cell[1] = plain.cell[2] = L * kAng2Bohr;
-    plain.cutoff_ry = 300.0;
-    plain.n_occ = 8;
-    plain.max_iter = 120;
-    plain.tol = 1e-7;
-    plain.mix = 0.4;
-    plain.xc = cpu::gpw::XcKind::PBE;
-    plain.nonperiodic = true;
+    cpu::Frame frame_plain(6);
+    for (int i = 0; i < 6; ++i) {
+        frame_plain.span(kAtom_type)[i] = z[i];
+        frame_plain.span(kAtom_x)[i] = xs[i];
+        frame_plain.span(kAtom_y)[i] = ys[i];
+        frame_plain.span(kAtom_z)[i] = zs[i];
+    }
+    frame_plain.box = cpu::Box::cubic(L);
+    cpu::gpw::GpwDft plain = make_method(false);
+    plain.n_occ = 8; // 2 x (q6 + q1 + q1) = 16 valence e-
     plain.local_pp_on_grid = true;
-    plain.d3 = false;
-    plain.build(atoms);
-    const auto F_plain = cpu::gpw::gpw_forces_analytic(atoms, plain);
+    plain.build(frame_plain);
+    plain.forces(frame_plain);
+    std::vector<std::array<double, 3>> F_plain(6);
+    for (int i = 0; i < 6; ++i) {
+        F_plain[static_cast<std::size_t>(i)] = {
+            static_cast<double>(frame_plain.span(kAtom_fx)[i]) / kFConv,
+            static_cast<double>(frame_plain.span(kAtom_fy)[i]) / kFConv,
+            static_cast<double>(frame_plain.span(kAtom_fz)[i]) / kFConv};
+    }
 
     double max_wire = 0.0;
     double max_total_err = 0.0;

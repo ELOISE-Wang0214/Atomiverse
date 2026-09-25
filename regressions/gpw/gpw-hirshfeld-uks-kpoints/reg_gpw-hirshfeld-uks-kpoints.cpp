@@ -15,8 +15,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
-#include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -35,21 +36,20 @@ void check(bool ok, const char* what) {
     }
 }
 
-constexpr double kA2B = 1.0 / 0.52917720859;
-
-std::vector<ATV::cpu::gpw::GpwAtom> o2_triplet(double L_bohr) {
+/// O₂ centred in a cubic box of edge `L_ang` [Å].
+ATV::cpu::Frame o2_triplet(double L_ang) {
     using namespace ATV;
     constexpr double R_ang = 1.2075;
-    const double z0 = 0.5 * L_bohr - 0.5 * R_ang * kA2B;
-    const double z1 = 0.5 * L_bohr + 0.5 * R_ang * kA2B;
-    const cpu::gpw::GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
-    const cpu::gpw::GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    const double p0[3] = {0.5 * L_bohr, 0.5 * L_bohr, z0};
-    const double p1[3] = {0.5 * L_bohr, 0.5 * L_bohr, z1};
-    atoms.emplace_back(p0, bO, pO, 8);
-    atoms.emplace_back(p1, bO, pO, 8);
-    return atoms;
+    const double z[2] = {0.5 * L_ang - 0.5 * R_ang, 0.5 * L_ang + 0.5 * R_ang};
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 8;
+        frame.span(kAtom_x)[i] = 0.5 * L_ang;
+        frame.span(kAtom_y)[i] = 0.5 * L_ang;
+        frame.span(kAtom_z)[i] = z[i];
+    }
+    frame.box = cpu::Box::cubic(L_ang);
+    return frame;
 }
 
 /// Free-atom MBD@rsSCS on the same O₂ nuclear geometry (periodic 10 Å cube,
@@ -71,11 +71,12 @@ int main() {
     constexpr double kEDispRef = -1.0427466367435301e-04; // Ha (PIN_CANDIDATE)
     constexpr double kTol = 1.0e-8;                       // Ha
 
-    const double L = 10.0 * kA2B;
-    auto atoms = o2_triplet(L);
+    cpu::Frame frame = o2_triplet(10.0); // Å
 
-    GpwDft gpw;
-    gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+    GpwDft gpw{{cpu::gpw::Kind{
+        molrs::Element::O,
+        cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH"),
+        cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")}}};
     gpw.cutoff_ry = 120.0;
     gpw.n_alpha = 7;
     gpw.n_beta = 5;
@@ -92,8 +93,8 @@ int main() {
     gpw.k_mesh[2] = 1;
     gpw.k_time_reversal = true;
 
-    gpw.build(atoms);
-    const auto& res = gpw.run(atoms);
+    gpw.build(frame);
+    const auto& res = gpw.run(frame);
 
     std::printf("PIN_CANDIDATE E_disp=%.16e Ha  volumes:", res.e_disp);
     for (double v : res.volume_ratios)

@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-vdw-scf-potential` |
-| Regression | `regressions/gpw/gpw-vdw-scf-potential/` |
-| Public API | `cpu::gpw::GpwDft::rvv10` / `vdw_df` / `vdw_df2` (and `GPWEvaluator` twins); `GpwResult::e_disp` [Ha]; forces via `gpw_forces_from_scf` |
+| Public API | `cpu::gpw::GpwDft::rvv10` / `vdw_df` / `vdw_df2` (bound through `GPWEvaluator`); `GpwResult::e_disp` [Ha]; forces via `GpwDft::forces` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -25,14 +24,14 @@ to the KS effective potential, so the density responds to the nonlocal
 correlation; the final \(E_{\mathrm{disp}}=E_c^{\mathrm{nl}}\) is evaluated on
 that SC density and folded into \(e_{\mathrm{total}}\). Analytic forces reuse
 the same \(V_{\mathrm{nl}}\) inside the veff contribution of
-`assemble_gpw_forces` / `gpw_forces_from_scf`.
+`assemble_gpw_forces` (`GpwDft::forces`).
 
 The **product regression** gates **Γ-point GPW PBE + rVV10** on the same
 periodic water-dimer cell as `gpw-rvv10-ice` (12 Å cubic, ice-relevant H-bond
 pair) against offline **CP2K 2026.1** `TYPE RVV10` (self-consistent by default).
 The SC machinery is shared for **DRSLL** (`vdw_df`), **LMKLL** (`vdw_df2`),
 and **rVV10** (`rvv10`); only the rVV10 twin is e2e-gated here (energy + force
-FD). Public surface remains bool members on `GpwDft` / `GPWEvaluator` — no
+FD). Public surface remains bool members on `GpwDft` (bound through `GPWEvaluator`) — no
 `*Config` bag, no factories. Wall ratio is **perf_exempt** (SC RPS costs
 \(O(N_{\mathrm{SCF}}\times n_\alpha)\) FFTs; primary deliverable is
 potential/force correctness).
@@ -116,31 +115,28 @@ rejected when these flags are set — same constraint as the ice energy pins).
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
-`make_*` / `build_*` factories). Regression uses the concrete solver + force
-helper:
+Public surface only (`GpwDft` members; no `*Config`, no
+`make_*` / `build_*` factories). Regression uses the concrete solver
+(`run` for the energy, `forces` for SCF + analytic forces):
 
 ```cpp
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
-using ATV::cpu::gpw::gpw_forces_from_scf;
 
-// Geometry [Å] → Bohr — same water dimer as gpw-rvv10-ice (REFERENCE.md).
-constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// Frame: same water dimer as gpw-rvv10-ice (REFERENCE.md) — positions [Å], Z in kAtom_type (2×O + 4×H).
+// kinds = {O, H} Kind{Element, GaussianBasis, GthPotential} with DZVP-MOLOPT-SR-GTH + GTH-PBE-q*
+frame.box = ATV::cpu::Box::cubic(12.0);  // Å
 
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+GpwDft gpw{kinds};
 gpw.cutoff_ry = 200.0;
 gpw.n_occ = 8;         // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 40;
@@ -150,24 +146,28 @@ gpw.xc = XcKind::PBE;
 gpw.nonperiodic = false;
 gpw.rvv10 = true;      // SC V_nl each SCF step; exclusive vs vdw_df / vdw_df2 / D*
 
-gpw.build(atoms);
-const auto res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.forces(frame);  // one SCF + analytic forces
 // res.e_disp [Ha] within 1e-4 of offline CP2K SC pin
 // res.e_total includes e_disp on the SC density
 
-const auto f_ana = gpw_forces_from_scf(atoms, gpw, res);
-// f_ana[i][k] [Ha/Bohr]; FD of e_total vs O0 x gates |ΔF| ≤ 5e-4
+// frame kAtom_fx/fy/fz [eV/Å] (÷ units::kHartreePerBohrInEvPerAngstrom → Ha/Bohr);
+// FD of e_total vs O0 x gates |ΔF| ≤ 5e-4
 ```
 
 Same flags on the Frame / component path:
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/200.0, /*max_iter=*/40,
-                                 /*tol=*/1e-7, /*mix=*/0.4,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false);
-eval.rvv10 = true;   // or eval.vdw_df / eval.vdw_df2
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 40;
+dft.tol = 1e-7;
+dft.mix = 0.4;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;
+dft.nonperiodic = false;
+dft.rvv10 = true;   // or dft.vdw_df / dft.vdw_df2
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft));
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 // public frame energy remains eV via kEnergy
@@ -187,29 +187,29 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-vdw-scf-potential
-  ./build/regressions/reg_gpw-vdw-scf-potential
+  reg_gpw-vdw-scf-potential
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::{rvv10,vdw_df,vdw_df2}`, `GpwResult::e_disp` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator` twin members |
-| `include/atomiverse/cpu/gpw/internal/vdw_df.h` | DRSLL/LMKLL + `nonlocal_vdw_on_grid` (energy + optional \(V_{\mathrm{nl}}\)) |
-| `include/atomiverse/cpu/gpw/internal/rvv10.h` | rVV10 RPS energy + optional \(V_{\mathrm{nl}}\) |
-| `include/atomiverse/cpu/gpw/internal/gpw_forces.h` | `gpw_forces_from_scf` (reuses SC \(V_{\mathrm{nl}}\) in veff) |
+| `gpw_solver.h` | `GpwDft::{rvv10,vdw_df,vdw_df2}`, `GpwResult::e_disp` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds the configured `GpwDft`) |
+| `vdw_df.h` | DRSLL/LMKLL + `nonlocal_vdw_on_grid` (energy + optional \(V_{\mathrm{nl}}\)) |
+| `rvv10.h` | rVV10 RPS energy + optional \(V_{\mathrm{nl}}\) |
+| `gpw_solver.h` | `GpwDft::forces` (reuses SC \(V_{\mathrm{nl}}\) in veff) |
 | `src/cpu/gpw/gpw_solver.cpp` | SC loop: `nonlocal_vdw_on_grid(..., potential=true)` each iter |
 | `src/cpu/gpw/internal/gpw_forces.cpp` | Force assembly with nonlocal veff |
-| `regressions/gpw/gpw-vdw-scf-potential/reg_gpw-vdw-scf-potential.cpp` | Product gate |
-| `regressions/gpw/gpw-vdw-scf-potential/REFERENCE.md` | Offline pin + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-vdw-scf-potential/water_dimer_rvv10_force.inp` | CP2K ENERGY_FORCE twin |
+| `reg_gpw-vdw-scf-potential.cpp` | Product gate |
+| case `gpw-vdw-scf-potential` pin | Offline pin + perf_exempt |
+| CP2K oracle | CP2K ENERGY_FORCE twin |
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/gpw/gpw-vdw-scf-potential/REFERENCE.md`](../../../regressions/gpw/gpw-vdw-scf-potential/REFERENCE.md).
+case `gpw-vdw-scf-potential` pin.
 Oracle: offline **CP2K 2026.1** (Arrhenius `work/cp2k/install`), twin
-`tools/cp2k_oracle/inputs/gpw-vdw-scf-potential/water_dimer_rvv10_force.inp`
+CP2K oracle
 (and energy twin under `gpw-rvv10-ice`). External engine pin — **not** a golden
 of Atomiverse’s own output; **never** launch live CP2K from ctest.
 
@@ -245,7 +245,7 @@ Offline re-pin (human only; never ctest):
 
 ```bash
 # Host with CP2K 2026.1 + rVV10_kernel_table.dat on BASIS/potential path
-cd tools/cp2k_oracle/inputs/gpw-vdw-scf-potential
+cd <CP2K oracle input dir for this case>
 # cp2k.psmp water_dimer_rvv10_force.inp
 # → Dispersion energy = 0.06116467960721 Ha
 # → Total energy      = -34.27712583714492 Ha
@@ -254,7 +254,7 @@ cd tools/cp2k_oracle/inputs/gpw-vdw-scf-potential
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 SC nonlocal evaluation invokes the RPS FFT stack **once per SCF iteration**
 (plus force rebuild), so wall scales as
@@ -296,12 +296,12 @@ product policy requires \(r=T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\le10\).
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-vdw-scf-potential/REFERENCE.md`
-- Oracle inputs: `tools/cp2k_oracle/inputs/gpw-vdw-scf-potential/`
-- Oracle notes: `tools/cp2k_oracle/README.md`
-- Roadmap: `docs/roadmap/dft.md` §8 Dispersion; `docs/roadmap/index.md` GPW residual
+- Offline pin: case `gpw-vdw-scf-potential` pin
+- Oracle inputs: CP2K oracle
+- Oracle notes: CP2K oracle
+- Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md) §3 Dispersion / §4 Periodic KS
 - Related post-SCF energy pins: `gpw-rvv10-ice`, `gpw-vdw-df-ice`,
-  `gpw-vdw-df2-ice` (regressions under `regressions/gpw/`)
+  `gpw-vdw-df2-ice` (regressions under `gpw`)
 - Related exchange + nonlocal combo: optB88-vdW (`gpw-optb88-vdw`)
 - Pairwise dispersion siblings: [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice.md),
   [gpw-d4-water](gpw-d4-water.md)

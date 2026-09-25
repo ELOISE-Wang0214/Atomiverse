@@ -5,12 +5,11 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `second-gen-cpmd-uks` |
-| Regression | `regressions/dynamics/second-gen-cpmd-uks/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{…, n_alpha, n_beta}, aspc_k, corrector_max_iter}` bound with `set_evaluator_ref` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{cpu::gpw::GpwDft{…, n_alpha, n_beta}}, aspc_k, corrector_max_iter}` bound with `set_evaluator_ref` |
 | Roadmap | AIMD / SGCP UKS residual closed wave 7 |
 | Dual gate | Correctness A1–A4 (unit + e2e envelope); speed **`perf_exempt`** (NVE drift; no CP2K twin wall) |
 | Wave | CP2K capability loop — harness wave 7 (2026-07-26) |
-| Oracle | Offline CP2K sketch only (`tools/cp2k_oracle/`); never live in ctest |
+| Oracle | Offline CP2K sketch only (CP2K oracle); never live in ctest |
 
 ## Summary
 
@@ -112,12 +111,16 @@ const cpu::gpw::Kind O{
     cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
 constexpr double dt = 0.5; // fs
-cpu::gpw::GPWEvaluator gpw(
-    {O}, /*cutoff_ry*/ 200.0, /*max_iter*/ 80, /*tol*/ 1e-5,
-    /*mix*/ 0.4, cpu::gpw::XcKind::PADE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
-gpw.n_alpha = 7;
-gpw.n_beta = 5;
+cpu::gpw::GpwDft dft{{O}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 80;
+dft.tol = 1e-5;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.nonperiodic = true;
+dft.n_alpha = 7;
+dft.n_beta = 5;
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // SGCP is a wrapper TYPE: ASPC order K and the corrector budget are its
 // constructor arguments (the evaluator has no public second_gen_cp* flags).
 cpu::electronic::SecondGenCp eval{std::move(gpw), /*aspc_k=*/1,
@@ -148,16 +151,16 @@ cmake --build build --target run_reg_second-gen-cpmd-uks
 
 Relevant paths:
 
-- `include/atomiverse/cpu/gpw/gpw_evaluator.h` — members `second_gen_cp*`
+- `gpw_evaluator.h` — members `second_gen_cp*`
 - `src/cpu/gpw/gpw_evaluator.cpp` — dual ASPC + partial SCF launch path
-- `include/atomiverse/cpu/electronic/aspc_predictor.h` — Kolafa ASPC primitive
-- `include/atomiverse/cpu/electronic/second_gen_cp.h` — `SecondGenCp` wrapper
+- `aspc_predictor.h` — Kolafa ASPC primitive
+- `second_gen_cp.h` — `SecondGenCp` wrapper
 - `tests/cpu/gpw/test_gpw_second_gen_cpmd.cpp` — build guards (incl. UKS accept)
-- `regressions/dynamics/second-gen-cpmd-uks/`
+- `second-gen-cpmd-uks`
 
 ## Validation (vs offline CP2K / literature envelope)
 
-Source: `regressions/dynamics/second-gen-cpmd-uks/REFERENCE.md` (offline pin;
+Source: case `second-gen-cpmd-uks` pin (offline pin;
 never live CP2K in ctest).
 
 | Quantity | Atomiverse / pin | Oracle | Tol | Notes |
@@ -177,15 +180,15 @@ baseline + 2 drift steps.
 **Offline oracle (CP2K):** no `cp2k` binary on the worker pin host
 (Arrhenius login-class, **2026-07-26**). Twin sketch:
 
-`tools/cp2k_oracle/inputs/second-gen-cpmd-uks/o2_uks_sgcp_nve.inp`
+CP2K oracle
 
 (`UKS`, `MULTIPLICITY 3`, `EXTRAPOLATION ASPC`, `EXTRAPOLATION_ORDER 1`,
 `MAX_SCF 5`, PADE, MT). When a binary is available, re-run offline via
-`tools/cp2k_oracle/` and replace the REFERENCE status with version + measured
+CP2K oracle and replace the REFERENCE status with version + measured
 drift + fair wall.
 
 Static UKS energy / force pins for the same molecule family:
-`regressions/gpw/gpw-uks-o2-gamma`, `gpw-uks-forces`.
+`gpw-uks-o2-gamma`, `gpw-uks-forces`.
 
 ## Performance
 
@@ -207,9 +210,9 @@ corrector-budget identity pin, not wall ratio.
 
 ## References
 
-- Offline pin: `regressions/dynamics/second-gen-cpmd-uks/REFERENCE.md`
-- CP2K twin sketch: `tools/cp2k_oracle/inputs/second-gen-cpmd-uks/o2_uks_sgcp_nve.inp`
-- Closed-shell sibling: `regressions/dynamics/second-gen-cpmd-water`
+- Offline pin: case `second-gen-cpmd-uks` pin
+- CP2K twin sketch: CP2K oracle
+- Closed-shell sibling: `second-gen-cpmd-water`
 - T. D. Kühne, M. Krack, F. R. Mohamed, M. Parrinello, *Phys. Rev. Lett.*
   **98**, 066401 (2007)
 - J. Kolafa, *J. Comput. Chem.* **25**, 335 (2004)

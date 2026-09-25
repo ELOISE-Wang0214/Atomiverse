@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dftb2-periodic-forces` |
-| Regression | `regressions/semiempirical/dftb2-periodic-forces/` |
 | Public API | `cpu::semiempirical::DFTB2` (`with_forces = true`, restricted MioSketch) + `cpu::Evaluate` |
 | Roadmap | [`semiempirical.md`](../../roadmap/semiempirical.md) — lattice-image-consistent Γ-PBC nuclear \(F\) ✓ |
 | Family oracle | **DFTB+** (formula / force-module boundary; absolute SK digits deferred) |
@@ -164,12 +163,12 @@ by symmetry and is **not** used here.
 
 Public surface only (`cpu::Frame` + concrete method members; **no** `*Config`
 bag, **no** `make_*` / `build_*` factories). Headers:
-`include/atomiverse/cpu/semiempirical/dftb2.h`,
-`include/atomiverse/cpu/evaluate/evaluate.h`,
-`include/atomiverse/cpu/frame/frame.h`. Implementation:
+`dftb2.h`,
+`evaluate.h`,
+`frame.h`. Implementation:
 `src/cpu/semiempirical/dftb2.cpp` (`enumerate_lattice` /
 `lattice_images_for` + `analytic_forces_restricted` image walk). Static tables:
-`include/atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h`.
+`dftb_mio_tables.h`.
 
 Minimal sequence (matches `reg_dftb2-periodic-forces.cpp`):
 
@@ -240,18 +239,18 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/dftb2.h` | Public `DFTB2` / `DftbSkSet` |
-| `include/atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h` | Static mio-style SK / Hubbard / rep |
+| `dftb2.h` | Public `DFTB2` / `DftbSkSet` |
+| `dftb_mio_tables.h` | Static mio-style SK / Hubbard / rep |
 | `src/cpu/semiempirical/dftb2.cpp` | Lattice enum + Γ H⁰/S + `analytic_forces_restricted` |
-| `regressions/semiempirical/dftb2-periodic-forces/reg_dftb2-periodic-forces.cpp` | Product gate |
-| `regressions/semiempirical/dftb2-periodic-forces/REFERENCE.md` | Offline gates + oracle line |
-| `tools/tb_oracle/inputs/dftbplus/dftb2-periodic-forces/` | Offline DFTB+ geometry twin |
+| `reg_dftb2-periodic-forces.cpp` | Product gate |
+| case `dftb2-periodic-forces` pin | Offline gates + oracle line |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | Offline DFTB+ geometry twin |
 | `tests/cpu/semiempirical/test_dftb2.cpp` | Unit footholds for PBC / analytic F |
 
 ## Validation (DFTB+ / literature)
 
 Source:
-[`regressions/semiempirical/dftb2-periodic-forces/REFERENCE.md`](../../../regressions/semiempirical/dftb2-periodic-forces/REFERENCE.md).
+case `dftb2-periodic-forces` pin.
 Oracle lines:
 
 ```text
@@ -268,7 +267,7 @@ Hard-coded gates in the regression binary — **never** live DFTB+ from ctest.
 | ---- | ----- |
 | Engine (identity) | ATV SCC-DFTB2 MioSketch, Γ-PBC, closed shell |
 | Oracle family | DFTB+ force structure (not OpenMOPAC, not xtb) |
-| Offline twin | `tools/tb_oracle/inputs/dftbplus/dftb2-periodic-forces/` |
+| Offline twin | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 | Atomiverse path | `DFTB2` + `Evaluate`, `with_forces=true`, `scc_tol=1e-10` |
 | FD protocol | Central re-SCC energy-only, \(h=10^{-4}\) Å, lattice-summed \(E\) |
 
@@ -298,7 +297,7 @@ mio-1-1): `dftb2-dftbplus-energy-pin` — \(E=-18.36635052\) eV. Related
 
 ## Performance
 
-Source: `REFERENCE.md`.
+Source: pin notes.
 
 ```text
 perf_exempt: true
@@ -338,11 +337,10 @@ not ctest.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/dftb2-periodic-forces/REFERENCE.md`](../../../regressions/semiempirical/dftb2-periodic-forces/REFERENCE.md)
-- Regression: [`reg_dftb2-periodic-forces.cpp`](../../../regressions/semiempirical/dftb2-periodic-forces/reg_dftb2-periodic-forces.cpp)
-- Public API: [`include/atomiverse/cpu/semiempirical/dftb2.h`](../../../include/atomiverse/cpu/semiempirical/dftb2.h)
-- Offline twin: [`tools/tb_oracle/inputs/dftbplus/dftb2-periodic-forces/`](../../../tools/tb_oracle/inputs/dftbplus/dftb2-periodic-forces/)
-- Oracle tooling: [`tools/tb_oracle/README.md`](../../../tools/tb_oracle/README.md)
+- Offline pin: case `dftb2-periodic-forces` pin
+- Public API: `dftb2.h`
+- Offline twin: TB oracle (OpenMOPAC / DFTB+ / xtb)
+- Oracle tooling: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: [`docs/roadmap/semiempirical.md`](../../roadmap/semiempirical.md)
 - Spec history (closed, deleted at done): git `wf/dftb2-periodic-forces` /
   wave-3 harness (`.claude/specs/dftb2-periodic-forces/` removed at done)

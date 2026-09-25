@@ -15,7 +15,7 @@
 ///   B  CP2K ENERGY_FORCE pin: periodic Γ NiO stretched molecule, PLUS_U
 ///      Mulliken (offline pin, tools/cp2k_oracle — see REFERENCE.md)
 ///
-/// ctest never spawns CP2K. Public GpwDft members + gpw_forces_* only.
+/// ctest never spawns CP2K. Public GpwDft members + forces(frame) / gpw_forces_fd only.
 /// Exit non-zero on failure. Target ≤ 60 s Release (8 threads).
 
 #include <array>
@@ -24,10 +24,12 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
@@ -43,14 +45,50 @@ void check(bool ok, const char* what) {
     }
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> h2_hs(double L) {
-    using namespace ATV::cpu::gpw;
-    const GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-    const GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
+using Forces = std::vector<std::array<double, 3>>;
+
+/// H₂ toy in a cubic box of edge `L` [Bohr]; the Frame is in Å.
+ATV::cpu::Frame h2_hs(double L) {
+    using namespace ATV;
+    constexpr double b2a = units::kBohrInAngstrom;
     // Compressed bond along x (same as gpw-dftu-kpoint-stress).
-    const double r0[3] = {0.5 * L - 0.5, 0.5 * L, 0.5 * L};
-    const double r1[3] = {0.5 * L + 0.5, 0.5 * L, 0.5 * L};
-    return {GpwAtom(r0, bH, pH, 1), GpwAtom(r1, bH, pH, 1)};
+    const double x[2] = {0.5 * L - 0.5, 0.5 * L + 0.5};
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_x)[i] = x[i] * b2a;
+        frame.span(kAtom_y)[i] = 0.5 * L * b2a;
+        frame.span(kAtom_z)[i] = 0.5 * L * b2a;
+    }
+    frame.box = cpu::Box::cubic(L * b2a);
+    return frame;
+}
+
+/// Frame forces [eV/Å] → Ha/Bohr (the pins' unit).
+Forces frame_forces_ha_bohr(const ATV::cpu::Frame& frame) {
+    using namespace ATV;
+    Forces F(static_cast<std::size_t>(frame.nlocal()));
+    for (int i = 0; i < frame.nlocal(); ++i)
+        F[static_cast<std::size_t>(i)] = {
+            frame.span(kAtom_fx)[i] / units::kHartreePerBohrInEvPerAngstrom,
+            frame.span(kAtom_fy)[i] / units::kHartreePerBohrInEvPerAngstrom,
+            frame.span(kAtom_fz)[i] / units::kHartreePerBohrInEvPerAngstrom};
+    return F;
+}
+
+/// eV/Å → Ha/Bohr, in place.
+Forces to_ha_bohr(Forces F) {
+    for (auto& f : F)
+        for (double& c : f)
+            c /= ATV::units::kHartreePerBohrInEvPerAngstrom;
+    return F;
+}
+
+/// SCF + analytic forces of `m` at `frame` [Ha/Bohr].
+Forces analytic_forces(ATV::cpu::gpw::GpwDft& m, ATV::cpu::Frame& frame) {
+    m.build(frame);
+    m.forces(frame);
+    return frame_forces_ha_bohr(frame);
 }
 
 double max_abs_diff(const std::vector<std::array<double, 3>>& a,
@@ -65,12 +103,13 @@ double max_abs_diff(const std::vector<std::array<double, 3>>& a,
 } // namespace
 
 int main() {
+    using namespace ATV;
     using namespace ATV::cpu::gpw;
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();
 
     const double L = 12.0;
-    const auto atoms = h2_hs(L);
+    cpu::Frame frame = h2_hs(L);
     // U−J = 2 eV keeps the DZV s-shell Mulliken occupation in the physical
     // regime: at 4 eV this toy sits in the strong-overlap branch structure
     // (CP2K warns "unphysical Mulliken charges" there) and the displaced
@@ -79,8 +118,9 @@ int main() {
     constexpr double kU_ev = 2.0;
 
     auto make_k = [&](double u_ev) {
-        GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = L;
+        GpwDft m{{Kind{molrs::Element::H,
+                       GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                       GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
         m.cutoff_ry = 100.0;
         m.n_alpha = 2;
         m.n_beta = 0;
@@ -100,8 +140,8 @@ int main() {
 
     // A1: multi-k UKS + U SCF payload
     GpwDft energy = make_k(kU_ev);
-    energy.build(atoms);
-    const auto& er = energy.run(atoms);
+    energy.build(frame);
+    const auto& er = energy.run(frame);
     check(er.converged, "A1 SCF converged");
     check(std::isfinite(er.e_total) && std::isfinite(er.e_dftu),
           "A1 finite e_total / e_dftu");
@@ -112,8 +152,12 @@ int main() {
                 er.e_total, er.e_dftu, er.iters, er.n_kpts);
 
     // A2: decisive dual gate — analytic vs full-6N multi-SCF central FD
-    const auto Fan = gpw_forces_analytic(atoms, make_k(kU_ev));
-    const auto Ffd = gpw_forces_fd(atoms, make_k(kU_ev), /*h=*/1e-3);
+    GpwDft m_an = make_k(kU_ev);
+    const Forces Fan = analytic_forces(m_an, frame);
+    GpwDft m_fd = make_k(kU_ev);
+    m_fd.build(frame);
+    const Forces Ffd = to_ha_bohr(
+        gpw_forces_fd(frame, m_fd, /*h=*/1e-3 * units::kBohrInAngstrom));
     for (std::size_t i = 0; i < Fan.size(); ++i)
         std::printf("  F%zu an=(% .9e % .9e % .9e)\n     fd=(% .9e % .9e "
                     "% .9e)\n",
@@ -144,7 +188,8 @@ int main() {
 
     // A4: the U term is live in the force path
     {
-        const auto F0 = gpw_forces_analytic(atoms, make_k(0.0));
+        GpwDft m0 = make_k(0.0);
+        const Forces F0 = analytic_forces(m0, frame);
         const double dU = max_abs_diff(Fan, F0);
         std::printf("A4: max|F(U) - F(U=0)| = %.3e Ha/Bohr\n", dU);
         check(dU >= 1e-4, "A4 U activation floor on forces");
@@ -160,8 +205,9 @@ int main() {
         GpwDft kg = make_g();
         kg.k_points = {{0.0, 0.0, 0.0}};
         kg.k_point_weights = {1.0};
-        const auto FkG = gpw_forces_analytic(atoms, kg);
-        const auto FG = gpw_forces_analytic(atoms, make_g());
+        const Forces FkG = analytic_forces(kg, frame);
+        GpwDft g = make_g();
+        const Forces FG = analytic_forces(g, frame);
         const double did = max_abs_diff(FkG, FG);
         std::printf("A5: max|F_kΓ - F_Γ| = %.3e Ha/Bohr\n", did);
         check(did <= 5e-6, "A5 Γ-limit k-path ≡ real Γ +U forces");
@@ -171,18 +217,23 @@ int main() {
     // SZV / PADE / U=6 eV on Ni d, Nα=13 Nβ=11). Offline CP2K 2026.1 pin
     // (OT, multigrid 250/40×4): see REFERENCE.md. ATV single grid 250 Ry.
     {
-        constexpr double kAng = 1.8897259886; // Bohr per Å
-        const double Lb = 10.0 * kAng;
-        const GaussianBasis bNi(molrs::Element::Ni, "SZV-GTH-PADE-q18");
-        const GthPotential pNi(molrs::Element::Ni, "GTH-PADE-q18");
-        const GaussianBasis bO(molrs::Element::O, "SZV-GTH-PADE");
-        const GthPotential pO(molrs::Element::O, "GTH-PADE-q6");
-        const double rNi[3] = {5.0 * kAng, 5.0 * kAng, 4.1 * kAng};
-        const double rO[3] = {5.0 * kAng, 5.0 * kAng, 5.9 * kAng};
-        const std::vector<GpwAtom> nio{GpwAtom(rNi, bNi, pNi, 28),
-                                       GpwAtom(rO, bO, pO, 8)};
-        GpwDft scf;
-        scf.cell[0] = scf.cell[1] = scf.cell[2] = Lb;
+        // Geometry [Å], 10 Å cubic box.
+        cpu::Frame nio(2);
+        const int zz[2] = {28, 8};
+        const double zpos[2] = {4.1, 5.9};
+        for (int i = 0; i < 2; ++i) {
+            nio.span(kAtom_type)[i] = zz[i];
+            nio.span(kAtom_x)[i] = 5.0;
+            nio.span(kAtom_y)[i] = 5.0;
+            nio.span(kAtom_z)[i] = zpos[i];
+        }
+        nio.box = cpu::Box::cubic(10.0);
+        GpwDft scf{{Kind{molrs::Element::Ni,
+                         GaussianBasis(molrs::Element::Ni, "SZV-GTH-PADE-q18"),
+                         GthPotential(molrs::Element::Ni, "GTH-PADE-q18")},
+                    Kind{molrs::Element::O,
+                         GaussianBasis(molrs::Element::O, "SZV-GTH-PADE"),
+                         GthPotential(molrs::Element::O, "GTH-PADE-q6")}}};
         scf.cutoff_ry = 250.0;
         scf.max_iter = 300;
         scf.tol = 1e-6;
@@ -194,9 +245,9 @@ int main() {
         scf.n_beta = 11;
         scf.plus_u.push_back(PlusU{molrs::Element::Ni, /*l=*/2, /*u_ev=*/6.0});
         scf.build(nio);
-        const auto& rr = scf.run(nio);
+        const auto& rr = scf.forces(nio);
         check(rr.converged, "B NiO periodic Γ-UKS+U SCF converged");
-        const auto Fnio = gpw_forces_from_scf(nio, scf, rr);
+        const Forces Fnio = frame_forces_ha_bohr(nio);
 
         // CP2K 2026.1 pin (nio_pbc_gamma_ot_force.inp, 2026-07-31):
         //   E = −184.929424563910 Ha, e_dftu = 0.04952309241684 Ha

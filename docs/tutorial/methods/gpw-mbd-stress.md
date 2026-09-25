@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-mbd-stress` |
-| Regression | `regressions/gpw/gpw-mbd-stress/` |
-| Public API | `cpu::gpw::GPWEvaluator{mbd = true, mbd_k_mesh = {2,2,2}, compute_stress = true, stress_use_fd = false}` |
+| Public API | `cpu::gpw::GpwDft{mbd = true, mbd_k_mesh = {2,2,2}}` bound by `cpu::gpw::GPWEvaluator{compute_stress = true, stress_use_fd = false}` |
 | Roadmap / queue | `docs/roadmap/dft.md` §8 Dispersion; queue done 2026-07-26 |
 
 ## Summary

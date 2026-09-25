@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-wannier-gpw` |
-| Regression | `regressions/gpw/periodic-wannier-gpw/` |
 | Public API | `cpu::gpw::PeriodicWannier` → `centers[i]` [Å], `spreads[i]` [Å²] |
 | Roadmap / queue | `docs/roadmap/dft.md` (response/localization); queue done 2026-07-26 |
 
@@ -45,4 +44,4 @@ center-from-diagonal-phases formula, and the rejected inputs (`k_mesh < 1`,
 Ratio: **perf_exempt** — CP2K's `&LOCALIZE` prints centers, and the geometric
 bond-midpoint criterion rather than a wall is the meaningful twin here.
 
-See `regressions/gpw/periodic-wannier-gpw/REFERENCE.md`.
+See case `periodic-wannier-gpw` pin.

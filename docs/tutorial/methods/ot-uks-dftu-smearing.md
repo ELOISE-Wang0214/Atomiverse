@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ot-uks-dftu-smearing` |
-| Regression | `regressions/gpw/ot-uks-dftu-smearing/` |
 | Public API | `cpu::gpw::GpwDft` members `use_ot`, `plus_u`, `smearing`, `degauss`, `extra_bands`, `n_alpha`/`n_beta`, `k_points` / `k_mesh` |
 | Roadmap | `docs/roadmap/dft.md` — multi-k **UKS OT+U+smear** (`reg_ot-uks-dftu-smearing`) ✓ |
 
@@ -107,34 +106,41 @@ first-green absolute.
 ## Implementation
 
 Public surface only: construct `cpu::gpw::GpwDft`, set members, `build` /
-`run` on `GpwAtom` rows (regression path). Frame + `GPWEvaluator` also
-exposes `use_ot` / `plus_u` / spin / k / smear members for outer Drivers;
-this pin uses the solver directly to match the regression. **No**
+`run` on a `cpu::Frame` (regression path). Outer Drivers bind the same
+configured `GpwDft` through `cpu::gpw::GPWEvaluator(std::move(m))`; this pin
+calls the method directly to match the regression. **No**
 `*Config`, **no** factories.
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 using namespace ATV;
-using cpu::gpw::GpwAtom;
 using cpu::gpw::GpwDft;
 using cpu::gpw::GpwResult;
 
 // H₂ in 8 Bohr cubic cell; ±0.7 Bohr from centre along x (REFERENCE)
-const double L = 8.0;
-const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-const double r0[3] = {0.5 * L - 0.7, 0.5 * L, 0.5 * L};
-const double r1[3] = {0.5 * L + 0.7, 0.5 * L, 0.5 * L};
-std::vector<GpwAtom> atoms;
-atoms.emplace_back(r0, bH, pH, 1);
-atoms.emplace_back(r1, bH, pH, 1);
+constexpr double b2a = units::kBohrInAngstrom;  // Frame is Å
+const double L = 8.0 * b2a;                     // 8 Bohr
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 1;
+    frame.span(kAtom_x)[i] = 0.5 * L + (i == 0 ? -0.7 : 0.7) * b2a;
+    frame.span(kAtom_y)[i] = 0.5 * L;
+    frame.span(kAtom_z)[i] = 0.5 * L;
+}
+frame.box = cpu::Box::cubic(L);
 
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = L;
+const cpu::gpw::Kind H{molrs::Element::H,
+                       cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                       cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
+
+GpwDft m{{H}};
 m.cutoff_ry = 100.0;
 m.n_occ = 0;
 m.n_alpha = 1;   // equal-spin seed under FD
@@ -151,8 +157,8 @@ m.extra_bands = 2;
 m.plus_u.push_back({molrs::Element::H, /*l=*/0, /*u_minus_j_ev=*/4.0});
 m.use_ot = true;
 
-m.build(atoms);
-const GpwResult& r = m.run(atoms);
+m.build(frame);
+const GpwResult& r = m.run(frame);
 // r.e_total [Ha] = Mermin free energy F
 // r.e_dftu [Ha], r.n_elec_occ ≈ 2, r.e_fermi, r.e_entropy, r.converged
 ```
@@ -171,25 +177,24 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_ot-uks-dftu-smearing
-  ./build/regressions/reg_ot-uks-dftu-smearing
+  reg_ot-uks-dftu-smearing
 '
 ```
 
 | Piece | Path |
 | ----- | ---- |
-| Public `GpwDft` / `PlusU` / `Smearing` / `GpwResult` | `include/atomiverse/cpu/gpw/gpw_solver.h` |
-| Evaluator members (`use_ot`, `plus_u`, …) | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| OT parameterization (internal) | `include/atomiverse/cpu/gpw/internal/ot.h` |
-| Dudarev E/V (internal) | `include/atomiverse/cpu/gpw/internal/dft_plus_u.h` |
+| Public `GpwDft` / `PlusU` / `Smearing` / `GpwResult` | `gpw_solver.h` |
+| Evaluator members (`use_ot`, `plus_u`, …) | `gpw_evaluator.h` |
+| OT parameterization (internal) | `ot.h` |
+| Dudarev E/V (internal) | `dft_plus_u.h` |
 | SCF wire-up | `src/cpu/gpw/gpw_solver.cpp` |
 | Unit (not e2e): OT / U / smear pieces | `tests/cpu/gpw/test_cpu_gpw_ot.cpp` |
-| Regression | `regressions/gpw/ot-uks-dftu-smearing/` |
-| CP2K DIIS twin | `tools/cp2k_oracle/inputs/ot-uks-dftu-smearing/` |
+| CP2K DIIS twin | CP2K oracle |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/ot-uks-dftu-smearing/REFERENCE.md`](../../../regressions/gpw/ot-uks-dftu-smearing/REFERENCE.md).
+case `ot-uks-dftu-smearing` pin.
 Oracle: offline **CP2K 2026.1** (`cp2k.psmp`); **never** live in ctest. Pin
 date: **2026-07-26**. Closed gates A0–A6.
 
@@ -227,7 +232,7 @@ date: **2026-07-26**. Closed gates A0–A6.
 
 | Item | Value |
 | ---- | ----- |
-| Input | `tools/cp2k_oracle/inputs/ot-uks-dftu-smearing/h2_uks_ot_dftu_smear.inp` |
+| Input | CP2K oracle |
 | Method | Quickstep GPW, LSD PADE, multi-k UKS, PLUS_U, FERMI_DIRAC |
 | SCF | `DIAGONALIZATION` + `DIRECT_P_MIXING` ALPHA 0.35 — **not** OT |
 | Absolute \(E\) | **not** asserted vs ATV in ctest (grid / SCF twin class; A6 freezes ATV) |
@@ -237,7 +242,7 @@ Offline re-run (operator only; not ctest):
 ```bash
 export CP2K_DATA_DIR=.../share/cp2k/data
 # host with CP2K 2026.1; link BASIS_SET + GTH_POTENTIALS into cwd
-cp2k.psmp -i tools/cp2k_oracle/inputs/ot-uks-dftu-smearing/h2_uks_ot_dftu_smear.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o h2_uks_ot_dftu_smear.out
 # ENERGY| Total FORCE_EVAL ( QS ) energy [hartree]  …
 ```
@@ -248,7 +253,7 @@ Attempting `&OT` under the same multi-k + SMEAR setup aborts on CP2K 2026.1
 ## Performance
 
 Source: REFERENCE performance section + handoff
-the case `REFERENCE.md` row `ot-uks-dftu-smearing`. Gate:
+the case pin notes row `ot-uks-dftu-smearing`. Gate:
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \le 10\) **or** `perf_exempt`.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -280,21 +285,20 @@ class as `ot-dftu-smearing` / `ot-uks-dftu`. Wall above is indicative only
 ## References
 
 - Offline pin + walls:
-  [`regressions/gpw/ot-uks-dftu-smearing/REFERENCE.md`](../../../regressions/gpw/ot-uks-dftu-smearing/REFERENCE.md)
+  case `ot-uks-dftu-smearing` pin
 - Regression consumer:
-  [`reg_ot-uks-dftu-smearing.cpp`](../../../regressions/gpw/ot-uks-dftu-smearing/reg_ot-uks-dftu-smearing.cpp)
+  `reg_ot-uks-dftu-smearing.cpp`
 - CP2K DIIS twin:
-  [`tools/cp2k_oracle/inputs/ot-uks-dftu-smearing/`](../../../tools/cp2k_oracle/inputs/ot-uks-dftu-smearing/)
+  CP2K oracle
 - Oracle contract:
-  [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+  CP2K oracle
 - Handoff (`perf_exempt`):
-  the case `REFERENCE.md`
+  the case pin notes
 - Roadmap: [`docs/roadmap/dft.md`](../../roadmap/dft.md)
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Related method pages: [ot-minimizer-water](ot-minimizer-water.md),
   [gpw-dftu-nio](gpw-dftu-nio.md), [pw-smearing-al](pw-smearing-al.md),
   [gpw-uks-o2-gamma](gpw-uks-o2-gamma.md)
-- Public header: `include/atomiverse/cpu/gpw/gpw_solver.h`
 - J. VandeVondele, J. Hutter, *J. Chem. Phys.* **118**, 4365 (2003) — OT
 - T. D. Kühne et al., *J. Chem. Phys.* **152**, 194103 (2020) §VII C — CP2K OT
 - S. L. Dudarev et al., *Phys. Rev. B* **57**, 1505 (1998) — simplified \(U\)

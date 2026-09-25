@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pim-induced-dipole-bulk` |
-| Regression | `regressions/md/pim-induced-dipole-bulk/` |
 | Public API | `cpu::PimInducedDipole` (`Potential`; typically on `cpu::Evaluate` or MD `force`) |
 | Roadmap | map slice E4 |
 | Oracle | **MetalWalls** bulk PIM multipole form (offline analytic pin; not LAMMPS) |
@@ -172,24 +171,24 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_pim-induced-dipole-bulk -j"$(nproc)"
-  ./build/regressions/reg_pim-induced-dipole-bulk
+  reg_pim-induced-dipole-bulk
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/potentials/pim_induced_dipole.h` | Public `PimInducedDipole` |
+| `pim_induced_dipole.h` | Public `PimInducedDipole` |
 | `src/cpu/potentials/pim_induced_dipole.cpp` | SCC, Thole/TT, \(E_{\mathrm{pol}}\), HF forces |
-| `include/atomiverse/cpu/evaluate/evaluate.h` | Host preset `cpu::Evaluate` |
-| `regressions/md/pim-induced-dipole-bulk/reg_pim-induced-dipole-bulk.cpp` | Product gate |
+| `evaluate.h` | Host preset `cpu::Evaluate` |
+| `reg_pim-induced-dipole-bulk.cpp` | Product gate |
 | `tests/cpu/potentials/test_pim_induced_dipole.cpp` | Unit: undamped closed form, FD forces, Thole |
 
 ## Validation (vs MetalWalls-form offline pin)
 
 Source:
-[`regressions/md/pim-induced-dipole-bulk/REFERENCE.md`](../../../regressions/md/pim-induced-dipole-bulk/REFERENCE.md)
+case `pim-induced-dipole-bulk` pin
 (offline pin; **never** live MetalWalls in ctest). Oracle tooling notes:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
+MetalWalls oracle.
 
 **Oracle:** MetalWalls JOSS **5**, 2373 (2020) bulk PIM multipole form; Thole
 *Chem. Phys.* **59**, 341 (1981) exponential damping; **offline analytic pin**
@@ -225,7 +224,7 @@ Related unit surface (not the e2e pin):
 ## Performance
 
 Source: REFERENCE.md; handoff
-the case `REFERENCE.md`
+the case pin notes
 (wave 2, 2026-07-24).
 
 | Twin | \(T_{\mathrm{MetalWalls}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -259,10 +258,8 @@ available, record \(T_{\mathrm{atv}}/T_{\mathrm{MW}}\) in REFERENCE and require
 
 ## References
 
-- Offline pin: [`regressions/md/pim-induced-dipole-bulk/REFERENCE.md`](../../../regressions/md/pim-induced-dipole-bulk/REFERENCE.md)
-- Product gate: [`regressions/md/pim-induced-dipole-bulk/reg_pim-induced-dipole-bulk.cpp`](../../../regressions/md/pim-induced-dipole-bulk/reg_pim-induced-dipole-bulk.cpp)
-- Public header: [`include/atomiverse/cpu/potentials/pim_induced_dipole.h`](../../../include/atomiverse/cpu/potentials/pim_induced_dipole.h)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md)
+- Offline pin: case `pim-induced-dipole-bulk` pin
+- Oracle notes: MetalWalls oracle
 - Literature: Thole, *Chem. Phys.* **59**, 341 (1981); Applequist isotropic
   induced-dipole SCC; Marin-Laflèche et al., *J. Open Source Softw.* **5**,
   2373 (2020) (MetalWalls classical PIM)

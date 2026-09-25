@@ -5,10 +5,9 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ot-kpoints` |
-| Regression | `regressions/gpw/ot-kpoints/` |
 | Public API | `cpu::gpw::GpwDft` members `use_ot`, `k_mesh` / `k_points` + `k_point_weights` |
 | Roadmap | `docs/roadmap/dft.md` §10 GPW — OT multi-k ✓ (`reg_ot-kpoints`) |
-| Oracle | offline CP2K (`tools/cp2k_oracle/inputs/ot-kpoints/`); **never** live in ctest |
+| Oracle | offline CP2K (CP2K oracle); **never** live in ctest |
 
 ## Summary
 
@@ -25,7 +24,7 @@ This page pins the **multi-k OT total energy** for a compact periodic H₂
 (DZV-GTH-PADE / GTH-PADE-q1 / PADE / 100 Ry) against **in-tree multi-k DIIS**
 on identical grids (exactness identities), with a frozen first-green absolute
 band until an offline CP2K OT+KPOINTS energy is available. Product gate:
-`regressions/gpw/ot-kpoints` (`reg_ot-kpoints`). Fair wall vs CP2K:
+`ot-kpoints` (`reg_ot-kpoints`). Fair wall vs CP2K:
 **`perf_exempt`** (no CP2K module/binary on the pin host).
 
 Related product OT surfaces (separate slugs): Γ RKS water
@@ -99,6 +98,9 @@ Public surface only (`cpu::gpw::GpwDft` members; no `*Config`, no factories).
 Match the regression (compact H₂, 8 Bohr cell, 100 Ry, PADE):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -107,18 +109,23 @@ Match the regression (compact H₂, 8 Bohr cell, 100 Ry, PADE):
 using namespace ATV;
 using cpu::gpw::GpwDft;
 
-const double L = 8.0; // Bohr
-const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-std::vector<cpu::gpw::GpwAtom> atoms;
-const double r0[3] = {0.5 * L - 0.7, 0.5 * L, 0.5 * L};
-const double r1[3] = {0.5 * L + 0.7, 0.5 * L, 0.5 * L};
-atoms.emplace_back(r0, bH, pH, 1);
-atoms.emplace_back(r1, bH, pH, 1);
+constexpr double b2a = units::kBohrInAngstrom;  // Frame is Å
+const double L = 8.0 * b2a;                     // 8 Bohr
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 1;
+    frame.span(kAtom_x)[i] = 0.5 * L + (i == 0 ? -0.7 : 0.7) * b2a;
+    frame.span(kAtom_y)[i] = 0.5 * L;
+    frame.span(kAtom_z)[i] = 0.5 * L;
+}
+frame.box = cpu::Box::cubic(L);
+
+const cpu::gpw::Kind H{molrs::Element::H,
+                       cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                       cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
 // Explicit single k = (1/4, 0, 0) — CP2K GENERAL twin
-GpwDft ot;
-ot.cell[0] = ot.cell[1] = ot.cell[2] = L;
+GpwDft ot{{H}};
 ot.cutoff_ry = 100.0;
 ot.n_occ = 1;
 ot.max_iter = 200;
@@ -128,13 +135,12 @@ ot.eps_default = 1e-7;
 ot.use_ot = true;
 ot.k_points.push_back({0.25, 0.0, 0.0});
 ot.k_point_weights.push_back(1.0);
-ot.build(atoms);
-const auto& ro = ot.run(atoms);
+ot.build(frame);
+const auto& ro = ot.run(frame);
 // ro.e_total [Hartree]; ro.converged; ro.n_kpts; ro.k_frac
 
 // Monkhorst–Pack 2×1×1 with time-reversal (alternate construction)
-GpwDft mp;
-mp.cell[0] = mp.cell[1] = mp.cell[2] = L;
+GpwDft mp{{H}};
 mp.cutoff_ry = 100.0;
 mp.n_occ = 1;
 mp.max_iter = 200;
@@ -145,8 +151,8 @@ mp.k_mesh[0] = 2;
 mp.k_mesh[1] = 1;
 mp.k_mesh[2] = 1;
 mp.k_time_reversal = true;
-mp.build(atoms);
-const auto& rm = mp.run(atoms);
+mp.build(frame);
+const auto& rm = mp.run(frame);
 ```
 
 Build and run the regression:
@@ -163,22 +169,22 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_ot-kpoints
-  ./build/regressions/reg_ot-kpoints
+  reg_ot-kpoints
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | Public `GpwDft::{use_ot,k_mesh,k_points,…}` |
-| `include/atomiverse/cpu/gpw/internal/ot.h` | Real OT primitives (internal) |
+| `gpw_solver.h` | Public `GpwDft::{use_ot,k_mesh,k_points,…}` |
+| `ot.h` | Real OT primitives (internal) |
 | `src/cpu/gpw/gpw_solver.cpp` | Multi-k OT SCF branch (complex \(C_k\)) |
-| `regressions/gpw/ot-kpoints/` | E2E product gate + `REFERENCE.md` |
-| `tools/cp2k_oracle/inputs/ot-kpoints/h2_ot_kpoints.inp` | Offline CP2K OT+KPOINTS twin |
+| `ot-kpoints` | E2E product gate + pin notes |
+| CP2K oracle | Offline CP2K OT+KPOINTS twin |
 
 ## Validation (vs CP2K / internal exactness)
 
-Source: [`regressions/gpw/ot-kpoints/REFERENCE.md`](../../../regressions/gpw/ot-kpoints/REFERENCE.md).
-Oracle: offline **CP2K** (`tools/cp2k_oracle/`); **never** live in ctest.
+Source: case `ot-kpoints` pin.
+Oracle: offline **CP2K** (CP2K oracle); **never** live in ctest.
 
 **Setup:**
 
@@ -223,7 +229,7 @@ A5 with a cited CP2K OT+KPOINTS energy when available:
 # host with CP2K module only — never ctest
 module load ... CP2K/...
 export CP2K_DATA_DIR=.../share/cp2k/data
-cp2k.psmp -i tools/cp2k_oracle/inputs/ot-kpoints/h2_ot_kpoints.inp -o ot_k.out
+cp2k.psmp -i <CP2K oracle input for this case> -o ot_k.out
 # ENERGY| Total FORCE_EVAL ( QS ) energy [hartree]  <pin>
 ```
 
@@ -231,8 +237,8 @@ Identity gates A1–A4 remain decisive regardless of absolute CP2K digits.
 
 ## Performance
 
-Source: `regressions/gpw/ot-kpoints/REFERENCE.md` and
-the case `REFERENCE.md` (wave 7). Queue record:
+Source: case `ot-kpoints` pin and
+the case pin notes (wave 7). Queue record:
 **`perf_exempt`**.
 
 | Twin | Wall [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
@@ -261,9 +267,9 @@ microcase; ratio (when measured) will not forecast sparse/linear-scaling OT.
 
 ## References
 
-- Offline pin + gates: `regressions/gpw/ot-kpoints/REFERENCE.md`
-- Regression binary: `regressions/gpw/ot-kpoints/reg_ot-kpoints.cpp`
-- CP2K oracle input: `tools/cp2k_oracle/inputs/ot-kpoints/h2_ot_kpoints.inp`
+- Offline pin + gates: case `ot-kpoints` pin
+- Regression binary: `reg_ot-kpoints.cpp`
+- CP2K oracle input: CP2K oracle
 - Closed spec (git history): `.claude/specs/ot-kpoints/` (deleted at done)
 - Sibling Γ OT handbook: [`ot-minimizer-water`](ot-minimizer-water.md)
 - Narrative GPW chapter: `docs/tutorial/ch09-gpw.md`

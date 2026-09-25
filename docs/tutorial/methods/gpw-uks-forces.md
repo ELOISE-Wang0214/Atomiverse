@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-uks-forces` |
-| Regression | `regressions/gpw/gpw-uks-forces/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`n_alpha`/`n_beta`, `XcKind::PBE`, `nonperiodic`, `compute_forces`); `cpu::Evaluate` |
+| Public API | `cpu::gpw::GpwDft` (`n_alpha`/`n_beta`, `XcKind::PBE`, `nonperiodic`) bound by `cpu::gpw::GPWEvaluator` (`compute_forces`); `cpu::Evaluate` |
 | Roadmap | `docs/roadmap/dft.md` — Γ-UKS GPW ionic forces (PBE GGA) |
 
 ## Summary
@@ -19,10 +18,11 @@ forces at the **Γ point** for open-shell systems. Product path: spin-resolved
 This page pins **triplet O₂** energy and Cartesian forces against offline
 **CP2K 2026.1 Quickstep** (`RUN_TYPE ENERGY_FORCE`, `LSD`, `MULTIPLICITY 3`).
 
-Public path: construct `cpu::gpw::GPWEvaluator` with one `Kind` per element
+Public path: construct `cpu::gpw::GpwDft` with one `Kind` per element
 (lookup constructors `GaussianBasis` / `GthPotential`), set members
-(`n_alpha`, `n_beta`, `cutoff_ry`, `xc`, `nonperiodic`, `compute_forces`, …),
-bind into `cpu::Evaluate`. Energy on `frame.meta` is **eV**; forces on
+(`n_alpha`, `n_beta`, `cutoff_ry`, `xc`, `nonperiodic`, …), move it into
+`GPWEvaluator(std::move(dft), /*compute_forces=*/true)` and bind into
+`cpu::Evaluate` (or call `dft.forces(frame)` directly). Energy on `frame.meta` is **eV**; forces on
 `frame.span(kAtom_f*)` are **eV/Å** (pin comparison converts to Ha / Ha·Bohr⁻¹).
 Product gate: `reg_gpw-uks-forces`. Fair wall ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \approx 2.52\) (≤10×).
@@ -30,7 +30,7 @@ Product gate: `reg_gpw-uks-forces`. Fair wall ratio
 Related: energy-only Γ-UKS PADE foothold
 [gpw-uks-o2-gamma](gpw-uks-o2-gamma.md); closed-shell RKS forces
 [gpw-forces-water](gpw-forces-water.md); multi-k UKS energy
-`regressions/gpw/gpw-kpoints-uks` (forces remain Γ-only here). Narrative:
+`gpw-kpoints-uks` (forces remain Γ-only here). Narrative:
 [Ch. 9 GPW](../ch09-gpw.md).
 
 ## Method
@@ -50,7 +50,7 @@ spin-resolved PBE on the grid; diagonalize separate \(H_\alpha\) and
 (not a multiplicity bag). When both are zero, the closed-shell `n_occ` path
 is unchanged.
 
-**Ionic forces (analytic product path, `gpw_forces_analytic` UKS branch):**
+**Ionic forces (analytic product path, `GpwDft::forces` UKS branch):**
 
 \[
 \mathbf{F}_A = -\frac{\partial E}{\partial \mathbf{R}_A}
@@ -126,7 +126,7 @@ order 0.53 Ha/Bohr; the product path keeps both sides on grid PP
 ## Implementation
 
 Public surface only (`cpu::Frame`, `cpu::gpw::Kind` / lookup constructors,
-`GPWEvaluator` members; **no** public `*Config`, **no** `make_*` / `build_*`
+`GpwDft` / `GPWEvaluator` members; **no** public `*Config`, **no** `make_*` / `build_*`
 factories):
 
 ```cpp
@@ -163,16 +163,17 @@ cpu::gpw::Kind O{
     cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
     cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
-cpu::gpw::GPWEvaluator eval({O});
-eval.cutoff_ry = 400.0;
-eval.max_iter = 200;
-eval.tol = 1e-7;
-eval.mix = 0.4;
-eval.xc = cpu::gpw::XcKind::PBE;
-eval.nonperiodic = true;
-eval.compute_forces = true;
-eval.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
-eval.n_beta = 5;
+cpu::gpw::GpwDft dft{{O}};
+dft.cutoff_ry = 400.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = true;
+dft.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
+dft.n_beta = 5;
+
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/true);
 
 cpu::Evaluate driver;
 driver.on(evaluate::Phase::evaluate).add_ref(eval);
@@ -198,7 +199,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-uks-forces
-  ./build/regressions/reg_gpw-uks-forces
+  reg_gpw-uks-forces
   # or: cmake --build build --target run_reg_gpw-uks-forces
 '
 ```
@@ -207,17 +208,16 @@ Relevant sources:
 
 | Piece | Path |
 | ----- | ---- |
-| Evaluator | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| Solver (UKS SCF) | `include/atomiverse/cpu/gpw/gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
-| Analytic forces (UKS branch) | `gpw_forces_analytic` under `src/cpu/gpw/` / `internal/` |
+| Evaluator | `gpw_evaluator.h` |
+| Solver (UKS SCF) | `gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
+| Analytic forces (UKS branch) | `GpwDft::forces`; assembly under `src/cpu/gpw/` / `internal/` |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_forces.cpp` (`UksH2AnalyticVsFiniteDifference`) |
-| Regression | `regressions/gpw/gpw-uks-forces/reg_gpw-uks-forces.cpp` |
-| Offline pin | `regressions/gpw/gpw-uks-forces/REFERENCE.md` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/gpw-uks-forces/o2_uks_forces.inp` |
+| Offline pin | case `gpw-uks-forces` pin |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (CP2K)
 
-Source: `regressions/gpw/gpw-uks-forces/REFERENCE.md` (offline pin; **never**
+Source: case `gpw-uks-forces` pin (offline pin; **never**
 live CP2K in ctest). Engine: **CP2K 2026.1** (`cp2k.psmp`), EasyBuild module
 stack on Arrhenius. Re-pin date: **2026-07-25**. `RUN_TYPE ENERGY_FORCE`.
 
@@ -292,15 +292,15 @@ module load buildtool-easybuild/5.2.1-hpca3ef7d197 GCC/14.3.0 MPICH/4.3.2 CP2K/2
 export CP2K_DATA_DIR=$EBROOTCP2K/share/cp2k/data
 export OMP_NUM_THREADS=4
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_MOLOPT,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/gpw-uks-forces/o2_uks_forces.inp
+# copy <CP2K oracle input for this case>
 mpirun -n 1 cp2k.psmp -i o2_uks_forces.inp -o o2_uks_forces.out
 ```
 
 ## Performance
 
-Source: same `REFERENCE.md` fair-wall note (2026-07-25) and
-the case `REFERENCE.md`. Not a ctest gate; optional offline
-twin under `tools/cp2k_oracle/`.
+Source: same pin notes fair-wall note (2026-07-25) and
+the case pin notes. Not a ctest gate; optional offline
+twin under CP2K oracle.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | ---------------------------------------: | ---- | ------ |
@@ -335,10 +335,10 @@ the same ratio **~2.52**.
 
 ## References
 
-- Offline pin: [`regressions/gpw/gpw-uks-forces/REFERENCE.md`](../../../regressions/gpw/gpw-uks-forces/REFERENCE.md)
-- Regression consumer: [`reg_gpw-uks-forces.cpp`](../../../regressions/gpw/gpw-uks-forces/reg_gpw-uks-forces.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/gpw-uks-forces/`](../../../tools/cp2k_oracle/inputs/gpw-uks-forces/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin: case `gpw-uks-forces` pin
+- Regression consumer: `reg_gpw-uks-forces.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Sibling tutorials: [gpw-uks-o2-gamma](gpw-uks-o2-gamma.md) (energy),
   [gpw-forces-water](gpw-forces-water.md) (closed-shell forces)
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)

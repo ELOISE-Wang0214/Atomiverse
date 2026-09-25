@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dftb2-analytic-forces` |
-| Regression | `regressions/semiempirical/dftb2-analytic-forces/` |
 | Public API | `cpu::semiempirical::DFTB2` (`with_forces = true`, restricted MioSketch); `cpu::Evaluate` |
 | Related narrative | [Ch. 17 Semiempirical AM1](../ch17-semiempirical-am1.md) (SE product surface; DFTB is sibling family) |
 | Queue | TB method loop — wave 1 done |
@@ -190,18 +189,18 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/dftb2.h` | Public `DFTB2` / `DftbSkSet` |
-| `include/atomiverse/cpu/semiempirical/basis_data/dftb_mio_tables.h` | Static mio-style SK / Hubbard / rep |
+| `dftb2.h` | Public `DFTB2` / `DftbSkSet` |
+| `dftb_mio_tables.h` | Static mio-style SK / Hubbard / rep |
 | `src/cpu/semiempirical/dftb2.cpp` | SCC + `analytic_forces_restricted` + SK derivs |
-| `regressions/semiempirical/dftb2-analytic-forces/reg_dftb2-analytic-forces.cpp` | Product gate |
-| `regressions/semiempirical/dftb2-analytic-forces/REFERENCE.md` | Offline gates + oracle line |
-| `tools/tb_oracle/inputs/dftbplus/dftb2_analytic_forces_note.md` | Why formula-level pin |
+| `reg_dftb2-analytic-forces.cpp` | Product gate |
+| case `dftb2-analytic-forces` pin | Offline gates + oracle line |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | Why formula-level pin |
 | `tests/cpu/semiempirical/test_dftb2.cpp` | Unit analytic-vs-FD (H₂ tight; H₂O dual-comp) |
 
 ## Validation (DFTB+)
 
 Source:
-[`regressions/semiempirical/dftb2-analytic-forces/REFERENCE.md`](../../../regressions/semiempirical/dftb2-analytic-forces/REFERENCE.md).
+case `dftb2-analytic-forces` pin.
 Oracle: **`dftb+`** (formula-level / force module boundary — Hourahine et al.,
 *J. Chem. Phys.* **152**, 124101 (2020); Elstner 1998).
 `oracle_version`: formula-level (no DFTB+ binary on pin host at wave-1).
@@ -213,7 +212,7 @@ Hard-coded gates in the regression binary — **never** live DFTB+ from ctest.
 | ---- | ----- |
 | Engine (identity) | ATV SCC-DFTB2 MioSketch closed shell |
 | Oracle family | DFTB+ force structure (not OpenMOPAC, not xtb) |
-| Offline note | `tools/tb_oracle/inputs/dftbplus/dftb2_analytic_forces_note.md` |
+| Offline note | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 | Atomiverse path | `DFTB2` + `Evaluate`, `with_forces=true`, `scc_tol=1e-10` |
 | FD protocol | Central re-SCC energy-only, \(h=10^{-4}\) Å |
 
@@ -237,7 +236,7 @@ multi-element residual. Tight H₂ unit coverage anchors the same formulas at
 
 ## Performance
 
-Source: `REFERENCE.md` — **`perf_exempt: true`**.
+Source: pin notes — **`perf_exempt: true`**.
 
 No DFTB+ binary / fair wall on the pin host at wave-1. Analytic path replaces
 \(6N\) full re-SCC force evaluations with **one** post-SCC contraction of
@@ -272,9 +271,9 @@ exists. Handoff records wave-1 TB greens as `perf_exempt`.
 
 ## References
 
-- Offline pin: `regressions/semiempirical/dftb2-analytic-forces/REFERENCE.md`
-- Oracle note: `tools/tb_oracle/inputs/dftbplus/dftb2_analytic_forces_note.md`
-- Oracle README: `tools/tb_oracle/README.md`
+- Offline pin: case `dftb2-analytic-forces` pin
+- Oracle note: TB oracle (OpenMOPAC / DFTB+ / xtb)
+- Oracle README: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: `docs/roadmap/semiempirical.md`
 - Spec history (closed, deleted at done): git `wf/dftb2-analytic-forces` /
   wave-1 harness (`.claude/specs/dftb2-analytic-forces/` removed at done)

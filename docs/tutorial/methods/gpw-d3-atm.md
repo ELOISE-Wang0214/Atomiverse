@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d3-atm` |
-| Regression | `regressions/gpw/gpw-d3-atm/` |
-| Public API | `cpu::gpw::GpwDft::d3` + `d3_atm`; `cpu::gpw::GPWEvaluator::d3` + `d3_atm`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::GpwDft::d3` + `d3_atm` (bind into a driver with `cpu::gpw::GPWEvaluator`); `GpwResult::e_disp` [Ha] |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -17,11 +16,11 @@ London correction. This product pin uses an **isolated water dimer** in a
 12 Å cubic box (`PERIODIC NONE` / MT host) and gates the **dispersion energy**
 against offline **CP2K 2026.1** `TYPE DFTD3` with `CALCULATE_C9_TERM .TRUE.`.
 
-Public surface: bool members `d3` and `d3_atm` on `cpu::gpw::GpwDft` and
-`cpu::gpw::GPWEvaluator` (no `*Config` bag). `d3_atm` enables C9 on top of
+Public surface: bool members `d3` and `d3_atm` on `cpu::gpw::GpwDft`
+(no `*Config` bag). `d3_atm` enables C9 on top of
 either `d3` or `d3bj`; it is ignored when neither two-body flag is set.
 Dispersion is reported on `GpwResult::e_disp` [Hartree] and folded into
-`e_total`. Product gate: `regressions/gpw/gpw-d3-atm` (`reg_gpw-d3-atm`).
+`e_total`. Product gate: `gpw-d3-atm` (`reg_gpw-d3-atm`).
 Wall ratio is **perf_exempt** (E_disp pin; full QS twin wall unfair — see
 Performance).
 
@@ -95,28 +94,29 @@ the dimer).
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
+Public surface only (`GpwDft` members + `GPWEvaluator`; no `*Config`, no
 `make_*` / `build_*` factories). Regression uses the concrete solver:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
 
-// Geometry [Å] → Bohr — CP2K water dimer (REFERENCE.md).
-constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// Geometry [Å] — CP2K water dimer (REFERENCE.md).
+// … fill ATV::cpu::Frame frame(6): positions [Å], Z (8 / 1) in kAtom_type …
+frame.box = ATV::cpu::Box::cubic(12.0);   // [Å]
+// Kind O / H: DZVP-MOLOPT-SR-GTH + GTH-PBE-q6 / GTH-PBE-q1
 
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+GpwDft gpw{{O, H}};
 gpw.cutoff_ry = 200.0; // e_disp is geometry-only; SCF only needs to run
 gpw.n_occ = 8;         // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 8;
@@ -127,22 +127,23 @@ gpw.nonperiodic = true; // isolated / MT — matches twin PERIODIC NONE
 gpw.d3 = true;          // zero damping; exclusive vs d3bj / d4 / ts / …
 gpw.d3_atm = true;      // CP2K CALCULATE_C9_TERM
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp [Ha] within 1e-9 of offline CP2K pin
 // res.e_total includes e_disp
 ```
 
-Driver / Frame path (component; same members):
+Driver path (component binding the same method):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/300.0, /*max_iter=*/200,
-                                 /*tol=*/1e-7, /*mix=*/0.3,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/true);
-eval.d3 = true;
-eval.d3_atm = true;
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 300.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;
+dft.nonperiodic = true;
+dft.d3 = true;
+dft.d3_atm = true;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft));
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 ```
@@ -161,27 +162,27 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-d3-atm -j$(nproc)
-  ./build/regressions/reg_gpw-d3-atm
+  reg_gpw-d3-atm
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `d3`, `d3_atm` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::d3`, `d3_atm` |
-| `include/atomiverse/cpu/gpw/internal/dftd3.h` | `dftd3_pbe(..., calculate_c9)` engine (private) |
-| `include/atomiverse/cpu/gpw/internal/dftd3_params.h` | In-tree D3 tables (`D3Params{}`) |
-| `regressions/gpw/gpw-d3-atm/reg_gpw-d3-atm.cpp` | Product gate |
-| `regressions/gpw/gpw-d3-atm/REFERENCE.md` | Offline pin + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-d3-atm/` | CP2K twin input |
+| `gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `d3`, `d3_atm` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds the configured `GpwDft`) |
+| `dftd3.h` | `dftd3_pbe(..., calculate_c9)` engine (private) |
+| `dftd3_params.h` | In-tree D3 tables (`D3Params{}`) |
+| `reg_gpw-d3-atm.cpp` | Product gate |
+| case `gpw-d3-atm` pin | Offline pin + perf_exempt |
+| CP2K oracle | CP2K twin input |
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/gpw/gpw-d3-atm/REFERENCE.md`](../../../regressions/gpw/gpw-d3-atm/REFERENCE.md).
+case `gpw-d3-atm` pin.
 Oracle: offline **CP2K 2026.1** (`git` / module
 `2026.1-gmpflf-2026.03` on Arrhenius), twin
-`tools/cp2k_oracle/inputs/gpw-d3-atm/water_dimer_d3_atm.inp`. External
+CP2K oracle. External
 engine pin — not a golden of Atomiverse’s own output; **never** launch live
 CP2K from ctest.
 
@@ -211,7 +212,7 @@ that default `d3_atm = false` keeps the two-body pin.
 
 ## Performance
 
-Source: `REFERENCE.md` (queue: **perf_exempt**).
+Source: pin notes (queue: **perf_exempt**).
 
 D3 + ATM evaluation itself is \(O(N^2)\) + \(O(N^3)\) over a 6-atom cell
 (microseconds). Full GPW SCF wall is dominated by the electronic structure,
@@ -246,11 +247,11 @@ strict full-SCF twin later if product policy requires
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-d3-atm/REFERENCE.md`
-- Oracle inputs: `tools/cp2k_oracle/inputs/gpw-d3-atm/`
+- Offline pin: case `gpw-d3-atm` pin
+- Oracle inputs: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
 - Related two-body D3(BJ): `docs/tutorial/methods/gpw-pbe-d3bj-ice.md`
-- Related D4 ATM: `regressions/gpw/gpw-d4-atm/`
+- Related D4 ATM: `gpw-d4-atm`
 - GPW narrative chapter: `docs/tutorial/ch09-gpw.md`
 - S. Grimme, J. Antony, S. Ehrlich, H. Krieg, *J. Chem. Phys.* **132**, 154104
   (2010) (DFT-D3 zero damping)

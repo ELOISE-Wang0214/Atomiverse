@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-rvv10-ice` |
-| Regression | `regressions/gpw/gpw-rvv10-ice/` |
-| Public API | `cpu::gpw::GpwDft::rvv10` / `cpu::gpw::GPWEvaluator::rvv10`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::GpwDft::rvv10` (bound by `cpu::gpw::GPWEvaluator`); `GpwResult::e_disp` [Ha] |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -20,11 +19,11 @@ the **nonlocal energy** \(E_c^{\mathrm{nl}}\) on `GpwResult::e_disp` against a
 **dual-frozen Atomiverse post-SCF pin**, with offline **CP2K 2026.1**
 `TYPE RVV10` as the literature-aligned cross-check (self-consistent density).
 
-Public surface: bool members `rvv10` on `cpu::gpw::GpwDft` and
+Public surface: bool member `rvv10` on `cpu::gpw::GpwDft`, bound into drivers by
 `cpu::gpw::GPWEvaluator` (no `*Config` bag). Nonlocal energy is reported on
 `GpwResult::e_disp` [Hartree] and folded into `e_total`. Mutually exclusive with
 pairwise / MBD / vdW-DF / vdW-DF2 flags (`d3`, `d3bj`, `d4`, `ts`, `mbd`,
-`vdw_df`, `vdw_df2`). Product gate: `regressions/gpw/gpw-rvv10-ice`
+`vdw_df`, `vdw_df2`). Product gate: `gpw-rvv10-ice`
 (`reg_gpw-rvv10-ice`). Wall ratio is **perf_exempt** (E_disp pin; full QS twin
 wall unfair — see Performance).
 
@@ -81,28 +80,28 @@ Absolute QS \(E_{\mathrm{tot}}\) micro-Ha parity vs CP2K is **out of scope**
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
+Public surface only (`GpwDft` members + `GPWEvaluator`; no `*Config`, no
 `make_*` / `build_*` factories). Regression uses the concrete solver:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
 
-// Geometry [Å] → Bohr — CP2K water dimer (REFERENCE.md).
-constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// Frame [Å] — CP2K water dimer (REFERENCE.md).
+// … fill 6 rows (2×O + 4×H): kAtom_x/y/z [Å], Z in kAtom_type …
+frame.box = ATV::cpu::Box::cubic(12.0); // Å
 
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+// kinds O, H: DZVP-MOLOPT-SR-GTH + GTH-PBE-q6 / GTH-PBE-q1
+GpwDft gpw{{O, H}};
 gpw.cutoff_ry = 200.0;
 gpw.n_occ = 8;         // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 40;
@@ -112,8 +111,8 @@ gpw.xc = XcKind::PBE;
 gpw.nonperiodic = false;
 gpw.rvv10 = true;      // exclusive vs d3/d3bj/d4/ts/mbd/vdw_df/vdw_df2
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp [Ha] within 5e-5 of dual-frozen pin
 // res.e_total includes e_disp
 ```
@@ -122,11 +121,11 @@ Driver / Frame path (component; same member):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/200.0, /*max_iter=*/40,
-                                 /*tol=*/1e-7, /*mix=*/0.4,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false);
-eval.rvv10 = true;
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 200.0;  dft.max_iter = 40;  dft.tol = 1e-7;  dft.mix = 0.4;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;  dft.nonperiodic = false;
+dft.rvv10 = true;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft));
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 // Public Frame energy remains eV on frame.meta (kEnergy); internal Ha OK when cited.
@@ -146,28 +145,28 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-rvv10-ice -j$(nproc)
-  ./build/regressions/reg_gpw-rvv10-ice
+  reg_gpw-rvv10-ice
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `rvv10` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::rvv10` |
-| `include/atomiverse/cpu/gpw/internal/rvv10.h` | RPS energy kernel (private) |
+| `gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `rvv10` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds `GpwDft` into a driver) |
+| `rvv10.h` | RPS energy kernel (private) |
 | `src/cpu/gpw/internal/rvv10.cpp` | Post-SCF evaluation |
 | `src/cpu/gpw/internal/rvv10_kernel_data.cpp` | Embedded CP2K kernel table |
-| `regressions/gpw/gpw-rvv10-ice/reg_gpw-rvv10-ice.cpp` | Product gate |
-| `regressions/gpw/gpw-rvv10-ice/REFERENCE.md` | Offline pin + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-rvv10-ice/` | CP2K twin input + notes |
+| `reg_gpw-rvv10-ice.cpp` | Product gate |
+| case `gpw-rvv10-ice` pin | Offline pin + perf_exempt |
+| CP2K oracle | CP2K twin input + notes |
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/gpw/gpw-rvv10-ice/REFERENCE.md`](../../../regressions/gpw/gpw-rvv10-ice/REFERENCE.md).
+case `gpw-rvv10-ice` pin.
 Oracle: offline **CP2K 2026.1** (Arrhenius tree install `work/cp2k/install`,
 GCC 11.5 + libxc + FFTW3), twin
-`tools/cp2k_oracle/inputs/gpw-rvv10-ice/water_dimer_rvv10.inp`. External
+CP2K oracle. External
 engine pin — not a golden of Atomiverse’s own output; **never** launch live
 CP2K from ctest.
 
@@ -200,7 +199,7 @@ scale.
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 rVV10 evaluation is an FFT-based nonlocal kernel on the density grid
 (\(O(N_g \log N_g)\) per q-channel product). Full GPW SCF wall is still
@@ -239,8 +238,8 @@ strict full-SCF twin later if product policy requires
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-rvv10-ice/REFERENCE.md`
-- Oracle inputs: `tools/cp2k_oracle/inputs/gpw-rvv10-ice/`
+- Offline pin: case `gpw-rvv10-ice` pin
+- Oracle inputs: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
 - GPW narrative chapter: `docs/tutorial/ch09-gpw.md`
 - Sibling nonlocal / dispersion pins: `gpw-vdw-df-ice`, `gpw-vdw-df2-ice`,

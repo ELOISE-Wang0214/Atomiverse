@@ -39,17 +39,17 @@ void check_cuda(cudaError_t e, const char* what) {
     ASSERT_EQ(e, cudaSuccess) << what << ": " << cudaGetErrorString(e);
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> h2_atoms() {
+std::vector<ATV::cpu::gpw::internal::GpwAtom> h2_atoms() {
     const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
     const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
     const double rA[3] = {5.5, 6.0, 6.0};
     const double rB[3] = {6.5, 6.0, 6.0};
-    return {ATV::cpu::gpw::GpwAtom(rA, basis, pot, 1),
-            ATV::cpu::gpw::GpwAtom(rB, basis, pot, 1)};
+    return {ATV::cpu::gpw::internal::GpwAtom(rA, basis, pot, 1),
+            ATV::cpu::gpw::internal::GpwAtom(rB, basis, pot, 1)};
 }
 
-std::vector<GridBasisFunction>
-flatten_basis_local(const std::vector<ATV::cpu::gpw::GpwAtom>& atoms) {
+std::vector<GridBasisFunction> flatten_basis_local(
+    const std::vector<ATV::cpu::gpw::internal::GpwAtom>& atoms) {
     std::vector<GridBasisFunction> basis;
     for (const auto& a : atoms)
         for (const auto& bf : a.basis)

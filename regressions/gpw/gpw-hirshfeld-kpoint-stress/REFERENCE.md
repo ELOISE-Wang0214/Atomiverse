@@ -32,9 +32,9 @@ gpw.ts = true;          // or gpw.mbd = true
 gpw.hirshfeld = true;
 gpw.k_mesh[0] = gpw.k_mesh[1] = 1;
 gpw.k_mesh[2] = 2;
-gpw.build(atoms);
-const auto& scf = gpw.run(atoms);
-auto sig = gpw_stress(atoms, gpw, scf, /*h=*/2e-3);
+gpw.build(frame);
+const auto& scf = gpw.run(frame);
+auto sig = gpw_stress(frame, gpw, scf, /*h=*/2e-3);
 ```
 
 Scaling of free-atom \(\alpha_0\) / \(C_6\) / \(R_{\mathrm{vdW}}\):

@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-ump2-kpoints` |
-| Regression | `regressions/gpw/periodic-ump2-kpoints/` |
-| Public API | `cpu::gpw::GpwDft::mp2(atoms)` → `cpu::gpw::Mp2Result` (`cpu/gpw/mp2.h`); UKS `n_alpha`/`n_beta`, `k_mesh[3]`, `k_time_reversal`, `mp2_ri`, `mp2_n_virt` |
+| Public API | `cpu::gpw::GpwDft::mp2()` → `cpu::gpw::Mp2Result` (`cpu/gpw/mp2.h`); UKS `n_alpha`/`n_beta`, `k_mesh[3]`, `k_time_reversal`, `mp2_ri`, `mp2_n_virt` |
 | Roadmap | `docs/roadmap/dft.md` §10 — multi-k UMP2 ✓ (`reg_periodic-ump2-kpoints`) |
 | Dual gate | E_corr vs multi-k RMP2 first-green; speed **`perf_exempt`** |
 
@@ -30,7 +29,7 @@ Monkhorst–Pack mesh, `build` → `run` → `mp2`. Correlation and SCF energies
 `Mp2Result` are **Hartree** (internal); public Frame energy remains eV when the
 evaluator path is used. Product gate: `reg_periodic-ump2-kpoints`. Fair wall
 vs CP2K is **`perf_exempt`** (no CP2K binary on the pin host). Offline twin:
-`tools/cp2k_oracle/inputs/periodic-ump2-kpoints.inp` — never launched by ctest.
+CP2K oracle — never launched by ctest.
 
 ## Method
 
@@ -98,25 +97,38 @@ CP2K twin matches that cap.
 ## Implementation
 
 Public surface only — **no** `*Config` bag, **no** `make_*` / `build_*`
-factories. Geometry is `std::vector<GpwAtom>` (Bohr) for `GpwDft`; basis/PP via
+factories. Geometry is a `cpu::Frame` (positions [Å], Z in `kAtom_type`, orthorhombic
+`box`) for `GpwDft`; basis/PP via
 lookup constructors `GaussianBasis` / `GthPotential`.
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/mp2.h"
 #include "atomiverse/molrs.hpp"
 
-// Diamond Si body-centred-tetragonal 4-atom cell; a = 5.43 Å → Bohr
-const double a_bohr = 5.43 / 0.52917720859;
-const double at = a_bohr / std::sqrt(2.0);
-// frac → Cartesian: (0,0,0), (½,½,½), (½,0,¼), (0,½,¾) × (at, at, a)
-// … fill atoms with DZVP-MOLOPT-GTH + GTH-PBE-q4 …
+using namespace ATV;
 
-cpu::gpw::GpwDft m;
-m.cell[0] = m.cell[1] = at;
-m.cell[2] = a_bohr;
+// bct diamond Si4: a = 5.43 Å, a_t = a/√2, c = a; fractional coords
+// (0,0,0), (½,½,½), (½,0,¼), (0,½,¾); Z = 14 in kAtom_type.
+constexpr double a = 5.43;                   // [Å]
+const double at = a / std::sqrt(2.0);
+const double frac[4][3] = {{0, 0, 0}, {0.5, 0.5, 0.5}, {0.5, 0, 0.25}, {0, 0.5, 0.75}};
+cpu::Frame frame(4);
+for (int i = 0; i < 4; ++i) {
+    frame.span(kAtom_type)[i] = 14;
+    frame.span(kAtom_x)[i] = frac[i][0] * at;
+    frame.span(kAtom_y)[i] = frac[i][1] * at;
+    frame.span(kAtom_z)[i] = frac[i][2] * a;
+}
+frame.box = cpu::Box::orthorhombic(at, at, a);
+
+cpu::gpw::GpwDft m{{cpu::gpw::Kind{molrs::Element::Si,
+                                   cpu::gpw::GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+                                   cpu::gpw::GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 80.0;
 m.n_alpha = 8;
 m.n_beta = 8;
@@ -134,9 +146,9 @@ m.k_time_reversal = false;     // equal weights (CP2K FULL_GRID / no symmetry)
 m.mp2_ri = true;
 m.mp2_n_virt = 2;              // per spin → n_virt = 4 total
 
-m.build(atoms);
-const cpu::gpw::GpwResult& scf = m.run(atoms);  // 2k UKS, C_k + C_k_beta
-const cpu::gpw::Mp2Result& r = m.mp2(atoms);    // multi-k UMP2, no throw
+m.build(frame);
+const cpu::gpw::GpwResult& scf = m.run(frame);  // 2k UKS, C_k + C_k_beta
+const cpu::gpw::Mp2Result& r = m.mp2();         // multi-k UMP2, no throw
 // r.e_corr, r.e_corr_os, r.e_corr_ss, r.e_total [Ha]; r.n_kpts==2; r.ri
 ```
 
@@ -144,18 +156,18 @@ const cpu::gpw::Mp2Result& r = m.mp2(atoms);    // multi-k UMP2, no throw
 # Scoped build/test (never bare cmake --build build)
 cmake --build build -j"$(nproc)" --target atomiverse reg_periodic-ump2-kpoints
 cmake --build build --target run_reg_periodic-ump2-kpoints
-# or: ./build/regressions/reg_periodic-ump2-kpoints
+# or: reg_periodic-ump2-kpoints
 ```
 
-Relevant headers: `include/atomiverse/cpu/gpw/gpw_solver.h` (`GpwDft::mp2`),
+Relevant headers: `gpw_solver.h` (`GpwDft::mp2`),
 `mp2.h` (`Mp2Result`), kernels private under `cpu/gpw/internal/mp2_kernels.h`
 (`mp2_uhf_energy_kpoints`).
 
 ## Validation (vs CP2K offline / dual-gate)
 
-Source: `regressions/gpw/periodic-ump2-kpoints/REFERENCE.md` (offline pin;
+Source: case `periodic-ump2-kpoints` pin (offline pin;
 never live in ctest). Twin input:
-`tools/cp2k_oracle/inputs/periodic-ump2-kpoints.inp`.
+CP2K oracle.
 
 ### System (binding)
 
@@ -200,7 +212,7 @@ needed.
 
 ## Performance
 
-Source: the case `REFERENCE.md` (wave 6) and REFERENCE.md.
+Source: the case pin notes (wave 6) and REFERENCE.md.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | ----: | ---- | ------ |
@@ -225,10 +237,10 @@ This slug: **`perf_exempt`**. Wall budget for the regression binary: ≤ 60 s.
 
 ## References
 
-- Offline pin: `regressions/gpw/periodic-ump2-kpoints/REFERENCE.md`
-- Oracle twin: `tools/cp2k_oracle/inputs/periodic-ump2-kpoints.inp`
-- Closed-shell multi-k twin: `regressions/gpw/periodic-mp2-kpoints/REFERENCE.md`
-- Γ UMP2 foothold: `regressions/gpw/periodic-ump2-si/REFERENCE.md`
+- Offline pin: case `periodic-ump2-kpoints` pin
+- Oracle twin: CP2K oracle
+- Closed-shell multi-k twin: case `periodic-mp2-kpoints` pin
+- Γ UMP2 foothold: case `periodic-ump2-si` pin
 - Roadmap: `docs/roadmap/dft.md` §10
 - Del Ben, Hutter, VandeVondele, *J. Chem. Theory Comput.* **8**, 4177 (2012)
   (RI-GPW / CP2K `MP2_GPW`)

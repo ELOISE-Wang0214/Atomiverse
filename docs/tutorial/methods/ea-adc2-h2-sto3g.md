@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ea-adc2-h2-sto3g` |
-| Regression | `regressions/scf/ea-adc2-h2-sto3g/` |
 | Public API | `cpu::scf::RHF::ea_adc2(n_states)` → `EAADC2Result` |
 | Twin | PySCF `adc.ADC`, `method='adc(2)'`, `method_type='ea'` |
 | Roadmap | `docs/roadmap/excited-states.md` (EA-ADC(2) energy ✓) |
@@ -18,7 +17,7 @@ the intermediate-state representation of the electron-attachment propagator.
 This page covers the H₂ / STO-3G product gate: the lowest attachment root
 (EA0). Call path is Frame → `RHF` members → `run` → `ea_adc2`; no public
 `*Config` bag. Offline pin and fair-bench numbers live in
-`regressions/scf/ea-adc2-h2-sto3g/REFERENCE.md`; the regression binary is
+case `ea-adc2-h2-sto3g` pin; the regression binary is
 `reg_ea-adc2-h2-sto3g`. On this minimal basis the LUMO is unbound relative to
 the N-electron ground state (EA0 ≈ 18.62 eV endothermic); the pin is the PySCF
 strict-EA-ADC(2) root, not experiment.
@@ -94,16 +93,16 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_ea-adc2-h2-sto3g -j$(nproc)
-  ./build/regressions/reg_ea-adc2-h2-sto3g
+  reg_ea-adc2-h2-sto3g
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/adc.h` | `EAADC2Result` public result type |
-| `include/atomiverse/cpu/scf/rhf.h` | `RHF::ea_adc2` declaration |
+| `adc.h` | `EAADC2Result` public result type |
+| `rhf.h` | `RHF::ea_adc2` declaration |
 | `src/cpu/scf/adc.cpp` | EA ISR \(M_{ab}\), 2p–1h matvec Davidson, MP2 \(t_2\) |
-| `regressions/scf/ea-adc2-h2-sto3g/reg_ea-adc2-h2-sto3g.cpp` | product gate |
+| `reg_ea-adc2-h2-sto3g.cpp` | product gate |
 
 Requires `-DATV_BUILD_HF=ON`. Call `run(frame)` before `ea_adc2`; throws if no
 SCF result, no virtuals, or `n_states` outside
@@ -111,9 +110,9 @@ SCF result, no virtuals, or `n_states` outside
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/ea-adc2-h2-sto3g/REFERENCE.md`](../../../regressions/scf/ea-adc2-h2-sto3g/REFERENCE.md)
+Source: case `ea-adc2-h2-sto3g` pin
 (offline pin; **never** live PySCF in ctest). Oracle:
-`tools/setup_pyscf_env.sh` + `tools/pyscf_oracle/pin_scf.py`.
+PySCF oracle + PySCF oracle.
 
 | Setting | Value |
 | ------- | ----- |
@@ -136,8 +135,8 @@ Source: [`regressions/scf/ea-adc2-h2-sto3g/REFERENCE.md`](../../../regressions/s
 Repro pin:
 
 ```bash
-bash tools/setup_pyscf_env.sh   # once
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py ea-adc2 \
+bash <pyscf env setup>   # once
+python <pyscf pin> ea-adc2 \
     --geom h2 --basis sto-3g --nstates 2 --conv-tol 1e-12
 ```
 
@@ -148,7 +147,7 @@ product gate is the PySCF strict-EA-ADC(2) root above, not experimental EA.
 ## Performance
 
 Source: fair-bench block in
-`regressions/scf/ea-adc2-h2-sto3g/REFERENCE.md` (2026-07-23, login node,
+case `ea-adc2-h2-sto3g` pin (2026-07-23, login node,
 `OMP_NUM_THREADS=8`, Release). Handoff records ratio **0.213**.
 no offline comparison table is present in-tree; the numbers below are
 from REFERENCE / handoff, not re-benched here.
@@ -158,9 +157,9 @@ from REFERENCE / handoff, not re-benched here.
 | `ea-adc2`, nstates=1 | 0.735 | 0.157 | **0.213** | ✓ | single login-node median (≥3); STO-3G toy |
 
 ```bash
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
   --method ea-adc2 --geom h2 --basis sto-3g --nstates 1 --repeat 3 \
-  ./build/regressions/reg_ea-adc2-h2-sto3g
+  reg_ea-adc2-h2-sto3g
 # recorded: ratio_atv_over_pyscf=0.2135, within_10x=true
 ```
 
@@ -191,11 +190,11 @@ EOM-EA-CCSD twins is invalid for the 10× gate.
 ## References
 
 - Offline pin / gates / fair-bench:
-  `regressions/scf/ea-adc2-h2-sto3g/REFERENCE.md`
+  case `ea-adc2-h2-sto3g` pin
 - Regression consumer:
-  `regressions/scf/ea-adc2-h2-sto3g/reg_ea-adc2-h2-sto3g.cpp`
-- Public API: `include/atomiverse/cpu/scf/adc.h`,
-  `include/atomiverse/cpu/scf/rhf.h` (`RHF::ea_adc2`)
+  `reg_ea-adc2-h2-sto3g.cpp`
+- Public API: `adc.h`,
+  `rhf.h` (`RHF::ea_adc2`)
 - Implementation: `src/cpu/scf/adc.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Related EE pin: `docs/tutorial/methods/adc2-h2co-sto3g.md`

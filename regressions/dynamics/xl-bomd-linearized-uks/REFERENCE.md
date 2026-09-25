@@ -20,7 +20,7 @@ potential) on collinear Γ-UKS Gaussian-and-plane-waves (GPW) forces:
   (recovers \(E_{\mathrm{KS}}\) at \(D^\sigma = n^\sigma\))
 - Forces: Hellmann–Feynman of \(\mathcal{U}(R,n^\alpha,n^\beta)\) via the
   dual-spin fixed-density overload
-  `gpw_forces_at_density(D^α, C^α_occ, H^α, D^β, C^β_occ, H^β)`
+  `internal::gpw_forces_at_density(D^α, C^α_occ, H^α, D^β, C^β_occ, H^β)`
 - XL advance(\(D^\sigma\)) per spin with Table-I \(K = 5\) dissipation
 - ⟨S²⟩: Löwdin at the shadow densities (same formula as the converged-SCF
   store; Szabo & Ostlund §2.5)

@@ -5,12 +5,11 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `xl-bomd-linearized-forces` |
-| Regression | `regressions/dynamics/xl-bomd-linearized-forces/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{…}, k, cpu::electronic::XlBomdLinearized{}}` bound with `set_evaluator_ref`; propagator `cpu::electronic::XlBomd` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{cpu::gpw::GpwDft{…}}, k, cpu::electronic::XlBomdLinearized{}}` bound with `set_evaluator_ref`; propagator `cpu::electronic::XlBomd` |
 | Roadmap | [molecular-dynamics.md](../../roadmap/molecular-dynamics.md) XL-BOMD residual closed 2026-07-26 |
 | Dual gate | Correctness A1–A4 unit (`test_cpu_gpw_xl_bomd`) + A5 e2e NVE drift; speed **`perf_exempt`** |
 | Wave | CP2K capability loop — harness wave 12 (2026-07-26) |
-| Oracle | Offline CP2K twin sketch only (`tools/cp2k_oracle/inputs/xl-bomd-linearized-forces/`); never live in ctest |
+| Oracle | Offline CP2K twin sketch only (CP2K oracle); never live in ctest |
 
 ## Summary
 
@@ -34,7 +33,7 @@ auxiliary density (`max_iter = 0`), one generalized diagonalization
 \]
 
 and assemble Hellmann–Feynman forces of \(\mathcal{U}(R,n)\) at
-\((D, H[n])\) via `gpw_forces_at_density`. Then `XlBomd::advance(D)` with
+\((D, H[n])\) via `internal::gpw_forces_at_density`. Then `XlBomd::advance(D)` with
 Table-I \(K=5\). Public energy remains **eV** on `frame.meta`; internal
 Ha/Ry are method-private.
 
@@ -107,7 +106,7 @@ Unit pin A3 (`ShadowEnergyRecoversAtFixedPoint`): when \(D = n\),
 | 1. Fixed-\(n\) KS | `solver_->max_iter = 0` with `guess_P = n_aux` → \(H[n]\), \(E_{\mathrm{KS}}[n]\) |
 | 2. One diag | Generalized Fock diagonalization → \(D = q[n]\), \(C_{\mathrm{occ}}\) |
 | 3. Shadow \(E\) | \(\mathcal{E} = \mathrm{Tr}(H D) - \mathrm{Tr}(H n) + E_{\mathrm{KS}}[n]\) → `kEnergy` [eV] |
-| 4. Forces | `gpw_forces_at_density(D, C_occ, H[n])` → eV/Å |
+| 4. Forces | `internal::gpw_forces_at_density(D, C_occ, H[n])` → eV/Å |
 | 5. XL advance | `xl_->advance(D)`; `last_result().iters = 0`, `converged = true` |
 
 No DIIS mixing loop, no residual threshold iteration on warm steps.
@@ -161,7 +160,7 @@ Additional gates (`reg_xl-bomd-linearized-forces`):
 
 ## Implementation
 
-Public surface only (`cpu::Frame`, concrete evaluator members; **no**
+Public surface only (`cpu::Frame`, concrete `GpwDft` members; **no**
 `*Config` bag, **no** `make_*` / `build_*` factories):
 
 ```cpp
@@ -191,10 +190,14 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-cpu::gpw::GPWEvaluator gpw(
-    {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-    /*mix*/ 0.3, cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 60;
+dft.tol = 1e-5;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = true;
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // The third argument is a tag type, not a bool: it selects the zero-SCF
 // shadow-BO force path (and turns forces on) at construction.
 cpu::electronic::XlBomdForce eval{std::move(gpw), /*k=*/5,
@@ -240,17 +243,17 @@ Relevant sources:
 
 | Layer | Path |
 | ----- | ---- |
-| Propagator | `include/atomiverse/cpu/electronic/xl_bomd.h`, `src/cpu/electronic/xl_bomd.cpp` |
-| XL wrapper | `include/atomiverse/cpu/electronic/xl_bomd_force.h` (`XlBomdForce`, `XlBomdLinearized`) |
-| Evaluator | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (private XL mode bits) |
+| Propagator | `xl_bomd.h`, `src/cpu/electronic/xl_bomd.cpp` |
+| XL wrapper | `xl_bomd_force.h` (`XlBomdForce`, `XlBomdLinearized`) |
+| Evaluator | `gpw_evaluator.h` (private XL mode bits) |
 | Warm shadow path | `src/cpu/gpw/gpw_evaluator.cpp` (zero-SCF block after XL ready) |
-| Forces at density | `src/cpu/gpw/internal/gpw_forces.cpp` (`gpw_forces_at_density`) |
+| Forces at density | `src/cpu/gpw/internal/gpw_forces.cpp` (`internal::gpw_forces_at_density`) |
 | Unit A1–A4 | `tests/cpu/gpw/test_gpw_xl_bomd.cpp` |
-| E2E A5 | `regressions/dynamics/xl-bomd-linearized-forces/` |
+| E2E A5 | `xl-bomd-linearized-forces` |
 
 ## Validation (vs CP2K / literature)
 
-Source: `regressions/dynamics/xl-bomd-linearized-forces/REFERENCE.md`
+Source: case `xl-bomd-linearized-forces` pin
 (offline pin; never live CP2K in ctest).
 
 ### System
@@ -297,7 +300,7 @@ Identical twin of `xl-bomd-water` (only `xl_bomd_linearized` differs):
 
 | Field | Value |
 | ----- | ----- |
-| Input | `tools/cp2k_oracle/inputs/xl-bomd-linearized-forces/h2o_xl_linearized_nve.inp` |
+| Input | CP2K oracle |
 | Intent | Short NVE Quickstep MD, ASPC extrapolation, **`MAX_SCF 1`** as a low-budget stand-in for one-shot KS; same H₂O / PBE / DZVP-MOLOPT-GTH / 200 Ry / MT cell as ATV |
 | Status | **Unexecuted** on pin host 2026-07-26 (no `cp2k` binary / Lmod module) |
 | When binary available | Re-run offline; replace pin section with CP2K version + measured drift + fair wall |
@@ -309,8 +312,8 @@ bit-identical density history.
 
 ## Performance
 
-Source: the case `REFERENCE.md` (wave 12),
-`REFERENCE.md` Perf gate.
+Source: the case pin notes (wave 12),
+pin notes Perf gate.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | -----------------------------------------: | ---- | ------ |
@@ -344,10 +347,9 @@ value; it is not claimed as a measured fair-bench ratio here.
 
 ## References
 
-- Offline pin: `regressions/dynamics/xl-bomd-linearized-forces/REFERENCE.md`
-- Regression: `regressions/dynamics/xl-bomd-linearized-forces/reg_xl-bomd-linearized-forces.cpp`
-- CP2K twin sketch: `tools/cp2k_oracle/inputs/xl-bomd-linearized-forces/h2o_xl_linearized_nve.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md`
+- Offline pin: case `xl-bomd-linearized-forces` pin
+- CP2K twin sketch: CP2K oracle
+- Oracle rules: CP2K oracle
 - Prior product paths: [xl-bomd-water](xl-bomd-water.md) (SCF-converged Γ RKS);
   [xl-bomd-uks-kpoints](xl-bomd-uks-kpoints.md) (multi-k UKS SCF XL);
   [gpw-bomd-water](gpw-bomd-water.md) (plain BOMD foothold)

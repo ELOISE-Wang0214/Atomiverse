@@ -19,6 +19,9 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -37,23 +40,29 @@ void check(bool ok, const char* what) {
     }
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> h2_toy(double L_bohr) {
-    using namespace ATV;
-    const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-GTH");
-    const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
-    const double r0[3] = {0.5 * L_bohr - 0.7, 0.5 * L_bohr, 0.5 * L_bohr};
-    const double r1[3] = {0.5 * L_bohr + 0.7, 0.5 * L_bohr, 0.5 * L_bohr};
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.emplace_back(r0, bH, pH, 1);
-    atoms.emplace_back(r1, bH, pH, 1);
-    return atoms;
+// Geometry authored in Bohr (cubic cell of edge `L_bohr`) → Frame [Å].
+ATV::cpu::Frame h2_toy(double L_bohr) {
+    using ATV::units::kBohrInAngstrom;
+    const double r[2][3] = {{0.5 * L_bohr - 0.7, 0.5 * L_bohr, 0.5 * L_bohr},
+                            {0.5 * L_bohr + 0.7, 0.5 * L_bohr, 0.5 * L_bohr}};
+    ATV::cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(ATV::kAtom_type)[i] = 1;
+        frame.span(ATV::kAtom_x)[i] = r[i][0] * kBohrInAngstrom;
+        frame.span(ATV::kAtom_y)[i] = r[i][1] * kBohrInAngstrom;
+        frame.span(ATV::kAtom_z)[i] = r[i][2] * kBohrInAngstrom;
+    }
+    frame.box = ATV::cpu::Box::cubic(L_bohr * kBohrInAngstrom);
+    return frame;
 }
 
 // Closed-shell UKS (dual-spin stacks with n_alpha = n_beta = 1).
-ATV::cpu::gpw::GpwDft h2_method(double L, double cutoff_ry, int ngrids,
+ATV::cpu::gpw::GpwDft h2_method(double cutoff_ry, int ngrids,
                                 double rel_cutoff) {
-    ATV::cpu::gpw::GpwDft m;
-    m.cell[0] = m.cell[1] = m.cell[2] = L;
+    using namespace ATV::cpu::gpw;
+    GpwDft m{{Kind{molrs::Element::H,
+                   GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
+                   GthPotential(molrs::Element::H, "GTH-PBE-q1")}}};
     m.cutoff_ry = cutoff_ry;
     m.ngrids = ngrids;
     m.rel_cutoff = rel_cutoff;
@@ -79,8 +88,8 @@ int main() {
             std::chrono::duration<double>(clock::now() - t_start).count());
     };
 
-    const double L = 8.0;
-    const auto atoms = h2_toy(L);
+    const double L = 8.0; // [Bohr]
+    auto frame = h2_toy(L);
     // Main pin ladder matches the CP2K twin (200 Ry / REL 40 / NGRIDS 4).
     // Identity gates run the same machinery on a cheaper 80 Ry / REL 20 ladder
     // so the ≤ 60 s budget goes to the absolute pin (each 200 Ry mg SCF is
@@ -93,16 +102,16 @@ int main() {
 
     // ── M1: Γ-limit identity on the cheap ladder ───────────────────────────
     {
-        GpwDft g = h2_method(L, kCutId, kNgrids, kRelId);
-        g.build(atoms);
-        const auto& rg = g.run(atoms);
+        GpwDft g = h2_method(kCutId, kNgrids, kRelId);
+        g.build(frame);
+        const auto& rg = g.run(frame);
         check(rg.converged, "M1 Γ multigrid UKS converged");
 
-        GpwDft k = h2_method(L, kCutId, kNgrids, kRelId);
+        GpwDft k = h2_method(kCutId, kNgrids, kRelId);
         k.k_points = {{0.0, 0.0, 0.0}};
         k.k_point_weights = {1.0};
-        k.build(atoms);
-        const auto& rk = k.run(atoms);
+        k.build(frame);
+        const auto& rk = k.run(frame);
         check(rk.converged, "M1 k=Γ multigrid UKS converged");
         const double dE = std::fabs(rk.e_total - rg.e_total);
         std::printf("M1: E_Γ=%.12f  E_kΓ=%.12f  |Δ|=%.3e Ha (80 Ry)\n",
@@ -114,11 +123,11 @@ int main() {
     // ── M2: time-reversal identity on the cheap ladder ─────────────────────
     {
         auto run = [&](bool tr) {
-            GpwDft m = h2_method(L, kCutId, kNgrids, kRelId);
+            GpwDft m = h2_method(kCutId, kNgrids, kRelId);
             m.k_mesh[0] = m.k_mesh[1] = m.k_mesh[2] = 2;
             m.k_time_reversal = tr;
-            m.build(atoms);
-            return m.run(atoms);
+            m.build(frame);
+            return m.run(frame);
         };
         const auto full = run(false);
         const auto fold = run(true);
@@ -133,12 +142,12 @@ int main() {
 
     // ── M3–M5: main MP 2×2×2 TR multigrid (one SCF) + single-grid twin ────
     {
-        GpwDft mp = h2_method(L, kCut, kNgrids, kRel);
+        GpwDft mp = h2_method(kCut, kNgrids, kRel);
         mp.k_mesh[0] = mp.k_mesh[1] = mp.k_mesh[2] = 2;
         mp.k_time_reversal = true;
-        mp.build(atoms);
+        mp.build(frame);
         const auto t0 = clock::now();
-        const auto& rm = mp.run(atoms);
+        const auto& rm = mp.run(frame);
         const double wall =
             std::chrono::duration<double>(clock::now() - t0).count();
         std::printf("MAIN: wall %.1f s (REFERENCE perf twin: CP2K NGRIDS 4)\n",
@@ -152,11 +161,11 @@ int main() {
                     "(iters=%d)\n",
                     rm.e_total, rm.iters);
 
-        GpwDft sg = h2_method(L, kCut, 1, 0.0);
+        GpwDft sg = h2_method(kCut, 1, 0.0);
         sg.k_mesh[0] = sg.k_mesh[1] = sg.k_mesh[2] = 2;
         sg.k_time_reversal = true;
-        sg.build(atoms);
-        const auto& rs = sg.run(atoms);
+        sg.build(frame);
+        const auto& rs = sg.run(frame);
         check(rs.converged, "M3 single-grid SCF converged");
         const double dgrid = std::fabs(rm.e_total - rs.e_total);
         std::printf("M3: E(mg)=%.12f  E(sg)=%.12f  |Δ|=%.3e Ha\n", rm.e_total,

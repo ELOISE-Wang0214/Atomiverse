@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `freeze-electrode-atoms` |
-| Regression | `regressions/md/freeze-electrode-atoms/` |
 | Public API | `cpu::md::FixFreeze{type_id}` on `cpu::md::MD` (with `VelocityVerlet` + pair potential) |
 | Roadmap | MetalWalls map **E1** wall-immobility foothold |
 | Dual gate | Correctness (immobility invariants); speed fair wall vs LAMMPS \(r\approx 3.98\le 10\) |
@@ -86,10 +85,10 @@ integer **type id** (textbook electrode slabs share one type); full LAMMPS
 
 Public surface only: `cpu::Frame`, MD preset categorical setters, and
 `cpu::md::FixFreeze(int type_id)`. Headers:
-`include/atomiverse/cpu/dynamics/fix_freeze.h`,
+`fix_freeze.h`,
 `md.h`, `velocity_verlet.h`,
-`include/atomiverse/cpu/potentials/pair_lj_cut.h`,
-`include/atomiverse/cpu/neighbor/neighbor_list.h`. Unit tests (not e2e):
+`pair_lj_cut.h`,
+`neighbor_list.h`. Unit tests (not e2e):
 `tests/cpu/dynamics/test_fix_freeze.cpp`.
 
 ```cpp
@@ -104,7 +103,7 @@ Public surface only: `cpu::Frame`, MD preset categorical setters, and
 
 using namespace ATV;
 
-// Geometry matches tools/metalwalls_oracle/inputs/lammps/freeze-electrode-atoms/
+// Geometry matches <MetalWalls oracle input for this case>
 const int wall_type = 2;
 const int fluid_type = 1;
 const double wall_xyz[4][3] = {
@@ -151,18 +150,18 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release \
   -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
   -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
 cmake --build build --target reg_freeze-electrode-atoms -j"$(nproc)"
-./build/regressions/reg_freeze-electrode-atoms
+reg_freeze-electrode-atoms
 ```
 
 Offline LAMMPS twin (never launched by ctest):
-`tools/metalwalls_oracle/inputs/lammps/freeze-electrode-atoms/in.lammps`
+MetalWalls oracle
 (correctness, 1000 steps) and `in.bench` (fair wall, 20000 steps).
 
 ## Validation (vs LAMMPS)
 
 **Oracle: LAMMPS** develop / `patch_30Mar2026-1074-g7f680de296`
 (30 Mar 2026 Development; binary `lmp` at pin time). Source:
-`regressions/md/freeze-electrode-atoms/REFERENCE.md` (offline pin; never live
+case `freeze-electrode-atoms` pin (offline pin; never live
 in ctest). Dump excerpt after 1000 steps (`wall_final.lammpstrj`): wall atoms
 remain at create coordinates with zero velocities.
 
@@ -184,9 +183,9 @@ invariants plus selective fluid motion only.
 
 ## Performance
 
-Source: `REFERENCE.md` fair wall — same geometry, **20000** NVE steps, single
+Source: pin notes fair wall — same geometry, **20000** NVE steps, single
 OpenMP thread (`OMP_NUM_THREADS=1`), no dump/thermo thrash. LAMMPS input:
-`tools/metalwalls_oracle/inputs/lammps/freeze-electrode-atoms/in.bench`.
+MetalWalls oracle.
 Atomiverse time instrumented in the regression binary (same \(N\), steps, \(dt\)).
 
 | Twin | \(T_{\mathrm{LAMMPS}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{oracle}}\) | ≤10× | Caveat |
@@ -212,10 +211,10 @@ Gate: \(r \le 10.0\) → **PASS** (`within_10x=true`).
 
 ## References
 
-- Offline pin: [`regressions/md/freeze-electrode-atoms/REFERENCE.md`](../../../regressions/md/freeze-electrode-atoms/REFERENCE.md)
-- Regression consumer: `regressions/md/freeze-electrode-atoms/reg_freeze-electrode-atoms.cpp`
-- LAMMPS offline inputs: `tools/metalwalls_oracle/inputs/lammps/freeze-electrode-atoms/`
-- Component: `include/atomiverse/cpu/dynamics/fix_freeze.h`, `src/cpu/dynamics/fix_freeze.cpp`
+- Offline pin: case `freeze-electrode-atoms` pin
+- Regression consumer: `reg_freeze-electrode-atoms.cpp`
+- LAMMPS offline inputs: MetalWalls oracle
+- Component: `fix_freeze.h`, `src/cpu/dynamics/fix_freeze.cpp`
 - LAMMPS: `fix setforce` documentation; source `src/fix_setforce.cpp`
   (develop pin version in REFERENCE)
 - MetalWalls electrode `mobile = false` practice (physics end-state; **not** the

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `td-dftb-h2` |
-| Regression | `regressions/semiempirical/td-dftb-h2/` |
 | Public API | `cpu::semiempirical::DFTB2::td_casida` → `TdDftbResult` |
 | Track | TB / SE method loop wave 4 () |
 | Roadmap | TD-DFTB — ✓ foothold (energies only) |
@@ -113,7 +112,7 @@ const auto bare = dftb.td_casida(h2o, 1,
 
 ## Validation
 
-Gates and measured values: `regressions/semiempirical/td-dftb-h2/REFERENCE.md`,
+Gates and measured values: case `td-dftb-h2` pin,
 binary `reg_td-dftb-h2` (13 ms, single-threaded).
 
 | Gate | Tolerance | Measured |
@@ -148,7 +147,7 @@ pinned only as a drift guard and labelled as such in the source.
 - \(\gamma_{AB}\) carries a **pre-existing units defect** shared with the
   DFTB2/DFTB3 ground state (`src/cpu/semiempirical/dftb2.cpp:118`,
   `src/cpu/semiempirical/dftb3_scc.cpp:41`) that scales every singlet coupling.
-  See `REFERENCE.md` → "Blocking defect found in the ground state".
+  See pin notes → "Blocking defect found in the ground state".
 
 ## References
 

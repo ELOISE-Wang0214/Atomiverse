@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -86,14 +87,16 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 200.0;
-    eval.max_iter = 120;
-    eval.tol = 1e-7; // matches CP2K EPS_SCF 1e-7; tightens Δσ cancellation
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = false;
-    eval.d3 = true;
+    cpu::gpw::GpwDft eval_method{{O, H}};
+    eval_method.cutoff_ry = 200.0;
+    eval_method.max_iter = 120;
+    eval_method.tol =
+        1e-7; // matches CP2K EPS_SCF 1e-7; tightens Δσ cancellation
+    eval_method.mix = 0.4;
+    eval_method.xc = cpu::gpw::XcKind::PBE;
+    eval_method.nonperiodic = false;
+    eval_method.d3 = true;
+    cpu::gpw::GPWEvaluator eval(std::move(eval_method));
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
@@ -144,17 +147,7 @@ int main() {
     }
 
     // Same method as a GpwDft for the plain twin + the strain-FD oracle.
-    constexpr double kAng2Bohr = 1.8897259885789;
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
-    for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double pos[3] = {x[i] * kAng2Bohr, y[i] * kAng2Bohr,
-                               zc[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(pos, k.basis, k.pot, z[i]));
-    }
-    cpu::gpw::GpwDft method;
-    method.cell[0] = method.cell[1] = method.cell[2] = L * kAng2Bohr;
+    cpu::gpw::GpwDft method{{O, H}};
     method.cutoff_ry = 200.0;
     method.n_occ = 8; // 2×O q6 + 4×H q1 = 16 e → 8 doubly occupied
     method.max_iter = 120;
@@ -164,16 +157,15 @@ int main() {
     method.nonperiodic = false;
     method.local_pp_on_grid = true;
 
-    const cpu::linalg::RealMatrix* warm =
-        eval.last_result().C.size() > 0 ? &eval.last_result().C : nullptr;
-
     // Gate 2 — D3 dispersion stress vs the CP2K difference pin. D3 does not
     // enter the Kohn–Sham potential, so σ_an(d3) − σ_an(plain) isolates the
     // dispersion stress exactly (same trick as the CP2K side of the pin).
+    // The plain fixed-P stress is evaluated at the product run's converged
+    // state (public state overload), so the density is identical.
     method.d3 = false;
     const auto t2 = clock::now();
-    const auto s_plain = cpu::gpw::gpw_stress(atoms, method, /*h=*/2e-3,
-                                              {true, true, true}, warm);
+    const auto s_plain = cpu::gpw::gpw_stress(frame, method, eval.last_result(),
+                                              /*h=*/2e-3, {true, true, true});
     const auto t3 = clock::now();
     const double wall_plain_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -214,8 +206,8 @@ int main() {
     // Gate 3 — internal dual gate: analytic vs multi-SCF strain-FD (d3=true).
     method.d3 = true;
     const auto t4 = clock::now();
-    const auto sfd = cpu::gpw::gpw_stress_fd(atoms, method, /*h=*/2e-3,
-                                             {true, true, true}, warm);
+    const auto sfd =
+        cpu::gpw::gpw_stress_fd(frame, method, /*h=*/2e-3, {true, true, true});
     const auto t5 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t5 - t4).count();
 

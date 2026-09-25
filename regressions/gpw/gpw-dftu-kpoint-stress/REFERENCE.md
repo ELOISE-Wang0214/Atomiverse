@@ -18,7 +18,7 @@ fixed-\(\{P_k^\sigma,W_k^\sigma\}\)** analytic cell stress:
 Oracle twin: multi-SCF strain-FD (`gpw_stress_fd`) on the same method.
 Γ-limit identity: complex \(k=\Gamma\) + U stress ≡ real Γ + U stress.
 
-Public API: `cpu::gpw::gpw_stress(atoms, method, h)` with `k_mesh`,
+Public API: `cpu::gpw::gpw_stress(frame, method, h)` with `k_mesh`,
 `n_alpha`/`n_beta`, `plus_u`. No public `*Config`, no factories.
 
 ## System

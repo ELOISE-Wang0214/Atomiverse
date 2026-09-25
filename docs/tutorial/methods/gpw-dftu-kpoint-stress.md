@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-dftu-kpoint-stress` |
-| Regression | `regressions/gpw/gpw-dftu-kpoint-stress/` |
-| Public API | `cpu::gpw::GpwDft` members `k_mesh` / `plus_u` / `n_alpha`/`n_beta`; free `gpw_stress` (product) + `gpw_stress_fd` (oracle); optional `GPWEvaluator::{k_mesh,plus_u,compute_stress}` |
+| Public API | `cpu::gpw::GpwDft` members `k_mesh` / `plus_u` / `n_alpha`/`n_beta`; free `gpw_stress` (product) + `gpw_stress_fd` (oracle); optional `GPWEvaluator(std::move(dft))` with `compute_stress` |
 | Roadmap | `docs/roadmap/dft.md` — multi-k DFT+U analytic stress (`reg_gpw-dftu-kpoint-stress`) ✓ |
 
 ## Summary
@@ -26,8 +25,8 @@ This page is the product gate that closes the **k-point × DFT+U × stress**
 product of three prior footholds: multi-k DFT+U energy
 (`reg_gpw-dftu-kpoints`), Γ DFT+U stress (`reg_gpw-dftu-stress`), and multi-k
 UKS stress (`reg_gpw-kpoint-uks-stress`). Public surface: set `GpwDft`
-members (`k_mesh`, `plus_u`, spin occupations, cell, cutoff) and call
-`gpw_stress(atoms, method, h)` — **no** `*Config` bag, **no** `make_*` /
+members (`k_mesh`, `plus_u`, spin occupations, cutoff), put the geometry and
+cell on the Frame, and call `gpw_stress(frame, method, h)` — **no** `*Config` bag, **no** `make_*` /
 `build_*` factories. Product regression:
 `reg_gpw-dftu-kpoint-stress`. Oracle: offline **CP2K 2026.1** twin retained
 for provenance; **not** a fair absolute energy/stress pin on this H₂ toy
@@ -117,32 +116,39 @@ shipped Γ DFT+U stress path). Citations: Dudarev et al., *Phys. Rev. B*
 
 ## Implementation
 
-Public surface only (`GpwAtom` / `GpwDft` members / free `gpw_stress`; no
+Public surface only (`cpu::Frame` / `GpwDft` members / free `gpw_stress`; no
 `*Config`, no `make_*`). Match the regression
-(`reg_gpw-dftu-kpoint-stress.cpp` uses the solver surface; Frame /
-`GPWEvaluator` is the outer Evaluate path with the same members):
+(`reg_gpw-dftu-kpoint-stress.cpp` uses the method surface;
+`GPWEvaluator(std::move(m))` is the outer Evaluate path for the same method):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
-// High-spin H2, compressed bond along x, cubic 12 Bohr periodic cell
-const double L = 12.0;
-const GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-const GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-const double r0[3] = {0.5 * L - 0.5, 0.5 * L, 0.5 * L};
-const double r1[3] = {0.5 * L + 0.5, 0.5 * L, 0.5 * L};
-const std::vector<GpwAtom> atoms = {
-    GpwAtom(r0, bH, pH, 1),
-    GpwAtom(r1, bH, pH, 1),
-};
+// High-spin H2, compressed bond along x, cubic 12 Bohr periodic cell (Frame is Å)
+const double b2a = units::kBohrInAngstrom;
+const double L = 12.0 * b2a;
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 1;
+    frame.span(kAtom_y)[i] = 0.5 * L;
+    frame.span(kAtom_z)[i] = 0.5 * L;
+}
+frame.span(kAtom_x)[0] = 0.5 * L - 0.5 * b2a;
+frame.span(kAtom_x)[1] = 0.5 * L + 0.5 * b2a;
+frame.box = cpu::Box::cubic(L);
 
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = L;
+GpwDft m{{Kind{molrs::Element::H,
+               GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+               GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
 m.cutoff_ry = 100.0;
 m.n_alpha = 2;   // multiplicity 3, 2 valence e⁻
 m.n_beta = 0;
@@ -157,13 +163,13 @@ m.k_mesh[2] = 2;           // MONKHORST-PACK 1×1×2 (TR → nk=1)
 m.k_time_reversal = true;
 m.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_minus_j_ev=*/4.0});
 
-m.build(atoms);
-const GpwResult& er = m.run(atoms);
+m.build(frame);
+const GpwResult& er = m.run(frame);
 // er.e_total [Ha], er.e_dftu [Ha], er.converged, er.C_occ_k / C_occ_k_beta
 
 const double h = 2e-3;
-const auto san = gpw_stress(atoms, m, h);     // product analytic [Ha/Bohr³]
-const auto sfd = gpw_stress_fd(atoms, m, h);  // multi-SCF oracle only
+const auto san = gpw_stress(frame, m, h);     // product analytic [Ha/Bohr³]
+const auto sfd = gpw_stress_fd(frame, m, h);  // multi-SCF oracle only
 // Voigt: xx,yy,zz,xy,xz,yz — off-diagonals 0 (orthorhombic)
 ```
 
@@ -181,24 +187,23 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-dftu-kpoint-stress
-  ./build/regressions/reg_gpw-dftu-kpoint-stress
+  reg_gpw-dftu-kpoint-stress
   # or: cmake --build build --target run_reg_gpw-dftu-kpoint-stress
 '
 ```
 
 | Piece | Path |
 | ----- | ---- |
-| Public `PlusU` / `GpwDft::{k_mesh,plus_u}` / `gpw_stress` | `include/atomiverse/cpu/gpw/gpw_solver.h` |
-| Evaluator members (Frame path) | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| Multi-k Dudarev \(E_U\)/\(V\) (internal) | `include/atomiverse/cpu/gpw/internal/dft_plus_u.h` |
-| Fixed-\(P_k\)+Pulay stress (internal) | `include/atomiverse/cpu/gpw/internal/gpw_stress.h`, `src/cpu/gpw/internal/gpw_stress.cpp` |
+| Public `PlusU` / `GpwDft::{k_mesh,plus_u}` / `gpw_stress` | `gpw_solver.h` |
+| Evaluator (`compute_stress`, driver binding) | `gpw_evaluator.h` |
+| Multi-k Dudarev \(E_U\)/\(V\) (internal) | `dft_plus_u.h` |
+| Fixed-\(P_k\)+Pulay stress (internal) | `gpw_stress.h`, `src/cpu/gpw/internal/gpw_stress.cpp` |
 | Unit dual-gate smoke | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` |
-| Regression | `regressions/gpw/gpw-dftu-kpoint-stress/reg_gpw-dftu-kpoint-stress.cpp` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/gpw-dftu-kpoint-stress/h2_uks_dftu_kpoint_stress.inp` |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (vs CP2K + internal dual-gate)
 
-Source: [`regressions/gpw/gpw-dftu-kpoint-stress/REFERENCE.md`](../../../regressions/gpw/gpw-dftu-kpoint-stress/REFERENCE.md).
+Source: case `gpw-dftu-kpoint-stress` pin.
 Oracle: offline **CP2K 2026.1** (`cp2k.psmp`); **never** live in ctest. Pin
 date: **2026-07-26**. Closed-spec gates A1–A7.
 
@@ -220,7 +225,7 @@ date: **2026-07-26**. Closed-spec gates A1–A7.
 
 CP2K twin input uses an **8 Bohr** cheaper NUMERICAL-stress variant of the
 same method class (PLUS_U + KPOINTS + `STRESS_TENSOR NUMERICAL`); see
-`tools/cp2k_oracle/inputs/gpw-dftu-kpoint-stress/`.
+CP2K oracle.
 
 **Pinned quantities (ATV first-green 2026-07-26):**
 
@@ -248,7 +253,7 @@ matches shipped Γ DFT+U stress.
 | Item | Value |
 | ---- | ----- |
 | Engine | CP2K **2026.1** (`cp2k.psmp`) |
-| Input | `tools/cp2k_oracle/inputs/gpw-dftu-kpoint-stress/h2_uks_dftu_kpoint_stress.inp` |
+| Input | CP2K oracle |
 | Result | Unphysical Mulliken charges; large negative DFT+U (\(\sim-175\) Ha); SCF fails within `MAX_SCF=100` |
 | Use | Provenance / class note only — **same pathology class** as `gpw-dftu-kpoints` |
 
@@ -268,15 +273,15 @@ Offline re-run (operator only; not ctest):
 export LD_LIBRARY_PATH=$CP2K_ROOT/lib:$LD_LIBRARY_PATH
 export CP2K_DATA_DIR=$CP2K_ROOT/share/cp2k/data
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_SET,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/gpw-dftu-kpoint-stress/h2_uks_dftu_kpoint_stress.inp
+# copy <CP2K oracle input for this case>
 OMP_NUM_THREADS=8 cp2k.psmp -i h2_uks_dftu_kpoint_stress.inp -o h2.out
 ```
 
 ## Performance
 
 Source: fair-wall / exemption table in
-`regressions/gpw/gpw-dftu-kpoint-stress/REFERENCE.md` (2026-07-26). Handoff:
-the case `REFERENCE.md` — ratio **`perf_exempt`**.
+case `gpw-dftu-kpoint-stress` pin (2026-07-26). Handoff:
+the case pin notes — ratio **`perf_exempt`**.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | ---------------------------------------: | ---- | ------ |
@@ -305,10 +310,10 @@ parity is established.
 
 ## References
 
-- Offline pin + gates: [`regressions/gpw/gpw-dftu-kpoint-stress/REFERENCE.md`](../../../regressions/gpw/gpw-dftu-kpoint-stress/REFERENCE.md)
-- Regression consumer: [`reg_gpw-dftu-kpoint-stress.cpp`](../../../regressions/gpw/gpw-dftu-kpoint-stress/reg_gpw-dftu-kpoint-stress.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/gpw-dftu-kpoint-stress/`](../../../tools/cp2k_oracle/inputs/gpw-dftu-kpoint-stress/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin + gates: case `gpw-dftu-kpoint-stress` pin
+- Regression consumer: `reg_gpw-dftu-kpoint-stress.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Closed spec (git history): `.claude/specs/gpw-dftu-kpoint-stress/` (deleted at done)
 - Deps: `gpw-dftu-kpoints` ✓, `gpw-dftu-stress` ✓, `gpw-kpoint-uks-stress` ✓
 - Γ DFT+U energy handbook: [gpw-dftu-nio](gpw-dftu-nio.md)

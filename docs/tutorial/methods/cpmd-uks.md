@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `cpmd-uks` |
-| Regression | `regressions/dynamics/cpmd-uks/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{…, compute_forces=true, n_alpha, n_beta}, mu_au}` bound with `set_evaluator_ref`; dual propagators `cpu::electronic::Cpmd` (α/β). There is no `cpmd_dt`: `MD` pushes the integrator's dt into the wrapper (`TimestepProvider` → `TimestepConsumer`) |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{GpwDft{…} with n_alpha, n_beta, compute_forces=true}, mu_au}` bound with `set_evaluator_ref`; dual propagators `cpu::electronic::Cpmd` (α/β). There is no `cpmd_dt`: `MD` pushes the integrator's dt into the wrapper (`TimestepProvider` → `TimestepConsumer`) |
 | Roadmap | MD roadmap Car–Parrinello (Γ-UKS) |
 | Dual gate | Correctness: \(E_{\mathrm{cons}}\) drift envelope + fixed-density + spin/structure; speed **`perf_exempt`** |
 | Wave | CP2K capability loop — 2026-07-26 |
@@ -40,7 +39,7 @@ with \(T_{\mathrm{e}}\) exposed as `last_electronic_ke_ev()` [eV] and
 
 Product gate: `reg_cpmd-uks` — isolated O₂ triplet NVE twin family (geometry
 shared with `gpw-uks-o2-gamma` / `gpw-uks-forces` / `xl-bomd-uks`). Offline
-CP2K twin input: `tools/cp2k_oracle/inputs/cpmd_uks_o2_nve.inp`. Closed-shell
+CP2K twin input: CP2K oracle. Closed-shell
 CPMD twins: `cpmd-water`, `cpmd-rattle-water`.
 
 ## Method
@@ -109,6 +108,7 @@ Public surface only (`cpu::Frame`, evaluator members; **no** `*Config` bag,
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
+#include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
@@ -141,12 +141,12 @@ const cpu::gpw::Kind O{
     cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
 constexpr double dt = 0.1; // fs — nuclear and electronic share one step
-cpu::gpw::GPWEvaluator gpw(
-    /*kinds*/ {O}, /*cutoff_ry*/ 200.0, /*max_iter*/ 80, /*tol*/ 1e-5,
-    /*mix*/ 0.4, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
-gpw.n_alpha = 7; // multiplicity 3, 12 valence e⁻
-gpw.n_beta = 5;
+cpu::gpw::GpwDft dft{{O}};
+dft.cutoff_ry = 200.0;  dft.max_iter = 80;  dft.tol = 1e-5;  dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::PADE;  dft.nonperiodic = true;
+dft.n_alpha = 7; // multiplicity 3, 12 valence e⁻
+dft.n_beta = 5;
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // AO residual on DZVP O₂ is stiffer than PW textbook ~400 a.u. mu is a
 // constructor argument of the CP wrapper; the mode bits are private.
 cpu::electronic::CarParrinello eval{std::move(gpw), /*mu_au=*/2000.0};
@@ -180,7 +180,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_cpmd-uks
-  ./build/regressions/reg_cpmd-uks
+  reg_cpmd-uks
 '
 ```
 
@@ -188,18 +188,17 @@ Relevant sources:
 
 | Piece | Path |
 | ----- | ---- |
-| Evaluator members | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| CPMD propagator | `include/atomiverse/cpu/electronic/cpmd.h` |
-| CP wrapper | `include/atomiverse/cpu/electronic/car_parrinello.h` |
+| Evaluator members | `gpw_evaluator.h` |
+| CPMD propagator | `cpmd.h` |
+| CP wrapper | `car_parrinello.h` |
 | Dual α/β path | `src/cpu/gpw/gpw_evaluator.cpp` |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_gpw_cpmd*` (guards + RATTLE) |
-| Regression | `regressions/dynamics/cpmd-uks/reg_cpmd-uks.cpp` |
-| Pin | `regressions/dynamics/cpmd-uks/REFERENCE.md` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/cpmd_uks_o2_nve.inp` |
+| Pin | case `cpmd-uks` pin |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (CP2K / literature envelope)
 
-Source: `regressions/dynamics/cpmd-uks/REFERENCE.md` (offline pin; **never**
+Source: case `cpmd-uks` pin (offline pin; **never**
 live CP2K in ctest). Gate class: **literature conserved-energy envelope** +
 structural / spin diagnostics — same inventory as `cpmd-rattle-water` and
 `xl-bomd-uks`. Absolute total-energy twin vs CP2K for the static UKS surface
@@ -234,7 +233,7 @@ lives on `reg_gpw-uks-o2-gamma` (not re-asserted here).
 **Offline CP2K twin input** (operator only; not ctest):
 
 ```text
-tools/cp2k_oracle/inputs/cpmd_uks_o2_nve.inp
+<CP2K oracle input for this case>
 ```
 
 Sketch: `RUN_TYPE MD`, `ENSEMBLE NVE`, `STEPS 10`, `TIMESTEP 0.1`,
@@ -250,7 +249,7 @@ energy twin must be recorded in REFERENCE when re-pinned; current gate does
 | O₂ CPMD-UKS short NVE | — | envelope ≤60 s design | **perf_exempt** | n/a | No CP2K CPMD-UKS wall twin on the worker host; literature drift + structural/spin gates |
 
 Gate: dual-gate speed is **`perf_exempt`** (documented in
-the case `REFERENCE.md` and queue row `cpmd-uks`). Same class
+the case pin notes and queue row `cpmd-uks`). Same class
 as `cpmd-rattle-water` / `xl-bomd-uks` — trajectory conservation, not a fair
 wall ratio.
 
@@ -270,10 +269,9 @@ energy protocol is standardized offline.
 
 ## References
 
-- Offline pin: `regressions/dynamics/cpmd-uks/REFERENCE.md`
-- Regression: `regressions/dynamics/cpmd-uks/reg_cpmd-uks.cpp`
-- CP2K oracle contract: `tools/cp2k_oracle/README.md`
-- Twin input: `tools/cp2k_oracle/inputs/cpmd_uks_o2_nve.inp`
+- Offline pin: case `cpmd-uks` pin
+- CP2K oracle contract: CP2K oracle
+- Twin input: CP2K oracle
 - Related tutorials: [cpmd-water](cpmd-water.md),
   [cpmd-rattle-water](cpmd-rattle-water.md),
   [gpw-uks-o2-gamma](gpw-uks-o2-gamma.md),

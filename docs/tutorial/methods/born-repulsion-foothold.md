@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `born-repulsion-foothold` |
-| Regression | `regressions/forcefield/born-repulsion-foothold/` |
 | Public API | `cpu::PairBorn` (`Potential` on `cpu::Evaluate` / `cpu::md::MD`) |
 | Roadmap | map slice E8 |
 | Oracle | **LAMMPS** `pair_style born` + `pair_modify shift yes` (metal units) |
@@ -170,25 +169,25 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_born-repulsion-foothold -j"$(nproc)"
-  ./build/regressions/reg_born-repulsion-foothold
+  reg_born-repulsion-foothold
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/potentials/pair_born.h` | Public `PairBorn`, `BornTypeCoeff` |
+| `pair_born.h` | Public `PairBorn`, `BornTypeCoeff` |
 | `src/cpu/potentials/pair_born.cpp` | Shifted energy/force, single- and multi-type tables |
-| `regressions/forcefield/born-repulsion-foothold/reg_born-repulsion-foothold.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/lammps/in.born_dimer` | Offline LAMMPS twin input |
+| `reg_born-repulsion-foothold.cpp` | Product gate |
+| MetalWalls oracle | Offline LAMMPS twin input |
 | `tests/cpu/potentials/test_pair_born.cpp` | Analytic unit checks (not e2e) |
 
 ## Validation (vs LAMMPS)
 
 Source:
-[`regressions/forcefield/born-repulsion-foothold/REFERENCE.md`](../../../regressions/forcefield/born-repulsion-foothold/REFERENCE.md)
+case `born-repulsion-foothold` pin
 (offline pin; **never** live LAMMPS in ctest). Oracle tooling notes:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
-Twin input: `tools/metalwalls_oracle/inputs/lammps/in.born_dimer`.
+MetalWalls oracle.
+Twin input: MetalWalls oracle.
 
 **Oracle:** LAMMPS **30 Mar 2026 - Development**
 (`develop` / `patch_30Mar2026-1074-g7f680de296`), local binary
@@ -223,15 +222,15 @@ Related unit surface (not the e2e pin):
 
 ```bash
 # Requires a LAMMPS metal build with pair born
-lmp -in tools/metalwalls_oracle/inputs/lammps/in.born_dimer
+lmp -in <LAMMPS oracle input for this case>
 # thermo PE; dump forces.dump id fx fy fz (%.16e)
-# pins → regressions/forcefield/born-repulsion-foothold/REFERENCE.md
+# pins → `born-repulsion-foothold`
 ```
 
 ## Performance
 
 Source: REFERENCE.md performance block; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{LAMMPS}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | --------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -263,11 +262,9 @@ same lattice, record version + walls, and replace `perf_exempt` in REFERENCE.
 
 ## References
 
-- Offline pin: [`regressions/forcefield/born-repulsion-foothold/REFERENCE.md`](../../../regressions/forcefield/born-repulsion-foothold/REFERENCE.md)
-- Product gate: [`regressions/forcefield/born-repulsion-foothold/reg_born-repulsion-foothold.cpp`](../../../regressions/forcefield/born-repulsion-foothold/reg_born-repulsion-foothold.cpp)
-- Public header: [`include/atomiverse/cpu/potentials/pair_born.h`](../../../include/atomiverse/cpu/potentials/pair_born.h)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md)
-- Offline twin input: [`tools/metalwalls_oracle/inputs/lammps/in.born_dimer`](../../../tools/metalwalls_oracle/inputs/lammps/in.born_dimer)
+- Offline pin: case `born-repulsion-foothold` pin
+- Oracle notes: MetalWalls oracle
+- Offline twin input: MetalWalls oracle
 - LAMMPS doc: `pair_style born` (Born–Mayer–Huggins); metal units; `pair_modify shift`
 - Literature (method family): Born–Mayer; Huggins–Mayer / Fumi–Tosi molten-salt
   short-range forms (compose with Coulomb for production salts)

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ipea-xtb-analytic-hessian` |
-| Regression | `regressions/semiempirical/ipea-xtb-analytic-hessian/` |
 | Public API | `cpu::semiempirical::IPEA` (`with_forces = true`) on `cpu::vib::Hessian` at `vib::Phase::force` |
 | Related narrative | [Ch. 17 Semiempirical AM1](../ch17-semiempirical-am1.md); [Ch. 14 Vibrations](../ch14-vibrations.md); [ipea-xtb-forces](ipea-xtb-forces.md) |
 | Queue | TB method loop — wave 12 done (`c7db3d8f` / `f5e7c78a`) |
@@ -127,7 +126,7 @@ driver does not solve CPHF). xtb `--vip` / `--vea` is
 | Conversion | \(a_0=0.52917721092\) Å (`units::kBohrInAngstrom`); \(1\,\mathrm{Ha}=27.211386245988\) eV |
 | Thermo ctor | \(T=298.15\) K, \(P=101325\) Pa, multiplicity 1, \(\sigma=1\); empty recorder paths |
 
-**Geometry [Å]** (`tools/tb_oracle/inputs/xtb/ch4_ipea_hess/mol.xyz`):
+**Geometry [Å]** (TB oracle (OpenMOPAC / DFTB+ / xtb)):
 same tetrahedral CH₄ as `reg_ipea-xtb-small` (\(s=1.09/\sqrt{3}\)).
 
 | Atom | \(Z\) | \(x\) | \(y\) | \(z\) |
@@ -243,21 +242,21 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/ipea.h` | Public `IPEA` (`charge`, `scc_tol`, `with_forces`) |
-| `include/atomiverse/cpu/semiempirical/basis_data/ipea_tables.h` | Static H/C/N/O IPEA rows + global scales |
+| `ipea.h` | Public `IPEA` (`charge`, `scc_tol`, `with_forces`) |
+| `ipea_tables.h` | Static H/C/N/O IPEA rows + global scales |
 | `src/cpu/semiempirical/ipea.cpp` | Stewart overlap / extra 3s / EHT+SCC / analytic \(\nabla E\) |
-| `include/atomiverse/cpu/vibration/hessian.h` | `cpu::vib::Hessian` FD preset |
-| `include/atomiverse/cpu/vibration/hessian_result.h` | `HessianResult` (\(H\), \(\omega\), \(n_{\mathrm{imag}}\)) |
-| `include/atomiverse/cpu/vibration/hessian_workspace.h` | \(h=10^{-3}\) Å (`kHessianStepAngstrom`) |
-| `regressions/semiempirical/ipea-xtb-analytic-hessian/reg_ipea-xtb-analytic-hessian.cpp` | Product gate |
-| `regressions/semiempirical/ipea-xtb-analytic-hessian/REFERENCE.md` | Offline pins + oracle line |
-| `tools/tb_oracle/inputs/xtb/ch4_ipea_hess/` | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `hessian.txt`, `vibspectrum.txt`) |
+| `hessian.h` | `cpu::vib::Hessian` FD preset |
+| `hessian_result.h` | `HessianResult` (\(H\), \(\omega\), \(n_{\mathrm{imag}}\)) |
+| `hessian_workspace.h` | \(h=10^{-3}\) Å (`kHessianStepAngstrom`) |
+| `reg_ipea-xtb-analytic-hessian.cpp` | Product gate |
+| case `ipea-xtb-analytic-hessian` pin | Offline pins + oracle line |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `hessian.txt`, `vibspectrum.txt`) |
 | `tests/cpu/semiempirical/test_xtb_ipea_hessian.cpp` | Unit: `Hessian::build` accepts IPEA force kind (no `run`) |
 
 ## Validation (xtb)
 
 Source:
-[`regressions/semiempirical/ipea-xtb-analytic-hessian/REFERENCE.md`](../../../regressions/semiempirical/ipea-xtb-analytic-hessian/REFERENCE.md).
+case `ipea-xtb-analytic-hessian` pin.
 Oracle: **`xtb`** IPEA (`param_ipea-xtb.txt` as GFN1) `--hess` (Ásgeirsson,
 Bauer, Grimme, *Chem. Sci.* **8**, 4879 (2017); Bannwarth et al., *WIREs
 Comput. Mol. Sci.* **11**, e01493 (2021)).
@@ -275,7 +274,7 @@ oracle_version: 6.7.1 (compiled 2026-06-09)
 | ---- | ----- |
 | Engine (identity) | ATV IPEA-xTB closed shell, H/C/N/O tables + `cpu::vib::Hessian` |
 | Oracle family | xtb (not OpenMOPAC, not DFTB+) |
-| Offline twin | `tools/tb_oracle/inputs/xtb/ch4_ipea_hess/` |
+| Offline twin | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 | Command | `XTBPATH=… xtb mol.xyz --gfn 1 --chrg 0 --uhf 0 --acc 0.01 --hess` (`OMP_NUM_THREADS=1`; `param_gfn1-xtb.txt` ← `param_ipea-xtb.txt`; banner `I P E A - x T B`) |
 | Atomiverse path | `IPEA` on `Hessian` at `vib::Phase::force`, `with_forces=true` |
 | FD protocol | Central of analytic \(G\), \(h=10^{-3}\) Å (xtb: **analytical** Hessian) |
@@ -348,7 +347,7 @@ Discriminates IPEA from GFN1: eq CH4 GFN1 is −4.274232224875 Eh vs IPEA
 Offline re-pin (human only; never ctest):
 
 ```bash
-# when xtb 6.7.1 is available; see tools/tb_oracle/inputs/xtb/ch4_ipea_hess/
+# when xtb is available — see the TB oracle notes for this case
 # XTBPATH with param_ipea as GFN1; --gfn 1 --chrg 0 --uhf 0 --acc 0.01 --hess
 # Td CH4 r_CH=1.09 Å; record TOTAL ENERGY [Eh], vibspectrum.txt ω, hessian.txt H_Cxx
 # → H[eV/Å²] via 27.211386245988 / (0.52917721092)²
@@ -356,7 +355,7 @@ Offline re-pin (human only; never ctest):
 
 ## Performance
 
-Source: `REFERENCE.md`. Fair wall asserted in
+Source: pin notes. Fair wall asserted in
 `reg_ipea-xtb-analytic-hessian` (\(r\le 10\)). Same *product* (projected
 \(\omega\) of Td CH₄); **not** the same Hessian algorithm class (ATV:
 analytic \(G\), numerical \(H\), 30 force evaluations + finalize; xtb
@@ -403,19 +402,19 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{oracle}} \le 10\) when a twin exists.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/ipea-xtb-analytic-hessian/REFERENCE.md`](../../../regressions/semiempirical/ipea-xtb-analytic-hessian/REFERENCE.md)
-- Twin: `tools/tb_oracle/inputs/xtb/ch4_ipea_hess/` (`mol.xyz`,
+- Offline pin: case `ipea-xtb-analytic-hessian` pin
+- Twin: TB oracle (OpenMOPAC / DFTB+ / xtb) (`mol.xyz`,
   `xtb.out.txt`, `hessian.txt`, `vibspectrum.txt`)
 - Energy sibling: [`ipea-xtb-small.md`](ipea-xtb-small.md) /
-  `regressions/semiempirical/ipea-xtb-small/REFERENCE.md`
+  case `ipea-xtb-small` pin
 - Force sibling: [`ipea-xtb-forces.md`](ipea-xtb-forces.md) /
-  `regressions/semiempirical/ipea-xtb-forces/REFERENCE.md`
+  case `ipea-xtb-forces` pin
 - VIP/VEA sibling: [`ipea-xtb-vip.md`](ipea-xtb-vip.md) /
-  `regressions/semiempirical/ipea-xtb-vip/REFERENCE.md`
+  case `ipea-xtb-vip` pin
 - GFN Hessian siblings: [`gfn0-xtb-analytic-hessian.md`](gfn0-xtb-analytic-hessian.md),
   [`gfn-xtb-analytic-hessian.md`](gfn-xtb-analytic-hessian.md)
-- SE Hessian foothold (DFTB2/H₂, structural): `regressions/semiempirical/se-analytic-hessian/REFERENCE.md`
-- Oracle README: `tools/tb_oracle/README.md`
+- SE Hessian foothold (DFTB2/H₂, structural): case `se-analytic-hessian` pin
+- Oracle README: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: `docs/roadmap/semiempirical.md`
 - Spec history (closed, deleted at done): git `wf/ipea-xtb-analytic-hessian`
 - V. Ásgeirsson, C. Bauer, S. Grimme, *Chem. Sci.* **8**, 4879 (2017),

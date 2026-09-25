@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `bands-spin-si` |
-| Regression | `regressions/pw/bands-spin-si/` |
 | Public API | `cpu::pw::PW` (`spin_polarized`, `multiplicity`) + `cpu::pw::Bands` → `BandsResult` (`nspin`, `eigenvalues_ry` / `eigenvalues_beta_ry`, `magnetization`) |
 | Roadmap | [dft.md](../../roadmap/dft.md) § bands/DOS + collinear spin bands|
 
@@ -22,7 +21,7 @@ along a high-symmetry **k-path** (`cpu::pw::Bands`). Observables are
 parity at the VBM/CBM for closed-shell \(M=0\). Scientific gate is a literature
 incomplete-basis window around the Yin–Cohen LDA indirect gap (~0.45 eV), plus
 spin-channel consistency — not absolute eigenvalue parity with CP2K Quickstep
-(GTH+Gaussian). Product regression: `regressions/pw/bands-spin-si`
+(GTH+Gaussian). Product regression: `bands-spin-si`
 (`reg_bands-spin-si`). Performance: **`perf_exempt`** (no fair CP2K PW twin wall
 on the pin host). Sibling closed-shell path: `bands-dos-si`.
 
@@ -125,7 +124,7 @@ reports SCF energy in Ry on `BandsResult` (internal, cited).
 
 Public surface only (`cpu::Frame` + concrete method / post-processor members;
 no `*Config`, no factories). Headers:
-`include/atomiverse/cpu/planewave/bands_dos.h`,
+`bands_dos.h`,
 `pw_solver.h`, `qe_units.h`. Implementation:
 `src/cpu/planewave/bands_dos.cpp` (collinear SCF → freeze
 \(V_{\mathrm{eff},\sigma}\) → NSCF Davidson on path per spin).
@@ -198,7 +197,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_bands-spin-si -j$(nproc)
-  ./build/regressions/reg_bands-spin-si
+  reg_bands-spin-si
 '
 ```
 
@@ -208,8 +207,8 @@ gate is **only** the regression above (no full SCF e2e under `tests/`).
 
 ## Validation (vs literature / CP2K note)
 
-Source: `regressions/pw/bands-spin-si/REFERENCE.md` (offline pin; never live
-third party in ctest). Queue row closed 2026-07-26 (``).
+Source: case `bands-spin-si` pin (offline pin; never live
+third party in ctest). Queue row closed 2026-07-26 (`).
 
 ### Pseudopotential
 
@@ -219,7 +218,7 @@ third party in ctest). Queue row closed 2026-07-26 (``).
 | Family | PseudoDojo ONCVPSP-LDA-SR-noCC v0.4 |
 | Generator | ONCVPSP 3.3.0 (D. R. Hamann), \(Z_\mathrm{val}=4\), no NLCC |
 | Cite | Hamann, *Phys. Rev. B* **88**, 085117 (2013); van Setten et al., *Comput. Phys. Commun.* **226**, 39 (2018) |
-| Same family as | `regressions/pw/bands-dos-si`, `regressions/pw/pw-lda-si` |
+| Same family as | `bands-dos-si`, `pw-lda-si` |
 
 ### Literature pin (indirect gap)
 
@@ -274,12 +273,12 @@ DZVP-GTH**, not ONCV plane waves. Absolute \(\varepsilon_n\) are **not**
 comparable. Character (indirect Si, \(\varepsilon_c(X)<\varepsilon_c(\Gamma)\)),
 \(M=0\), and the Yin–Cohen LDA Γ→X window are the scientific pins. Optional
 offline wall / character skeleton:
-`tools/cp2k_oracle/inputs/bands-spin-si.note` (same geometry, \(2\times 2\times 2\)
+CP2K oracle (same geometry, \(2\times 2\times 2\)
 MP, `LSD` + `MULTIPLICITY 1`, path Γ–X–W–L–Γ–K with `NPOINTS 4`).
 
 ## Performance
 
-Source: `regressions/pw/bands-spin-si/REFERENCE.md`. Queue / handoff row:
+Source: case `bands-spin-si` pin. Queue / handoff row:
 **`perf_exempt`** (literature Γ→X window + α≈β; no fair GTH twin wall on pin
 host).
 
@@ -297,7 +296,7 @@ host).
 | Wall budget | e2e ≤ 60 s single-rank CPU (PASS) |
 
 When a CP2K binary is available offline: time the same geometry with
-`tools/cp2k_oracle/inputs/bands-spin-si.note`, append
+CP2K oracle, append
 \(r = T_\mathrm{ATV}/T_\mathrm{CP2K}\) to REFERENCE.md, require \(r\le 10\).
 Wall comparison is same-geometry only, not absolute-eigenvalue parity
 (GTH+Gaussian vs NC-UPF PW).
@@ -320,10 +319,9 @@ Wall comparison is same-geometry only, not absolute-eigenvalue parity
 
 ## References
 
-- Offline pin: [`regressions/pw/bands-spin-si/REFERENCE.md`](../../../regressions/pw/bands-spin-si/REFERENCE.md)
-- Regression: [`regressions/pw/bands-spin-si/reg_bands-spin-si.cpp`](../../../regressions/pw/bands-spin-si/reg_bands-spin-si.cpp)
-- Public API: [`include/atomiverse/cpu/planewave/bands_dos.h`](../../../include/atomiverse/cpu/planewave/bands_dos.h)
-- Optional CP2K wall / character skeleton: `tools/cp2k_oracle/inputs/bands-spin-si.note`
+- Offline pin: case `bands-spin-si` pin
+- Public API: `bands_dos.h`
+- Optional CP2K wall / character skeleton: CP2K oracle
 - Closed-shell sibling: [bands-dos-si](bands-dos-si.md)
 - Collinear energy footholds: [pw-spin-polarized-o2](pw-spin-polarized-o2.md),
   [pw-uks-kmesh-fe](pw-uks-kmesh-fe.md)

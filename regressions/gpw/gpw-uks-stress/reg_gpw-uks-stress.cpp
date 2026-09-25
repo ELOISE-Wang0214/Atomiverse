@@ -59,20 +59,27 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
         cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
+    // One method recipe for the product evaluator and the FD twin.
+    auto make_method = [&O]() {
+        cpu::gpw::GpwDft m({O});
+        m.cutoff_ry = 400.0;
+        m.n_alpha = 7;
+        m.n_beta = 5;
+        m.max_iter = 200;
+        m.tol = 1e-7;
+        m.mix = 0.4;
+        m.xc = cpu::gpw::XcKind::PBE;
+        m.nonperiodic = true;
+        m.local_pp_on_grid = true;
+        return m;
+    };
+
     // Product path: analytic fixed-P UKS stress.
-    cpu::gpw::GPWEvaluator eval({O});
-    eval.cutoff_ry = 400.0;
-    eval.max_iter = 200;
-    eval.tol = 1e-7;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = true;
+    cpu::gpw::GPWEvaluator eval(make_method());
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
     eval.stress_strain_h = 2e-3;
-    eval.n_alpha = 7;
-    eval.n_beta = 5;
 
     const auto t0 = clock::now();
     cpu::Evaluate driver;
@@ -118,34 +125,12 @@ int main() {
     }
 
     // Multi-SCF strain-FD oracle twin (public free function).
-    constexpr double kAng2Bohr = 1.8897259885789;
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(2);
-    const double x[2] = {0.5 * L, 0.5 * L};
-    const double y[2] = {0.5 * L, 0.5 * L};
-    const double zc[2] = {0.5 * L - 0.5 * R, 0.5 * L + 0.5 * R};
-    for (int i = 0; i < 2; ++i) {
-        const double pos[3] = {x[i] * kAng2Bohr, y[i] * kAng2Bohr,
-                               zc[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(pos, O.basis, O.pot, 8));
-    }
-    cpu::gpw::GpwDft method;
-    method.cell[0] = method.cell[1] = method.cell[2] = L * kAng2Bohr;
-    method.cutoff_ry = 400.0;
-    method.n_alpha = 7;
-    method.n_beta = 5;
-    method.max_iter = 200;
-    method.tol = 1e-7;
-    method.mix = 0.4;
-    method.xc = cpu::gpw::XcKind::PBE;
-    method.nonperiodic = true;
-    method.local_pp_on_grid = true;
-    method.build(atoms);
+    cpu::gpw::GpwDft method = make_method();
+    method.build(frame);
 
     const auto t2 = clock::now();
-    const auto sfd = cpu::gpw::gpw_stress_fd(
-        atoms, method, /*h=*/2e-3, /*axes*/ {true, true, true},
-        eval.last_result().C.size() > 0 ? &eval.last_result().C : nullptr);
+    const auto sfd = cpu::gpw::gpw_stress_fd(frame, method, /*h=*/2e-3,
+                                             /*axes*/ {true, true, true});
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 

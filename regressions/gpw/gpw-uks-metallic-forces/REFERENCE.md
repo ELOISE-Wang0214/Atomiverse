@@ -14,8 +14,8 @@ uses
 \(P=\sum_b f_b c_b c_b^\dagger\), \(W=\sum_b f_b\varepsilon_b c_b c_b^\dagger\).
 
 Public path: `cpu::gpw::GpwDft` (`smearing`, `degauss`, `n_alpha`/`n_beta`,
-`k_mesh`) + `gpw_forces_analytic` / `gpw_forces_from_scf`. No public
-`*Config`, no factories.
+`k_mesh`) + `dft.forces(frame)` (one SCF + analytic forces, Frame
+`kAtom_f*` in eV/Å). No public `*Config`, no factories.
 
 ## System A — BCC Na product pin (free energy + residual)
 
@@ -70,7 +70,7 @@ multi-SCF FD of \(F\), max\|dF\| **7.86×10⁻⁶** Ha/Bohr (h=10⁻³ Bohr).
 | Output | `ENERGY\| Total FORCE_EVAL … -1.056284263540282` |
 | Forces | \(F_{1x}=-0.235\), \(F_{2x}=+0.235\) Ha/Bohr (restoring) |
 | CP2K wall | **2.00 s** (internal CP2K timer); `/usr/bin/time` **2.36 s** |
-| ATV twin | same geometry class, UKS+FD `k_mesh=1×1×2`, SCF+`gpw_forces_from_scf` |
+| ATV twin | same geometry class, UKS+FD `k_mesh=1×1×2`, `dft.forces(frame)` (SCF + forces) |
 | ATV wall | **0.097 s** (OMP=4) |
 
 \[

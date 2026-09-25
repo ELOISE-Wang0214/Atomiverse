@@ -8,7 +8,7 @@ practical guide to doing that without fighting the architecture.
 Before writing code, decide which of these categories your change belongs to.
 
 If the new feature is part of the staged runtime loop on the GPU, it should be a
-CUDA component under `include/atomiverse/cuda` and `src/cuda`.
+CUDA component under `cuda` and `src/cuda`.
 
 If the feature is host-side analysis, formatting, file output, or a reference
 solver that works naturally with xtensor, it usually belongs under `cpu` as a
@@ -74,7 +74,7 @@ clear way to use it and a regression test that protects it.
 
 The normal checklist is:
 
-1. Add or update the public header under `include/atomiverse/...`
+1. Add or update the public header under `...`
 2. Implement the source file under `src/...`
 3. Add a runnable example if the feature is user-facing
 4. Add a test under `tests`

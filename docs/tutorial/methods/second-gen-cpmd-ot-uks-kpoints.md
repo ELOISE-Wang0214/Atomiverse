@@ -5,11 +5,10 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `second-gen-cpmd-ot-uks-kpoints` |
-| Regression | `regressions/dynamics/second-gen-cpmd-ot-uks-kpoints/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{…, n_alpha, n_beta, k_mesh, use_ot=true}, aspc_k, corrector_max_iter}` bound with `set_evaluator_ref` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{cpu::gpw::GpwDft{…, n_alpha, n_beta, k_mesh, use_ot=true}}, aspc_k, corrector_max_iter}` bound with `set_evaluator_ref` |
 | Dual gate | Correctness (corrector A/B identity + NVE drift + budget + dual-spin multi-k payload); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — worker wave 3 (shift) (2026-07-31) |
-| Oracle | **CP2K cannot run this method** (OT is Γ-only in CP2K; `&OT` + `&KPOINTS` refused, UKS included) — literature envelope + internal A/B identity; unexecutable sketch at `tools/cp2k_oracle/inputs/second-gen-cpmd-ot-uks-kpoints/` |
+| Oracle | **CP2K cannot run this method** (OT is Γ-only in CP2K; `&OT` + `&KPOINTS` refused, UKS included) — literature envelope + internal A/B identity; unexecutable sketch at CP2K oracle |
 
 ## Summary
 
@@ -33,15 +32,18 @@ diagonalization (inside `GPWEvaluator::launch`), and multi-k OT.
 ## Usage
 
 ```cpp
-cpu::gpw::GPWEvaluator gpw({H_kind}, /*cutoff_ry=*/100.0, /*max_iter=*/60,
-                           /*tol=*/1e-5, /*mix=*/0.3,
-                           cpu::gpw::XcKind::PADE, /*nonperiodic=*/false,
-                           /*compute_forces=*/true);
-gpw.n_alpha = 1;               // collinear UKS path
-gpw.n_beta = 1;
-gpw.k_mesh[2] = 2;             // 1×1×2 Monkhorst–Pack
-gpw.k_time_reversal = false;   // two sampled k
-gpw.use_ot = true;             // dual-spin per-k OT partial-SCF corrector
+cpu::gpw::GpwDft dft{{H_kind}};
+dft.cutoff_ry = 100.0;
+dft.max_iter = 60;
+dft.tol = 1e-5;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.n_alpha = 1;               // collinear UKS path
+dft.n_beta = 1;
+dft.k_mesh[2] = 2;             // 1×1×2 Monkhorst–Pack
+dft.k_time_reversal = false;   // two sampled k
+dft.use_ot = true;             // dual-spin per-k OT partial-SCF corrector
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 cpu::electronic::SecondGenCp eval{std::move(gpw), /*aspc_k=*/1,
                                   /*corrector_max_iter=*/5};
 

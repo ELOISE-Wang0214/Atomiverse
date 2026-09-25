@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-incommensurate-si` |
-| Regression | `regressions/response/dfpt-incommensurate-si/` |
 | Public API | `cpu::pw::DfptPhonon` (members, incl. `q_frac`) + `cpu::pw::DfptPhononResult` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — incommensurate-q ✓ |
 | Dep | `dfpt-phonon-si` ✓ (Γ), `dfpt-finite-q-si` ✓ (commensurate X); closes direct Sternheimer branch |
@@ -19,8 +18,8 @@ For `cpu::pw::DfptPhonon`, fractional \(\mathbf{q}\) that is **not** rational
 with supercell product \(\le 8\) (or would need \(n_i>6\)) selects the direct
 path `internal::dfpt_q_force_constants`. This product gate pins
 \(\mathbf{q}=(0.3,0,0)\) on diamond Si under restricted PW LSDA + NC-UPF:
-`regressions/response/dfpt-incommensurate-si` (`reg_dfpt-incommensurate-si`).
-Oracle = **offline CP2K** when available (`tools/cp2k_oracle/`); pin host had
+`dfpt-incommensurate-si` (`reg_dfpt-incommensurate-si`).
+Oracle = **offline CP2K** when available (CP2K oracle); pin host had
 no CP2K binary — gates use measured ATV windows + literature bias notes.
 Performance: **`perf_exempt`**.
 
@@ -83,9 +82,9 @@ from a separate `PW` run) remains eV on `kEnergy`.
 
 Public surface only (`cpu::Frame` + concrete method members; no `*Config`, no
 `make_*` / `build_*`). Headers:
-`include/atomiverse/cpu/planewave/dfpt_phonon.h`,
+`dfpt_phonon.h`,
 `pw_solver.h`; private assembly
-`include/atomiverse/cpu/planewave/internal/dfpt.h`.
+`dfpt.h`.
 
 Minimal sequence (matches `reg_dfpt-incommensurate-si.cpp`):
 
@@ -142,7 +141,7 @@ const DfptPhononResult r = dfpt.compute(method, frame);
 cmake --build build -j$(nproc) --target atomiverse reg_dfpt-incommensurate-si
 cmake --build build --target run_reg_dfpt-incommensurate-si
 # or:
-./build/regressions/reg_dfpt-incommensurate-si
+reg_dfpt-incommensurate-si
 ```
 
 `compute` throws `std::invalid_argument` for non-LSDA XC, empty `upf_path`,
@@ -152,8 +151,8 @@ silent approximations.
 ## Validation (vs CP2K / offline pins)
 
 Source:
-[`regressions/response/dfpt-incommensurate-si/REFERENCE.md`](../../../regressions/response/dfpt-incommensurate-si/REFERENCE.md).
-Oracle note: `tools/cp2k_oracle/inputs/dfpt-incommensurate-si.note`.
+case `dfpt-incommensurate-si` pin.
+Oracle note: CP2K oracle.
 Oracle status at pin time (2026-07-25): **no CP2K binary** on the worker host.
 Absolute CP2K \(\omega(q)\) digits are therefore **not** invented; the product
 gate uses measured ATV spectrum windows under the documented minimal twin.
@@ -194,14 +193,14 @@ into the oracle note and tighten REFERENCE.
 Offline re-pin (human only; never ctest):
 
 ```bash
-# when a CP2K binary is available — see tools/cp2k_oracle/inputs/dfpt-incommensurate-si.note
+# when a CP2K binary is available — see the CP2K oracle notes for this case
 # run VIBRATIONAL_ANALYSIS / DFPT at fractional q ≈ (0.3,0,0) on the same cell
 # record ω [cm⁻¹] + wall into REFERENCE.md; optionally tighten windows
 ```
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/response/dfpt-incommensurate-si/REFERENCE.md)
+Source: pin notes
 (2026-07-25); queue **perf_exempt**.
 
 | Item | Value |
@@ -240,9 +239,9 @@ exists: \(r\le 10\) on the same host/core count (single-rank).
 
 ## References
 
-- Offline pin: [`regressions/response/dfpt-incommensurate-si/REFERENCE.md`](../../../regressions/response/dfpt-incommensurate-si/REFERENCE.md)
-- Oracle note: `tools/cp2k_oracle/inputs/dfpt-incommensurate-si.note`
-- Oracle rules: `tools/cp2k_oracle/README.md` (offline only; never in ctest)
+- Offline pin: case `dfpt-incommensurate-si` pin
+- Oracle note: CP2K oracle
+- Oracle rules: CP2K oracle (offline only; never in ctest)
 - Roadmap: [dft.md](../../roadmap/dft.md) §11 DFPT
 - Related tutorials: [dfpt-phonon-si](dfpt-phonon-si.md) (Γ),
   [fd-phonon-supercell](fd-phonon-supercell.md) (FD Γ)

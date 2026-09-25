@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pw-uks-fe-smearing` |
-| Regression | `regressions/pw/pw-uks-fe-smearing/` |
 | Public API | `cpu::pw::PW` (`spin_polarized`, `multiplicity`, `smearing`, `degauss` [Ry], `extra_bands`, `k_mesh`) → `PWResult::{energy, energy_ha, magnetization, e_fermi, n_elec_occ, e_entropy}` |
 | Track | CP2K capability (harness 2026-07-25) |
 | Roadmap | [dft.md](../../roadmap/dft.md) § spin + metallic smearing (CPU PW ✓); queue `pw-uks-fe-smearing` (done) |
@@ -117,7 +116,7 @@ Public surface only: construct `cpu::pw::PW`, set members (no `*Config`
 bag, no `make_*` / `build_*` factory), `build(frame)` → `run(frame)`.
 This slug gates the **joint** path `spin_polarized && smearing != none`
 that previously threw. Header:
-`include/atomiverse/cpu/planewave/pw_solver.h`. Occupations:
+`pw_solver.h`. Occupations:
 `internal/smearing.h` (not a user type).
 
 ```cpp
@@ -178,7 +177,7 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_PW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_pw-uks-fe-smearing -j$(nproc)
-  ./build/regressions/reg_pw-uks-fe-smearing
+  reg_pw-uks-fe-smearing
 '
 ```
 
@@ -186,18 +185,17 @@ bash -lc '
 
 | Role | Path |
 | ---- | ---- |
-| Public API | `include/atomiverse/cpu/planewave/pw_solver.h` |
+| Public API | `pw_solver.h` |
 | SCF / spin × smear branch | `src/cpu/planewave/pw_solver.cpp` |
 | Internal occupations | `include|src/.../planewave/internal/smearing.*` |
 | Unit (smear closed forms) | `tests/cpu/planewave/test_pw_smearing.cpp` |
-| Regression | `regressions/pw/pw-uks-fe-smearing/reg_pw-uks-fe-smearing.cpp` |
-| Offline pin | `regressions/pw/pw-uks-fe-smearing/REFERENCE.md` |
-| Oracle note | `tools/cp2k_oracle/inputs/pw-uks-fe-smearing.note` |
+| Offline pin | case `pw-uks-fe-smearing` pin |
+| Oracle note | CP2K oracle |
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/pw/pw-uks-fe-smearing/REFERENCE.md`](../../../regressions/pw/pw-uks-fe-smearing/REFERENCE.md)
+case `pw-uks-fe-smearing` pin
 (offline only; **no live CP2K or QE in ctest**). Closed acceptance
 (harness wave 2026-07-25): collinear UKS + FD smear, \(N_{\mathrm{occ}}\),
 free-energy pin, ferro \(M\), finite \(E_F\), `perf_exempt`.
@@ -255,17 +253,17 @@ counterpart of ATV collinear metallic occupations.
 
 | Item | Value |
 | ---- | ----- |
-| Note | `tools/cp2k_oracle/inputs/pw-uks-fe-smearing.note` |
+| Note | CP2K oracle |
 | Method class | Quickstep UKS / LSD + `FERMI_DIRAC` + Fe GTH (if re-run offline) |
 | SMEAR width | \(T_e \approx 3158\) K matching `degauss ≈ 0.02` Ry |
 | Host CP2K | not loadable as fair NC-UPF PW twin at pin time |
 | Example energy | **not** compared to ATV Ry pin |
 
-Oracle path: `tools/cp2k_oracle/README.md` (offline only).
+Oracle path: CP2K oracle (offline only).
 
 ## Performance
 
-Source: `REFERENCE.md` § Perf; queue/handoff mark this slug **perf_exempt**.
+Source: pin notes § Perf; queue/handoff mark this slug **perf_exempt**.
 
 | Field | Value |
 | ----- | ----- |
@@ -304,11 +302,10 @@ single-rank CPU.
 
 ## References
 
-- Offline pin: [`regressions/pw/pw-uks-fe-smearing/REFERENCE.md`](../../../regressions/pw/pw-uks-fe-smearing/REFERENCE.md)
-- Regression consumer: `regressions/pw/pw-uks-fe-smearing/reg_pw-uks-fe-smearing.cpp`
-- Oracle note: `tools/cp2k_oracle/inputs/pw-uks-fe-smearing.note`
+- Offline pin: case `pw-uks-fe-smearing` pin
+- Regression consumer: `reg_pw-uks-fe-smearing.cpp`
+- Oracle note: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` (bulk Fe UKS+smear ✓ CPU)
-- Public header: `include/atomiverse/cpu/planewave/pw_solver.h`
 - Internal occupations: `include|src/.../planewave/internal/smearing.*`
 - Unit tests: `tests/cpu/planewave/test_pw_smearing.cpp`
 - Spec history (closed 2026-07-25): git (`.claude/specs/pw-uks-fe-smearing/` deleted at done)

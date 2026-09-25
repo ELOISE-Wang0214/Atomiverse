@@ -5,13 +5,12 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `rohf-hessian-o2` |
-| Regression | `regressions/scf/rohf-hessian-o2/` |
 | Public API | `cpu::scf::ROHF{n_α,n_β}.hessian(frame)` |
 | Roadmap | `docs/roadmap/hartree-fock.md` (ROHF Hessian row) |
 
 ## Summary
 
-Computes the Cartesian nuclear Hessian \(\partial^2 E_{\mathrm{ROHF}}/\partial R_i\partial R_j\) for restricted open-shell Hartree–Fock by central finite difference of **analytic** ROHF nuclear forces (not a full three-space ROHF CPHF). Target system is gas-phase triplet O₂ (\(2S=2\), \(n_\alpha=9\), \(n_\beta=7\)) at HF/STO-3G. Public surface: construct `cpu::scf::ROHF`, set members, call `hessian(frame)` → dense \(3N\times 3N\) matrix in eV/Å² (`cpu::vib::HessianResult`). Offline accuracy pin is PySCF 2.14.0 FD of analytic ROHF gradients (PySCF has no `hessian.ROHF`). End-to-end gate: `regressions/scf/rohf-hessian-o2` (`reg_rohf-hessian-o2`); performance is **perf_exempt** (no fair analytic twin).
+Computes the Cartesian nuclear Hessian \(\partial^2 E_{\mathrm{ROHF}}/\partial R_i\partial R_j\) for restricted open-shell Hartree–Fock by central finite difference of **analytic** ROHF nuclear forces (not a full three-space ROHF CPHF). Target system is gas-phase triplet O₂ (\(2S=2\), \(n_\alpha=9\), \(n_\beta=7\)) at HF/STO-3G. Public surface: construct `cpu::scf::ROHF`, set members, call `hessian(frame)` → dense \(3N\times 3N\) matrix in eV/Å² (`cpu::vib::HessianResult`). Offline accuracy pin is PySCF 2.14.0 FD of analytic ROHF gradients (PySCF has no `hessian.ROHF`). End-to-end gate: `rohf-hessian-o2` (`reg_rohf-hessian-o2`); performance is **perf_exempt** (no fair analytic twin).
 
 ## Method
 
@@ -73,21 +72,21 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_rohf-hessian-o2 -j$(nproc)
-  ./build/regressions/reg_rohf-hessian-o2
+  reg_rohf-hessian-o2
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/rohf.h` | Public `ROHF` / `hessian` |
+| `rohf.h` | Public `ROHF` / `hessian` |
 | `src/cpu/scf/rohf.cpp` | FD-of-forces implementation |
-| `include/atomiverse/cpu/vibration/hessian_result.h` | `HessianResult` contract |
-| `regressions/scf/rohf-hessian-o2/reg_rohf-hessian-o2.cpp` | Product gate |
-| `regressions/scf/rohf-hessian-o2/REFERENCE.md` | Offline pins |
+| `hessian_result.h` | `HessianResult` contract |
+| `reg_rohf-hessian-o2.cpp` | Product gate |
+| case `rohf-hessian-o2` pin | Offline pins |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/rohf-hessian-o2/REFERENCE.md`](../../../regressions/scf/rohf-hessian-o2/REFERENCE.md)
+Source: case `rohf-hessian-o2` pin
 Oracle class: offline central FD of PySCF **2.14.0** analytic ROHF nuclear gradient (`mf.nuc_grad_method().kernel()`), \(h=10^{-4}\) Bohr, symmetrized; units via Atomiverse CODATA factors. PySCF `mf.Hessian()` / `hessian.ROHF` → `NotImplementedError` (not used as twin). Never live-import PySCF in ctest.
 
 **Setup (from REFERENCE):**
@@ -130,7 +129,7 @@ Regression also asserts Hessian symmetry (\(\lvert H-H^\top\rvert \le 10^{-8}\))
 Confirm PySCF gap:
 
 ```bash
-~/work/.x86_64/bin/python -c "
+python -c "
 from pyscf import gto, scf
 m=gto.M(atom='O 0 0 0; O 0 0 1.2075',basis='sto-3g',spin=2,cart=True)
 mf=scf.ROHF(m); mf.kernel(); mf.Hessian()
@@ -142,8 +141,8 @@ If a same-class FD-vs-FD wall comparison is needed later (not the fair-bench gat
 
 ```bash
 # Not a fair analytic twin; informational only.
-python tools/pyscf_oracle/fair_bench.py --method rohf -- \
-  ./build/regressions/reg_rohf-hessian-o2
+python <pyscf fair-bench> --method rohf -- \
+  reg_rohf-hessian-o2
 ```
 
 **Caveats:** twin would count many ROHF SCFs + gradients on both sides; ratios are not comparable to analytic-RHF Hessian vs PySCF CPHF. Gate \(r\le 10\) does not apply while exempt.
@@ -154,13 +153,13 @@ python tools/pyscf_oracle/fair_bench.py --method rohf -- \
 - **PySCF parity:** no `hessian.ROHF` oracle for element-wise analytic twin or fair speed gate.
 - **Scope gaps:** no RI Hessian; no frequencies/IR from this path; open-shell SOSCF / level shift still throw on ROHF.
 - **Roadmap:** full three-space ROHF CPHF Hessian is the natural follow-up (see `docs/roadmap/hartree-fock.md`); UHF analytic Hessian and RHF FD/analytic Hessian are separate methods.
-- **Unit tests:** product accuracy lives only under `regressions/`; do not place e2e Hessian solves in `tests/`.
+- **Unit tests:** Product accuracy is gated by end-to-end cases, not by the unit-test suite.
 
 ## References
 
-- Offline pin: `regressions/scf/rohf-hessian-o2/REFERENCE.md`
+- Offline pin: case `rohf-hessian-o2` pin
 - Roadmap: `docs/roadmap/hartree-fock.md`
-- Oracle tooling: `tools/setup_pyscf_env.sh`, `tools/pyscf_oracle/pin_scf.py`
+- Oracle tooling: PySCF oracle, PySCF oracle
 - C. C. J. Roothaan, *Rev. Mod. Phys.* **32**, 179 (1960) — ROHF.
 - Guest & Saunders, *Mol. Phys.* **28**, 819 (1974) — coupling convention.
 - J. A. Pople et al., *Int. J. Quantum Chem. Symp.* **13**, 225 (1979) — analytic HF second derivatives.

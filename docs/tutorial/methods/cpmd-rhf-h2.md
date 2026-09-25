@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `cpmd-rhf-h2` (family page: also `cpmd-rks-water`, `cpmd-uhf-o2`) |
-| Regressions | `regressions/dynamics/cpmd-rhf-h2/`, `.../cpmd-rks-water/`, `.../cpmd-uhf-o2/` |
+| Regressions | `cpmd-rhf-h2`, `.../cpmd-rks-water/`, `.../cpmd-uhf-o2/` |
 | Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::CarParrinelloMethod<cpu::scf::{RHF,RKS,UHF,UKS}>{method, mu_au}` bound with `set_evaluator_ref`; `cpu::md::CpmdConserved` for \(E_{\mathrm{cons}}\); propagator `cpu::electronic::Cpmd` |
 | Spec | `esmm-cpmd-04-ao-cpmd` (ac-002 zero production iterations, ac-003 drift envelopes) |
 | Dual gate | Correctness = the three regressions; speed **`perf_exempt`** |
@@ -166,7 +166,6 @@ short window.
   (tuned, then frozen at ≈ 9–18× the observed worst drift); the citation
   supplies the *form* of the gate, not the number.
 
-| Regression | Method / system | Observed drift | Envelope | \(T_e\) range [eV] | Wall |
 | --- | --- | --- | --- | --- | --- |
 | `cpmd-rhf-h2` | RHF/STO-3G, H₂ r = 0.74 Å | 4.195e−07 | **5e−6** | ≡ 0, gated < 1e−20 (see below) | 0.03 s |
 | `cpmd-rks-water` | RKS(LSDA)/STO-3G, H₂O (CP2K getting-started) | 5.851e−06 | **5e−5** | 1.1e−07 … 7.4e−02 | 2.0 s |
@@ -203,14 +202,14 @@ changes and \(T_e > 0\) is a hard gate there.
 
 | What | Path |
 | ---- | ---- |
-| CP wrapper (`CarParrinelloMethod`, `ScfElectronicThermostat`) | `include/atomiverse/cpu/electronic/aimd_method.h` |
-| Mode storage, `TimestepConsumer`, seed/step | `include/atomiverse/cpu/scf/mean_field_method.h`, `src/cpu/scf/mean_field_method.cpp` |
-| Fixed-state gradient (`compute_at_density`) | `include/atomiverse/cpu/scf/internal/gradient.h`, `src/cpu/scf/internal/gradient.cpp` |
+| CP wrapper (`CarParrinelloMethod`, `ScfElectronicThermostat`) | `aimd_method.h` |
+| Mode storage, `TimestepConsumer`, seed/step | `mean_field_method.h`, `src/cpu/scf/mean_field_method.cpp` |
+| Fixed-state gradient (`compute_at_density`) | `gradient.h`, `src/cpu/scf/internal/gradient.cpp` |
 | Fixed-density energy | `src/cpu/scf/internal/mean_field_energy.cpp` |
-| Propagator | `include/atomiverse/cpu/electronic/cpmd.h` |
-| \(E_{\mathrm{cons}}\) assembler | `include/atomiverse/cpu/dynamics/cpmd_conserved.h` |
+| Propagator | `cpmd.h` |
+| \(E_{\mathrm{cons}}\) assembler | `cpmd_conserved.h` |
 | Unit tests | `tests/cpu/scf/test_scf_cpmd.cpp` |
-| Regressions | `regressions/dynamics/cpmd-rhf-h2/`, `cpmd-rks-water/`, `cpmd-uhf-o2/` |
+| Regressions | `cpmd-rhf-h2`, `cpmd-rks-water/`, `cpmd-uhf-o2/` |
 
 ## Honest non-goals
 

@@ -49,6 +49,7 @@
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/gpw_forces.h"
+#include "atomiverse/cpu/gpw/internal/gpw_stress.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/gpw/internal/ks_grid_build.h"
@@ -2138,8 +2139,8 @@ T* d_alloc(std::size_t n) {
 /// Map CUDA product members onto a CPU shell for host force/stress assembly.
 cpu::gpw::GpwDft cpu_shell_from_cuda(const GpwDft& m) {
     cpu::gpw::GpwDft c;
-    for (int d = 0; d < 3; ++d)
-        c.cell[d] = m.cell[d];
+    cpu::gpw::internal::GpwDftAccess::set_cell(
+        c, {m.cell[0], m.cell[1], m.cell[2]});
     c.cutoff_ry = m.cutoff_ry;
     c.ngrids = m.ngrids;
     c.rel_cutoff = m.rel_cutoff;
@@ -2179,7 +2180,7 @@ gpw_forces_from_scf(const std::vector<GpwAtom>& atoms, const GpwDft& method,
     // deeper slug.
     if (method.is_uks() || method.uses_kpath() || method.ngrids != 1) {
         cpu::gpw::GpwDft shell = cpu_shell_from_cuda(method);
-        return cpu::gpw::gpw_forces_from_scf(atoms, shell, scf);
+        return cpu::gpw::internal::gpw_forces_from_scf(atoms, shell, scf);
     }
     if (method.n_occ < 1)
         throw std::invalid_argument(
@@ -2549,7 +2550,8 @@ std::array<double, 6> gpw_stress(const std::vector<GpwAtom>& atoms,
     // (mirrors early free-fn force hybrid — density from device SCF, stress
     // assembly reuses CPU product twin). No silent re-SCF on CPU.
     cpu::gpw::GpwDft shell = cpu_shell_from_cuda(method);
-    return cpu::gpw::gpw_stress(atoms, shell, scf, h, axes);
+    return cpu::gpw::internal::gpw_stress_at_state_impl(atoms, shell, scf, h,
+                                                        axes);
 }
 
 } // namespace gpw

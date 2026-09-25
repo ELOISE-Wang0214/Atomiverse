@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dft-d4-h2o-pbe` |
-| Regression | `regressions/scf/dft-d4-h2o-pbe/` |
 | Public API | `cpu::scf::D4` (`cpu/scf/dftd4.h`); optional `method.d4 = true` + `energy_disp()` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion corrections (DFT-D4 ✓ energy) |
 
@@ -19,7 +18,7 @@ correction is independent of the electronic density and basis; STO-3G is
 recorded only for protocol consistency with the molecular KS path. Public
 path: concrete `cpu::scf::D4` with parameters as members (PBE defaults), or
 fold-in on a mean-field method via `d4 = true` then `energy_disp()` after
-`run()`. Product gate: `regressions/scf/dft-d4-h2o-pbe`
+`run()`. Product gate: `dft-d4-h2o-pbe`
 (`reg_dft-d4-h2o-pbe`). Fair wall ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} = 2.17\) (≤10×).
 
@@ -118,23 +117,23 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_dft-d4-h2o-pbe -j$(nproc)
-  ./build/regressions/reg_dft-d4-h2o-pbe
+  reg_dft-d4-h2o-pbe
   # fair_bench multi-iter wall twin:
-  ./build/regressions/reg_dft-d4-h2o-pbe 2000
+  reg_dft-d4-h2o-pbe 2000
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/dftd4.h` | Public `cpu::scf::D4` |
-| `include/atomiverse/cpu/scf/mean_field_method.h` | `d4` flag, `energy_disp()` |
-| `regressions/scf/dft-d4-h2o-pbe/reg_dft-d4-h2o-pbe.cpp` | Product gate |
-| `regressions/scf/dft-d4-h2o-pbe/REFERENCE.md` | Offline pins + fair_bench numbers |
+| `dftd4.h` | Public `cpu::scf::D4` |
+| `mean_field_method.h` | `d4` flag, `energy_disp()` |
+| `reg_dft-d4-h2o-pbe.cpp` | Product gate |
+| case `dft-d4-h2o-pbe` pin | Offline pins + fair_bench numbers |
 
 ## Validation (vs PySCF)
 
 Source:
-[`regressions/scf/dft-d4-h2o-pbe/REFERENCE.md`](../../../regressions/scf/dft-d4-h2o-pbe/REFERENCE.md).
+case `dft-d4-h2o-pbe` pin.
 Oracle: offline PySCF **2.14.0** + `pyscf-dispersion` / libdftd4
 (`DFTD4Dispersion(mol, xc='pbe', version='d4', atm=True)`). External-engine
 pin — not a golden of Atomiverse’s own output; **never** live-import PySCF in
@@ -150,7 +149,7 @@ ctest.
 | Basis | STO-3G (protocol only; \(E_{\mathrm{disp}}\) basis-independent) |
 | Angular | Cartesian (`cart=True`) |
 | XC params | PBE-D4 |
-| Pin command | `python tools/pyscf_oracle/pin_scf.py d4 --geom water --basis sto-3g --xc pbe` |
+| Pin command | PySCF oracle |
 
 | Quantity | Atomiverse / pin | PySCF (offline) | Tol | Notes |
 | -------- | ---------------: | --------------: | --- | ----- |
@@ -163,9 +162,8 @@ on the pure dispersion energy.
 
 ## Performance
 
-Source: `REFERENCE.md` fair wall twin
-(`tools/pyscf_oracle/fair_bench.py --method d4 --geom water --basis sto-3g
---xc pbe --repeat 5 -- ./build/regressions/reg_dft-d4-h2o-pbe 2000`).
+Source: pin notes fair wall twin
+(`reg_dft-d4-h2o-pbe 2000`).
 
 Both sides loop **2000** evaluations (ATV via argv; PySCF in-process) so
 process startup does not dominate the microsecond-scale kernel. Median of 5
@@ -192,7 +190,7 @@ eval): PASS at \(1\times 10^{-6}\) Ha vs offline pin.
 
 ## References
 
-- Offline pin: `regressions/scf/dft-d4-h2o-pbe/REFERENCE.md`
+- Offline pin: case `dft-d4-h2o-pbe` pin
 - Roadmap: `docs/roadmap/dft.md` (dispersion §)
 - E. Caldeweyher, S. Ehlert, A. Hansen, H. Neugebauer, S. Spicher,
   C. Bannwarth, S. Grimme, *J. Chem. Phys.* **150**, 154122 (2019)

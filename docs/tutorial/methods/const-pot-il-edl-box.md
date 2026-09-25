@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `const-pot-il-edl-box` |
-| Regression | `regressions/md/const-pot-il-edl-box/` |
 | Public API | `cpu::md::ConstPotBO` (CG + ASPC members `use_cg`, `cg_tol`, `predictor_order`), `cpu::md::FixFreeze`, `cpu::ElectrodeChargeObserver`, `cpu::PotentialProfile`, `cpu::SpeciesDensityProfile` — all Components on `cpu::md::MD` |
 | Oracle | **MetalWalls git c8ad175d** — empty capacitor re-pinned 2026-07-29; with-IL absolute Q not expressible under image-sum elastance |
 
@@ -80,7 +79,7 @@ interaction site. The regression pins solver algebra and physics invariants,
 
 MetalWalls binary **c8ad175d** at
 `…/work/opt/metalwalls/mw`. Twin inputs:
-`tools/metalwalls_oracle/inputs/metalwalls/const-pot-il-edl-box/mw_twin/`.
+MetalWalls oracle.
 
 | case | MW \(Q_{\mathrm{left}}\) [e] |
 |------|------------------------------|
@@ -102,7 +101,7 @@ The wave-5 `pin_il_edl.py` min-image self-golden is **retired**.
 
 Public composition only — every piece is a Component on `cpu::md::MD`, Frame
 in / Frame out. Condensed from
-`regressions/md/const-pot-il-edl-box/reg_const-pot-il-edl-box.cpp`:
+`reg_const-pot-il-edl-box.cpp`:
 
 ```cpp
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
@@ -187,22 +186,22 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_const-pot-il-edl-box -j"$(nproc)"
-  ./build/regressions/reg_const-pot-il-edl-box
+  reg_const-pot-il-edl-box
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/const_pot_bo.h` | Public `ConstPotBO` (CG + ASPC members) |
-| `regressions/md/const-pot-il-edl-box/reg_const-pot-il-edl-box.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/metalwalls/const-pot-il-edl-box/pin_il_edl.py` | Offline numpy pin |
+| `const_pot_bo.h` | Public `ConstPotBO` (CG + ASPC members) |
+| `reg_const-pot-il-edl-box.cpp` | Product gate |
+| MetalWalls oracle | Offline numpy pin |
 
 ## Validation (vs MetalWalls-form BO algebra)
 
 Source:
-[`regressions/md/const-pot-il-edl-box/REFERENCE.md`](../../../regressions/md/const-pot-il-edl-box/REFERENCE.md)
+case `const-pot-il-edl-box` pin
 (offline pin; **never** live MetalWalls in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
+MetalWalls oracle.
 
 ### Accuracy
 
@@ -236,13 +235,13 @@ asserted as invariants, not hard-pinned):
 ### Offline pin repro (never ctest)
 
 ```bash
-python3 tools/metalwalls_oracle/inputs/metalwalls/const-pot-il-edl-box/pin_il_edl.py
+python <MetalWalls oracle pin for this case>
 ```
 
 ## Performance
 
 Source: REFERENCE.md; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{MetalWalls}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -277,11 +276,9 @@ re-run the offline fair bench, record version + walls, and replace
 
 ## References
 
-- Offline pin: [`regressions/md/const-pot-il-edl-box/REFERENCE.md`](../../../regressions/md/const-pot-il-edl-box/REFERENCE.md)
-- Product gate: [`regressions/md/const-pot-il-edl-box/reg_const-pot-il-edl-box.cpp`](../../../regressions/md/const-pot-il-edl-box/reg_const-pot-il-edl-box.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/const_pot_bo.h`](../../../include/atomiverse/cpu/dynamics/const_pot_bo.h)
-- Pin script: [`tools/metalwalls_oracle/inputs/metalwalls/const-pot-il-edl-box/pin_il_edl.py`](../../../tools/metalwalls_oracle/inputs/metalwalls/const-pot-il-edl-box/pin_il_edl.py)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md)
+- Offline pin: case `const-pot-il-edl-box` pin
+- Pin script: MetalWalls oracle
+- Oracle notes: MetalWalls oracle
 - Capability map: `.claude/notes/metalwalls-capability-map.md` (§9 planar graphene + const-pot + IL)
 - Literature: Scalfi, Dufils, Reeves, Rotenberg, Salanne, *J. Chem. Phys.* **153**, 174704 (2020), DOI [10.1063/5.0028232](https://doi.org/10.1063/5.0028232); Marin-Laflèche et al., MetalWalls, *JOSS* **5**, 2373 (2020), DOI [10.21105/joss.02373](https://doi.org/10.21105/joss.02373); Roy & Maroncelli, *J. Phys. Chem. B* **114**, 12629 (2010); Merlet et al., *J. Phys. Chem. C* **116**, 7687 (2012)
 - Related siblings: [`const-pot-bo-parallel-plate.md`](const-pot-bo-parallel-plate.md), [`const-pot-cg-large-electrode.md`](const-pot-cg-large-electrode.md), [`thomas-fermi-electrode.md`](thomas-fermi-electrode.md)

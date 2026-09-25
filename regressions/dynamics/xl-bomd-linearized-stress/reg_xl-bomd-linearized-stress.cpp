@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -80,18 +81,19 @@ cpu::gpw::GPWEvaluator make_gpw(bool multi_k) {
         molrs::Element::H,
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
-    cpu::gpw::GPWEvaluator gpw(
-        /*kinds*/ {H}, /*cutoff_ry*/ 300.0, /*max_iter*/ 60, /*tol*/ 1e-7,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-        /*compute_forces*/ true);
+    cpu::gpw::GpwDft dft{{H}};
+    dft.max_iter = 60;
+    dft.tol = 1e-7;
+    dft.mix = 0.3;
+    if (multi_k) {
+        dft.k_mesh[0] = 1;
+        dft.k_mesh[1] = 1;
+        dft.k_mesh[2] = 2;
+        dft.k_time_reversal = false; // two sampled k (CP2K FULL_GRID)
+    }
+    cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
     gpw.compute_stress = true;
     gpw.stress_use_fd = false; // product analytic fixed-P (shadow on warm)
-    if (multi_k) {
-        gpw.k_mesh[0] = 1;
-        gpw.k_mesh[1] = 1;
-        gpw.k_mesh[2] = 2;
-        gpw.k_time_reversal = false; // two sampled k (CP2K FULL_GRID)
-    }
     return gpw;
 }
 
@@ -245,19 +247,24 @@ double worst_rel_drift(const LegResult& leg) {
 /// Seed dual gate: state overload vs classic analytic vs multi-SCF FD at the
 /// initial H₂ geometry (k mesh of leg A).
 bool dual_gate_seed(double& id_err, double& an_fd_err) {
-    const cpu::gpw::GaussianBasis basis(molrs::Element::H, "DZV-GTH-PADE");
-    const cpu::gpw::GthPotential pot(molrs::Element::H, "GTH-PADE-q1");
-    const double rA[3] = {kLBohr / 2.0 - 0.5 * kR0Bohr, kLBohr / 2.0,
-                          kLBohr / 2.0};
-    const double rB[3] = {kLBohr / 2.0 + 0.5 * kR0Bohr, kLBohr / 2.0,
-                          kLBohr / 2.0};
-    const std::vector<cpu::gpw::GpwAtom> atoms = {
-        cpu::gpw::GpwAtom(rA, basis, pot, 1),
-        cpu::gpw::GpwAtom(rB, basis, pot, 1)};
+    // Seed geometry defined in Bohr, converted to Å with the library constant
+    // so the method's Å→Bohr read-back is exact.
+    cpu::Frame frame(2);
+    const double xa[2] = {kLBohr / 2.0 - 0.5 * kR0Bohr,
+                          kLBohr / 2.0 + 0.5 * kR0Bohr};
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_x)[i] = xa[i] * units::kBohrInAngstrom;
+        frame.span(kAtom_y)[i] = kLBohr / 2.0 * units::kBohrInAngstrom;
+        frame.span(kAtom_z)[i] = kLBohr / 2.0 * units::kBohrInAngstrom;
+    }
+    frame.box = cpu::Box::cubic(kLBohr * units::kBohrInAngstrom);
 
     auto make_cfg = []() {
-        cpu::gpw::GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = kLBohr;
+        cpu::gpw::GpwDft m{{cpu::gpw::Kind{
+            molrs::Element::H,
+            cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+            cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
         m.cutoff_ry = 300.0;
         m.n_occ = 1;
         m.max_iter = 60;
@@ -274,15 +281,15 @@ bool dual_gate_seed(double& id_err, double& an_fd_err) {
 
     const double h = 2e-3;
     cpu::gpw::GpwDft solver = make_cfg();
-    solver.build(atoms);
-    const auto state = solver.run(atoms);
+    solver.build(frame);
+    const auto& state = solver.run(frame);
     if (!state.converged) {
         std::printf("FAIL[dual]: seed SCF did not converge\n");
         return false;
     }
-    const auto s_state = cpu::gpw::gpw_stress(atoms, make_cfg(), state, h);
-    const auto s_classic = cpu::gpw::gpw_stress(atoms, make_cfg(), h);
-    const auto s_fd = cpu::gpw::gpw_stress_fd(atoms, make_cfg(), h);
+    const auto s_state = cpu::gpw::gpw_stress(frame, solver, state, h);
+    const auto s_classic = cpu::gpw::gpw_stress(frame, make_cfg(), h);
+    const auto s_fd = cpu::gpw::gpw_stress_fd(frame, make_cfg(), h);
     id_err = 0.0;
     an_fd_err = 0.0;
     for (int a = 0; a < 3; ++a) {

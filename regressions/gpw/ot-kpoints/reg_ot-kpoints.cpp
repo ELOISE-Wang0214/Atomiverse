@@ -10,6 +10,9 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -29,21 +32,29 @@ void check(bool ok, const char* what) {
 }
 
 // Compact periodic H₂ (DZV-GTH-PADE) — same class as gpw-kpoints-si A1 toy.
-std::vector<ATV::cpu::gpw::GpwAtom> make_h2(double L) {
+// Cubic box of edge L [Bohr]; atoms ±0.7 Bohr about the centre.
+ATV::cpu::Frame make_h2(double L) {
     using namespace ATV;
-    const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-    const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-    const double r0[3] = {0.5 * L - 0.7, 0.5 * L, 0.5 * L};
-    const double r1[3] = {0.5 * L + 0.7, 0.5 * L, 0.5 * L};
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.emplace_back(r0, bH, pH, 1);
-    atoms.emplace_back(r1, bH, pH, 1);
-    return atoms;
+    cpu::Frame frame(2);
+    const double c = 0.5 * L * units::kBohrInAngstrom;
+    const double dx = 0.7 * units::kBohrInAngstrom;
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_y)[i] = c;
+        frame.span(kAtom_z)[i] = c;
+    }
+    frame.span(kAtom_x)[0] = c - dx;
+    frame.span(kAtom_x)[1] = c + dx;
+    frame.box = cpu::Box::cubic(L * units::kBohrInAngstrom);
+    return frame;
 }
 
-ATV::cpu::gpw::GpwDft base_method(double L) {
-    ATV::cpu::gpw::GpwDft m;
-    m.cell[0] = m.cell[1] = m.cell[2] = L;
+ATV::cpu::gpw::GpwDft base_method() {
+    using namespace ATV;
+    cpu::gpw::GpwDft m({cpu::gpw::Kind{
+        molrs::Element::H,
+        cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+        cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")}});
     m.cutoff_ry = 100.0;
     m.n_occ = 1;
     m.max_iter = 120;
@@ -61,24 +72,24 @@ int main() {
     using cpu::gpw::XcKind;
 
     const double L = 8.0; // Bohr
-    const auto atoms = make_h2(L);
+    ATV::cpu::Frame frame = make_h2(L);
 
     // ── A1: explicit-Γ OT ≡ real Γ OT ──────────────────────────────────────
     {
-        GpwDft real_ot = base_method(L);
+        GpwDft real_ot = base_method();
         real_ot.use_ot = true;
         real_ot.max_iter = 200;
-        real_ot.build(atoms);
-        const auto& rr = real_ot.run(atoms);
+        real_ot.build(frame);
+        const auto& rr = real_ot.run(frame);
         check(rr.converged, "A1 real Γ OT converged");
 
-        GpwDft k_ot = base_method(L);
+        GpwDft k_ot = base_method();
         k_ot.use_ot = true;
         k_ot.k_points.push_back({0.0, 0.0, 0.0});
         k_ot.k_point_weights.push_back(1.0);
         k_ot.max_iter = 200;
-        k_ot.build(atoms);
-        const auto& rk = k_ot.run(atoms);
+        k_ot.build(frame);
+        const auto& rk = k_ot.run(frame);
         check(rk.converged, "A1 k-path Γ OT converged");
         const double d = std::abs(rr.e_total - rk.e_total);
         std::printf("A1: real Γ OT = %.10f  k-Γ OT = %.10f  |Δ|=%.3e Ha\n",
@@ -90,22 +101,22 @@ int main() {
     double e_ot = 0.0;
     double e_diis = 0.0;
     {
-        GpwDft diis = base_method(L);
+        GpwDft diis = base_method();
         diis.k_points.push_back({0.25, 0.0, 0.0});
         diis.k_point_weights.push_back(1.0);
         diis.use_ot = false;
-        diis.build(atoms);
-        const auto& rd = diis.run(atoms);
+        diis.build(frame);
+        const auto& rd = diis.run(frame);
         check(rd.converged, "A2 multi-k DIIS converged");
         e_diis = rd.e_total;
 
-        GpwDft ot = base_method(L);
+        GpwDft ot = base_method();
         ot.k_points.push_back({0.25, 0.0, 0.0});
         ot.k_point_weights.push_back(1.0);
         ot.use_ot = true;
         ot.max_iter = 200;
-        ot.build(atoms);
-        const auto& ro = ot.run(atoms);
+        ot.build(frame);
+        const auto& ro = ot.run(frame);
         check(ro.converged, "A2 multi-k OT converged");
         e_ot = ro.e_total;
         check(ro.n_kpts == 1, "A2 n_kpts == 1");
@@ -121,25 +132,25 @@ int main() {
 
     // ── A3: Monkhorst–Pack 2×1×1 TR mesh OT vs DIIS ────────────────────────
     {
-        GpwDft diis = base_method(L);
+        GpwDft diis = base_method();
         diis.k_mesh[0] = 2;
         diis.k_mesh[1] = 1;
         diis.k_mesh[2] = 1;
         diis.k_time_reversal = true;
         diis.use_ot = false;
-        diis.build(atoms);
-        const auto& rd = diis.run(atoms);
+        diis.build(frame);
+        const auto& rd = diis.run(frame);
         check(rd.converged, "A3 MP DIIS converged");
 
-        GpwDft ot = base_method(L);
+        GpwDft ot = base_method();
         ot.k_mesh[0] = 2;
         ot.k_mesh[1] = 1;
         ot.k_mesh[2] = 1;
         ot.k_time_reversal = true;
         ot.use_ot = true;
         ot.max_iter = 200;
-        ot.build(atoms);
-        const auto& ro = ot.run(atoms);
+        ot.build(frame);
+        const auto& ro = ot.run(frame);
         check(ro.converged, "A3 MP OT converged");
         const double d = std::abs(ro.e_total - rd.e_total);
         std::printf("A3: MP OT = %.10f  MP DIIS = %.10f  |Δ|=%.3e Ha  "
@@ -154,14 +165,14 @@ int main() {
     {
         bool ok = true;
         try {
-            GpwDft m = base_method(L);
+            GpwDft m = base_method();
             m.n_occ = 0;
             m.n_alpha = 2;
             m.n_beta = 0;
             m.use_ot = true;
             m.k_mesh[0] = 2;
             m.k_mesh[1] = m.k_mesh[2] = 1;
-            m.build(atoms);
+            m.build(frame);
         } catch (const std::exception& e) {
             ok = false;
             std::fprintf(stderr, "A4 unexpected: %s\n", e.what());

@@ -4,7 +4,7 @@
 
 Closed-shell MP2 with the lowest \(N_{\mathrm{frozen}}\) occupied MOs excluded
 from the correlation sum (PySCF `mp.MP2(mf, frozen=N)` convention).
-Regression: `regressions/scf/frozen-core-mp2-h2o`. Related: [Ch. 7](../ch07-correlation.md).
+Regression: `frozen-core-mp2-h2o`. Related: [Ch. 7](../ch07-correlation.md).
 
 ## Theory
 
@@ -23,7 +23,7 @@ auto mp = rhf.mp2(frame);
 ```
 
 ```bash
-./build/regressions/reg_frozen-core-mp2-h2o
+reg_frozen-core-mp2-h2o
 ```
 
 ## Results

@@ -16,8 +16,8 @@ Product path:
 3. `assemble_gpw_forces` with `GpwDft::ts = true` **adds** these forces to the
    electronic Hellmann–Feynman / Pulay terms.
 
-Public API: `cpu::gpw::GpwDft::ts = true` (and `GPWEvaluator::ts`) with
-`compute_forces=true` / `gpw_forces_*`.
+Public API: `cpu::gpw::GpwDft::ts = true` with `dft.forces(frame)` (or a
+`GPWEvaluator` wrapping that `GpwDft` with `compute_forces=true`).
 
 PBE: \(s_R = 0.94\), Fermi \(d = 20\). Free-atom \(\alpha_0\), \(C_6\),
 \(R_{\mathrm{vdW}}\) from `basis_data/ts_tables.h` (libMBD `ts_vdw_params`).

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gfn1-xtb-forces` |
-| Regression | `regressions/semiempirical/gfn1-xtb-forces/` |
 | Public API | `cpu::semiempirical::GFN1` (`with_forces = true`); `cpu::Evaluate` |
 | Related narrative | [Ch. 17 Semiempirical AM1](../ch17-semiempirical-am1.md) (SE product surface; GFN-xTB is a sibling family) |
 | Queue | TB method loop — wave 9 done (`276c7353`) |
@@ -123,7 +122,7 @@ energy-only** FD of ATV’s own \(E\) (\(h=10^{-4}\) Å) as an identity gate.
 | Conversion | CODATA via `units::kHartreeInEv`, `units::kHartreePerBohrInEvPerAngstrom` |
 | Observable | Finite \(E\); net \(\sum_A\mathbf{F}_A=0\); analytic vs xtb \(\nabla E\); analytic vs energy FD |
 
-**Geometry [Å]** (`tools/tb_oracle/inputs/xtb/h2o_gfn1_offeq_grad/mol.xyz`):
+**Geometry [Å]** (TB oracle (OpenMOPAC / DFTB+ / xtb)):
 
 | Atom | \(Z\) | \(x\) | \(y\) | \(z\) |
 | ---- | ----: | ----: | ----: | ----: |
@@ -227,18 +226,18 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/gfn1.h` | Public `GFN1` (`charge`, `scc_tol`, `with_forces`) |
-| `include/atomiverse/cpu/semiempirical/basis_data/gfn1_tables.h` | Static H/C/N/O GFN1 rows + global scales |
+| `gfn1.h` | Public `GFN1` (`charge`, `scc_tol`, `with_forces`) |
+| `gfn1_tables.h` | Static H/C/N/O GFN1 rows + global scales |
 | `src/cpu/semiempirical/gfn1.cpp` | Stewart overlap / EHT+SCC / analytic \(\nabla E\) (HF+Pulay, CN/\(\gamma\), rep, D3) |
-| `regressions/semiempirical/gfn1-xtb-forces/reg_gfn1-xtb-forces.cpp` | Product gate |
-| `regressions/semiempirical/gfn1-xtb-forces/REFERENCE.md` | Offline pins + oracle line |
-| `tools/tb_oracle/inputs/xtb/h2o_gfn1_offeq_grad/` | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `gradient.txt`) |
+| `reg_gfn1-xtb-forces.cpp` | Product gate |
+| case `gfn1-xtb-forces` pin | Offline pins + oracle line |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `gradient.txt`) |
 | `tests/cpu/semiempirical/test_xtb_gfn1.cpp` | Unit analytic-vs-FD + net-force invariance |
 
 ## Validation (xtb)
 
 Source:
-[`regressions/semiempirical/gfn1-xtb-forces/REFERENCE.md`](../../../regressions/semiempirical/gfn1-xtb-forces/REFERENCE.md).
+case `gfn1-xtb-forces` pin.
 Oracle: **`xtb`** `--gfn 1 --grad` (Grimme, Bannwarth, Shushkov, *JCTC* **13**,
 1989 (2017); Bannwarth et al., *WIREs Comput. Mol. Sci.* **11**, e01493
 (2021)).
@@ -256,7 +255,7 @@ oracle_version: 6.7.1
 | ---- | ----- |
 | Engine (identity) | ATV GFN1-xTB closed shell, H/C/N/O tables |
 | Oracle family | xtb (not OpenMOPAC, not DFTB+) |
-| Offline twin | `tools/tb_oracle/inputs/xtb/h2o_gfn1_offeq_grad/` |
+| Offline twin | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 | Command | `xtb mol.xyz --gfn 1 --chrg 0 --uhf 0 --acc 0.01 --grad` (`OMP_NUM_THREADS=1`) |
 | Atomiverse path | `GFN1` + `Evaluate`, `with_forces=true` |
 | FD protocol | Central energy-only, \(h=10^{-4}\) Å (identity, not the product force) |
@@ -312,14 +311,14 @@ the FD identity is the gradient gate.
 Offline re-pin (human only; never ctest):
 
 ```bash
-# when xtb 6.7.1 is available; see tools/tb_oracle/inputs/xtb/h2o_gfn1_offeq_grad/
+# when xtb is available — see the TB oracle notes for this case
 # --gfn 1 --chrg 0 --uhf 0 --acc 0.01 --grad, off-eq H2O
 # record TOTAL ENERGY [Eh] and gradient.txt → F via kHartreePerBohrInEvPerAngstrom
 ```
 
 ## Performance
 
-Source: `REFERENCE.md`. Fair wall asserted in `reg_gfn1-xtb-forces`
+Source: pin notes. Fair wall asserted in `reg_gfn1-xtb-forces`
 (\(r\le 10\)). Analytic path is one SCC + one gradient (replaces 18 energy
 solves of a \(6N\) FD).
 
@@ -356,11 +355,11 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{oracle}} \le 10\) when a twin exists.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/gfn1-xtb-forces/REFERENCE.md`](../../../regressions/semiempirical/gfn1-xtb-forces/REFERENCE.md)
-- Twin: `tools/tb_oracle/inputs/xtb/h2o_gfn1_offeq_grad/` (`mol.xyz`,
+- Offline pin: case `gfn1-xtb-forces` pin
+- Twin: TB oracle (OpenMOPAC / DFTB+ / xtb) (`mol.xyz`,
   `xtb.out.txt`, `gradient.txt`)
-- Energy sibling: `regressions/semiempirical/gfn1-xtb-organic/REFERENCE.md`
-- Oracle README: `tools/tb_oracle/README.md`
+- Energy sibling: case `gfn1-xtb-organic` pin
+- Oracle README: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: `docs/roadmap/semiempirical.md`
 - Spec history (closed, deleted at done): git `wf/gfn1-xtb-forces`
 - S. Grimme, C. Bannwarth, P. Shushkov, *J. Chem. Theory Comput.* **13**,

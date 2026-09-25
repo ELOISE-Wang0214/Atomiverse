@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `xl-bomd-uks` |
-| Regression | `regressions/dynamics/xl-bomd-uks/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{…, compute_forces=true, n_alpha, n_beta}, k=5}` bound with `set_evaluator_ref`; propagator class `cpu::electronic::XlBomd` (dual α/β) |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{cpu::gpw::GpwDft{…, n_alpha, n_beta}, compute_forces=true}, k=5}` bound with `set_evaluator_ref`; propagator class `cpu::electronic::XlBomd` (dual α/β) |
 | Roadmap | AIMD residual prose in [dft.md](../../roadmap/dft.md) |
 | Dual gate | Correctness A1–A6 unit + A7 e2e envelope; speed **`perf_exempt`** (no CP2K AIMD twin wall) |
 | Wave | CP2K capability loop — wave 6 **done** (merged 2026-07-26) |
@@ -138,15 +137,15 @@ dynamics via `xl_bomd`. ASPC also exists in-tree as
 ## Implementation
 
 Public surface only: `cpu::Frame`, `cpu::gpw::Kind` / lookup constructors,
-`GPWEvaluator` constructor args / members (`n_alpha`, `n_beta`), the
+`cpu::gpw::GpwDft` members (`n_alpha`, `n_beta`) bound through `GPWEvaluator`, the
 `cpu::electronic::XlBomdForce` wrapper (dissipation order \(K\)), MD preset,
 `set_evaluator_ref` binding. **No** public `*Config` bag, **no** `make_*` /
 `build_*` factories.
 
-Headers: `include/atomiverse/cpu/dynamics/md.h`, `velocity_verlet.h`,
-`include/atomiverse/cpu/gpw/gpw_evaluator.h`,
-`include/atomiverse/cpu/electronic/xl_bomd_force.h`,
-`include/atomiverse/cpu/electronic/xl_bomd.h`,
+Headers: `md.h`, `velocity_verlet.h`,
+`gpw_evaluator.h`,
+`xl_bomd_force.h`,
+`xl_bomd.h`,
 `gaussian_basis.h`, `gth_potential.h`. Unit gate (not e2e):
 `tests/cpu/gpw/test_gpw_xl_bomd.cpp` (Table I, fixed-point, UKS build
 allowed, OT+XL refused).
@@ -191,12 +190,16 @@ const cpu::gpw::Kind O{
 
 // Envelope: 200 Ry / tol 1e-5. UKS occupations give the dual XL spin
 // propagators; the XL wrapper supplies the dissipation order.
-cpu::gpw::GPWEvaluator gpw(
-    /*kinds*/ {O}, /*cutoff_ry*/ 200.0, /*max_iter*/ 80, /*tol*/ 1e-5,
-    /*mix*/ 0.4, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
-gpw.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
-gpw.n_beta = 5;
+cpu::gpw::GpwDft dft{{O}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 80;
+dft.tol = 1e-5;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.nonperiodic = true;
+dft.n_alpha = 7;  // multiplicity 3, 12 valence e⁻
+dft.n_beta = 5;
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 cpu::electronic::XlBomdForce eval{std::move(gpw),
                                   /*k=*/5};  // Niklasson 2009 Table-I row
 
@@ -221,7 +224,7 @@ const auto& guess = xl.aux(); // SCF initial-density guess for next step
 
 Rules (architecture):
 
-- Parameters are **constructor arguments / members** of `GPWEvaluator` — no
+- Method parameters are **members** of `GpwDft` (moved into `GPWEvaluator`) — no
   public `*Config` bag.
 - Force binding is `set_evaluator_ref(eval)` (borrow) or
   `set_evaluator(std::move(eval))` (own); `on(md::Phase::force).add_ref(...)`
@@ -252,11 +255,11 @@ bash -lc '
 ## Validation (CP2K)
 
 Source:
-[`regressions/dynamics/xl-bomd-uks/REFERENCE.md`](../../../regressions/dynamics/xl-bomd-uks/REFERENCE.md)
+case `xl-bomd-uks` pin
 (offline pin; **never** live CP2K in ctest). Oracle tooling:
-[`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md).
+CP2K oracle.
 Twin sketch:
-`tools/cp2k_oracle/inputs/xl-bomd-uks/o2_uks_xl_bomd_nve.inp`
+CP2K oracle
 (Quickstep UKS NVE; `EXTRAPOLATION ASPC` as CP2K MD density-guess analogue).
 
 ### Offline CP2K status
@@ -264,7 +267,7 @@ Twin sketch:
 | Field | Value |
 | ----- | ----- |
 | CP2K binary on pin host | **unavailable** (no `cp2k` / `cp2k.psmp` / `cp2k.sopt`, no CP2K Lmod module on Arrhenius login-class inventory **2026-07-26** — same as `xl-bomd-water`) |
-| Twin design (when available) | Short NVE Quickstep UKS MD on the same O₂ cell (PADE / DZVP-MOLOPT-GTH / GTH-PBE-q6 / MT / MULT 3); re-run offline via `tools/cp2k_oracle/`; record version + measured drift + fair wall |
+| Twin design (when available) | Short NVE Quickstep UKS MD on the same O₂ cell (PADE / DZVP-MOLOPT-GTH / GTH-PBE-q6 / MT / MULT 3); re-run offline via CP2K oracle; record version + measured drift + fair wall |
 | Current pin basis | Literature XL-BOMD / NVE conservation envelope + dual-spin SCF convergence + triplet \(\langle S^2\rangle\) window + finite/bounded trajectory diagnostics |
 | Absolute UKS E/F twin | `gpw-uks-o2-gamma`, `gpw-uks-forces` vs offline CP2K (separate slugs) |
 | Table I coefficients | Unit-pinned in `test_cpu_gpw_xl_bomd` (shared RKS/UKS math) |
@@ -299,8 +302,8 @@ Geometry, cutoff, SCF tolerances, \(\Delta t\), step count: table in
 ## Performance
 
 Source: REFERENCE.md dual-gate summary; queue/handoff
-``,
-``.
+`,
+`.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -346,16 +349,16 @@ this XL-BOMD trajectory.
 
 ## References
 
-- Offline pin: [`regressions/dynamics/xl-bomd-uks/REFERENCE.md`](../../../regressions/dynamics/xl-bomd-uks/REFERENCE.md)
-- Regression source: [`regressions/dynamics/xl-bomd-uks/reg_xl-bomd-uks.cpp`](../../../regressions/dynamics/xl-bomd-uks/reg_xl-bomd-uks.cpp)
+- Offline pin: case `xl-bomd-uks` pin
+- Regression source: `reg_xl-bomd-uks.cpp`
 - Closed-shell XL twin: [xl-bomd-water](xl-bomd-water.md) /
-  `regressions/dynamics/xl-bomd-water/`
+  `xl-bomd-water`
 - UKS energy / forces absolute twins: [gpw-uks-o2-gamma](gpw-uks-o2-gamma.md),
-  `regressions/gpw/gpw-uks-forces/`
+  `gpw-uks-forces`
 - Unit dual-spin / Table-I gate: `tests/cpu/gpw/test_gpw_xl_bomd.cpp`
-- Public propagator: `include/atomiverse/cpu/electronic/xl_bomd.h`
-- Suggested CP2K input: `tools/cp2k_oracle/inputs/xl-bomd-uks/o2_uks_xl_bomd_nve.inp`
-- Oracle: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Public propagator: `xl_bomd.h`
+- Suggested CP2K input: CP2K oracle
+- Oracle: CP2K oracle
 - Narrative GPW / MD: [ch09-gpw.md](../ch09-gpw.md),
   [ch10-classical-md.md](../ch10-classical-md.md)
 - A. M. N. Niklasson, *Phys. Rev. Lett.* **100**, 123004 (2008)

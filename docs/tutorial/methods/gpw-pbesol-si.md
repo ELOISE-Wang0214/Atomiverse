@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-pbesol-si` |
-| Regression | `regressions/gpw/gpw-pbesol-si/` |
 | Public API | `cpu::gpw::GpwDft` / `GPWEvaluator` with `xc = XcKind::PBEsol`; `GaussianBasis` / `GthPotential` lookup ctors; shared `cpu::scf::XCType::PBEsol` |
 | Roadmap | handoff ratio **perf_exempt** |
 
@@ -103,28 +102,29 @@ Public surface only (`GpwDft` members + lookup constructors; matches
 `reg_gpw-pbesol-si.cpp` — direct `GpwDft` path to stay within the e2e budget):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
-constexpr double kA2B = 1.8897259885789;
-constexpr double a_ang = 5.43;
-const double a = a_ang * kA2B;
+constexpr double a = 5.43;               // Å
 
-const GaussianBasis bas(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-const GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
-const double pos0[3] = {0.0, 0.0, 0.0};
-const double pos1[3] = {a / 4.0, a / 4.0, a / 4.0};
+cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 14;      // Si
+    frame.span(kAtom_x)[i] = frame.span(kAtom_y)[i] = frame.span(kAtom_z)[i] =
+        i * a / 4.0;                     // (0,0,0), (a/4,a/4,a/4)
+}
+frame.box = cpu::Box::cubic(a);
 
-std::vector<GpwAtom> atoms;
-atoms.emplace_back(pos0, bas, pot, 14);
-atoms.emplace_back(pos1, bas, pot, 14);
-
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = a;  // Bohr
+GpwDft m{{Kind{molrs::Element::Si,
+               GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+               GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 200.0;
 m.n_occ = 4;                             // 2 Si × zion 4 → 8 e⁻
 m.max_iter = 60;
@@ -132,8 +132,8 @@ m.tol = 1e-6;
 m.mix = 0.4;
 m.xc = XcKind::PBEsol;                   // or XcKind::PBE for dual-gate twin
 m.nonperiodic = true;                    // MT isolated Poisson
-m.build(atoms);
-const GpwResult r = m.run(atoms);        // r.e_total [Ha], r.converged, r.iters
+m.build(frame);
+const GpwResult& r = m.run(frame);       // r.e_total [Ha], r.converged, r.iters
 ```
 
 Frame-compatible evaluator path (same `xc` / kinds; not the timed e2e path):
@@ -143,8 +143,9 @@ Frame-compatible evaluator path (same `xc` / kinds; not the timed e2e path):
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 
-// Kind{Element::Si, GaussianBasis(...), GthPotential(...)} per atom type;
-// GPWEvaluator(..., /*xc*/ XcKind::PBEsol, /*nonperiodic*/ true);
+// GpwDft m{{Kind{Element::Si, GaussianBasis(...), GthPotential(...)}}};
+// m.xc = XcKind::PBEsol;  m.nonperiodic = true;  (other members as above)
+// GPWEvaluator eval(std::move(m));
 // cpu::single_point(frame, eval);  // last_energy_hartree() [Ha]
 ```
 
@@ -161,26 +162,26 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-pbesol-si -j$(nproc)
-  ./build/regressions/reg_gpw-pbesol-si
+  reg_gpw-pbesol-si
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `XcKind::{PADE,PBE,PBEsol}`, `GpwDft`, `GpwResult` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | Frame-facing `GPWEvaluator` (ctor `xc` arg) |
-| `include/atomiverse/cpu/gpw/gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
-| `include/atomiverse/cpu/gpw/gth_potential.h` | `GthPotential(Element, name)` lookup |
-| `include/atomiverse/cpu/scf/xc_functional.h` | `XCType::PBEsol`, `evaluate_xc`, `is_gga` |
-| `include/atomiverse/cpu/gpw/basis_data/gpw_tables.h` | Si GTH-PBE-q4 + DZVP-MOLOPT-GTH static tables |
+| `gpw_solver.h` | `XcKind::{PADE,PBE,PBEsol}`, `GpwDft`, `GpwResult` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds a configured `GpwDft` into a driver) |
+| `gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
+| `gth_potential.h` | `GthPotential(Element, name)` lookup |
+| `xc_functional.h` | `XCType::PBEsol`, `evaluate_xc`, `is_gga` |
+| `gpw_tables.h` | Si GTH-PBE-q4 + DZVP-MOLOPT-GTH static tables |
 | `src/cpu/gpw/internal/xc_grid_gga.cpp` | Closed-shell GGA grid energy/potential |
-| `regressions/gpw/gpw-pbesol-si/reg_gpw-pbesol-si.cpp` | Product gate (dual-gate + soft absolute) |
-| `tools/cp2k_oracle/inputs/gpw-pbesol-si.inp` | Offline CP2K twin (never ctest) |
+| `reg_gpw-pbesol-si.cpp` | Product gate (dual-gate + soft absolute) |
+| CP2K oracle | Offline CP2K twin (never ctest) |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/gpw-pbesol-si/REFERENCE.md`](../../../regressions/gpw/gpw-pbesol-si/REFERENCE.md).
+case `gpw-pbesol-si` pin.
 Oracle status at pin time (2026-07-23): **no CP2K binary / module** on the worker
 host (`cp2k`, `cp2k.psmp`, `cp2k.sopt` not on PATH; `module avail cp2k` empty).
 Absolute CP2K \(E_{\mathrm{tot}}\) digits are therefore **not** invented from
@@ -194,7 +195,7 @@ product gate uses:
    setup integrity until offline CP2K replaces the pin (cite CP2K version).
 
 Twin input (MT, 200 Ry, PBEsol, Si₂ geometry — aligned with the regression):
-`tools/cp2k_oracle/inputs/gpw-pbesol-si.inp`. Closed acceptance:
+CP2K oracle. Closed acceptance:
 `.claude/specs/gpw-pbesol-si/` (git history on `wf/gpw-pbesol-si` / merge
 `7022224b`).
 
@@ -232,14 +233,14 @@ Offline re-pin (human only; never ctest):
 
 ```bash
 # when a CP2K binary is available
-cp2k.psmp -i tools/cp2k_oracle/inputs/gpw-pbesol-si.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o /tmp/gpw-pbesol-si.out
 # record TOTAL ENERGY [Ha] into REFERENCE.md; tighten absolute tol
 ```
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/gpw/gpw-pbesol-si/REFERENCE.md)
+Source: pin notes
 (2026-07-23); queue/handoff **perf_exempt**.
 
 | Item | Value |
@@ -278,17 +279,17 @@ count (single-rank).
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-pbesol-si/REFERENCE.md`
-- Regression consumer: `regressions/gpw/gpw-pbesol-si/reg_gpw-pbesol-si.cpp`
-- Oracle twin: `tools/cp2k_oracle/inputs/gpw-pbesol-si.inp`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-pbesol-si` pin
+- Regression consumer: `reg_gpw-pbesol-si.cpp`
+- Oracle twin: CP2K oracle
+- Oracle notes: CP2K oracle
 - Closed spec (git history): `.claude/specs/gpw-pbesol-si/` on
   `wf/gpw-pbesol-si` / merge `7022224b`
 - Narrative GPW chapter: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Related method pages: [gpw-water-pbe-mt](gpw-water-pbe-mt.md) (PBE/MT energy),
   [pw-pbe-gga-si](pw-pbe-gga-si.md) (PW true PBE on Si)
-- Public API: `include/atomiverse/cpu/gpw/gpw_solver.h`,
-  `include/atomiverse/cpu/scf/xc_functional.h`
+- Public API: `gpw_solver.h`,
+  `xc_functional.h`
 - J. P. Perdew et al., *Phys. Rev. Lett.* **100**, 136406 (2008) — PBEsol.
 - J. P. Perdew, K. Burke, M. Ernzerhof, *Phys. Rev. Lett.* **77**, 3865 (1996)
   — PBE form.

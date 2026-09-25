@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `periodic-ri-mp2-si` |
-| Regression | `regressions/gpw/periodic-ri-mp2-si/` |
-| Public API | `cpu::gpw::GpwDft::mp2(atoms)` → `cpu::gpw::Mp2Result` (`cpu/gpw/mp2.h`); members `mp2_ri` (default **true**), `mp2_n_virt`, `mp2_os_scale`, `mp2_ss_scale` |
+| Public API | `cpu::gpw::GpwDft::mp2()` → `cpu::gpw::Mp2Result` (`cpu/gpw/mp2.h`); members `mp2_ri` (default **true**), `mp2_n_virt`, `mp2_os_scale`, `mp2_ss_scale` |
 | Roadmap | ratio **~0.09**; closes capability after foothold `periodic-mp2-si`; unblocks `periodic-rpa-si` |
 
 ## Summary
@@ -128,28 +127,30 @@ Public surface only (`GpwDft` members + lookup constructors; matches
 `reg_periodic-ri-mp2-si.cpp`):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/mp2.h"
 #include "atomiverse/molrs.hpp"
 
+using namespace ATV;
 using namespace ATV::cpu::gpw;
 
-constexpr double kA2B = 1.8897259885789;
-constexpr double a_bohr = 5.43 * kA2B;
+constexpr double a = 5.43;                    // cubic cell [Å]
 
-const GaussianBasis bas(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-const GthPotential pot(molrs::Element::Si, "GTH-PBE-q4");
-const double pos0[3] = {0.0, 0.0, 0.0};
-const double pos1[3] = {a_bohr / 4.0, a_bohr / 4.0, a_bohr / 4.0};
+cpu::Frame frame(2);                          // sc-Si₂, positions [Å]
+for (int i = 0; i < 2; ++i) {
+    frame.span(kAtom_type)[i] = 14;
+    frame.span(kAtom_x)[i] = frame.span(kAtom_y)[i] =
+        frame.span(kAtom_z)[i] = i * a / 4.0;
+}
+frame.box = cpu::Box::cubic(a);
 
-std::vector<GpwAtom> atoms;
-atoms.emplace_back(pos0, bas, pot, 14);
-atoms.emplace_back(pos1, bas, pot, 14);
-
-GpwDft m;
-m.cell[0] = m.cell[1] = m.cell[2] = a_bohr;  // Bohr
+GpwDft m{{Kind{molrs::Element::Si,
+               GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+               GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 30.0;
 m.n_occ = 4;
 m.max_iter = 80;
@@ -158,11 +159,11 @@ m.mix = 0.3;
 m.level_shift = 0.3;                          // convergence aid
 m.xc = XcKind::PBE;
 m.mp2_ri = true;                              // product default
-m.build(atoms);
-const GpwResult& scf = m.run(atoms);          // SCF [Ha] on result
+m.build(frame);
+const GpwResult& scf = m.run(frame);          // SCF [Ha] on result, eV on kEnergy
 
 m.mp2_n_virt = 0;                             // 0 = all kept virtuals
-const Mp2Result& r = m.mp2(atoms);
+const Mp2Result& r = m.mp2();              // last run()'s orbitals
 // r.ri == true; r.e_corr (< 0) [Ha]; r.e_corr_os / r.e_corr_ss;
 // r.e_total = r.e_scf + r.e_corr
 ```
@@ -186,30 +187,30 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_periodic-ri-mp2-si
-  ./build/regressions/reg_periodic-ri-mp2-si
+  reg_periodic-ri-mp2-si
   # or: cmake --build build --target run_reg_periodic-ri-mp2-si
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/mp2.h` | `Mp2Result` public value type (`ri`, OS/SS, totals) |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::{mp2_ri,mp2_n_virt,mp2_os_scale,mp2_ss_scale,mp2}` |
-| `include/atomiverse/cpu/gpw/internal/mp2_kernels.h` | Private MO-on-grid / RI-GPW / doubles-sum kernels |
+| `mp2.h` | `Mp2Result` public value type (`ri`, OS/SS, totals) |
+| `gpw_solver.h` | `GpwDft::{mp2_ri,mp2_n_virt,mp2_os_scale,mp2_ss_scale,mp2}` |
+| `mp2_kernels.h` | Private MO-on-grid / RI-GPW / doubles-sum kernels |
 | `src/cpu/gpw/mp2.cpp` | `GpwDft::mp2` dispatch (RI vs Poisson) |
 | `src/cpu/gpw/internal/mp2_kernels.cpp` | Kernel implementations |
-| `include/atomiverse/cpu/gpw/gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
-| `include/atomiverse/cpu/gpw/gth_potential.h` | `GthPotential(Element, name)` lookup |
-| `regressions/gpw/periodic-ri-mp2-si/reg_periodic-ri-mp2-si.cpp` | Product gate (RI≡Poisson + CP2K pin) |
-| `tools/cp2k_oracle/inputs/periodic-ri-mp2-si.inp` | Offline CP2K twin (never ctest) |
+| `gaussian_basis.h` | `GaussianBasis(Element, name)` lookup |
+| `gth_potential.h` | `GthPotential(Element, name)` lookup |
+| `reg_periodic-ri-mp2-si.cpp` | Product gate (RI≡Poisson + CP2K pin) |
+| CP2K oracle | Offline CP2K twin (never ctest) |
 | `tests/cpu/gpw/test_cpu_gpw_mp2.cpp` | Unit: doubles sum, MO-on-grid, Poisson Hartree identity |
 
 ## Validation (vs CP2K)
 
 Source:
-[`regressions/gpw/periodic-ri-mp2-si/REFERENCE.md`](../../../regressions/gpw/periodic-ri-mp2-si/REFERENCE.md).
+case `periodic-ri-mp2-si` pin.
 Oracle: **offline CP2K 2026.1** (`cp2k.psmp`), input
-`tools/cp2k_oracle/inputs/periodic-ri-mp2-si.inp` — never launched by ctest.
+CP2K oracle — never launched by ctest.
 Pin date 2026-07-25, host arrhenius1 (EPYC), OMP=4, 1 MPI rank.
 
 **Setup:**
@@ -252,18 +253,18 @@ Offline re-pin (human only; never ctest):
 
 ```bash
 # when a CP2K binary is available (cite release in REFERENCE.md)
-cp2k.psmp -i tools/cp2k_oracle/inputs/periodic-ri-mp2-si.inp \
+cp2k.psmp -i <CP2K oracle input for this case> \
           -o /tmp/periodic-ri-mp2-si.out
 # record MP2 Energy / TOTAL ENERGY [Ha]; tighten tol if grids match closer
 ```
 
 Sibling foothold (canonical Poisson path, first-green ATV band until re-pin):
 [`periodic-mp2-si`](periodic-mp2-si.md) /
-`tools/cp2k_oracle/inputs/periodic-mp2-si.inp`.
+CP2K oracle.
 
 ## Performance
 
-Source: [`REFERENCE.md`](../../../regressions/gpw/periodic-ri-mp2-si/REFERENCE.md)
+Source: pin notes
 (2026-07-25); queue/handoff ratio **~0.09** (`within_10x`).
 
 | Item | Value |
@@ -285,7 +286,7 @@ Never launch CP2K from ctest.
 | sc-Si₂ RI-GPW MP2 (PBE, 30 Ry, Γ) | 576.7 | ~16–30 | **~0.09** (queue) | ✓ | ATV wall may include can. cross-check; not bulk Si |
 
 Campaign queue: → done, harness wave 1
-2026-07-25. Handoff: the case `REFERENCE.md`.
+2026-07-25. Handoff: the case pin notes.
 
 ## Limitations
 
@@ -307,16 +308,16 @@ Campaign queue: → done, harness wave 1
 
 ## References
 
-- Offline pin: `regressions/gpw/periodic-ri-mp2-si/REFERENCE.md`
-- Regression consumer: `regressions/gpw/periodic-ri-mp2-si/reg_periodic-ri-mp2-si.cpp`
-- Oracle twin: `tools/cp2k_oracle/inputs/periodic-ri-mp2-si.inp`
-- Oracle contract: `tools/cp2k_oracle/README.md`
+- Offline pin: case `periodic-ri-mp2-si` pin
+- Regression consumer: `reg_periodic-ri-mp2-si.cpp`
+- Oracle twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Foothold sibling: [`periodic-mp2-si`](periodic-mp2-si.md) (Poisson
   `DIRECT_CANONICAL`-class; `mp2_ri = false`)
 - Narrative GPW chapter: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)
 - Correlation chapter (molecular): [`docs/tutorial/ch07-correlation.md`](../ch07-correlation.md)
-- Public API: `include/atomiverse/cpu/gpw/mp2.h`,
-  `include/atomiverse/cpu/gpw/gpw_solver.h`
+- Public API: `mp2.h`,
+  `gpw_solver.h`
 - M. Del Ben, J. Hutter, J. VandeVondele, *J. Chem. Theory Comput.* **8**, 4177
   (2012) — RI-GPW MP2 / CP2K `MP2_GPW`.
 - G. Lippert, J. Hutter, M. Parrinello, *Mol. Phys.* **92**, 477 (1997);

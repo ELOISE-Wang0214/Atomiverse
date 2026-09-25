@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pw-lda-si` |
-| Regression | `regressions/pw/pw-lda-si/` |
 | Public API | `cpu::pw::PW` (members) + `cpu::pw::PWEvaluator` + `cpu::single_point` |
 | Roadmap | [dft.md](../../roadmap/dft.md) § Periodic DFT / plane-wave|
 
@@ -18,7 +17,7 @@ energy under k-point sampling: Frame in, concrete `cpu::pw::PW` members, energy
 on `PWResult` [Ry/Ha] and `frame.meta.get(kEnergy)` [eV]. Absolute energy is
 gated against a **PseudoDojo / ABINIT-class** same-pseudo \(E_\mathrm{min}\)
 band (not a freeze of Atomiverse-only digits; not CP2K Quickstep absolute
-energy). Product gate: `regressions/pw/pw-lda-si` (`reg_pw-lda-si`).
+energy). Product gate: `pw-lda-si` (`reg_pw-lda-si`).
 Performance: **`perf_exempt`** (no fair CP2K PW twin on the pin host).
 
 ## Method
@@ -82,9 +81,9 @@ Conversion used by the engine gate:
 
 Public surface only (`cpu::Frame` + concrete method members; no `*Config`, no
 `make_*` / `build_*` factories). Headers:
-`include/atomiverse/cpu/planewave/pw_solver.h`,
+`pw_solver.h`,
 `pw_evaluator.h`, `qe_units.h`; evaluate entry
-`include/atomiverse/cpu/evaluate/single_point.h`.
+`single_point.h`.
 
 Minimal sequence (matches `reg_pw-lda-si.cpp`):
 
@@ -149,7 +148,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_pw-lda-si -j$(nproc)
-  ./build/regressions/reg_pw-lda-si
+  reg_pw-lda-si
 '
 ```
 
@@ -158,7 +157,7 @@ UPF path is injected at compile time as `ATV_PW_UPF_PATH` →
 
 ## Validation (vs ABINIT-class / CP2K note)
 
-Source: `regressions/pw/pw-lda-si/REFERENCE.md` (offline pin; never live third
+Source: case `pw-lda-si` pin (offline pin; never live third
 party in ctest). Closed acceptance (git `pw-lda-si` spec): incomplete-basis
 band above PseudoDojo ABINIT-class \(E_\mathrm{min}\).
 
@@ -215,12 +214,12 @@ at \(a=5.43\) Å.
 
 **CP2K.** Quickstep bulk-Si decks use **GTH-PADE + DZVP-GTH**. Absolute total
 energies are **not** comparable to ONCV plane-wave. Optional offline wall-only
-input skeleton: `tools/cp2k_oracle/inputs/si_lda_pw_note.inp` (same geometry /
+input skeleton: CP2K oracle (same geometry /
 \(2\times 2\times 2\) MP; not an absolute-energy oracle).
 
 ## Performance
 
-Source: `regressions/pw/pw-lda-si/REFERENCE.md`. Queue row:
+Source: case `pw-lda-si` pin. Queue row:
 **`perf_exempt`** (ABINIT-class energy band; no fair CP2K PW twin on pin host).
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -236,7 +235,7 @@ Source: `regressions/pw/pw-lda-si/REFERENCE.md`. Queue row:
 | Wall budget | e2e ≤ 60 s single-rank CPU (PASS) |
 
 When a CP2K binary is available offline: time the same geometry with
-`tools/cp2k_oracle/inputs/si_lda_pw_note.inp`, append
+CP2K oracle, append
 \(r = T_\mathrm{ATV}/T_\mathrm{CP2K}\) to REFERENCE.md, require \(r\le 10\).
 Wall comparison is same-geometry only, not absolute-energy parity.
 
@@ -254,9 +253,8 @@ Wall comparison is same-geometry only, not absolute-energy parity.
 
 ## References
 
-- Offline pin: [`regressions/pw/pw-lda-si/REFERENCE.md`](../../../regressions/pw/pw-lda-si/REFERENCE.md)
-- Regression: [`regressions/pw/pw-lda-si/reg_pw-lda-si.cpp`](../../../regressions/pw/pw-lda-si/reg_pw-lda-si.cpp)
-- Optional CP2K wall skeleton: `tools/cp2k_oracle/inputs/si_lda_pw_note.inp`
+- Offline pin: case `pw-lda-si` pin
+- Optional CP2K wall skeleton: CP2K oracle
 - Narrative style ref: [Chapter 8 — Plane-Wave DFT](../ch08-plane-wave.md)
 - D. R. Hamann, *Phys. Rev. B* **88**, 085117 (2013)
 - M. J. van Setten et al., *Comput. Phys. Commun.* **226**, 39 (2018)

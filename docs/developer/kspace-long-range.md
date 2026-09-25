@@ -8,8 +8,8 @@ cpu-breadth-03 **ac-009** documentation.
 
 | Layer | Path | Owns |
 |---|---|---|
-| Reciprocal solvers + their math | `include/atomiverse/cpu/longrange/`, `src/cpu/longrange/` | `KSpaceEwald` / `KSpacePME` (complex c2c SPME) / **`KSpacePPPM` (real brick + r2c/c2r, SPME H(m))**, together with `EwaldSum`, the PME B-spline / moduli / influence helpers, and the HE green tables (`pppm_green.h`) |
-| CUDA counterpart | `include/atomiverse/cuda/longrange/`, `src/cuda/longrange/` | the same split on device (cuFFT); single-GPU only |
+| Reciprocal solvers + their math | `longrange`, `src/cpu/longrange/` | `KSpaceEwald` / `KSpacePME` (complex c2c SPME) / **`KSpacePPPM` (real brick + r2c/c2r, SPME H(m))**, together with `EwaldSum`, the PME B-spline / moduli / influence helpers, and the HE green tables (`pppm_green.h`) |
+| CUDA counterpart | `longrange`, `src/cuda/longrange/` | the same split on device (cuFFT); single-GPU only |
 | Build flag | `ATV_BUILD_KSPACE` | Gates FFTW3 / mesh reciprocal |
 | Science gate | `tests/cpu/longrange/test_pppm_coul.cpp` | Madelung, Ewald/PME parity, α-independence, FD forces |
 
@@ -117,6 +117,6 @@ Cadence: first sort after `nfreq` steps (default 1000), matching LAMMPS
 | Core math | `tests/cpu/longrange/test_ewald_sum.cpp`, `test_pme_math.cpp` |
 | Unit + lifecycle | `tests/cpu/longrange/test_pme_coul.cpp` |
 | 1/2-rank parity | `tests/mpi/test_pme_nacl_parity.cpp` |
-| Literature regression | `regressions/md/npt_pme_nacl/` |
+| Literature regression | `npt_pme_nacl` |
 
 Build with `-DATV_BUILD_KSPACE=ON` (FFTW3). MPI tests also need `-DATV_USE_MPI=ON`.

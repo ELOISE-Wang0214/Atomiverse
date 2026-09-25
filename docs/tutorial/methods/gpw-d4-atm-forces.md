@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d4-atm-forces` |
-| Regression | `regressions/gpw/gpw-d4-atm-forces/` |
-| Public API | `cpu::gpw::GPWEvaluator{d4 = true, d4_atm = true, compute_forces = true}` |
+| Public API | `cpu::gpw::GpwDft{d4 = true, d4_atm = true}` bound by `cpu::gpw::GPWEvaluator{…, compute_forces = true}` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -31,7 +30,7 @@ CP2K 2026.1 on Arrhenius is built **without** the DFTD4 library
 (`TYPE DFTD4` aborts: `CP2K build without DFTD4`). The hard pin is
 **dftd4 3.7.0 `--grad`** — the same libdftd4 backend CP2K calls when DFTD4
 is linked; the QS twin input family is retained under
-`tools/cp2k_oracle/inputs/gpw-d4-atm/` for hosts that link it. Same policy as
+CP2K oracle for hosts that link it. Same policy as
 `gpw-d4-atm` / `gpw-d4-forces`.
 
 ### Oracle finding: dftd4 3.7.0's periodic ATM gradient is non-conservative
@@ -109,20 +108,23 @@ bash -lc '
         -DATV_BUILD_HF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-d4-atm-forces -j$(nproc)
-  ./build/regressions/reg_gpw-d4-atm-forces
+  reg_gpw-d4-atm-forces
 '
 ```
 
 Public surface (no `*Config`, no factories):
 
 ```cpp
-cpu::gpw::GPWEvaluator eval({O_kind, H_kind});
-eval.cutoff_ry = 200.0;
-eval.xc = cpu::gpw::XcKind::PBE;
-eval.nonperiodic = false;
-eval.d4 = true;          // exclusive vs d3 / d3bj
-eval.d4_atm = true;      // s9 = 1
-eval.compute_forces = true;
+cpu::gpw::GpwDft dft{{O_kind, H_kind}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = false;
+dft.d4 = true;           // exclusive vs d3 / d3bj
+dft.d4_atm = true;       // s9 = 1
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/true);
 cpu::Evaluate driver;
 driver.on(evaluate::Phase::evaluate).add_ref(eval);
 driver.build();
@@ -151,8 +153,8 @@ policy as `gpw-d4-forces` / `gpw-d4-water`.
 
 ## References
 
-- Offline pins: `regressions/gpw/gpw-d4-atm-forces/REFERENCE.md`;
-  `tools/cp2k_oracle/inputs/gpw-d4-atm/` (grad + displaced-energy JSON pins)
+- Offline pins: case `gpw-d4-atm-forces` pin;
+  CP2K oracle (grad + displaced-energy JSON pins)
 - Related: [gpw-d4-atm](gpw-d4-atm.md) (energy),
   [gpw-d4-forces](gpw-d4-forces.md) (two-body forces),
   [gpw-d3-atm-forces](gpw-d3-atm-forces.md) (D3 C9 twin),

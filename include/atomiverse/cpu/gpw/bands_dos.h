@@ -79,17 +79,17 @@ class Bands {
     /// @param n_seg Number of samples per segment (including endpoints once).
     void set_diamond_path(int n_seg = 4);
 
-    /// @brief Multi-k SCF + NSCF bands for the geometry in `atoms`.
+    /// @brief Multi-k SCF + NSCF bands for the geometry in `frame`.
     ///
     /// @param method GPW DFT method (`build()` already done; k-mesh / list
     ///               used for the SCF density; not mutated).
-    /// @param atoms  Atom set at the current geometry [Bohr] (same as `build`).
+    /// @param frame  Geometry (positions [Å], Z, orthorhombic box [Å]); the
+    ///               SCF energy [eV] is written to `frame.meta[kEnergy]`.
     /// @return Owned `BandsResult` with eigenvalues [Hartree] and gap / \(E_F\).
     /// @throws std::logic_error when `method` was not `build()`'d.
     /// @throws std::invalid_argument on multigrid / nonperiodic / analytic local
     ///         PP / DFT+U / dispersion / empty path / insufficient n_bands.
-    BandsResult compute(GpwDft& method,
-                        const std::vector<GpwAtom>& atoms) const;
+    BandsResult compute(GpwDft& method, Frame& frame) const;
 };
 
 /// @brief Result of a Gaussian-broadened multi-k density of states (GPW).
@@ -161,16 +161,17 @@ class Dos {
     ///        and TR fold preserved). Default false (set cubic MP mesh).
     bool use_method_k_list = false;
 
-    /// @brief Multi-k SCF + Gaussian DOS for the geometry in `atoms`.
+    /// @brief Multi-k SCF + Gaussian DOS for the geometry in `frame`.
     ///
     /// @param method GPW DFT method (`build()` already done). Unless
     ///               `use_method_k_list`, `k_mesh` is set to
     ///               `{k_mesh,k_mesh,k_mesh}` and explicit `k_points` cleared.
-    /// @param atoms  Atom set at the current geometry [Bohr].
+    /// @param frame  Geometry (positions [Å], Z, orthorhombic box [Å]); the
+    ///               SCF energy [eV] is written to `frame.meta[kEnergy]`.
     /// @return Owned `DosResult` (energies [Ha]).
     /// @throws std::invalid_argument on bad parameters or non multi-k result.
     /// @throws std::logic_error if `method` was not built.
-    DosResult compute(GpwDft& method, const std::vector<GpwAtom>& atoms) const;
+    DosResult compute(GpwDft& method, Frame& frame) const;
 };
 
 /// @brief Locate VBM/CBM from a spectrum with `n_occ` occupied bands.

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pw-smearing-al` |
-| Regression | `regressions/pw/pw-smearing-al/` |
 | Public API | `cpu::pw::PW` members `smearing`, `degauss` [Ry], `mp_order`, `extra_bands`; `PWResult::{e_fermi,n_elec_occ,e_entropy}` |
 | Roadmap | [dft.md](../../roadmap/dft.md) — Smearing for metals (CPU PW ✓) |
 ## Summary
@@ -74,7 +73,7 @@ productization; CUDA PW smearing; forces under smear as a pin.
 
 Public surface only: construct `cpu::pw::PW`, set members, `build` / `run`
 on a `cpu::Frame`. Headers:
-`include/atomiverse/cpu/planewave/pw_solver.h` (API);
+`pw_solver.h` (API);
 occupations live in `internal/smearing.h` (not a user type).
 
 ```cpp
@@ -133,19 +132,19 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_pw-smearing-al -j$(nproc)
-  ./build/regressions/reg_pw-smearing-al
+  reg_pw-smearing-al
 '
 ```
 
 Source consumer:
-`regressions/pw/pw-smearing-al/reg_pw-smearing-al.cpp`.
+`reg_pw-smearing-al.cpp`.
 Unit tests (occupation closed forms, not e2e):
 `tests/cpu/planewave/test_pw_smearing.cpp` → `test_cpu_pw_smearing`.
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/pw/pw-smearing-al/REFERENCE.md`](../../../regressions/pw/pw-smearing-al/REFERENCE.md)
+case `pw-smearing-al` pin
 (offline pins only; **never** live CP2K in ctest).
 
 ### ATV system (energy + \(N_{\mathrm{occ}}\) gate)
@@ -181,14 +180,14 @@ metallic occupations.
 | Item | Value |
 | ---- | ----- |
 | Code | **CP2K 2026.1** (`cp2k.psmp`, git:5e54ba2) |
-| Input | `tools/cp2k_oracle/inputs/al_fermi_dirac.inp` |
+| Input | CP2K oracle |
 | Method | Quickstep GPW, PADE, `GTH-PADE-q3` + `DZVP-MOLOPT-SR-GTH` |
 | Cell | same primitive FCC \(a=4.05\) Å |
 | SMEAR | FERMI_DIRAC, \(T_e = 3157.75\) K (\(\approx 0.02\) Ry \(k_B T\)) |
 | k-points | Monkhorst–Pack \(2\times2\times2\) |
 | Example \(E_{\mathrm{tot}}\) | ≈ −2.096 Ha (grid-dependent; **not** compared to ATV Ry pin) |
 
-Oracle path: `tools/cp2k_oracle/README.md` (offline only).
+Oracle path: CP2K oracle (offline only).
 
 ## Performance
 
@@ -206,7 +205,7 @@ r = T_{\mathrm{atv}} / T_{\mathrm{cp2k}} \approx 0.008 \ll 10
 `within_10x = true`. Fairness note: ATV NC-UPF PW at 20 Ry / \(2^3\) k vs
 CP2K GPW GTH + MOLOPT at CUTOFF 200 Ry; do **not** treat \(r\) as a
 same-Hamiltonian throughput claim. Handoff records ratio **0.008**
-(the case `REFERENCE.md`).
+(the case pin notes).
 
 ## Limitations
 
@@ -229,13 +228,11 @@ same-Hamiltonian throughput claim. Handoff records ratio **0.008**
 
 ## References
 
-- Offline pin: `regressions/pw/pw-smearing-al/REFERENCE.md`
-- Regression: `regressions/pw/pw-smearing-al/reg_pw-smearing-al.cpp`
-- CP2K twin input: `tools/cp2k_oracle/inputs/al_fermi_dirac.inp`
-- Oracle notes: `tools/cp2k_oracle/README.md`
-- Handoff ratio **0.008**: the case `REFERENCE.md`
+- Offline pin: case `pw-smearing-al` pin
+- CP2K twin input: CP2K oracle
+- Oracle notes: CP2K oracle
+- Handoff ratio **0.008**: the case pin notes
 - Roadmap: `docs/roadmap/dft.md` (Smearing for metals ✓ CPU)
-- Public header: `include/atomiverse/cpu/planewave/pw_solver.h`
 - Internal occupations: `include|src/.../planewave/internal/smearing.*`
 - Unit tests: `tests/cpu/planewave/test_pw_smearing.cpp`
 - Spec history (closed wave 1): git `72ebb870` (`.claude/specs/pw-smearing-al/`)

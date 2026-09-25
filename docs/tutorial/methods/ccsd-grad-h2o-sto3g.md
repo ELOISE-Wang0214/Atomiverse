@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ccsd-grad-h2o-sto3g` |
-| Regression | `regressions/scf/ccsd-grad-h2o-sto3g/` |
 | Public API | `cpu::scf::RHF::ccsd_forces(Frame&)` → `GradientResult` |
 | Roadmap | [Post-HF §3 Coupled cluster](../../roadmap/post-hf.md) |
 
@@ -20,7 +19,7 @@ implements \(\partial E_{\mathrm{CCSD}}/\partial R\) as a **central finite
 difference** of the analytic CCSD total energy (\(h = 10^{-4}\) Bohr), not the
 density-based \(\Lambda\) / Lagrangian analytic path. Offline oracle pin is
 PySCF 2.14.0 **analytic** `cc.CCSD` + `nuc_grad_method().kernel()` (never live
-in ctest). End-to-end gate: `regressions/scf/ccsd-grad-h2o-sto3g` → binary
+in ctest). End-to-end gate: `ccsd-grad-h2o-sto3g` → binary
 `reg_ccsd-grad-h2o-sto3g`. Fair-bench ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} = 1.665\) (within 10×).
 
@@ -87,7 +86,7 @@ const cpu::scf::GradientResult res = rhf.ccsd_forces(frame);
 // Compare vs pin: -convert(force, eV/Å → Ha/Bohr)
 ```
 
-`GradientResult` fields (`include/atomiverse/cpu/scf/gradient_result.h`):
+`GradientResult` fields (`gradient_result.h`):
 `forces` \([n_{\mathrm{atoms}}, 3]\) eV/Å, `energy` eV.
 
 **Build / run regression** (CPU login; modules as in AGENTS.md):
@@ -102,22 +101,22 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_ccsd-grad-h2o-sto3g -j$(nproc)
-  ./build/regressions/reg_ccsd-grad-h2o-sto3g
+  reg_ccsd-grad-h2o-sto3g
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/mean_field_method.h` | `RHF::ccsd_forces(Frame&)` |
-| `include/atomiverse/cpu/scf/gradient_result.h` | Public `GradientResult` |
+| `mean_field_method.h` | `RHF::ccsd_forces(Frame&)` |
+| `gradient_result.h` | Public `GradientResult` |
 | `src/cpu/scf/internal/ccsd_gradient.cpp` | FD of CCSD energy |
 | `src/cpu/scf/mean_field_method.cpp` | Public entry (RHF-only gates) |
-| `regressions/scf/ccsd-grad-h2o-sto3g/reg_ccsd-grad-h2o-sto3g.cpp` | E2E consumer |
+| `reg_ccsd-grad-h2o-sto3g.cpp` | E2E consumer |
 
 ## Validation (vs PySCF)
 
 Source:
-[`regressions/scf/ccsd-grad-h2o-sto3g/REFERENCE.md`](../../../regressions/scf/ccsd-grad-h2o-sto3g/REFERENCE.md)
+case `ccsd-grad-h2o-sto3g` pin
 (offline pin; PySCF never in ctest). Protocol:
 `docs/tutorial/appendix-pyscf-oracle.md`.
 
@@ -158,15 +157,15 @@ Source:
 Oracle repro (human / offline only):
 
 ```bash
-bash tools/setup_pyscf_env.sh
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py ccsd \
+bash <pyscf env setup>
+python <pyscf pin> ccsd \
     --geom water --basis sto-3g --grad --conv-tol 1e-12
 ```
 
 ## Performance
 
 Source: fair wall in
-[`regressions/scf/ccsd-grad-h2o-sto3g/REFERENCE.md`](../../../regressions/scf/ccsd-grad-h2o-sto3g/REFERENCE.md)
+case `ccsd-grad-h2o-sto3g` pin
 (median of 3; campaign handoff ratio **1.665**). Gate:
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\).
 
@@ -176,9 +175,9 @@ Source: fair wall in
 
 ```bash
 export OMP_NUM_THREADS=1
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
     --method ccsd_grad --geom water --basis sto-3g --repeat 3 -- \
-    ./build/regressions/reg_ccsd-grad-h2o-sto3g
+    reg_ccsd-grad-h2o-sto3g
 ```
 
 No ⚡ optimization pass required on this case (\(r < 10\)).
@@ -199,13 +198,13 @@ No ⚡ optimization pass required on this case (\(r < 10\)).
 
 ## References
 
-- Offline pin: `regressions/scf/ccsd-grad-h2o-sto3g/REFERENCE.md`
-- Regression consumer: `regressions/scf/ccsd-grad-h2o-sto3g/reg_ccsd-grad-h2o-sto3g.cpp`
+- Offline pin: case `ccsd-grad-h2o-sto3g` pin
+- Regression consumer: `reg_ccsd-grad-h2o-sto3g.cpp`
 - Energy sibling page: [ccsd-h2-sto3g](ccsd-h2-sto3g.md)
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Roadmap: `docs/roadmap/post-hf.md` (§3 Coupled cluster)
-- Public API: `include/atomiverse/cpu/scf/mean_field_method.h` (`ccsd_forces`),
-  `include/atomiverse/cpu/scf/gradient_result.h`
+- Public API: `mean_field_method.h` (`ccsd_forces`),
+  `gradient_result.h`
 - J. Gauss, J. F. Stanton, *J. Chem. Phys.* **104**, 2574 (1996) (analytic
   CCSD gradient)
 - T. Helgaker, P. Jørgensen, J. Olsen, *Molecular Electronic-Structure Theory*

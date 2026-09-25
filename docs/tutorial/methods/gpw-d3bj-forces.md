@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d3bj-forces` |
-| Regression | `regressions/gpw/gpw-d3bj-forces/` |
-| Public API | `cpu::gpw::GPWEvaluator{d3bj = true, compute_forces = true}` |
+| Public API | `cpu::gpw::GPWEvaluator{GpwDft{…} with d3bj = true, compute_forces = true}` |
 | Roadmap / queue | `docs/roadmap/dft.md` §8 Dispersion; queue done 2026-07-26 |
 
 ## Summary
@@ -51,4 +50,4 @@ translation invariant at `CUTOFF 300`. Atomiverse's own net force is 1.34e−3 �
 CP2K's grid noise, so the tight, physically meaningful gates are the dispersion
 pins (1e−8 Ha / 5e−6 Ha/Bohr) and the net-force check.
 
-See `regressions/gpw/gpw-d3bj-forces/REFERENCE.md` for the pin tables.
+See case `gpw-d3bj-forces` pin for the pin tables.

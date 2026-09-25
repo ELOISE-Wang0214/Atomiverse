@@ -21,27 +21,38 @@ using ATV::cpu::gpw::XcKind;
 
 namespace {
 
-std::vector<ATV::cpu::gpw::GpwAtom> h2_atoms() {
+std::vector<ATV::cpu::gpw::internal::GpwAtom> h2_atoms() {
     const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
     const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
     const double rA[3] = {5.5, 6.0, 6.0};
     const double rB[3] = {6.5, 6.0, 6.0};
-    return {ATV::cpu::gpw::GpwAtom(rA, basis, pot, 1),
-            ATV::cpu::gpw::GpwAtom(rB, basis, pot, 1)};
+    return {ATV::cpu::gpw::internal::GpwAtom(rA, basis, pot, 1),
+            ATV::cpu::gpw::internal::GpwAtom(rB, basis, pot, 1)};
 }
 
 // PBE product twin: same geometry + compact basis; GTH-PBE-q1 PP.
-std::vector<ATV::cpu::gpw::GpwAtom> h2_atoms_pbe() {
+std::vector<ATV::cpu::gpw::internal::GpwAtom> h2_atoms_pbe() {
     const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
     const auto pot = GthPotential(molrs::Element::H, "GTH-PBE-q1");
     const double rA[3] = {5.5, 6.0, 6.0};
     const double rB[3] = {6.5, 6.0, 6.0};
-    return {ATV::cpu::gpw::GpwAtom(rA, basis, pot, 1),
-            ATV::cpu::gpw::GpwAtom(rB, basis, pot, 1)};
+    return {ATV::cpu::gpw::internal::GpwAtom(rA, basis, pot, 1),
+            ATV::cpu::gpw::internal::GpwAtom(rB, basis, pot, 1)};
+}
+
+// Cubic cell [Bohr]: CPU oracle goes through the engine-private atom door,
+// the CUDA product keeps its public `cell` member.
+void set_cube_cell(ATV::cpu::gpw::GpwDft& m, double L_bohr) {
+    ATV::cpu::gpw::internal::GpwDftAccess::set_cell(m,
+                                                    {L_bohr, L_bohr, L_bohr});
+}
+
+void set_cube_cell(ATV::cuda::gpw::GpwDft& m, double L_bohr) {
+    m.cell[0] = m.cell[1] = m.cell[2] = L_bohr;
 }
 
 void set_h2_cfg_cpu(ATV::cpu::gpw::GpwDft& m) {
-    m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+    set_cube_cell(m, 12.0);
     m.cutoff_ry = 80.0;
     m.n_occ = 1;
     m.max_iter = 40;
@@ -56,7 +67,7 @@ void set_h2_cfg_cpu(ATV::cpu::gpw::GpwDft& m) {
 }
 
 void set_h2_cfg_cuda(ATV::cuda::gpw::GpwDft& m) {
-    m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+    set_cube_cell(m, 12.0);
     m.cutoff_ry = 80.0;
     m.n_occ = 1;
     m.max_iter = 40;
@@ -72,7 +83,7 @@ void set_h2_cfg_cuda(ATV::cuda::gpw::GpwDft& m) {
 
 template <typename Method>
 void set_h2_cfg_pbe(Method& m) {
-    m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+    set_cube_cell(m, 12.0);
     m.cutoff_ry = 80.0;
     m.n_occ = 1;
     m.max_iter = 40;
@@ -188,8 +199,8 @@ TEST(CudaGpwFullProduct, H2GammaPadeEnergyDualGate) {
 
     ATV::cpu::gpw::GpwDft cpu;
     set_h2_cfg_cpu(cpu);
-    cpu.build(atoms);
-    const auto& rc = cpu.run(atoms);
+    ATV::cpu::gpw::internal::GpwDftAccess::build(cpu, atoms);
+    const auto& rc = ATV::cpu::gpw::internal::GpwDftAccess::run(cpu, atoms);
     ASSERT_TRUE(rc.converged) << "CPU SCF failed iters=" << rc.iters;
     ASSERT_TRUE(std::isfinite(rc.e_total));
 
@@ -212,8 +223,8 @@ TEST(CudaGpwFullProduct, H2GammaPadeForcesDualGate) {
 
     ATV::cpu::gpw::GpwDft cpu;
     set_h2_cfg_cpu(cpu);
-    cpu.build(atoms);
-    const auto Fc = ATV::cpu::gpw::gpw_forces_analytic(atoms, cpu);
+    ATV::cpu::gpw::internal::GpwDftAccess::build(cpu, atoms);
+    const auto Fc = ATV::cpu::gpw::internal::gpw_forces_analytic(atoms, cpu);
     ASSERT_EQ(Fc.size(), 2u);
 
     ATV::cuda::gpw::GpwDft gpu;
@@ -235,7 +246,7 @@ TEST(CudaGpwFullProduct, H2GammaPadeMultigridEnergyDualGate) {
     auto atoms = h2_atoms();
 
     auto set_mg = [](auto& m) {
-        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        set_cube_cell(m, 12.0);
         m.cutoff_ry = 80.0;
         m.ngrids = 4;
         m.rel_cutoff = 40.0;
@@ -252,8 +263,8 @@ TEST(CudaGpwFullProduct, H2GammaPadeMultigridEnergyDualGate) {
 
     ATV::cpu::gpw::GpwDft cpu;
     set_mg(cpu);
-    cpu.build(atoms);
-    const auto& rc = cpu.run(atoms);
+    ATV::cpu::gpw::internal::GpwDftAccess::build(cpu, atoms);
+    const auto& rc = ATV::cpu::gpw::internal::GpwDftAccess::run(cpu, atoms);
     ASSERT_TRUE(rc.converged) << "CPU MG SCF failed iters=" << rc.iters;
     ASSERT_TRUE(std::isfinite(rc.e_total));
 
@@ -278,8 +289,8 @@ TEST(CudaGpwFullProduct, H2GammaPbeEnergyDualGate) {
 
     ATV::cpu::gpw::GpwDft cpu;
     set_h2_cfg_pbe(cpu);
-    cpu.build(atoms);
-    const auto& rc = cpu.run(atoms);
+    ATV::cpu::gpw::internal::GpwDftAccess::build(cpu, atoms);
+    const auto& rc = ATV::cpu::gpw::internal::GpwDftAccess::run(cpu, atoms);
     ASSERT_TRUE(rc.converged) << "CPU PBE SCF failed iters=" << rc.iters;
     ASSERT_TRUE(std::isfinite(rc.e_total));
 
@@ -301,8 +312,8 @@ TEST(CudaGpwFullProduct, H2GammaPbeForcesDualGate) {
 
     ATV::cpu::gpw::GpwDft cpu;
     set_h2_cfg_pbe(cpu);
-    cpu.build(atoms);
-    const auto Fc = ATV::cpu::gpw::gpw_forces_analytic(atoms, cpu);
+    ATV::cpu::gpw::internal::GpwDftAccess::build(cpu, atoms);
+    const auto Fc = ATV::cpu::gpw::internal::gpw_forces_analytic(atoms, cpu);
     ASSERT_EQ(Fc.size(), 2u);
 
     ATV::cuda::gpw::GpwDft gpu;
@@ -334,13 +345,13 @@ TEST(CudaGpwFullProduct, WaterGammaPadeEnergyDualGate) {
     const double rO[3] = {c, c, c};
     const double rH1[3] = {c + dHx, c, c + dHz};
     const double rH2[3] = {c - dHx, c, c + dHz};
-    std::vector<ATV::cpu::gpw::GpwAtom> atoms = {
-        ATV::cpu::gpw::GpwAtom(rO, bas_O, pot_O, 8),
-        ATV::cpu::gpw::GpwAtom(rH1, bas_H, pot_H, 1),
-        ATV::cpu::gpw::GpwAtom(rH2, bas_H, pot_H, 1)};
+    std::vector<ATV::cpu::gpw::internal::GpwAtom> atoms = {
+        ATV::cpu::gpw::internal::GpwAtom(rO, bas_O, pot_O, 8),
+        ATV::cpu::gpw::internal::GpwAtom(rH1, bas_H, pot_H, 1),
+        ATV::cpu::gpw::internal::GpwAtom(rH2, bas_H, pot_H, 1)};
 
     auto set_h2o = [](auto& m) {
-        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        set_cube_cell(m, 12.0);
         m.cutoff_ry = 100.0;
         m.n_occ = 4;
         m.max_iter = 80;
@@ -356,8 +367,8 @@ TEST(CudaGpwFullProduct, WaterGammaPadeEnergyDualGate) {
 
     ATV::cpu::gpw::GpwDft cpu;
     set_h2o(cpu);
-    cpu.build(atoms);
-    const auto& rc = cpu.run(atoms);
+    ATV::cpu::gpw::internal::GpwDftAccess::build(cpu, atoms);
+    const auto& rc = ATV::cpu::gpw::internal::GpwDftAccess::run(cpu, atoms);
     ASSERT_TRUE(rc.converged) << "CPU H2O SCF failed iters=" << rc.iters;
     ASSERT_TRUE(std::isfinite(rc.e_total));
 
@@ -382,7 +393,7 @@ TEST(CudaGpwFullProduct, H2HighSpinUksPadeEnergyDualGate) {
     auto atoms = h2_atoms();
 
     auto set_uks = [](auto& m) {
-        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        set_cube_cell(m, 12.0);
         m.cutoff_ry = 80.0;
         m.n_occ = 0;
         m.n_alpha = 2;
@@ -400,8 +411,8 @@ TEST(CudaGpwFullProduct, H2HighSpinUksPadeEnergyDualGate) {
 
     ATV::cpu::gpw::GpwDft cpu;
     set_uks(cpu);
-    cpu.build(atoms);
-    const auto& rc = cpu.run(atoms);
+    ATV::cpu::gpw::internal::GpwDftAccess::build(cpu, atoms);
+    const auto& rc = ATV::cpu::gpw::internal::GpwDftAccess::run(cpu, atoms);
     ASSERT_TRUE(rc.converged) << "CPU UKS SCF failed iters=" << rc.iters;
     ASSERT_TRUE(std::isfinite(rc.e_total));
 
@@ -432,12 +443,12 @@ TEST(CudaGpwFullProduct, O2UksPadeEnergyDualGate) {
     const double c = 0.5 * kCell;
     const double rA[3] = {c, c, c - half};
     const double rB[3] = {c, c, c + half};
-    std::vector<ATV::cpu::gpw::GpwAtom> atoms{
-        ATV::cpu::gpw::GpwAtom(rA, basis, pot, 8),
-        ATV::cpu::gpw::GpwAtom(rB, basis, pot, 8)};
+    std::vector<ATV::cpu::gpw::internal::GpwAtom> atoms{
+        ATV::cpu::gpw::internal::GpwAtom(rA, basis, pot, 8),
+        ATV::cpu::gpw::internal::GpwAtom(rB, basis, pot, 8)};
 
     auto set_uks = [](auto& m) {
-        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        set_cube_cell(m, 12.0);
         m.cutoff_ry = 100.0;
         m.n_occ = 0;
         m.n_alpha = 7;
@@ -455,8 +466,8 @@ TEST(CudaGpwFullProduct, O2UksPadeEnergyDualGate) {
 
     ATV::cpu::gpw::GpwDft cpu;
     set_uks(cpu);
-    cpu.build(atoms);
-    const auto& rc = cpu.run(atoms);
+    ATV::cpu::gpw::internal::GpwDftAccess::build(cpu, atoms);
+    const auto& rc = ATV::cpu::gpw::internal::GpwDftAccess::run(cpu, atoms);
     ASSERT_TRUE(rc.converged) << "CPU O2 UKS SCF failed iters=" << rc.iters;
     ASSERT_TRUE(std::isfinite(rc.e_total));
 

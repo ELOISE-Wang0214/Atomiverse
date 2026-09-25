@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-spin-si` |
-| Regression | `regressions/response/dfpt-spin-si/` |
 | Public API | `cpu::pw::DfptPhonon` (members) + `cpu::pw::DfptPhononResult`; `PW::spin_polarized` / `multiplicity` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — collinear-spin product ✓ |
 | Dep | `dfpt-phonon-si` ✓ (restricted LSDA Γ); sibling `dfpt-gga-si` ✓ (GGA kernel) |
@@ -21,7 +20,7 @@ pure LSDA. This product pins closed-shell collinear (\(M=0\)) diamond Si on
 the same NC-UPF / 10 Ry / 2×2×2 twin as the restricted LSDA gate, so the
 spin kernel can be checked against a same-Hamiltonian energy second
 difference without changing the physical system. Product gate:
-`regressions/response/dfpt-spin-si` (`reg_dfpt-spin-si`). Preferred offline
+`dfpt-spin-si` (`reg_dfpt-spin-si`). Preferred offline
 oracle: CP2K Quickstep DFPT / `VIBRATIONAL_ANALYSIS` with LSD/UKS on the same
 cell — **not available on the pin host**; sharp correctness is the
 energy-FD pin. Performance: **`perf_exempt`**.
@@ -85,7 +84,7 @@ Cite: Baroni, de Gironcoli, Dal Corso, Giannozzi, *Rev. Mod. Phys.* **73**,
 ## Implementation
 
 Public surface only (`cpu::Frame` + method / DFPT members; no `*Config`, no
-factories). Header: `include/atomiverse/cpu/planewave/dfpt_phonon.h`.
+factories). Header: `dfpt_phonon.h`.
 
 Minimal sequence (matches `reg_dfpt-spin-si.cpp`):
 
@@ -133,22 +132,22 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_dfpt-spin-si
-  ./build/regressions/reg_dfpt-spin-si
+  reg_dfpt-spin-si
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/planewave/dfpt_phonon.h` | `DfptPhonon` / `DfptPhononResult` |
+| `dfpt_phonon.h` | `DfptPhonon` / `DfptPhononResult` |
 | `src/cpu/planewave/dfpt_phonon.cpp` | Γ / commensurate / incommensurate dispatch |
-| `include/atomiverse/cpu/planewave/internal/dfpt.h` | private Sternheimer assembly |
-| `regressions/response/dfpt-spin-si/` | e2e + `REFERENCE.md` |
-| `tools/cp2k_oracle/inputs/dfpt-spin-si.note` | offline CP2K twin note |
+| `dfpt.h` | private Sternheimer assembly |
+| `dfpt-spin-si` | e2e + pin notes |
+| CP2K oracle | offline CP2K twin note |
 
 ## Validation (vs CP2K / same-Hamiltonian FD)
 
 Source:
-[`regressions/response/dfpt-spin-si/REFERENCE.md`](../../../regressions/response/dfpt-spin-si/REFERENCE.md).
+case `dfpt-spin-si` pin.
 Oracle priority: offline **CP2K DFPT / `VIBRATIONAL_ANALYSIS`** (LSD/UKS) when
 a binary is available; **this pin host had no CP2K module** — sharp pin is the
 central second difference of the **collinear-spin** PW SCF total energy at
@@ -180,7 +179,7 @@ identical ecut/k/XC/UPF/spin. **Never** live CP2K in ctest.
 | Pre-sym \(\lvert C-C^\top\rvert/2\) | \(7.3\times10^{-10}\) eV/Å² | Hermitian \(C\) | \(\le\mathbf{10^{-5}}\) | |
 
 Measured twin: REFERENCE host note, **2026-07-26**, Release, `OMP_NUM_THREADS=8`.
-Sibling restricted LSDA product: `regressions/response/dfpt-phonon-si`
+Sibling restricted LSDA product: `dfpt-phonon-si`
 (energy-FD pin 17.2393 eV/Å² class; optical ~576–578 cm⁻¹). Closed-shell
 collinear \(M=0\) matches that optical window within the documented
 minimal-settings bias.
@@ -188,11 +187,11 @@ minimal-settings bias.
 **CP2K.** When `cp2k.psmp` is available offline: run DFPT /
 `VIBRATIONAL_ANALYSIS` on the same cell with LSD/UKS and a comparable NC/GTH
 setup; record \(\omega(\Gamma)\) [cm⁻¹], version, and wall. Twin note:
-`tools/cp2k_oracle/inputs/dfpt-spin-si.note`.
+CP2K oracle.
 
 ## Performance
 
-Source: `regressions/response/dfpt-spin-si/REFERENCE.md`. Queue / handoff
+Source: case `dfpt-spin-si` pin. Queue / handoff
 wave 7: **`perf_exempt`**.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -228,9 +227,8 @@ When a CP2K binary is available offline: time a comparable DFPT twin, append
 
 ## References
 
-- Offline pin: [`regressions/response/dfpt-spin-si/REFERENCE.md`](../../../regressions/response/dfpt-spin-si/REFERENCE.md)
-- Regression: [`regressions/response/dfpt-spin-si/reg_dfpt-spin-si.cpp`](../../../regressions/response/dfpt-spin-si/reg_dfpt-spin-si.cpp)
-- Oracle note: [`tools/cp2k_oracle/inputs/dfpt-spin-si.note`](../../../tools/cp2k_oracle/inputs/dfpt-spin-si.note)
+- Offline pin: case `dfpt-spin-si` pin
+- Oracle note: CP2K oracle
 - Sibling tutorials: [dfpt-phonon-si](dfpt-phonon-si.md),
   [fd-phonon-supercell](fd-phonon-supercell.md)
 - Roadmap: [dft.md](../../roadmap/dft.md) §11 DFPT

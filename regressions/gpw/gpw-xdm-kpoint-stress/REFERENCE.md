@@ -35,7 +35,7 @@ compared here via `last_stress_ha_bohr3()`.
 | ---- | ------ |
 | A. \(E_{\mathrm{disp}}\) unstrained | offline **dual pure-Python** free-atom XDM lattice sum — the same pin `gpw-xdm-ice` / `gpw-xdm-stress` use; XDM is independent of the electronic k mesh, so the multi-k run must reproduce the Γ pin |
 | B. \(E_{\mathrm{disp}}\) **under strain** (±h per axis) | fresh dual pure-Python pins at each strained geometry (below) — the strain derivative being folded is externally validated point by point |
-| C. \(\sigma\) | **multi-SCF strain-FD** (`gpw_stress_fd_impl`): full re-SCF at each strained cell on the same 1×1×2 mesh, XDM folded through the energy path |
+| C. \(\sigma\) | **multi-SCF strain-FD** (`gpw_stress_fd`): full re-SCF at each strained cell on the same 1×1×2 mesh, XDM folded through the energy path |
 | D. XDM actually folded | \(\sigma(\mathrm{xdm}) - \sigma(\mathrm{plain})\) equals the dual-python strain-FD term \(-\Delta E_{\mathrm{disp}}/(2h\Omega)\) per axis |
 
 ### Why not CP2K QS?

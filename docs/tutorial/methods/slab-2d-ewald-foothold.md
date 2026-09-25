@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `slab-2d-ewald-foothold` |
-| Regression | `regressions/md/slab-2d-ewald-foothold/` |
 | Public API | `cpu::CoulLong` + `cpu::KSpaceEwald` (`slab_factor` member) on `cpu::Evaluate` / `cpu::md::MD` |
 | Roadmap | `docs/roadmap/force-fields.md` § Direct Ewald slab |
 
@@ -89,11 +88,11 @@ while remaining periodic in \(xy\).
 Public surface only (`cpu::Frame` + component constructors / members; no
 `*Config`, no `make_*` / `build_*` factories). Headers:
 
-- `include/atomiverse/cpu/potentials/coul_long.h` — real-space long Coulomb
-- `include/atomiverse/cpu/longrange/ewald.h` — `KSpaceEwald` + `slab_factor`
-- `include/atomiverse/cpu/longrange/slab_corr.h` — Yeh–Berkowitz helpers
-- `include/atomiverse/cpu/evaluate/evaluate.h` — single-point Evaluate preset
-- `include/atomiverse/cpu/neighbor/neighbor_list.h`
+- `coul_long.h` — real-space long Coulomb
+- `ewald.h` — `KSpaceEwald` + `slab_factor`
+- `slab_corr.h` — Yeh–Berkowitz helpers
+- `evaluate.h` — single-point Evaluate preset
+- `neighbor_list.h`
 
 Minimal sequence (matches `reg_slab-2d-ewald-foothold.cpp`):
 
@@ -143,15 +142,15 @@ bash -lc '
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_slab-2d-ewald-foothold -j$(nproc)
 '
-./build/regressions/reg_slab-2d-ewald-foothold
+reg_slab-2d-ewald-foothold
 ```
 
 Oracle input (offline only):
-`tools/metalwalls_oracle/inputs/lammps/slab-2d-ewald-foothold/in.lammps`.
+MetalWalls oracle.
 
 ## Validation (oracle: LAMMPS)
 
-Source: `regressions/md/slab-2d-ewald-foothold/REFERENCE.md` (offline pin;
+Source: case `slab-2d-ewald-foothold` pin (offline pin;
 **never** live LAMMPS in ctest).
 
 | Field | Value |
@@ -174,7 +173,7 @@ LAMMPS `Ewald::slabcorr`. Unit tests for `slab_factor` live under
 
 ## Performance
 
-Source: same `REFERENCE.md` fair wall (not ctest). Geometry as above;
+Source: same pin notes fair wall (not ctest). Geometry as above;
 `OMP_NUM_THREADS=1`; **2000** force evaluations after warm-up. LAMMPS:
 `run 2000` with `fix setforce 0` (reported loop time). ATV: hot-path
 `CoulLong` + `KSpaceEwald` only (build once; no Evaluate re-init).
@@ -204,10 +203,10 @@ REFERENCE: reciprocal sum over the positive hemisphere with prefactor
 
 ## References
 
-- Offline pin + fair wall: `regressions/md/slab-2d-ewald-foothold/REFERENCE.md`
-- Regression consumer: `regressions/md/slab-2d-ewald-foothold/reg_slab-2d-ewald-foothold.cpp`
-- LAMMPS twin input: `tools/metalwalls_oracle/inputs/lammps/slab-2d-ewald-foothold/in.lammps`
-- Oracle notes: `tools/metalwalls_oracle/README.md`
+- Offline pin + fair wall: case `slab-2d-ewald-foothold` pin
+- Regression consumer: `reg_slab-2d-ewald-foothold.cpp`
+- LAMMPS twin input: MetalWalls oracle
+- Oracle notes: MetalWalls oracle
 - Roadmap: `docs/roadmap/force-fields.md` (Direct Ewald + slab)
 - I.-C. Yeh, M. L. Berkowitz, *J. Chem. Phys.* **111**, 3155 (1999)
 - V. Ballenegger et al., *J. Chem. Phys.* **131**, 094107 (2009) (non-neutral extension)

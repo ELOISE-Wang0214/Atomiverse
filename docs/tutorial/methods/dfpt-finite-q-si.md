@@ -5,11 +5,10 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-finite-q-si` |
-| Regression | `regressions/response/dfpt-finite-q-si/` |
 | Public API | `cpu::pw::DfptPhonon` (member `q_frac`) + `cpu::pw::DfptPhononResult` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — finite-q product path ✓ |
 | Dep | `dfpt-phonon-si` ✓ (Γ Sternheimer); `phonon-dispersion-si` ✓ (IFC Fourier consumer) |
-| Oracle | CP2K offline twin note (`tools/cp2k_oracle/inputs/dfpt-finite-q-si.note`); no live CP2K in ctest |
+| Oracle | CP2K offline twin note (CP2K oracle); no live CP2K in ctest |
 
 ## Summary
 
@@ -92,7 +91,7 @@ Ewald Hessians now build \(L = h\mathbf{a}+k\mathbf{b}+l\mathbf{c}\) from
 
 Public surface only (`cpu::Frame` + concrete method members; no `*Config`, no
 `make_*` / `build_*`). Headers:
-`include/atomiverse/cpu/planewave/dfpt_phonon.h`,
+`dfpt_phonon.h`,
 `pw_solver.h`; internals under `cpu/planewave/internal/dfpt.h` (private).
 
 Minimal sequence (matches `reg_dfpt-finite-q-si.cpp`):
@@ -152,17 +151,17 @@ metallic smearing, collinear spin, or incommensurate / oversized \(q\)
 ```bash
 # scoped build (binding) — never bare cmake --build build
 cmake --build build -j$(nproc) --target atomiverse reg_dfpt-finite-q-si
-./build/regressions/reg_dfpt-finite-q-si
+reg_dfpt-finite-q-si
 # or: cmake --build build --target run_reg_dfpt-finite-q-si
 ```
 
 Relevant sources: `src/cpu/planewave/dfpt_phonon.cpp` (commensurate dispatch),
 `src/cpu/planewave/internal/dfpt.cpp` (Γ Sternheimer assembly + Ewald rows),
-`include/atomiverse/cpu/vibration/phonon_dispersion.h` (IFC Fourier).
+`phonon_dispersion.h` (IFC Fourier).
 
 ## Validation (vs offline pins / literature)
 
-Source: `regressions/response/dfpt-finite-q-si/REFERENCE.md` (hard-coded;
+Source: case `dfpt-finite-q-si` pin (hard-coded;
 never live oracle in ctest). Twin measured 2026-07-25, Release, OMP=8.
 
 **System.** Diamond Si primitive, a = **5.43 Å**, `Si_lda_nc.upf`, LSDA,
@@ -192,12 +191,12 @@ throws — **no full SCF** under `tests/`.
 
 CP2K offline note: when a Quickstep DFPT / `VIBRATIONAL_ANALYSIS` twin is
 available, record \(\omega(X)\) for all 6 branches + wall under matched OMP
-(`tools/cp2k_oracle/inputs/dfpt-finite-q-si.note`). No CP2K binary on the pin
+(CP2K oracle). No CP2K binary on the pin
 host this shift.
 
 ## Performance
 
-Source: the case `REFERENCE.md` (wave 2) + REFERENCE.md.
+Source: the case pin notes (wave 2) + REFERENCE.md.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -220,10 +219,9 @@ host this shift. Re-bench with OMP matched when the oracle binary lands.
 
 ## References
 
-- Offline pin: `regressions/response/dfpt-finite-q-si/REFERENCE.md`
-- Regression: `regressions/response/dfpt-finite-q-si/reg_dfpt-finite-q-si.cpp`
-- Oracle note: `tools/cp2k_oracle/inputs/dfpt-finite-q-si.note`
-- Oracle rules: `tools/cp2k_oracle/README.md` (never live in ctest)
+- Offline pin: case `dfpt-finite-q-si` pin
+- Oracle note: CP2K oracle
+- Oracle rules: CP2K oracle (never live in ctest)
 - Γ foothold tutorial: [dfpt-phonon-si](dfpt-phonon-si.md)
 - FD supercell machinery: [fd-phonon-supercell](fd-phonon-supercell.md)
 - Roadmap: [dft.md](../../roadmap/dft.md) §11

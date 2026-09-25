@@ -17,7 +17,7 @@ potential) on Gaussian-and-plane-waves (GPW) forces:
   \(\mathcal{E} = \mathrm{Tr}(H[n]\,D) - \mathrm{Tr}(H[n]\,n) + E_{\mathrm{KS}}[n]\)
   (recovers \(E_{\mathrm{KS}}\) at \(D = n\))
 - Forces: Hellmann–Feynman of \(\mathcal{U}(R,n)\) via
-  `gpw_forces_at_density(D, C_{\mathrm{occ}}, H[n])`
+  `internal::gpw_forces_at_density(D, C_{\mathrm{occ}}, H[n])`
 - XL advance(\(D\)) with Table-I \(K=5\) dissipation
 
 **Literature:**

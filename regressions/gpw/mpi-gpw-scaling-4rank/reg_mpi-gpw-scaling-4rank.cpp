@@ -20,6 +20,8 @@
 #include <unistd.h>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -35,8 +37,6 @@
 
 namespace {
 
-constexpr double kA2B = 1.0 / 0.52917720859; // Å → Bohr
-
 int g_fail = 0;
 
 void check(bool ok, const char* what) {
@@ -48,27 +48,30 @@ void check(bool ok, const char* what) {
     }
 }
 
-// Diamond Si bct 4-atom cell (same geometry family as gpw-kpoints-si).
-std::vector<ATV::cpu::gpw::GpwAtom> si_bct(double a_bohr) {
+// Diamond Si bct 4-atom cell (same geometry family as gpw-kpoints-si);
+// a in Å, bct cell a/√2 × a/√2 × a.
+ATV::cpu::Frame si_bct(double a_ang) {
     using namespace ATV;
-    const double at = a_bohr / std::sqrt(2.0);
-    const cpu::gpw::GaussianBasis bSi(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-    const cpu::gpw::GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
+    const double at = a_ang / std::sqrt(2.0);
     const double frac[4][3] = {
         {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}, {0.5, 0.0, 0.25}, {0.0, 0.5, 0.75}};
-    std::vector<cpu::gpw::GpwAtom> atoms;
+    cpu::Frame frame(4);
     for (int i = 0; i < 4; ++i) {
-        const double pos[3] = {frac[i][0] * at, frac[i][1] * at,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bSi, pSi, 14);
+        frame.span(kAtom_type)[i] = 14;
+        frame.span(kAtom_x)[i] = frac[i][0] * at;
+        frame.span(kAtom_y)[i] = frac[i][1] * at;
+        frame.span(kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = cpu::Box::orthorhombic(at, at, a_ang);
+    return frame;
 }
 
-ATV::cpu::gpw::GpwDft si_method(double a_bohr) {
-    ATV::cpu::gpw::GpwDft m;
-    m.cell[0] = m.cell[1] = a_bohr / std::sqrt(2.0);
-    m.cell[2] = a_bohr;
+ATV::cpu::gpw::GpwDft si_method() {
+    using namespace ATV;
+    cpu::gpw::GpwDft m({cpu::gpw::Kind{
+        molrs::Element::Si,
+        cpu::gpw::GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+        cpu::gpw::GthPotential(molrs::Element::Si, "GTH-PBE-q4")}});
     // Lightweight twin for self-launch wall (≤ 60 s total parent+worker).
     m.cutoff_ry = 80.0;
     m.n_occ = 8;
@@ -91,12 +94,11 @@ struct ScfOut {
 };
 
 ScfOut run_scf() {
-    const double a = 5.43 * kA2B;
-    auto atoms = si_bct(a);
-    auto method = si_method(a);
-    method.build(atoms);
+    ATV::cpu::Frame frame = si_bct(5.43);
+    auto method = si_method();
+    method.build(frame);
     const auto t0 = std::chrono::steady_clock::now();
-    const auto& r = method.run(atoms);
+    const auto& r = method.run(frame);
     const auto t1 = std::chrono::steady_clock::now();
     ScfOut o;
     o.e_total = r.e_total;

@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -53,14 +54,16 @@ int main() {
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
     constexpr double dt = 0.1; // fs — short step for electronic stability
-    cpu::gpw::GPWEvaluator gpw(
-        /*kinds*/ {H}, /*cutoff_ry*/ 100.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-        /*compute_forces*/ true);
-    gpw.k_mesh[0] = 1;
-    gpw.k_mesh[1] = 1;
-    gpw.k_mesh[2] = 2;
-    gpw.k_time_reversal = false;
+    cpu::gpw::GpwDft dft{{H}};
+    dft.cutoff_ry = 100.0;
+    dft.max_iter = 60;
+    dft.tol = 1e-5;
+    dft.mix = 0.3;
+    dft.k_mesh[0] = 1;
+    dft.k_mesh[1] = 1;
+    dft.k_mesh[2] = 2;
+    dft.k_time_reversal = false;
+    cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
     // Fictitious electron mass [a.u.]; a constructor argument on the CP
     // wrapper (no public `cpmd_mu` flag), so the case owns the value it prints.
     constexpr double mu_au = 400.0;

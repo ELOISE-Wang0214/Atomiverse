@@ -5,7 +5,7 @@
 Pure semi-local GGA: B88 exchange + LYP correlation, **no** HF exchange
 (\(\alpha_{\mathrm{hf}}=0\)). Building blocks already lived inside B3LYP; this
 exposes `XCType::BLYP` as a first-class functional.
-Regression: `regressions/scf/blyp-water-sto3g`. Related: [Ch. 5](../ch05-kohn-sham-dft.md), [Ch. 6](../ch06-hybrid-dft.md).
+Regression: `blyp-water-sto3g`. Related: [Ch. 5](../ch05-kohn-sham-dft.md), [Ch. 6](../ch06-hybrid-dft.md).
 
 ## Theory
 
@@ -24,7 +24,7 @@ rks.run(frame);   // water pin geometry
 ```
 
 ```bash
-./build/regressions/reg_blyp-water-sto3g
+reg_blyp-water-sto3g
 ```
 
 ## Results

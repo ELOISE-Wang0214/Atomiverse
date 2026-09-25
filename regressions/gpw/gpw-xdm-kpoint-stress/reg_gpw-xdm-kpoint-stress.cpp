@@ -16,7 +16,7 @@
 ///   E. Orthorhombic off-diagonals exactly zero; multi-k payload present;
 ///      `kStress` unit conversion.
 ///
-/// Public API only at the product path (GPWEvaluator + Evaluate). Offline
+/// Public API only (GPWEvaluator + Evaluate, `gpw_stress` / `gpw_stress_fd`). Offline
 /// dual-Python pins in REFERENCE.md; no live oracle at ctest time. CP2K has
 /// no stock TYPE XDM — perf_exempt (oracle: literature).
 
@@ -24,6 +24,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -35,7 +36,6 @@
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_stress.h"
 #include "atomiverse/cpu/gpw/internal/xdm_dispersion.h"
 #include "atomiverse/molrs.hpp"
 
@@ -46,9 +46,9 @@ namespace {
 // Pin script / dual-python lattice sum (matches gpw-xdm-stress /
 // pin_xdm_strain.py). Geometry-only → independent of electronic k-mesh.
 constexpr double kPinAng2Bohr = 1.0 / 0.52917720859;
-// Frame / GPWEvaluator conversion (CODATA 2006; units::kAngstromInBohr).
-// Slightly different from the pin constant → product E_disp differs at ~1e-11 Ha.
-constexpr double kFrameAng2Bohr = units::kAngstromInBohr;
+// Frame / GPWEvaluator conversion is units::kAngstromInBohr (inside the
+// library). Slightly different from the pin constant → product E_disp
+// differs at ~1e-11 Ha.
 constexpr double kStrainH = 2.0e-3;
 
 // Offline dual pure-Python free-atom XDM pins
@@ -162,17 +162,18 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 120.0;
-    eval.max_iter = 120;
-    eval.tol = 1e-6;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = false;
-    eval.k_mesh[0] = 1;
-    eval.k_mesh[1] = 1;
-    eval.k_mesh[2] = 2; // MP 1×1×2, TR-folded
-    eval.xdm = true;
+    cpu::gpw::GpwDft dft{{O, H}};
+    dft.cutoff_ry = 120.0;
+    dft.max_iter = 120;
+    dft.tol = 1e-6;
+    dft.mix = 0.4;
+    dft.xc = cpu::gpw::XcKind::PBE;
+    dft.nonperiodic = false;
+    dft.k_mesh[0] = 1;
+    dft.k_mesh[1] = 1;
+    dft.k_mesh[2] = 2; // MP 1×1×2, TR-folded
+    dft.xdm = true;
+    cpu::gpw::GPWEvaluator eval(std::move(dft));
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
@@ -204,19 +205,9 @@ int main() {
               "E orthorhombic off-diagonal exactly 0");
 
     // ── C: multi-SCF strain-FD oracle on the same multi-k method ──────────
-    // Frame-path Bohr conversion so twins share the product geometry.
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
-    for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double p[3] = {xs[i] * kFrameAng2Bohr, ys[i] * kFrameAng2Bohr,
-                             zs[i] * kFrameAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(p, k.basis, k.pot, z[i]));
-    }
-
+    // Same Frame as the product path, so twins share the product geometry.
     auto make_cfg = [&](bool xdm) {
-        cpu::gpw::GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = L * kFrameAng2Bohr;
+        cpu::gpw::GpwDft m({O, H});
         m.cutoff_ry = 120.0;
         m.n_occ = 8;
         m.max_iter = 120;
@@ -233,8 +224,7 @@ int main() {
     };
 
     const auto t2 = clock::now();
-    const auto sfd =
-        cpu::gpw::internal::gpw_stress_fd_impl(atoms, make_cfg(true), kStrainH);
+    const auto sfd = cpu::gpw::gpw_stress_fd(frame, make_cfg(true), kStrainH);
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -256,8 +246,7 @@ int main() {
     check(max_diag_err <= kAnFdTol, "C analytic vs multi-SCF FD diagonal");
 
     // ── D: XDM wiring — sigma(xdm) − sigma(plain) vs dual-python FD term ──
-    const auto s_plain = cpu::gpw::internal::gpw_stress_analytic_impl(
-        atoms, make_cfg(false), kStrainH);
+    const auto s_plain = cpu::gpw::gpw_stress(frame, make_cfg(false), kStrainH);
     double max_shift_err = 0.0;
     for (int a = 0; a < 3; ++a) {
         const double shift = san[static_cast<std::size_t>(a)]

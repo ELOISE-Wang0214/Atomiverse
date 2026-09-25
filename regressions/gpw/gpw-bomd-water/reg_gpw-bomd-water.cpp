@@ -56,10 +56,14 @@ int main() {
     // Product twin family (forces pin is 400 Ry / 1e-7). BOMD uses a cheaper
     // but same-method envelope so the ≤60 s gate holds; force quality is
     // already CP2K-pinned in gpw-forces-water. See REFERENCE.md.
-    cpu::gpw::GPWEvaluator eval(
-        /*kinds*/ {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-        /*compute_forces*/ true);
+    cpu::gpw::GpwDft dft{{O, H}};
+    dft.cutoff_ry = 200.0;
+    dft.max_iter = 60;
+    dft.tol = 1e-5;
+    dft.mix = 0.3;
+    dft.xc = cpu::gpw::XcKind::PBE;
+    dft.nonperiodic = true;
+    cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/true);
 
     constexpr double dt = 0.5; // fs
     constexpr int n_prod = 4;

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-multigrid-kpoints` |
-| Regression | `regressions/gpw/gpw-multigrid-kpoints/` |
 | Public API | `cpu::gpw::GpwDft` (`k_mesh`, `k_time_reversal`, `ngrids`, `rel_cutoff`, `cutoff_ry`, `eps_default`); lookup ctors `GaussianBasis` / `GthPotential` |
 | Roadmap | `docs/roadmap/dft.md` — k-point GPW × multigrid product collocation |
 
@@ -96,16 +95,24 @@ run:
 
 using namespace ATV;
 
-// Diamond Si, BCT 4-atom setting: a = 5.43 Å → 10.26120 Bohr,
+// Diamond Si, BCT 4-atom setting: a = 5.43 Å,
 // cell = (a/√2, a/√2, a), fractional (0,0,0) (½,½,½) (½,0,¼) (0,½,¾)
-const double a = 5.43 / 0.52917720859;         // Bohr
-const cpu::gpw::GaussianBasis bSi(molrs::Element::Si, "DZVP-MOLOPT-GTH");
-const cpu::gpw::GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
-std::vector<cpu::gpw::GpwAtom> atoms;          // 4 atoms as above
+const double a = 5.43;                         // Å
+const double L[3] = {a / std::sqrt(2.0), a / std::sqrt(2.0), a};
+const double frac[4][3] = {{0, 0, 0}, {0.5, 0.5, 0.5}, {0.5, 0, 0.25}, {0, 0.5, 0.75}};
+cpu::Frame frame(4);
+for (int i = 0; i < 4; ++i) {
+    frame.span(kAtom_type)[i] = 14;            // Si
+    frame.span(kAtom_x)[i] = frac[i][0] * L[0];
+    frame.span(kAtom_y)[i] = frac[i][1] * L[1];
+    frame.span(kAtom_z)[i] = frac[i][2] * L[2];
+}
+frame.box = cpu::Box::orthorhombic(L[0], L[1], L[2]);
 
-cpu::gpw::GpwDft m;
-m.cell[0] = m.cell[1] = a / std::sqrt(2.0);
-m.cell[2] = a;
+cpu::gpw::GpwDft m{{cpu::gpw::Kind{
+    molrs::Element::Si,
+    cpu::gpw::GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+    cpu::gpw::GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
 m.cutoff_ry = 150.0;   // CP2K &MGRID CUTOFF
 m.ngrids = 4;          // CP2K NGRIDS
 m.rel_cutoff = 60.0;   // CP2K REL_CUTOFF [Ry]
@@ -117,8 +124,8 @@ m.eps_default = 1e-7;
 m.k_mesh[0] = m.k_mesh[1] = m.k_mesh[2] = 2;   // MONKHORST-PACK 2 2 2
 m.k_time_reversal = true;                      // 4 k, doubled weights
 
-m.build(atoms);
-const auto& r = m.run(atoms);   // r.e_total [Ha], r.converged, r.iters,
+m.build(frame);
+const auto& r = m.run(frame);   // r.e_total [Ha], r.converged, r.iters,
                                 // r.k_frac / r.k_weights / r.eps_k
 ```
 
@@ -136,7 +143,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-multigrid-kpoints -j$(nproc)
-  ./build/regressions/reg_gpw-multigrid-kpoints
+  reg_gpw-multigrid-kpoints
 '
 ```
 
@@ -144,15 +151,14 @@ Relevant sources:
 
 | Piece | Path |
 | ----- | ---- |
-| Concrete method (`k_mesh` / `ngrids` / `rel_cutoff`) | `include/atomiverse/cpu/gpw/gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
-| Multigrid levels / D(t) stacks / prolong / restrict | `include/atomiverse/cpu/gpw/internal/multigrid.h`, `src/cpu/gpw/internal/multigrid.cpp` |
+| Concrete method (`k_mesh` / `ngrids` / `rel_cutoff`) | `gpw_solver.h`, `src/cpu/gpw/gpw_solver.cpp` |
+| Multigrid levels / D(t) stacks / prolong / restrict | `multigrid.h`, `src/cpu/gpw/internal/multigrid.cpp` |
 | Unit tests (mechanisms, not e2e) | `tests/cpu/gpw/test_cpu_gpw_multigrid.cpp` (`GpwMultigridCells.*`: Γ-limit, D/V_t phase plumbing, per-cell adjointness, TR folding) |
-| Regression | `regressions/gpw/gpw-multigrid-kpoints/reg_gpw-multigrid-kpoints.cpp` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/gpw-multigrid-kpoints/si_kpoints_mg.inp` |
+| CP2K twin input | CP2K oracle |
 
 ## Validation (CP2K)
 
-Source: `regressions/gpw/gpw-multigrid-kpoints/REFERENCE.md` (offline pin;
+Source: case `gpw-multigrid-kpoints` pin (offline pin;
 **never** live CP2K in ctest). Engine: **CP2K 2026.1** (`cp2k.psmp`), module
 `CP2K/2026.1` on Arrhenius. Pin date: **2026-07-31**.
 
@@ -198,14 +204,14 @@ Offline re-run (operator only; not ctest):
 module load buildtool-easybuild/5.2.1-hpca3ef7d197 GCC/14.3.0 MPICH/4.3.2 CP2K/2026.1
 export CP2K_DATA_DIR=$EBROOTCP2K/share/cp2k/data
 ln -sf $CP2K_DATA_DIR/{BASIS_MOLOPT,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/gpw-multigrid-kpoints/si_kpoints_mg.inp
+# copy <CP2K oracle input for this case>
 OMP_NUM_THREADS=4 mpirun -np 1 cp2k.psmp -i si_kpoints_mg.inp -o si_kpoints_mg.out
 ```
 
 ## Performance
 
-Source: same `REFERENCE.md` (2026-07-31). Not a ctest gate; offline twin
-under `tools/cp2k_oracle/`.
+Source: same pin notes (2026-07-31). Not a ctest gate; offline twin
+under CP2K oracle.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
 | ---- | ------------------------: | -----------------------: | ---------------------------------------: | ---- | ------ |
@@ -234,10 +240,10 @@ exemption.
 
 ## References
 
-- Offline pin: [`regressions/gpw/gpw-multigrid-kpoints/REFERENCE.md`](../../../regressions/gpw/gpw-multigrid-kpoints/REFERENCE.md)
-- Regression consumer: [`reg_gpw-multigrid-kpoints.cpp`](../../../regressions/gpw/gpw-multigrid-kpoints/reg_gpw-multigrid-kpoints.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/gpw-multigrid-kpoints/`](../../../tools/cp2k_oracle/inputs/gpw-multigrid-kpoints/)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin: case `gpw-multigrid-kpoints` pin
+- Regression consumer: `reg_gpw-multigrid-kpoints.cpp`
+- CP2K twin: CP2K oracle
+- Oracle contract: CP2K oracle
 - Siblings: [`gpw-uks-multigrid.md`](gpw-uks-multigrid.md) (Γ multigrid),
   `gpw-kpoints-si` regression, [`gpw-kpoint-forces.md`](gpw-kpoint-forces.md)
 - Narrative GPW: [`docs/tutorial/ch09-gpw.md`](../ch09-gpw.md)

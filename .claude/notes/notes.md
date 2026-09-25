@@ -6,15 +6,19 @@ History is git's job — superseded designs are deleted, not archived here.
 
 ## Open engineering leads
 
+- **ES public-shape debt (BLOCK until cleared).** Science factorization OK;
+  engineering dialects not unified (Driver vs method+Evaluator vs Solver SCC;
+  CUDA GPW atom-in). Ledger + close order:
+  [es-architecture-debt.md](es-architecture-debt.md). Do not extend dialects.
 - **ES optimization order (binding in CLAUDE.md).** Wave state:
-  [es-optimization-order.md](es-optimization-order.md). Structure + OT +
-  windows + collint + STVnl polish landed; per-wave walls there are
-  as-claimed-at-the-time and superseded —
-  [gpw-perf-baseline.md](gpw-perf-baseline.md) is the single wall authority
-  (MG MAIN re-measured **1.6 s / 2.33×** CP2K quiet 0.688 s). CUDA ES stays
-  CPU-first (only the sanctioned next waves in
-  [cuda-rhf-device-only.md](cuda-rhf-device-only.md)); classical MD CUDA
-  independent.
+    [es-optimization-order.md](es-optimization-order.md). Structure + OT +
+    windows + collint + STVnl polish landed; per-wave walls there are
+    as-claimed-at-the-time and superseded —
+    [gpw-perf-baseline.md](gpw-perf-baseline.md) is the single wall authority
+    (MG MAIN re-measured **1.6 s / 2.33×** CP2K quiet 0.688 s). CUDA ES stays
+    CPU-first (only the sanctioned next waves in
+    [cuda-rhf-device-only.md](cuda-rhf-device-only.md)); classical MD CUDA
+    independent.
 - **e2e-in-tests migration (wave 1 + wave 2 done on `dev`).** Wave-1 deleted
   **78** heavy full-method sources; wave-2 removed residual multi-iter and
   emptied `ATV_TEST_HEAVY_REGEX` to `^$`. Ledger:

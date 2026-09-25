@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dos-spin-metallic-si` |
-| Regression | `regressions/pw/dos-spin-metallic-si/` |
 | Public API | `cpu::pw::PW` (`spin_polarized`, `multiplicity`, `smearing`, `degauss` [Ry], `extra_bands`) + `cpu::pw::Dos` + `DosResult` |
 | Roadmap | [dft.md](../../roadmap/dft.md) § bands/DOS (collinear spin + metallic smear DOS)|
 ## Summary
@@ -26,7 +25,7 @@ SCF converges, \(nspin=2\), \(\lvert M\rvert\le 0.1\),
 \(\lvert n_\mathrm{elec}(E_F)-8\rvert\le 1\), \(gap\_ry > 0\), \(E_F\) near the
 gap window \(\pm 4\sigma\), and \(D \approx D_\alpha + D_\beta\). Absolute
 \(D(E)\) is **not** pinned to CP2K Quickstep (GTH+Gaussian vs ONCV-PW). Product
-regression: `regressions/pw/dos-spin-metallic-si` (`reg_dos-spin-metallic-si`).
+regression: `dos-spin-metallic-si` (`reg_dos-spin-metallic-si`).
 Performance: **`perf_exempt`** (no fair CP2K PW twin wall on the pin host).
 
 ## Method
@@ -136,7 +135,7 @@ elsewhere in the product surface — this post-processor reports Ry on
 
 Public surface only (`cpu::Frame` + concrete method / post-processor
 members; no `*Config`, no factories). Headers:
-`include/atomiverse/cpu/planewave/bands_dos.h`,
+`bands_dos.h`,
 `pw_solver.h`, `qe_units.h`. Implementation:
 `src/cpu/planewave/bands_dos.cpp` (collinear FD SCF → freeze
 \(V_{\mathrm{eff},\sigma}\) → NSCF Davidson on DOS mesh → recompute \(\mu\) →
@@ -217,7 +216,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_dos-spin-metallic-si -j$(nproc)
-  ./build/regressions/reg_dos-spin-metallic-si
+  reg_dos-spin-metallic-si
 '
 ```
 
@@ -228,7 +227,7 @@ regression only.
 
 ## Validation (vs literature / CP2K note)
 
-Source: `regressions/pw/dos-spin-metallic-si/REFERENCE.md` (offline pin; never
+Source: case `dos-spin-metallic-si` pin (offline pin; never
 live third party in ctest). Closed acceptance: queue/handoff
 `dos-spin-metallic-si` done 2026-07-26 (`perf_exempt`; harness wave 12).
 
@@ -240,7 +239,7 @@ live third party in ctest). Closed acceptance: queue/handoff
 | Family | PseudoDojo ONCVPSP-LDA-SR-noCC v0.4 |
 | Generator | ONCVPSP 3.3.0 (D. R. Hamann), \(Z_\mathrm{val}=4\), no NLCC |
 | Cite | Hamann, *Phys. Rev. B* **88**, 085117 (2013); van Setten et al., *Comput. Phys. Commun.* **226**, 39 (2018) |
-| Same family as | `regressions/pw/dos-spin-si`, `dos-metallic-si`, `bands-dos-si`, `pw-lda-si` |
+| Same family as | `dos-spin-si`, `dos-metallic-si`, `bands-dos-si`, `pw-lda-si` |
 
 ### Twin geometry and settings (regression)
 
@@ -289,7 +288,7 @@ GTH Quickstep.
 occupied integral ≈ 8, open gap, path enabled) are the scientific twin.
 Offline note:
 
-`tools/cp2k_oracle/inputs/dos-spin-metallic-si.note`
+CP2K oracle
 
 Suggested twin: PADE, GTH-PADE-q4 + DZVP-GTH-q4, MP \(2\times 2\times 2\),
 `LSD`, `MULTIPLICITY 1`, \(k_B T \approx 0.02\) Ry
@@ -304,7 +303,7 @@ Suggested twin: PADE, GTH-PADE-q4 + DZVP-GTH-q4, MP \(2\times 2\times 2\),
 
 ## Performance
 
-Source: `regressions/pw/dos-spin-metallic-si/REFERENCE.md`. Queue / handoff
+Source: case `dos-spin-metallic-si` pin. Queue / handoff
 row: **`perf_exempt`** (character pins; no fair GTH twin wall on pin host).
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -322,7 +321,7 @@ row: **`perf_exempt`** (character pins; no fair GTH twin wall on pin host).
 | Wall budget | e2e ≤ 60 s single-rank CPU (PASS) |
 
 When a CP2K binary is available offline: time the same geometry with
-`tools/cp2k_oracle/inputs/dos-spin-metallic-si.note`, append
+CP2K oracle, append
 \(r = T_\mathrm{ATV}/T_\mathrm{CP2K}\) to REFERENCE.md, require \(r\le 10\).
 Wall comparison is same-geometry only, not absolute-\(D(E)\) parity
 (GTH+Gaussian vs NC-UPF PW).
@@ -348,10 +347,9 @@ Wall comparison is same-geometry only, not absolute-\(D(E)\) parity
 
 ## References
 
-- Offline pin: [`regressions/pw/dos-spin-metallic-si/REFERENCE.md`](../../../regressions/pw/dos-spin-metallic-si/REFERENCE.md)
-- Regression: [`regressions/pw/dos-spin-metallic-si/reg_dos-spin-metallic-si.cpp`](../../../regressions/pw/dos-spin-metallic-si/reg_dos-spin-metallic-si.cpp)
-- Public API: [`include/atomiverse/cpu/planewave/bands_dos.h`](../../../include/atomiverse/cpu/planewave/bands_dos.h)
-- Optional CP2K character / wall note: `tools/cp2k_oracle/inputs/dos-spin-metallic-si.note`
+- Offline pin: case `dos-spin-metallic-si` pin
+- Public API: `bands_dos.h`
+- Optional CP2K character / wall note: CP2K oracle
 - Sibling collinear fixed-occ DOS: [dos-spin-si](dos-spin-si.md)
 - Sibling metallic restricted DOS: [dos-metallic-si](dos-metallic-si.md) (if present)
 - Sibling metallic restricted bands: [bands-metallic-si](bands-metallic-si.md)

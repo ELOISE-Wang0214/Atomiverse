@@ -6,8 +6,9 @@
 
 #include <cmath>
 #include <cstdio>
-#include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -16,13 +17,11 @@
 int main() {
     using namespace ATV;
     using cpu::gpw::GaussianBasis;
-    using cpu::gpw::GpwAtom;
     using cpu::gpw::GpwDft;
     using cpu::gpw::GthPotential;
     using cpu::gpw::XcKind;
 
-    // Geometry [Å] → Bohr (REFERENCE.md water dimer).
-    constexpr double kA2B = 1.0 / 0.52917720859;
+    // Geometry [Å] (REFERENCE.md water dimer).
     const double ang[6][3] = {
         {0.000000, 0.000000, 0.000000},  // O
         {0.758602, 0.000000, 0.504284},  // H
@@ -32,29 +31,26 @@ int main() {
         {3.758602, 0.000000, -0.504284}, // H
     };
     const int Z[6] = {8, 1, 1, 8, 1, 1};
-    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
-    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
-    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
-    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
-
-    std::vector<GpwAtom> atoms;
-    atoms.reserve(6);
+    cpu::Frame frame(6);
     for (int i = 0; i < 6; ++i) {
-        const double pos[3] = {ang[i][0] * kA2B, ang[i][1] * kA2B,
-                               ang[i][2] * kA2B};
-        if (Z[i] == 8)
-            atoms.emplace_back(pos, bO, pO, 8);
-        else
-            atoms.emplace_back(pos, bH, pH, 1);
+        frame.span(kAtom_type)[i] = Z[i];
+        frame.span(kAtom_x)[i] = ang[i][0];
+        frame.span(kAtom_y)[i] = ang[i][1];
+        frame.span(kAtom_z)[i] = ang[i][2];
     }
+    frame.box = cpu::Box::cubic(12.0); // Å
 
     // Offline pin (REFERENCE.md): free-atom MBD@rsSCS, isolated (geometry-only).
     constexpr double kEDispRef = -1.4928804171407961e-03; // Ha
     constexpr double kTol = 1.0e-8;                       // Ha
 
-    GpwDft gpw;
-    const double L = 12.0 * kA2B;
-    gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+    GpwDft gpw{
+        {cpu::gpw::Kind{molrs::Element::O,
+                        GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH"),
+                        GthPotential(molrs::Element::O, "GTH-PBE-q6")},
+         cpu::gpw::Kind{molrs::Element::H,
+                        GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
+                        GthPotential(molrs::Element::H, "GTH-PBE-q1")}}};
     gpw.cutoff_ry = 200.0; // e_disp is geometry-only; short SCF only
     gpw.n_occ = 8;
     gpw.max_iter = 8;
@@ -64,8 +60,8 @@ int main() {
     gpw.nonperiodic = false;
     gpw.mbd = true;
 
-    gpw.build(atoms);
-    const auto& res = gpw.run(atoms);
+    gpw.build(frame);
+    const auto& res = gpw.run(frame);
 
     if (!std::isfinite(res.e_disp) || std::abs(res.e_disp - kEDispRef) > kTol) {
         std::fprintf(stderr,

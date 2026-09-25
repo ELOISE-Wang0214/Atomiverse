@@ -6,15 +6,18 @@
 /// Offline CP2K ENERGY_FORCE + SMEAR twin (BCC Na, same algorithm class)
 /// documents fair wall. See REFERENCE.md. Public headers only.
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
@@ -43,19 +46,24 @@ constexpr double kFdTol = 5e-5;              // Ha/Bohr analytic vs FD
 
 int main() {
     using namespace ATV::cpu::gpw;
+    using ATV::units::kBohrInAngstrom;
+    using ATV::units::kHartreePerBohrInEvPerAngstrom;
 
-    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
-    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
-
-    // Off-symmetry compressed bond so every Cartesian is nonzero.
-    const double rA[3] = {5.5, 6.0, 6.0};
-    const double rB[3] = {6.7, 6.1, 5.9};
-    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
-                                  GpwAtom(rB, basis, pot, 1)};
+    // Off-symmetry compressed bond so every Cartesian is nonzero [Bohr].
+    const double r_bohr[2][3] = {{5.5, 6.0, 6.0}, {6.7, 6.1, 5.9}};
+    ATV::cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(ATV::kAtom_type)[i] = 1;
+        frame.span(ATV::kAtom_x)[i] = r_bohr[i][0] * kBohrInAngstrom;
+        frame.span(ATV::kAtom_y)[i] = r_bohr[i][1] * kBohrInAngstrom;
+        frame.span(ATV::kAtom_z)[i] = r_bohr[i][2] * kBohrInAngstrom;
+    }
+    frame.box = ATV::cpu::Box::cubic(12.0 * kBohrInAngstrom);
 
     auto make_cfg = []() {
-        GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        GpwDft m{{Kind{molrs::Element::H,
+                       GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                       GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
         m.cutoff_ry = 100.0;
         m.n_occ = 1;
         m.tol = 1e-8;
@@ -74,27 +82,38 @@ int main() {
     };
 
     GpwDft energy = make_cfg();
-    energy.build(atoms);
+    energy.build(frame);
 
+    // SCF + analytic free-energy forces in one call (Frame forces [eV/Å]).
     const auto t0 = std::chrono::steady_clock::now();
-    const auto& r = energy.run(atoms);
-    const auto t_scf = std::chrono::steady_clock::now();
-    const auto Fa = gpw_forces_analytic(atoms, make_cfg());
+    const auto& r = energy.forces(frame);
     const auto t1 = std::chrono::steady_clock::now();
+    std::vector<std::array<double, 3>> Fa(2); // [Ha/Bohr]
+    for (int a = 0; a < 2; ++a) {
+        Fa[a][0] =
+            frame.span(ATV::kAtom_fx)[a] / kHartreePerBohrInEvPerAngstrom;
+        Fa[a][1] =
+            frame.span(ATV::kAtom_fy)[a] / kHartreePerBohrInEvPerAngstrom;
+        Fa[a][2] =
+            frame.span(ATV::kAtom_fz)[a] / kHartreePerBohrInEvPerAngstrom;
+    }
     // Free-energy FD oracle (differentiates e_total = F_Mermin under smear).
     // Full 6N SCF × k-path — decisive identity, still ≪ 60 s on H2.
-    const auto Ffd = gpw_forces_fd(atoms, make_cfg(), 1e-3);
+    // h = 1e-3 Bohr; returned in eV/Å → Ha/Bohr.
+    auto Ffd = gpw_forces_fd(frame, make_cfg(), 1e-3 * kBohrInAngstrom);
+    for (auto& f : Ffd)
+        for (double& c : f)
+            c /= kHartreePerBohrInEvPerAngstrom;
     const auto t2 = std::chrono::steady_clock::now();
 
-    const double wall_scf = std::chrono::duration<double>(t_scf - t0).count();
-    const double wall_f = std::chrono::duration<double>(t1 - t_scf).count();
+    const double wall_scf_f = std::chrono::duration<double>(t1 - t0).count();
     const double wall_fd = std::chrono::duration<double>(t2 - t1).count();
 
     std::printf(
         "F=%.12f Ha  e_fermi=%.6f  Ne=%.8f  e_ent=%.3e  iters=%d  nk=%d  "
-        "f_k=%zu  wall_scf=%.3f s  wall_F=%.3f s  wall_fd=%.3f s\n",
+        "f_k=%zu  wall_scf+F=%.3f s  wall_fd=%.3f s\n",
         r.e_total, r.e_fermi, r.n_elec_occ, r.e_entropy, r.iters, r.n_kpts,
-        r.f_k.size(), wall_scf, wall_f, wall_fd);
+        r.f_k.size(), wall_scf_f, wall_fd);
     for (int a = 0; a < 2; ++a)
         std::printf("  Fa[%d]  = (% .10e, % .10e, % .10e)\n", a, Fa[a][0],
                     Fa[a][1], Fa[a][2]);

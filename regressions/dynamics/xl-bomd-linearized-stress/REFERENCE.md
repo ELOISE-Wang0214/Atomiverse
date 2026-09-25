@@ -15,7 +15,7 @@ shadow payload:
   FD) → seeds XL histories
 - Warm steps: zero-SCF shadow forces (as in `xl-bomd-linearized-kpoints`) **plus**
   the new state-overload stress path
-  `gpw_stress(atoms, method, last_, h, axes)` — fixed-\(P\) Lagrangian at
+  `gpw_stress(frame, method, last_, h, axes)` — fixed-\(P\) Lagrangian at
   \(P = D = q[n]\), \(W\) from the \(H[n]\) eigenpairs; **no reference SCF**
 - `stress_use_fd` + linearized remains **refused** at `build()` (multi-SCF
   strain-FD re-converges the SCF under strain — Born–Oppenheimer stress, not

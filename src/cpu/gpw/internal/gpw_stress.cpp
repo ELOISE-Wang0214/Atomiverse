@@ -62,56 +62,11 @@ namespace {
 
 using linalg::RealMatrix;
 
-GpwDft copy_gpw(const GpwDft& m) {
-    GpwDft p;
-    for (int d = 0; d < 3; ++d)
-        p.cell[d] = m.cell[d];
-    p.cutoff_ry = m.cutoff_ry;
-    p.ngrids = m.ngrids;
-    p.rel_cutoff = m.rel_cutoff;
-    p.n_occ = m.n_occ;
-    p.n_alpha = m.n_alpha;
-    p.n_beta = m.n_beta;
-    p.max_iter = m.max_iter;
-    p.tol = m.tol;
-    p.eps_default = m.eps_default;
-    p.mix = m.mix;
-    p.diis_depth = m.diis_depth;
-    p.lindep_threshold = m.lindep_threshold;
-    p.level_shift = m.level_shift;
-    p.xc = m.xc;
-    p.nonperiodic = m.nonperiodic;
-    p.local_pp_on_grid = m.local_pp_on_grid;
-    p.d3 = m.d3;
-    p.d3bj = m.d3bj;
-    p.d3_atm = m.d3_atm;
-    p.d3_rcut_bohr = m.d3_rcut_bohr;
-    p.d4 = m.d4;
-    p.d4_atm = m.d4_atm;
-    p.ts = m.ts;
-    p.xdm = m.xdm;
-    p.mbd = m.mbd;
-    for (int d = 0; d < 3; ++d)
-        p.mbd_k_mesh[d] = m.mbd_k_mesh[d];
-    p.vdw_df = m.vdw_df;
-    p.vdw_df2 = m.vdw_df2;
-    p.rvv10 = m.rvv10;
-    p.hirshfeld = m.hirshfeld;
-    p.use_ot = m.use_ot;
-    p.plus_u = m.plus_u;
-    p.atom_spin_guess = m.atom_spin_guess;
-    for (int d = 0; d < 3; ++d)
-        p.k_mesh[d] = m.k_mesh[d];
-    p.k_time_reversal = m.k_time_reversal;
-    p.k_points = m.k_points;
-    p.k_point_weights = m.k_point_weights;
-    // Metallic free-energy path (FD/MP) must survive the stress-side copy;
-    // otherwise a smear SCF silently degrades to integer occupations.
-    p.smearing = m.smearing;
-    p.degauss = m.degauss;
-    p.mp_order = m.mp_order;
-    p.extra_bands = m.extra_bands;
-    return p;
+/// Cell of `method` with edge `ax` scaled by `s` [Bohr].
+std::array<double, 3> strained_cell(const GpwDft& method, int ax, double s) {
+    std::array<double, 3> cell = method.cell_bohr();
+    cell[static_cast<std::size_t>(ax)] *= s;
+    return cell;
 }
 
 /// Scale atom positions and all basis-function centers along axis `ax` by
@@ -130,9 +85,9 @@ std::vector<GpwAtom> scale_axis(const std::vector<GpwAtom>& atoms, int ax,
 
 double scf_energy_ha(const std::vector<GpwAtom>& atoms, const GpwDft& method,
                      const linalg::RealMatrix* guess_C) {
-    GpwDft solver = copy_gpw(method);
-    solver.build(atoms);
-    const GpwResult& r = solver.run(atoms, guess_C);
+    GpwDft solver = GpwDftAccess::clone(method);
+    GpwDftAccess::build(solver, atoms);
+    const GpwResult& r = GpwDftAccess::run(solver, atoms, guess_C);
     if (!r.converged)
         throw std::runtime_error("gpw_stress_fd: SCF did not converge");
     return r.e_total;
@@ -424,15 +379,16 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         rmax = std::max(rmax, radii[static_cast<std::size_t>(u)]);
     }
     int mimg[3];
-    pair_image_counts(cfg.cell, /*periodic=*/true, 2.0 * rmax, mimg);
+    pair_image_counts(cfg.cell_bohr().data(), /*periodic=*/true, 2.0 * rmax,
+                      mimg);
 
     std::vector<CplxMatrix> S_k, T_k;
-    build_overlap_kinetic_k(basis, radii, cfg.cell, mimg, kBuildScreen, kpts,
-                            S_k, T_k);
+    build_overlap_kinetic_k(basis, radii, cfg.cell_bohr().data(), mimg,
+                            kBuildScreen, kpts, S_k, T_k);
     std::vector<CplxMatrix> Vnl_k(static_cast<std::size_t>(nk),
                                   CplxMatrix(xt::zeros<Cplx>({nb, nb})));
-    add_nonlocal_kb_k(Vnl_k, basis, atoms, radii, cfg.cell, mimg, kBuildScreen,
-                      kpts);
+    add_nonlocal_kb_k(Vnl_k, basis, atoms, radii, cfg.cell_bohr().data(), mimg,
+                      kBuildScreen, kpts);
 
     double e_kin = 0.0, e_nl = 0.0, e_pulay = 0.0;
     for (int ik = 0; ik < nk; ++ik) {
@@ -448,7 +404,7 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                                S_k[static_cast<std::size_t>(ik)], nb);
     }
 
-    UniformGrid grid = make_uniform_grid(cfg.cell, cfg.cutoff_ry);
+    UniformGrid grid = make_uniform_grid(cfg.cell_bohr().data(), cfg.cutoff_ry);
     const long ng = grid.npts();
     const double wgt = grid.weight();
     const KpointBasisGrid kbg = build_kpoint_basis_grid(grid, basis, kpts, eps);
@@ -586,13 +542,15 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             if (cfg.hirshfeld && vr.empty())
                 throw std::runtime_error(
                     "gpw_stress MBD: hirshfeld requires SCF volume_ratios");
-            e_disp = mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0, vr,
-                                   mbd_per ? cfg.mbd_k_mesh : nullptr)
-                         .energy;
+            e_disp =
+                mbd_rsscs_pbe(Z, pos, cfg.cell_bohr().data(), mbd_per, 0.83,
+                              6.0, vr, mbd_per ? cfg.mbd_k_mesh : nullptr)
+                    .energy;
         } else if (cfg.xdm) {
             constexpr double kRcutXdm = 50.0 * kAng2Bohr;
-            e_disp =
-                xdm_pbe(Z, pos, cfg.cell, /*periodic=*/true, kRcutXdm).energy;
+            e_disp = xdm_pbe(Z, pos, cfg.cell_bohr().data(), /*periodic=*/true,
+                             kRcutXdm)
+                         .energy;
         } else if (cfg.ts) {
             constexpr double kRcutTs = 50.0 * kAng2Bohr;
             const std::vector<double> empty;
@@ -601,23 +559,23 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             if (cfg.hirshfeld && vr.empty())
                 throw std::runtime_error(
                     "gpw_stress TS: hirshfeld requires SCF volume_ratios");
-            e_disp = ts_pbe(Z, pos, cfg.cell, /*periodic=*/true, kRcutTs, 0.94,
-                            20.0, vr)
+            e_disp = ts_pbe(Z, pos, cfg.cell_bohr().data(), /*periodic=*/true,
+                            kRcutTs, 0.94, 20.0, vr)
                          .energy;
         } else if (cfg.d4) {
             const double s9 = cfg.d4_atm ? 1.0 : 0.0;
             e_disp = cpu::scf::dftd4_energy(
-                Z, pos, cfg.cell, /*periodic=*/true, /*s6=*/1.0,
+                Z, pos, cfg.cell_bohr().data(), /*periodic=*/true, /*s6=*/1.0,
                 /*s8=*/0.95948085, /*a1=*/0.38574991, /*a2=*/4.80688534,
                 /*ga=*/3.0, /*gc=*/2.0, /*wf=*/6.0, /*charge=*/0.0,
                 /*cn_cut=*/30.0, /*disp2_cut=*/60.0, s9);
         } else {
             const D3Result d3 =
-                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, true, D3Params{},
-                                   cfg.d3_rcut_bohr, cfg.d3_atm)
-                       : dftd3_pbe_bj(Z, pos, cfg.cell, true, D3Params{},
-                                      cfg.d3_rcut_bohr, 1.0, 0.7875, 0.4289,
-                                      4.4407,
+                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell_bohr().data(), true,
+                                   D3Params{}, cfg.d3_rcut_bohr, cfg.d3_atm)
+                       : dftd3_pbe_bj(Z, pos, cfg.cell_bohr().data(), true,
+                                      D3Params{}, cfg.d3_rcut_bohr, 1.0, 0.7875,
+                                      0.4289, 4.4407,
                                       /*cp2k_cn=*/true, cfg.d3_atm);
             e_disp = d3.energy;
         }
@@ -758,7 +716,7 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         rmax = std::max(rmax, radii[static_cast<std::size_t>(u)]);
     }
     int mimg[3];
-    pair_image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
+    pair_image_counts(cfg.cell_bohr().data(), periodic, 2.0 * rmax, mimg);
 
     std::vector<const GpwAtom*> all(atoms.size());
     for (std::size_t a = 0; a < atoms.size(); ++a)
@@ -783,10 +741,11 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             const double reach = radii[static_cast<std::size_t>(mu)]
                                  + radii[static_cast<std::size_t>(nu)];
             double s = 0.0, t = 0.0;
-            contracted_ST_periodic(basis[mu], basis[nu], cfg.cell, mimg, reach,
-                                   s, t);
-            const double vpp = vpp_images(basis[mu], basis[nu], all, cfg.cell,
-                                          mimg, reach, analytic_loc);
+            contracted_ST_periodic(basis[mu], basis[nu], cfg.cell_bohr().data(),
+                                   mimg, reach, s, t);
+            const double vpp =
+                vpp_images(basis[mu], basis[nu], all, cfg.cell_bohr().data(),
+                           mimg, reach, analytic_loc);
             const double p_tot =
                 uks ? (P(mu, nu) + (*P_beta)(mu, nu)) : P(mu, nu);
             const double w_tot =
@@ -799,7 +758,7 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         }
     }
 
-    UniformGrid grid = make_uniform_grid(cfg.cell, cfg.cutoff_ry);
+    UniformGrid grid = make_uniform_grid(cfg.cell_bohr().data(), cfg.cutoff_ry);
     const long ng = grid.npts();
     const double wgt = grid.weight();
     const CompactBasisGrid cbg =
@@ -946,12 +905,14 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             if (cfg.hirshfeld && vr.empty())
                 throw std::runtime_error(
                     "gpw_stress MBD: hirshfeld requires SCF volume_ratios");
-            e_disp = mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0, vr,
-                                   mbd_per ? cfg.mbd_k_mesh : nullptr)
-                         .energy;
+            e_disp =
+                mbd_rsscs_pbe(Z, pos, cfg.cell_bohr().data(), mbd_per, 0.83,
+                              6.0, vr, mbd_per ? cfg.mbd_k_mesh : nullptr)
+                    .energy;
         } else if (cfg.xdm) {
             constexpr double kRcutXdm = 50.0 * kAng2Bohr;
-            e_disp = xdm_pbe(Z, pos, cfg.cell, periodic, kRcutXdm).energy;
+            e_disp = xdm_pbe(Z, pos, cfg.cell_bohr().data(), periodic, kRcutXdm)
+                         .energy;
         } else if (cfg.ts) {
             constexpr double kRcutTs = 50.0 * kAng2Bohr;
             const std::vector<double> empty;
@@ -960,22 +921,24 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             if (cfg.hirshfeld && vr.empty())
                 throw std::runtime_error(
                     "gpw_stress TS: hirshfeld requires SCF volume_ratios");
-            e_disp = ts_pbe(Z, pos, cfg.cell, periodic, kRcutTs, 0.94, 20.0, vr)
+            e_disp = ts_pbe(Z, pos, cfg.cell_bohr().data(), periodic, kRcutTs,
+                            0.94, 20.0, vr)
                          .energy;
         } else if (cfg.d4) {
             const double s9 = cfg.d4_atm ? 1.0 : 0.0;
             e_disp = cpu::scf::dftd4_energy(
-                Z, pos, cfg.cell, periodic, /*s6=*/1.0, /*s8=*/0.95948085,
+                Z, pos, cfg.cell_bohr().data(), periodic, /*s6=*/1.0,
+                /*s8=*/0.95948085,
                 /*a1=*/0.38574991, /*a2=*/4.80688534, /*ga=*/3.0, /*gc=*/2.0,
                 /*wf=*/6.0, /*charge=*/0.0, /*cn_cut=*/30.0, /*disp2_cut=*/60.0,
                 s9);
         } else {
             const D3Result d3 =
-                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{},
-                                   cfg.d3_rcut_bohr, cfg.d3_atm)
-                       : dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
-                                      cfg.d3_rcut_bohr, 1.0, 0.7875, 0.4289,
-                                      4.4407,
+                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell_bohr().data(), periodic,
+                                   D3Params{}, cfg.d3_rcut_bohr, cfg.d3_atm)
+                       : dftd3_pbe_bj(Z, pos, cfg.cell_bohr().data(), periodic,
+                                      D3Params{}, cfg.d3_rcut_bohr, 1.0, 0.7875,
+                                      0.4289, 4.4407,
                                       /*cp2k_cn=*/true, cfg.d3_atm);
             e_disp = d3.energy;
         }
@@ -1072,14 +1035,15 @@ std::array<double, 6> gpw_stress_analytic_impl(
     const std::array<bool, 3>& axes, const linalg::RealMatrix* guess_C) {
     validate_stress_args(atoms, h, axes, "gpw_stress");
 
-    const double vol = method.cell[0] * method.cell[1] * method.cell[2];
+    const double vol =
+        method.cell_bohr()[0] * method.cell_bohr()[1] * method.cell_bohr()[2];
     if (!(vol > 0.0))
         throw std::invalid_argument("gpw_stress: non-positive cell volume");
 
     // Reference SCF → fixed density (Gamma: real P/W; multi-k: P_k/W_k).
-    GpwDft solver = copy_gpw(method);
-    solver.build(atoms);
-    const GpwResult scf = solver.run(atoms, guess_C);
+    GpwDft solver = GpwDftAccess::clone(method);
+    GpwDftAccess::build(solver, atoms);
+    const GpwResult scf = GpwDftAccess::run(solver, atoms, guess_C);
     if (!scf.converged)
         throw std::runtime_error("gpw_stress: reference SCF did not converge");
     return gpw_stress_at_state_impl(atoms, method, scf, h, axes);
@@ -1091,7 +1055,8 @@ gpw_stress_at_state_impl(const std::vector<GpwAtom>& atoms,
                          const std::array<bool, 3>& axes) {
     validate_stress_args(atoms, h, axes, "gpw_stress");
 
-    const double vol = method.cell[0] * method.cell[1] * method.cell[2];
+    const double vol =
+        method.cell_bohr()[0] * method.cell_bohr()[1] * method.cell_bohr()[2];
     if (!(vol > 0.0))
         throw std::invalid_argument("gpw_stress: non-positive cell volume");
     if (!scf.converged)
@@ -1328,10 +1293,10 @@ gpw_stress_at_state_impl(const std::vector<GpwAtom>& atoms,
         std::vector<GpwAtom> plus = scale_axis(atoms, a, sp);
         std::vector<GpwAtom> minus = scale_axis(atoms, a, sm);
 
-        GpwDft mp = copy_gpw(method);
-        GpwDft mm = copy_gpw(method);
-        mp.cell[a] = method.cell[a] * sp;
-        mm.cell[a] = method.cell[a] * sm;
+        GpwDft mp = GpwDftAccess::clone(method);
+        GpwDft mm = GpwDftAccess::clone(method);
+        GpwDftAccess::set_cell(mp, strained_cell(method, a, sp));
+        GpwDftAccess::set_cell(mm, strained_cell(method, a, sm));
 
         // Fixed-v Hirshfeld ratios from the reference SCF (empty ⇒ free-atom).
         const std::vector<double>* vr_ptr =
@@ -1368,7 +1333,8 @@ std::array<double, 6> gpw_stress_fd_impl(const std::vector<GpwAtom>& atoms,
                                          const linalg::RealMatrix* guess_C) {
     validate_stress_args(atoms, h, axes, "gpw_stress_fd");
 
-    const double vol = method.cell[0] * method.cell[1] * method.cell[2];
+    const double vol =
+        method.cell_bohr()[0] * method.cell_bohr()[1] * method.cell_bohr()[2];
     if (!(vol > 0.0))
         throw std::invalid_argument("gpw_stress_fd: non-positive cell volume");
 
@@ -1382,10 +1348,10 @@ std::array<double, 6> gpw_stress_fd_impl(const std::vector<GpwAtom>& atoms,
         std::vector<GpwAtom> plus = scale_axis(atoms, a, sp);
         std::vector<GpwAtom> minus = scale_axis(atoms, a, sm);
 
-        GpwDft mp = copy_gpw(method);
-        GpwDft mm = copy_gpw(method);
-        mp.cell[a] = method.cell[a] * sp;
-        mm.cell[a] = method.cell[a] * sm;
+        GpwDft mp = GpwDftAccess::clone(method);
+        GpwDft mm = GpwDftAccess::clone(method);
+        GpwDftAccess::set_cell(mp, strained_cell(method, a, sp));
+        GpwDftAccess::set_cell(mm, strained_cell(method, a, sm));
 
         const double ep = scf_energy_ha(plus, mp, guess_C);
         const double em = scf_energy_ha(minus, mm, guess_C);
@@ -1397,24 +1363,35 @@ std::array<double, 6> gpw_stress_fd_impl(const std::vector<GpwAtom>& atoms,
 
 } // namespace internal
 
-std::array<double, 6> gpw_stress(const std::vector<GpwAtom>& atoms,
-                                 const GpwDft& method, double h,
-                                 const std::array<bool, 3>& axes,
-                                 const linalg::RealMatrix* guess_C) {
-    return internal::gpw_stress_analytic_impl(atoms, method, h, axes, guess_C);
+namespace {
+/// Unbuilt copy of `method` in the Frame's cell, plus the Frame's atoms.
+std::pair<GpwDft, std::vector<internal::GpwAtom>>
+method_at_frame(const Frame& frame, const GpwDft& method) {
+    GpwDft m = internal::GpwDftAccess::clone(method);
+    internal::GpwDftAccess::set_cell(m, internal::cell_from_box(frame.box));
+    std::vector<internal::GpwAtom> atoms =
+        internal::GpwDftAccess::atoms_from_frame(m, frame);
+    return {std::move(m), std::move(atoms)};
 }
+} // namespace
 
-std::array<double, 6> gpw_stress(const std::vector<GpwAtom>& atoms,
-                                 const GpwDft& method, const GpwResult& state,
+std::array<double, 6> gpw_stress(const Frame& frame, const GpwDft& method,
                                  double h, const std::array<bool, 3>& axes) {
-    return internal::gpw_stress_at_state_impl(atoms, method, state, h, axes);
+    auto [m, atoms] = method_at_frame(frame, method);
+    return internal::gpw_stress_analytic_impl(atoms, m, h, axes);
 }
 
-std::array<double, 6> gpw_stress_fd(const std::vector<GpwAtom>& atoms,
-                                    const GpwDft& method, double h,
-                                    const std::array<bool, 3>& axes,
-                                    const linalg::RealMatrix* guess_C) {
-    return internal::gpw_stress_fd_impl(atoms, method, h, axes, guess_C);
+std::array<double, 6> gpw_stress(const Frame& frame, const GpwDft& method,
+                                 const GpwResult& state, double h,
+                                 const std::array<bool, 3>& axes) {
+    auto [m, atoms] = method_at_frame(frame, method);
+    return internal::gpw_stress_at_state_impl(atoms, m, state, h, axes);
+}
+
+std::array<double, 6> gpw_stress_fd(const Frame& frame, const GpwDft& method,
+                                    double h, const std::array<bool, 3>& axes) {
+    auto [m, atoms] = method_at_frame(frame, method);
+    return internal::gpw_stress_fd_impl(atoms, m, h, axes);
 }
 
 } // namespace gpw

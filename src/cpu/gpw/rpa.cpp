@@ -20,6 +20,8 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
+using internal::GpwAtom;
+
 namespace {
 
 // Cap virtual count and check HOMO–LUMO gap for one spin channel (URPA).
@@ -55,7 +57,8 @@ int count_basis_rpa_(const std::vector<GpwAtom>& atoms) {
 
 } // namespace
 
-const RpaResult& GpwDft::direct_rpa(const std::vector<GpwAtom>& atoms) {
+const RpaResult& GpwDft::direct_rpa() {
+    const std::vector<GpwAtom>& atoms = last_atoms_;
     if (!built_)
         throw std::logic_error(
             "GpwDft::direct_rpa called before build() — validate the "
@@ -178,7 +181,7 @@ const RpaResult& GpwDft::direct_rpa(const std::vector<GpwAtom>& atoms) {
                     "GpwDft::direct_rpa: vanishing β HOMO-LUMO gap on the "
                     "k-mesh");
 
-            const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+            const UniformGrid grid = make_uniform_grid(cell_.data(), cutoff_ry);
             std::vector<GridBasisFunction> basis;
             basis.reserve(static_cast<std::size_t>(nb));
             for (const auto& a : atoms)
@@ -311,7 +314,7 @@ const RpaResult& GpwDft::direct_rpa(const std::vector<GpwAtom>& atoms) {
                 "spin channel (n_occ and n_virt both >= 1)");
 
         const bool periodic = !nonperiodic;
-        const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+        const UniformGrid grid = make_uniform_grid(cell_.data(), cutoff_ry);
         std::vector<GridBasisFunction> basis;
         basis.reserve(static_cast<std::size_t>(nb));
         for (const auto& a : atoms)
@@ -440,7 +443,7 @@ const RpaResult& GpwDft::direct_rpa(const std::vector<GpwAtom>& atoms) {
                 + std::to_string(min_gap)
                 + " Ha < 1e-6) — dRPA (A−B) is singular");
 
-        const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+        const UniformGrid grid = make_uniform_grid(cell_.data(), cutoff_ry);
         std::vector<GridBasisFunction> basis;
         basis.reserve(static_cast<std::size_t>(nb));
         for (const auto& a : atoms)
@@ -533,7 +536,7 @@ const RpaResult& GpwDft::direct_rpa(const std::vector<GpwAtom>& atoms) {
             + std::to_string(gap) + " Ha < 1e-6) — dRPA (A−B) is singular");
 
     const bool periodic = !nonperiodic;
-    const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+    const UniformGrid grid = make_uniform_grid(cell_.data(), cutoff_ry);
     std::vector<GridBasisFunction> basis;
     basis.reserve(static_cast<std::size_t>(nb));
     for (const auto& a : atoms)

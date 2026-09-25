@@ -41,7 +41,7 @@ subagents / worktrees before the next GapCensus.
 
 ## Dual gate (every worker)
 
-1. **Correctness:** offline oracle pin in `regressions/.../REFERENCE.md` (never live oracle in ctest).
+1. **Correctness:** offline oracle pin in case `REFERENCE.md` pin (never live oracle in ctest).
 2. **Speed (optional):** \(T_{\mathrm{atv}}/T_{\mathrm{oracle}} \le\) `max_ratio`, or `perf_exempt` + reason.
 
 `status=green` requires `acceptance_met=true` when the loop is spec-first.
@@ -74,7 +74,7 @@ CI's / the operator's job, not the loop's.
 ## Continuous discovery rules
 
 1. **GapCensus every wave start** (and after merge before next assign if you split phases).
-2. **Sources:** oracle docs/examples/API surface + `.claude/notes/*map*` + `docs/roadmap/*.md` ○ rows + tree scan (`include/`, `regressions/`).
+2. **Sources:** oracle docs/examples/API surface + `.claude/notes/*map*` + `docs/roadmap/*.md` ○ rows + tree scan of public headers and end-to-end cases.
 3. **Foothold ≠ done:** if only a toy pin exists, keep a deeper pending slug.
 4. **Update artifacts each census:**
    - `docs/developer/<loop>-method-queue.md` — rewrite `## pending` (preserve done/blocked/in_progress)
@@ -111,12 +111,12 @@ Clearup reports `worktrees_removed`, `branches_pruned`, `builds_wiped` (see temp
 | Knob | PySCF | CP2K | MetalWalls | SE / tight-binding |
 | ---- | ----- | ---- | ---------- | ------------------ |
 | Oracle | offline PySCF | offline CP2K | LAMMPS-first, else MetalWalls | **Family-locked:** OpenMOPAC (NDDO), DFTB+ (DFTB), xtb (GFN); Sparrow/CP2K arch-only |
-| Regression root | `regressions/scf/` | `regressions/{gpw,pw,scf}/` | `regressions/{md,forcefield}/` | `regressions/semiempirical/` |
+| Regression root | `scf` | `{gpw,pw,scf}` | `{md,forcefield}` | `semiempirical` |
 | Build flags | HF ON; CUDA OFF | HF+PW+GPW ON; CUDA OFF | MD+KSPACE ON; HF/PW/GPW/CUDA OFF | **SE-only**: SEMIEMPIRICAL+EVALUATE ON; HF/PW/GPW/MD/MC/MINIMIZER/VIB/PATH/KSPACE/CUDA OFF |
 | Test filter | `^test_cpu_(scf\|linalg)_` + molecular extras | `^test_cpu_(gpw\|pw\|scf\|xc)_` | `^test_cpu_(md\|mc\|pair\|fix\|observer\|…)` | `^test_cpu_(am1\|rm1\|dftb2\|xtb_gfn0\|nddo_)` |
 | Scope IN | molecular Gaussian / post-HF / continuum | GPW / PW / periodic | classical electrochem MD | DFTB0→3 ladder, NDDO PM depth, late GFN-xTB |
 | Scope OUT | classical MD, GPW/PW | molecular post-HF, pure PySCF | SCF, GPW/PW, CUDA, PLUMED, 2D product, cross-lang product | SCF product, GPW/PW product, classical MD, CUDA; cross-family oracle misuse |
-| Map note | roadmap chapters | `docs/roadmap/dft.md` | `.claude/notes/metalwalls-capability-map.md` | `docs/roadmap/semiempirical.md` + `tools/tb_oracle/` |
+| Map note | roadmap chapters | `docs/roadmap/dft.md` | `.claude/notes/metalwalls-capability-map.md` | `docs/roadmap/semiempirical.md` + TB oracle (OpenMOPAC / DFTB+ / xtb) |
 
 ## Template & skill
 
@@ -170,4 +170,4 @@ find . -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
 | After Worktrees (+ Merge) same wave | **Clearup** agent — remove worktrees + prune merged tips + wipe builds |
 | Harness (if merged) | Re-check parent only; Clearup already dropped worker trees |
 
-**Do not** delete source, `regressions/`, `REFERENCE.md`, specs, or `.git`.
+**Do not** delete source, end-to-end cases, pin notes, specs, or `.git`.

@@ -5,13 +5,12 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `rks-hessian-h2o-sto3g` |
-| Regression | `regressions/scf/rks-hessian-h2o-sto3g/` |
 | Public API | `cpu::scf::RKS{XCType::LSDA}.hessian(frame)` |
 | Roadmap | `docs/roadmap/dft.md` (RKS analytic Hessian row — product foothold via FD) |
 
 ## Summary
 
-Computes the Cartesian nuclear Hessian \(\partial^2 E_{\mathrm{RKS}}/\partial R_i\partial R_j\) for restricted Kohn–Sham DFT by central finite difference of **analytic** RKS nuclear forces (KS gradient with grid-response XC), not a full CPKS closed form. Target system is gas-phase water, LSDA (Slater–VWN5) / STO-3G. Public surface: construct `cpu::scf::RKS` with the XC functional, set members (`basis`, `tol`, `grid_level`, …), call `hessian(frame)` → dense \(3N\times 3N\) matrix in eV/Å² (`cpu::vib::HessianResult`). Offline accuracy pin is PySCF 2.14.0 FD of analytic RKS gradients (same algorithm class as Atomiverse). End-to-end gate: `regressions/scf/rks-hessian-h2o-sto3g` (`reg_rks-hessian-h2o-sto3g`). Fair wall vs the FD twin: \(r = 3.08\) (≤10×).
+Computes the Cartesian nuclear Hessian \(\partial^2 E_{\mathrm{RKS}}/\partial R_i\partial R_j\) for restricted Kohn–Sham DFT by central finite difference of **analytic** RKS nuclear forces (KS gradient with grid-response XC), not a full CPKS closed form. Target system is gas-phase water, LSDA (Slater–VWN5) / STO-3G. Public surface: construct `cpu::scf::RKS` with the XC functional, set members (`basis`, `tol`, `grid_level`, …), call `hessian(frame)` → dense \(3N\times 3N\) matrix in eV/Å² (`cpu::vib::HessianResult`). Offline accuracy pin is PySCF 2.14.0 FD of analytic RKS gradients (same algorithm class as Atomiverse). End-to-end gate: `rks-hessian-h2o-sto3g` (`reg_rks-hessian-h2o-sto3g`). Fair wall vs the FD twin: \(r = 3.08\) (≤10×).
 
 ## Method
 
@@ -71,21 +70,21 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_rks-hessian-h2o-sto3g -j$(nproc)
-  ./build/regressions/reg_rks-hessian-h2o-sto3g
+  reg_rks-hessian-h2o-sto3g
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/rks.h` | Public `RKS` / `hessian` |
+| `rks.h` | Public `RKS` / `hessian` |
 | `src/cpu/scf/rks.cpp` | FD-of-forces implementation |
-| `include/atomiverse/cpu/vibration/hessian_result.h` | `HessianResult` contract |
-| `regressions/scf/rks-hessian-h2o-sto3g/reg_rks-hessian-h2o-sto3g.cpp` | Product gate |
-| `regressions/scf/rks-hessian-h2o-sto3g/REFERENCE.md` | Offline pins |
+| `hessian_result.h` | `HessianResult` contract |
+| `reg_rks-hessian-h2o-sto3g.cpp` | Product gate |
+| case `rks-hessian-h2o-sto3g` pin | Offline pins |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/rks-hessian-h2o-sto3g/REFERENCE.md`](../../../regressions/scf/rks-hessian-h2o-sto3g/REFERENCE.md)
+Source: case `rks-hessian-h2o-sto3g` pin
 Oracle class: offline central FD of PySCF **2.14.0** analytic RKS nuclear gradient (`mf.nuc_grad_method().kernel()`), \(h=10^{-4}\) Bohr, symmetrized; units via Atomiverse CODATA factors (`kHartreeInEv = 27.211386245988`, `kBohrInAngstrom = 0.529177210903`). PySCF analytic `mf.Hessian().kernel()` is a **different** algorithm (closed form) and is recorded only as a cross-check (max element abs vs FD twin \(\lesssim 4.34\cdot 10^{-2}\) eV/Å²). Never live-import PySCF in ctest.
 
 **Setup (from REFERENCE):**
@@ -129,7 +128,7 @@ Regression also asserts Hessian symmetry (\(\lvert H-H^\top\rvert \le 10^{-8}\))
 
 Fair twin: Atomiverse `RKS::hessian` (18 force evaluations) vs a PySCF loop of 18 RKS analytic gradients (same FD skeleton, \(h=10^{-4}\) Bohr). Analytic `hessian.RKS` is a different algorithm and is **not** the fair wall twin for this product path.
 
-Source: `regressions/scf/rks-hessian-h2o-sto3g/REFERENCE.md` (recorded 2026-07-23, `OMP_NUM_THREADS=8`, Release). Also rolled into the case `REFERENCE.md` / queue notes as ratio **3.08**.
+Source: case `rks-hessian-h2o-sto3g` pin (recorded 2026-07-23, `OMP_NUM_THREADS=8`, Release). Also rolled into the case pin notes / queue notes as ratio **3.08**.
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}}\) | ≤10× | Caveat |
 | ---- | -------------------------: | -----------------------: | ----------------------------------------: | ---- | ------ |
@@ -140,8 +139,8 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\) on the **FD twin** (sat
 
 ```bash
 # Fair FD twin (same work class as RKS::hessian); not a CPKS analytic twin.
-python tools/pyscf_oracle/fair_bench.py --method rks -- \
-  ./build/regressions/reg_rks-hessian-h2o-sto3g
+python <pyscf fair-bench> --method rks -- \
+  reg_rks-hessian-h2o-sto3g
 ```
 
 ## Limitations
@@ -151,13 +150,13 @@ python tools/pyscf_oracle/fair_bench.py --method rks -- \
 - **PySCF analytic Hessian** exists (`hessian.RKS`) but is a different algorithm class; fair-bench uses the FD twin only.
 - **Scope gaps:** no RI Hessian; no frequencies/IR from this path; UKS Hessian not shipped; hybrids not gated here (LSDA only).
 - **Roadmap:** full CPKS closed-form RKS Hessian (nuclear XC second-derivative grid response) is the natural follow-up — see `docs/roadmap/dft.md`.
-- **Unit tests:** product accuracy lives only under `regressions/`; do not place e2e Hessian solves in `tests/`.
+- **Unit tests:** Product accuracy is gated by end-to-end cases, not by the unit-test suite.
 
 ## References
 
-- Offline pin: `regressions/scf/rks-hessian-h2o-sto3g/REFERENCE.md`
+- Offline pin: case `rks-hessian-h2o-sto3g` pin
 - Roadmap: `docs/roadmap/dft.md`
 - Related product path: `docs/tutorial/methods/rohf-hessian-o2.md` (ROHF FD Hessian)
-- Oracle tooling: `tools/setup_pyscf_env.sh`, `tools/pyscf_oracle/pin_scf.py`
+- Oracle tooling: PySCF oracle, PySCF oracle
 - B. G. Johnson, J. A. Pople, P. M. W. Gill, M. J. Frisch, *Chem. Phys. Lett.* **220**, 377 (1994) — analytic DFT second derivatives (target closed form; this product ships FD of analytic forces).
 - PySCF `hessian.rks` / `grad.rks` — external oracle engines.

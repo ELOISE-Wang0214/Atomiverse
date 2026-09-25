@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `casci-h2-sto3g` |
-| Regression | `regressions/scf/casci-h2-sto3g/` |
 | Public API | `cpu::scf::RHF::casci(Frame&, ncas, nelecas)` → `CASCIResult` |
 | Roadmap | [Post-HF §4.1 Active-space methods](../../roadmap/post-hf.md) |
 
@@ -20,7 +19,7 @@ no core on this system (`ncore=0`), and runs the dense FCI kernel in the
 `CASCIResult{e_casci, e_corr, ncas, nelecas, ncore}` in Hartree. On this
 two-electron foothold CASCI(2,2) coincides with FCI / CCSD / CISD in the
 basis. Offline oracle pin is PySCF 2.14.0 `mcscf.CASCI` (never live in
-ctest). End-to-end gate: `regressions/scf/casci-h2-sto3g` → binary
+ctest). End-to-end gate: `casci-h2-sto3g` → binary
 `reg_casci-h2-sto3g`. Fair-bench ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} = 0.076\) (within 10×;
 startup-dominated).
@@ -80,7 +79,7 @@ const cpu::scf::CASCIResult cas = rhf.casci(frame, /*ncas=*/2, /*nelecas=*/2);
 // rhf.energy() = E_RHF [Ha] after the internal RHF
 ```
 
-`CASCIResult` fields (`include/atomiverse/cpu/scf/casci.h`): `e_casci`,
+`CASCIResult` fields (`casci.h`): `e_casci`,
 `e_corr` [Hartree], `ncas`, `nelecas`, `ncore`. Pack-level
 `casci_energy` is private engine code.
 
@@ -96,22 +95,22 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_casci-h2-sto3g -j$(nproc)
-  ./build/regressions/reg_casci-h2-sto3g
+  reg_casci-h2-sto3g
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/casci.h` | Public `CASCIResult` |
-| `include/atomiverse/cpu/scf/mean_field_method.h` | `RHF::casci(Frame&, ncas, nelecas)` |
-| `include/atomiverse/cpu/scf/internal/casci_pack.h` | Private pack entry |
+| `casci.h` | Public `CASCIResult` |
+| `mean_field_method.h` | `RHF::casci(Frame&, ncas, nelecas)` |
+| `casci_pack.h` | Private pack entry |
 | `src/cpu/scf/fci.cpp` | Dense FCI / CASCI energy kernel |
 | `src/cpu/scf/mean_field_method.cpp` | `MeanFieldMethod::casci` dispatch |
-| `regressions/scf/casci-h2-sto3g/reg_casci-h2-sto3g.cpp` | E2E consumer |
+| `reg_casci-h2-sto3g.cpp` | E2E consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/casci-h2-sto3g/REFERENCE.md`](../../../regressions/scf/casci-h2-sto3g/REFERENCE.md)
+Source: case `casci-h2-sto3g` pin
 (offline pin; PySCF never in ctest). Protocol:
 `docs/tutorial/appendix-pyscf-oracle.md`.
 
@@ -140,17 +139,17 @@ CASCI(2,2) coincides with FCI / CCSD to \(\sim 10^{-14}\) Ha on this system.
 Oracle repro (human / offline only):
 
 ```bash
-bash tools/setup_pyscf_env.sh
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py casci \
+bash <pyscf env setup>
+python <pyscf pin> casci \
     --geom h2 --basis sto-3g --ncas 2 --nelecas 2 --conv-tol 1e-12
 ```
 
 ## Performance
 
 Source: fair wall in
-[`regressions/scf/casci-h2-sto3g/REFERENCE.md`](../../../regressions/scf/casci-h2-sto3g/REFERENCE.md)
+case `casci-h2-sto3g` pin
 (2026-07-23; login node; `OMP_NUM_THREADS=1`; median of ≥5). Campaign
-handoff ratio **0.076** (the case `REFERENCE.md`). No
+handoff ratio **0.076** (the case pin notes). No
 standing comparison table in-tree at draft time.
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -159,9 +158,9 @@ standing comparison table in-tree at draft time.
 
 ```bash
 export OMP_NUM_THREADS=1
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
     --method casci --geom h2 --basis sto-3g --repeat 3 -- \
-    ./build/regressions/reg_casci-h2-sto3g
+    reg_casci-h2-sto3g
 ```
 
 Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\). No ⚡ optimization
@@ -186,11 +185,11 @@ pass required on this case.
 
 ## References
 
-- Offline pin: `regressions/scf/casci-h2-sto3g/REFERENCE.md`
-- Regression consumer: `regressions/scf/casci-h2-sto3g/reg_casci-h2-sto3g.cpp`
+- Offline pin: case `casci-h2-sto3g` pin
+- Regression consumer: `reg_casci-h2-sto3g.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Roadmap: `docs/roadmap/post-hf.md` (§4.1 Active-space methods)
-- Public API: `include/atomiverse/cpu/scf/casci.h`
+- Public API: `casci.h`
 - B. O. Roos, *The Complete Active Space Self-Consistent Field Method and
   its Applications in Electronic Structure Calculations*, Adv. Chem. Phys.
   **69**, 399 (1987). DOI

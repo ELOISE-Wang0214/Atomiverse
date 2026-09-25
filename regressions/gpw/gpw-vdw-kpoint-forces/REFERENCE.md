@@ -10,7 +10,7 @@ finest-grid k-summed density and added to `veff` every iteration; the same
 (`assemble_gpw_forces_kpoints` grid-term `veff` in `gpw_forces.cpp`).
 
 Public API: `cpu::gpw::GpwDft` with `vdw_df=true` + `k_mesh` (or explicit
-`k_points`) + `gpw_forces_from_scf` / `gpw_forces_analytic`. No public
+`k_points`) + `GpwDft::forces(frame)` (eV/Å on the Frame). No public
 `*Config`, no factories. Energy product already closed by
 `reg_gpw-vdw-kpoints`; Γ SC potential + FD by `reg_gpw-vdw-scf-potential`.
 

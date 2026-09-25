@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `cc2-h2-sto3g` |
-| Regression | `regressions/scf/cc2-h2-sto3g/` |
 | Public API | `cpu::scf::RHF::cc2(Frame&)` → `CC2Result` |
 | Roadmap | [Post-HF §3 Coupled cluster](../../roadmap/post-hf.md) |
 
@@ -21,7 +20,7 @@ residual; doubles residual truncated to at most linear in \(T_2\) with the
 basis \(T_1 \approx 0\) by symmetry, so CC2 coincides with MP2 to
 \(\sim 10^{-15}\) Ha and is intentionally distinct from full CCSD/FCI. Offline
 oracle pin is PySCF 2.14.0 `cc.rccsd.RCCSD` with `cc2=True` (stock PySCF has no
-top-level `cc.CC2`). End-to-end gate: `regressions/scf/cc2-h2-sto3g` → binary
+top-level `cc.CC2`). End-to-end gate: `cc2-h2-sto3g` → binary
 `reg_cc2-h2-sto3g`. Fair-bench ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} = 0.392\) (within 10×;
 startup-dominated).
@@ -84,7 +83,7 @@ const cpu::scf::CC2Result cc2 = rhf.cc2(frame);
 // rhf.energy() = E_RHF [Ha] after the internal RHF
 ```
 
-`CC2Result` fields (`include/atomiverse/cpu/scf/cc2.h`): `e_corr`, `e_tot`
+`CC2Result` fields (`cc2.h`): `e_corr`, `e_tot`
 [Hartree], `iterations`, `converged`. `cc2_energy` is private.
 is private (`internal/ccsd_pack.h`); the same `ccsd_solve` path with
 `cc2=true` lives in `src/cpu/scf/ccsd.cpp`.
@@ -101,21 +100,21 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_cc2-h2-sto3g -j$(nproc)
-  ./build/regressions/reg_cc2-h2-sto3g
+  reg_cc2-h2-sto3g
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/cc2.h` | Public `CC2Result` |
-| `include/atomiverse/cpu/scf/mean_field_method.h` | `RHF::cc2(Frame&)` |
-| `include/atomiverse/cpu/scf/internal/ccsd_pack.h` | Private `cc2_energy` |
+| `cc2.h` | Public `CC2Result` |
+| `mean_field_method.h` | `RHF::cc2(Frame&)` |
+| `ccsd_pack.h` | Private `cc2_energy` |
 | `src/cpu/scf/ccsd.cpp` | Shared residual / energy (`cc2` flag) |
-| `regressions/scf/cc2-h2-sto3g/reg_cc2-h2-sto3g.cpp` | E2E consumer |
+| `reg_cc2-h2-sto3g.cpp` | E2E consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/cc2-h2-sto3g/REFERENCE.md`](../../../regressions/scf/cc2-h2-sto3g/REFERENCE.md)
+Source: case `cc2-h2-sto3g` pin
 (offline pin; PySCF never in ctest). Protocol:
 `docs/tutorial/appendix-pyscf-oracle.md`.
 
@@ -146,18 +145,18 @@ Cross-check (same geom/basis): PySCF `mp.MP2` gives the same \(E_{\mathrm{corr}}
 Oracle repro (human / offline only):
 
 ```bash
-bash tools/setup_pyscf_env.sh
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py cc2 \
+bash <pyscf env setup>
+python <pyscf pin> cc2 \
     --geom h2 --basis sto-3g --conv-tol 1e-12
 ```
 
 ## Performance
 
 Source: fair wall in
-[`regressions/scf/cc2-h2-sto3g/REFERENCE.md`](../../../regressions/scf/cc2-h2-sto3g/REFERENCE.md)
+case `cc2-h2-sto3g` pin
 (2026-07-23; login node; `OMP_NUM_THREADS=1`; median of ≥3). Campaign rollup
-ratio **0.392** (the case `REFERENCE.md`). No standing
-`` table in-tree at draft time.
+ratio **0.392** (the case pin notes). No standing
+` table in-tree at draft time.
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | -------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -165,9 +164,9 @@ ratio **0.392** (the case `REFERENCE.md`). No standing
 
 ```bash
 export OMP_NUM_THREADS=1
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
     --method cc2 --geom h2 --basis sto-3g --repeat 3 -- \
-    ./build/regressions/reg_cc2-h2-sto3g
+    reg_cc2-h2-sto3g
 ```
 
 Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\). No ⚡ optimization pass
@@ -192,11 +191,11 @@ required on this case.
 
 ## References
 
-- Offline pin: `regressions/scf/cc2-h2-sto3g/REFERENCE.md`
-- Regression consumer: `regressions/scf/cc2-h2-sto3g/reg_cc2-h2-sto3g.cpp`
+- Offline pin: case `cc2-h2-sto3g` pin
+- Regression consumer: `reg_cc2-h2-sto3g.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Roadmap: `docs/roadmap/post-hf.md` (§3 Coupled cluster)
-- Public API: `include/atomiverse/cpu/scf/cc2.h`
+- Public API: `cc2.h`
 - Related handbook: [ccsd-h2-sto3g](ccsd-h2-sto3g.md),
   [mp3-h2-sto3g](mp3-h2-sto3g.md)
 - O. Christiansen, H. Koch, P. Jørgensen, *The second-order approximate

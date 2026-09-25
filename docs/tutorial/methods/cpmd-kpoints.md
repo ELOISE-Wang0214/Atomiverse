@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `cpmd-kpoints` |
-| Regression | `regressions/dynamics/cpmd-kpoints/` |
-| Public API | `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{…, k_mesh}, mu_au}` bound with `set_evaluator_ref`; `CpmdCplx` propagator. CP mode is the wrapper type — `cpmd`/`cpmd_mu` are private on `GPWEvaluator`. The nuclear dt is pushed from the MD integrator into the wrapper (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
+| Public API | `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{GpwDft{…} with k_mesh, compute_forces=true}, mu_au}` bound with `set_evaluator_ref`; `CpmdCplx` propagator. CP mode is the wrapper type — `cpmd`/`cpmd_mu` are private on `GPWEvaluator`. The nuclear dt is pushed from the MD integrator into the wrapper (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
 | Roadmap / queue | `docs/roadmap/dft.md` (AIMD); queue done 2026-07-26 |
 
 ## Summary
@@ -49,4 +48,4 @@ XL + CPMD). Multi-k **UKS** CPMD ships separately
 Ratio: **perf_exempt** — the gate is an NVE drift envelope, not a wall twin
 (same policy as `cpmd-water` and `xl-bomd-kpoints`).
 
-See `regressions/dynamics/cpmd-kpoints/REFERENCE.md`.
+See case `cpmd-kpoints` pin.

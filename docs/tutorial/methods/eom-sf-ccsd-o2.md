@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `eom-sf-ccsd-o2` |
-| Regression | `regressions/scf/eom-sf-ccsd-o2/` |
 | Public API | `cpu::scf::UHF::eom_sf_ccsd(Frame&, n_states, guess*)` → `EOMSFCCSDResult` |
 | Roadmap | [Excited states §3 EOM-CC / SF](../../roadmap/excited-states.md) |
 
@@ -19,7 +18,7 @@ similarity-transformed Hamiltonian, returning majority-channel SF roots
 \(\omega\) [eV] plus UCCSD energetics [Ha]. Textbook foothold is triplet O₂ /
 STO-3G (\(n_\alpha=9\), \(n_\beta=7\)); ROHF density warm-start avoids UHF
 multi-minima. Offline pin is PySCF 2.14.0 `cc.UCCSD(...).eomsf_ccsd` (never live
-in ctest). End-to-end gate: `regressions/scf/eom-sf-ccsd-o2` → binary
+in ctest). End-to-end gate: `eom-sf-ccsd-o2` → binary
 `reg_eom-sf-ccsd-o2`. Fair-bench ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} = 3.12\) (within 10×).
 
@@ -108,7 +107,7 @@ const cpu::scf::EOMSFCCSDResult eom =
 // eom.ccsd_iterations; eom.converged
 ```
 
-`EOMSFCCSDResult` (`include/atomiverse/cpu/scf/eom_sf_ccsd.h`): `energy_ev`
+`EOMSFCCSDResult` (`eom_sf_ccsd.h`): `energy_ev`
 (ascending SF roots [eV]), `e_corr_ha`, `e_ccsd_ha` [Hartree],
 `ccsd_iterations`, `converged`. `eom_sf_ccsd_energies` is private.
 is private (`internal/eom_sf_ccsd_pack.h`). `UHF::eom_sf_ccsd` forces ERI/SCF as
@@ -126,21 +125,21 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_eom-sf-ccsd-o2 -j$(nproc)
-  ./build/regressions/reg_eom-sf-ccsd-o2
+  reg_eom-sf-ccsd-o2
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/eom_sf_ccsd.h` | Public `EOMSFCCSDResult` |
-| `include/atomiverse/cpu/scf/uhf.h` | `UHF::eom_sf_ccsd(Frame&, n_states, guess*)` |
-| `include/atomiverse/cpu/scf/internal/eom_sf_ccsd_pack.h` | Private pack entry |
+| `eom_sf_ccsd.h` | Public `EOMSFCCSDResult` |
+| `uhf.h` | `UHF::eom_sf_ccsd(Frame&, n_states, guess*)` |
+| `eom_sf_ccsd_pack.h` | Private pack entry |
 | `src/cpu/scf/eom_ee_ccsd.cpp` | Shared EOM infrastructure; SF selection + pack |
-| `regressions/scf/eom-sf-ccsd-o2/reg_eom-sf-ccsd-o2.cpp` | E2E consumer |
+| `reg_eom-sf-ccsd-o2.cpp` | E2E consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/eom-sf-ccsd-o2/REFERENCE.md`](../../../regressions/scf/eom-sf-ccsd-o2/REFERENCE.md)
+Source: case `eom-sf-ccsd-o2` pin
 (offline pin; PySCF never in ctest). Protocol:
 `docs/tutorial/appendix-pyscf-oracle.md`.
 
@@ -173,17 +172,17 @@ Source: [`regressions/scf/eom-sf-ccsd-o2/REFERENCE.md`](../../../regressions/scf
 Oracle repro (human / offline only):
 
 ```bash
-bash tools/setup_pyscf_env.sh
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py eom-sf-ccsd \
+bash <pyscf env setup>
+python <pyscf pin> eom-sf-ccsd \
     --geom o2 --basis sto-3g --spin 2 --nstates 15 --conv-tol 1e-12
 ```
 
 ## Performance
 
 Source: fair wall in
-[`regressions/scf/eom-sf-ccsd-o2/REFERENCE.md`](../../../regressions/scf/eom-sf-ccsd-o2/REFERENCE.md)
+case `eom-sf-ccsd-o2` pin
 (2026-07-23; login node; `OMP_NUM_THREADS=1`; median of ≥3). Campaign rollup
-ratio **3.12** (the case `REFERENCE.md`).
+ratio **3.12** (the case pin notes).
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | -------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -191,9 +190,9 @@ ratio **3.12** (the case `REFERENCE.md`).
 
 ```bash
 export OMP_NUM_THREADS=1
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
     --method eom-sf-ccsd --geom o2 --basis sto-3g --spin 2 --nstates 5 --repeat 3 -- \
-    ./build/regressions/reg_eom-sf-ccsd-o2
+    reg_eom-sf-ccsd-o2
 ```
 
 Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\). No ⚡ optimization pass
@@ -219,13 +218,13 @@ required on this case (\(r=3.12\)).
 
 ## References
 
-- Offline pin: `regressions/scf/eom-sf-ccsd-o2/REFERENCE.md`
-- Regression consumer: `regressions/scf/eom-sf-ccsd-o2/reg_eom-sf-ccsd-o2.cpp`
+- Offline pin: case `eom-sf-ccsd-o2` pin
+- Regression consumer: `reg_eom-sf-ccsd-o2.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Roadmap: `docs/roadmap/excited-states.md` (§3 Equation-of-Motion Coupled Cluster);
   ground-state CC: `docs/roadmap/post-hf.md` (§3)
-- Public API: `include/atomiverse/cpu/scf/eom_sf_ccsd.h`,
-  `include/atomiverse/cpu/scf/uhf.h`
+- Public API: `eom_sf_ccsd.h`,
+  `uhf.h`
 - Related: SF-TDA foothold [`spin-flip-tda-o2.md`](spin-flip-tda-o2.md);
   closed-shell EOM-EE [`eom-ee-ccsd.md`](eom-ee-ccsd.md)
 - A. I. Krylov, *Chem. Phys. Lett.* **338**, 375 (2001).

@@ -3,7 +3,7 @@
 *(Technical-report draft; narrative house style TBD — rewrite later.)*
 
 Head–Gordon CIS(D): doubles correction \(U+V\) on top of closed-shell CIS/TDA
-amplitudes. Regression: `regressions/scf/cisd-h2co-sto3g`.
+amplitudes. Regression: `cisd-h2co-sto3g`.
 
 ## Theory
 
@@ -23,7 +23,7 @@ auto cisd = rhf.cisd(/*n_states=*/3);
 ```
 
 ```bash
-./build/regressions/reg_cisd-h2co-sto3g
+reg_cisd-h2co-sto3g
 ```
 
 ## Results

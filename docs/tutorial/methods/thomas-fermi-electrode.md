@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `thomas-fermi-electrode` |
-| Regression | `regressions/md/thomas-fermi-electrode/` |
 | Public API | `cpu::md::ConstPotBO` members `l_tf`, `site_density`, `capacitance()` (Component on `cpu::md::MD`, default `pre_force`) |
 | Roadmap | map slice E7 |
 | Oracle | **MetalWalls** binary, git `c8ad175d` (offline run; not LAMMPS) |
@@ -22,7 +21,7 @@ inside `KSpace*`. This regression is the **gold capacitor toy**: empty
 parallel-plate Au lattice (no electrolyte), dual-gate perfect metal vs
 \(l_{\mathrm{TF}}=2\) Å. The pin is **MetalWalls c8ad175d output** from the twin
 input under
-`tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/mw_twin/`
+MetalWalls oracle
 (run offline, never in ctest). Product gate `reg_thomas-fermi-electrode` asserts
 electroneutrality, charge polarity, \(C(l_{\mathrm{TF}}=2)<C(0)\), and relative
 agreement ≤ **1%** on \(Q_{\mathrm{top}}\) and integral capacitance \(C\) at both
@@ -93,7 +92,7 @@ Atom \(z\) [Å]: bot `{5.0, 7.035, 9.07}`, top `{29.07, 31.105, 33.14}`
 ### MetalWalls pin
 
 Twin input:
-`tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/mw_twin/`
+MetalWalls oracle
 (`num_pbc 2`, `electrode_charges matrix_inversion`, `charge_neutrality true`),
 run as `mpirun -n 1 mw`; numbers are `total_charges.out` verbatim (MetalWalls'
 atomic unit of charge *is* e, so no conversion — the unit work is on the inputs:
@@ -129,7 +128,7 @@ as \(z^2\). This toy's 20 Å gap over a 4.07 Å lateral cell is the worst case:
 | exact 2D Ewald | 4.354141528379e−03 | +0.0004 % |
 
 Reproduce with
-`tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/tf_lattice_convergence.py`.
+MetalWalls oracle.
 
 ### Key exclusions (non-goals of this slug)
 
@@ -229,24 +228,24 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_thomas-fermi-electrode -j"$(nproc)"
-  ./build/regressions/reg_thomas-fermi-electrode
+  reg_thomas-fermi-electrode
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/const_pot_bo.h` | Public `ConstPotBO` (`l_tf`, `site_density`, `capacitance()`) |
+| `const_pot_bo.h` | Public `ConstPotBO` (`l_tf`, `site_density`, `capacitance()`) |
 | `src/cpu/dynamics/const_pot_bo.cpp` | Dense \(A\) + TF diagonal hardness \(A_{ii}\mathrel{+}=4\pi k_e l_{\mathrm{TF}}^2 d\) |
-| `regressions/md/thomas-fermi-electrode/reg_thomas-fermi-electrode.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/mw_twin/` | MetalWalls twin input (the pin) |
-| `tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/tf_lattice_convergence.py` | \(O(1/R)\) truncation diagnosis + exact 2D Ewald |
+| `reg_thomas-fermi-electrode.cpp` | Product gate |
+| MetalWalls oracle | MetalWalls twin input (the pin) |
+| MetalWalls oracle | \(O(1/R)\) truncation diagnosis + exact 2D Ewald |
 
 ## Validation (vs the MetalWalls binary)
 
 Source:
-[`regressions/md/thomas-fermi-electrode/REFERENCE.md`](../../../regressions/md/thomas-fermi-electrode/REFERENCE.md)
+case `thomas-fermi-electrode` pin
 (offline run; **never** live MetalWalls in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
+MetalWalls oracle.
 
 **Oracle:** MetalWalls git `c8ad175d`, `src/thomas_fermi.f90`
 (`gradQ_V(i,i) += 4*pi*ltf**2 / voronoi_volume`) — the atomic-unit form of
@@ -285,13 +284,13 @@ export LD_LIBRARY_PATH="$LIBRARY_PATH:$LD_LIBRARY_PATH"
 cd /tmp/tf && mpirun -n 1 /path/to/metalwalls/mw      # -> total_charges.out
 
 # truncation diagnosis (needs numpy + scipy)
-python3 tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/tf_lattice_convergence.py
+python <MetalWalls oracle pin for this case>
 ```
 
 ## Performance
 
 Source: REFERENCE.md dual-gate summary; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{MetalWalls}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -327,12 +326,10 @@ the accuracy tail and this ratio at once.
 
 ## References
 
-- Pin + conversions: [`regressions/md/thomas-fermi-electrode/REFERENCE.md`](../../../regressions/md/thomas-fermi-electrode/REFERENCE.md)
-- Product gate: [`regressions/md/thomas-fermi-electrode/reg_thomas-fermi-electrode.cpp`](../../../regressions/md/thomas-fermi-electrode/reg_thomas-fermi-electrode.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/const_pot_bo.h`](../../../include/atomiverse/cpu/dynamics/const_pot_bo.h)
-- MetalWalls twin input: [`tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/mw_twin/`](../../../tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/mw_twin/)
-- Truncation diagnosis: [`tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/tf_lattice_convergence.py`](../../../tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/tf_lattice_convergence.py)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md)
+- Pin + conversions: case `thomas-fermi-electrode` pin
+- MetalWalls twin input: MetalWalls oracle
+- Truncation diagnosis: MetalWalls oracle
+- Oracle notes: MetalWalls oracle
 - Capability map: `.claude/notes/metalwalls-capability-map.md` (E7 metallicity)
 - Literature: Scalfi, Dufils, Reeves, Rotenberg, Salanne, *J. Chem. Phys.* **153**, 174704 (2020), DOI [10.1063/5.0028232](https://doi.org/10.1063/5.0028232) (arXiv:1910.13341); MetalWalls TF hardness model
 - Related E1 foothold: [`const-pot-bo-parallel-plate.md`](const-pot-bo-parallel-plate.md)

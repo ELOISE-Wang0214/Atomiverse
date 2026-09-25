@@ -17,6 +17,9 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -36,22 +39,33 @@ void check(bool ok, const char* what) {
 }
 
 // Compact high-spin H₂ (DZV-GTH-PADE) — same class as ot-uks-kpoints.
-std::vector<ATV::cpu::gpw::GpwAtom> h2_toy(double L_bohr) {
+// Geometry authored in Bohr; the Frame carries Å.
+ATV::cpu::Frame h2_toy(double L_bohr) {
     using namespace ATV;
-    const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-    const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-    const double r0[3] = {0.5 * L_bohr - 0.7, 0.5 * L_bohr, 0.5 * L_bohr};
-    const double r1[3] = {0.5 * L_bohr + 0.7, 0.5 * L_bohr, 0.5 * L_bohr};
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.emplace_back(r0, bH, pH, 1);
-    atoms.emplace_back(r1, bH, pH, 1);
-    return atoms;
+    constexpr double b2a = units::kBohrInAngstrom;
+    const double xs[2] = {0.5 * L_bohr - 0.7, 0.5 * L_bohr + 0.7};
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_x)[i] = xs[i] * b2a;
+        frame.span(kAtom_y)[i] = 0.5 * L_bohr * b2a;
+        frame.span(kAtom_z)[i] = 0.5 * L_bohr * b2a;
+    }
+    frame.box = cpu::Box::cubic(L_bohr * b2a);
+    return frame;
 }
 
-ATV::cpu::gpw::GpwDft base_uks_u(double L, double u_ev) {
+std::vector<ATV::cpu::gpw::Kind> h_kinds() {
     using namespace ATV;
-    cpu::gpw::GpwDft cfg;
-    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = L;
+    return {cpu::gpw::Kind{
+        molrs::Element::H,
+        cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+        cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")}};
+}
+
+ATV::cpu::gpw::GpwDft base_uks_u(double u_ev) {
+    using namespace ATV;
+    cpu::gpw::GpwDft cfg{h_kinds()};
     cfg.cutoff_ry = 100.0;
     cfg.n_occ = 0;
     cfg.n_alpha = 2;
@@ -76,25 +90,25 @@ int main() {
     const auto t0 = clock::now();
 
     const double L = 8.0;
-    auto atoms = h2_toy(L);
+    cpu::Frame frame = h2_toy(L);
     constexpr double kU_ev = 4.0;
 
     // ── A1: explicit Γ OT+U ≡ multi-k DIIS+U at Γ ──────────────────────────
     {
-        GpwDft diis = base_uks_u(L, kU_ev);
+        GpwDft diis = base_uks_u(kU_ev);
         diis.use_ot = false;
         diis.k_points = {{0.0, 0.0, 0.0}};
         diis.k_point_weights = {1.0};
-        diis.build(atoms);
-        const GpwResult rd = diis.run(atoms);
+        diis.build(frame);
+        const GpwResult rd = diis.run(frame);
 
-        GpwDft ot = base_uks_u(L, kU_ev);
+        GpwDft ot = base_uks_u(kU_ev);
         ot.use_ot = true;
         ot.k_points = {{0.0, 0.0, 0.0}};
         ot.k_point_weights = {1.0};
         ot.max_iter = 200;
-        ot.build(atoms);
-        const GpwResult ro = ot.run(atoms);
+        ot.build(frame);
+        const GpwResult ro = ot.run(frame);
 
         check(rd.converged && ro.converged, "A1 both converge");
         const double d = std::fabs(ro.e_total - rd.e_total);
@@ -110,21 +124,21 @@ int main() {
     // ── A2: multi-k OT+U ≡ multi-k DIIS+U (κ = 1/4) ────────────────────────
     double e_ot_a2 = 0.0;
     {
-        GpwDft diis = base_uks_u(L, kU_ev);
+        GpwDft diis = base_uks_u(kU_ev);
         diis.use_ot = false;
         diis.k_points.push_back({0.25, 0.0, 0.0});
         diis.k_point_weights.push_back(1.0);
-        diis.build(atoms);
-        const GpwResult rd = diis.run(atoms);
+        diis.build(frame);
+        const GpwResult rd = diis.run(frame);
         check(rd.converged, "A2 multi-k DIIS+U converged");
 
-        GpwDft ot = base_uks_u(L, kU_ev);
+        GpwDft ot = base_uks_u(kU_ev);
         ot.use_ot = true;
         ot.k_points.push_back({0.25, 0.0, 0.0});
         ot.k_point_weights.push_back(1.0);
         ot.max_iter = 200;
-        ot.build(atoms);
-        const GpwResult ro = ot.run(atoms);
+        ot.build(frame);
+        const GpwResult ro = ot.run(frame);
         check(ro.converged, "A2 multi-k OT+U converged");
         check(ro.n_kpts == 1, "A2 n_kpts == 1");
         e_ot_a2 = ro.e_total;
@@ -149,8 +163,7 @@ int main() {
 
     {
         auto make = [&](bool with_u) {
-            GpwDft m;
-            m.cell[0] = m.cell[1] = m.cell[2] = L;
+            GpwDft m{h_kinds()};
             m.cutoff_ry = 100.0;
             m.n_occ = 0;
             m.n_alpha = 2;
@@ -166,8 +179,8 @@ int main() {
             m.use_ot = true;
             if (with_u)
                 m.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, kU_ev});
-            m.build(atoms);
-            return m.run(atoms);
+            m.build(frame);
+            return m.run(frame);
         };
 
         const GpwResult r0 = make(false);

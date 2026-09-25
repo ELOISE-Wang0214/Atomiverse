@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `constant-d-polarization-feedback` |
-| Regression | `regressions/md/constant-d-polarization-feedback/` |
 | Public API | `cpu::md::FixDfield(Dx, Dy, Dz)` with member `polarization_feedback` (default `false`); accessors `last_energy()`, `last_Pz()`, `last_Ez()` (Component, `Bias` kind, on `cpu::md::MD`, default `post_force` +100) |
 | Roadmap | map "Displacement D-field" → ✓★ (P2) |
 | Oracle | **literature** intentional — Zhang & Sprik 2016 / Cox & Sprik 2019 closed-form constant-D; not a 1:1 MW twin |
@@ -76,7 +75,7 @@ constant-D ensemble, and no MetalWalls binary is installed on the agent
 host. The pins are therefore the closed-form constant-D expressions from
 the finite-field papers — the same \(E = D - 4\pi P\) functional MetalWalls
 implements — evaluated with the project's Coulomb constant
-(`tools/metalwalls_oracle/inputs/literature/constant_d_pins.py`).
+(MetalWalls oracle).
 
 ### System (±1 e pair, cubic cell)
 
@@ -92,7 +91,7 @@ implements — evaluated with the project's Coulomb constant
 
 ### Offline closed-form pins
 
-Script: `tools/metalwalls_oracle/inputs/literature/constant_d_pins.py`.
+Script: MetalWalls oracle.
 
 Gate A (static, \(D_z = 0.5\) V/Å):
 
@@ -116,7 +115,7 @@ energy \(U_0 =\) **3.6190255157040796e−1** eV.
 - Berry-phase / electronic polarization (point charges only).
 - Coupling to induced dipoles or electrode charge solvers in this pin
   (compose `FixDfield` with `ConstPotBO` separately; see
-  `regressions/md/displacement-dfield-md`).
+  `displacement-dfield-md`).
 - A new Driver / solver class — only a member flag on `FixDfield`.
 - Public `*Config` bags or `make_*` / `build_*` factories.
 - Fair wall-clock twin vs a MetalWalls binary (none on agent host).
@@ -193,23 +192,23 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_constant-d-polarization-feedback -j"$(nproc)"
-  ./build/regressions/reg_constant-d-polarization-feedback
+  reg_constant-d-polarization-feedback
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/fix_dfield.h` | Public `FixDfield` (`Dx/Dy/Dz`, `polarization_feedback`, `last_Pz/last_Ez/last_energy`) |
+| `fix_dfield.h` | Public `FixDfield` (`Dx/Dy/Dz`, `polarization_feedback`, `last_Pz/last_Ez/last_energy`) |
 | `src/cpu/dynamics/fix_dfield.cpp` | \(P_z\) from unwrapped coords; \(E_z = D_z - 4\pi k_e P_z\); \(U_D\) + exact-gradient forces |
-| `regressions/md/constant-d-polarization-feedback/reg_constant-d-polarization-feedback.cpp` | Product gate (Gates A/B/C) |
-| `tools/metalwalls_oracle/inputs/literature/constant_d_pins.py` | Offline closed-form pin derivation |
+| `reg_constant-d-polarization-feedback.cpp` | Product gate (Gates A/B/C) |
+| MetalWalls oracle | Offline closed-form pin derivation |
 
 ## Validation (vs MetalWalls / Zhang–Sprik constant-D literature pins)
 
 Source:
-[`regressions/md/constant-d-polarization-feedback/REFERENCE.md`](../../../regressions/md/constant-d-polarization-feedback/REFERENCE.md)
+case `constant-d-polarization-feedback` pin
 (offline closed-form pins; **never** live MetalWalls in ctest). Oracle
-tooling: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
+tooling: MetalWalls oracle.
 
 **Oracle:** the constant-D electric-enthalpy functional
 \(E = D - 4\pi P\) from Zhang & Sprik (2016) / Cox & Sprik (2019) — the same
@@ -240,13 +239,13 @@ Geometry, masses, dt, and tolerances: **Method** table and REFERENCE
 ### Offline pin repro (never ctest)
 
 ```bash
-python3 tools/metalwalls_oracle/inputs/literature/constant_d_pins.py
+python <MetalWalls oracle pin for this case>
 ```
 
 ## Performance
 
 Source: REFERENCE.md; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{MetalWalls}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -284,11 +283,9 @@ re-run an offline fair bench, record version + walls, and replace
 
 ## References
 
-- Offline pin: [`regressions/md/constant-d-polarization-feedback/REFERENCE.md`](../../../regressions/md/constant-d-polarization-feedback/REFERENCE.md)
-- Product gate: [`regressions/md/constant-d-polarization-feedback/reg_constant-d-polarization-feedback.cpp`](../../../regressions/md/constant-d-polarization-feedback/reg_constant-d-polarization-feedback.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/fix_dfield.h`](../../../include/atomiverse/cpu/dynamics/fix_dfield.h)
-- Pin script: [`tools/metalwalls_oracle/inputs/literature/constant_d_pins.py`](../../../tools/metalwalls_oracle/inputs/literature/constant_d_pins.py)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md)
+- Offline pin: case `constant-d-polarization-feedback` pin
+- Pin script: MetalWalls oracle
+- Oracle notes: MetalWalls oracle
 - Capability map: `.claude/notes/metalwalls-capability-map.md` (Displacement D-field, P2)
 - Literature: C. Zhang, M. Sprik, *Phys. Rev. B* **93**, 144201 (2016), DOI [10.1103/PhysRevB.93.144201](https://doi.org/10.1103/PhysRevB.93.144201) (constant-D electric enthalpy \(F = E_{\mathrm{PBC}} + V(D-4\pi P)^2/8\pi\)); S. J. Cox, M. Sprik, *J. Chem. Phys.* **151**, 064506 (2019), DOI [10.1063/1.5099207](https://doi.org/10.1063/1.5099207) (finite-field bulk electrolyte formalism); M. Stengel, N. A. Spaldin, D. Vanderbilt, *Nat. Phys.* **5**, 304 (2009), DOI [10.1038/nphys1185](https://doi.org/10.1038/nphys1185) (constant-D functional origin)
-- Related foothold: `regressions/md/displacement-dfield-md`
+- Related foothold: `displacement-dfield-md`

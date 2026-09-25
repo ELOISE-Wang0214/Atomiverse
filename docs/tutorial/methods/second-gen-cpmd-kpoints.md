@@ -5,20 +5,19 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `second-gen-cpmd-kpoints` |
-| Regression | `regressions/dynamics/second-gen-cpmd-kpoints/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{…, k_mesh}, aspc_k, corrector_max_iter}` bound with `set_evaluator_ref`; predictor `cpu::electronic::ASPCPredictorCplx` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::SecondGenCp{cpu::gpw::GPWEvaluator{std::move(dft), true}, aspc_k, corrector_max_iter}` (method members incl. `k_mesh` on `cpu::gpw::GpwDft`) bound with `set_evaluator_ref`; predictor `cpu::electronic::ASPCPredictorCplx` |
 | Roadmap | MD AIMD multi-k SGCP residual closed 2026-07-26 |
 | Dual gate | Correctness (NVE drift + corrector budget + multi-k payload); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — harness wave 12 (2026-07-26) |
-| Oracle | Offline CP2K twin sketch only (`tools/cp2k_oracle/inputs/second-gen-cpmd-kpoints/`); never live in ctest |
+| Oracle | Offline CP2K twin sketch only (CP2K oracle); never live in ctest |
 
 ## Summary
 
 **Second-generation Car–Parrinello MD (SGCP / 2nd-gen CP)** on **multi-k
 closed-shell RKS** Gaussian-and-plane-waves (GPW / Quickstep) forces. The
 outer loop is the MD preset (`cpu::md::MD` + NVE `VelocityVerlet`); the force
-slot binds `cpu::gpw::GPWEvaluator` with `compute_forces = true`, a non-Γ
-`k_mesh`, and `second_gen_cp = true`. Per sampled \(k\), a Kolafa **ASPC**
+slot binds `cpu::gpw::GPWEvaluator` with `compute_forces = true` over a
+`cpu::gpw::GpwDft` with a non-Γ `k_mesh`, wrapped in `cpu::electronic::SecondGenCp`. Per sampled \(k\), a Kolafa **ASPC**
 predictor (`cpu::electronic::ASPCPredictorCplx`) extrapolates the complex Bloch
 density \(P_k\) from prior ionic steps; a **partial SCF corrector**
 (iteration budget ≪ full BOMD) refines that guess; analytic multi-k forces
@@ -35,7 +34,7 @@ corrector-budget gate. Public energy stays **eV** on `frame.meta`; internal
 Ha/Ry are method private.
 
 Related: multi-k density-guess socket twin [xl-bomd-uks-kpoints](xl-bomd-uks-kpoints.md)
-(Niklasson XL, not ASPC); multi-k force math `regressions/gpw/gpw-kpoint-forces`;
+(Niklasson XL, not ASPC); multi-k force math `gpw-kpoint-forces`;
 classical CPMD [cpmd-water](cpmd-water.md) (fictitious \(\mu\), not SGCP);
 Γ BOMD foothold [gpw-bomd-water](gpw-bomd-water.md).
 
@@ -192,14 +191,18 @@ constexpr double dt = 0.5;          // fs
 constexpr int corrector_budget = 5; // SCF iters per warm production step
 constexpr int n_seed = 2;           // ASPC K=1 needs K+1 densities
 
-cpu::gpw::GPWEvaluator gpw(
-    /*kinds*/ {H}, /*cutoff_ry*/ 100.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-    /*compute_forces*/ true);
-gpw.k_mesh[0] = 1;
-gpw.k_mesh[1] = 1;
-gpw.k_mesh[2] = 2;
-gpw.k_time_reversal = false;        // n_k = 2
+cpu::gpw::GpwDft dft{{H}};
+dft.cutoff_ry = 100.0;
+dft.max_iter = 60;
+dft.tol = 1e-5;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.nonperiodic = false;
+dft.k_mesh[0] = 1;
+dft.k_mesh[1] = 1;
+dft.k_mesh[2] = 2;
+dft.k_time_reversal = false;        // n_k = 2
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // SGCP (ASPC on the complex P_k + partial SCF) is the wrapper TYPE: the
 // Lagrange order K (needs K+1 seeds) and the production corrector budget are
 // its constructor arguments — the evaluator has no public mode flags.
@@ -214,7 +217,7 @@ sim.run(frame, n_seed);   // seed: fill ASPC histories (full SCF OK)
 //             |E(t)-E0|/scale <= 0.10, last_result().n_kpts >= 2
 ```
 
-The complex ASPC primitive is also public (`include/atomiverse/cpu/electronic/aspc_predictor.h`):
+The complex ASPC primitive is also public (`aspc_predictor.h`):
 
 ```cpp
 cpu::electronic::ASPCPredictorCplx aspc(/*order K=*/1);
@@ -242,16 +245,16 @@ Relevant sources:
 
 | Layer | Path |
 | ----- | ---- |
-| SGCP wrapper | `include/atomiverse/cpu/electronic/second_gen_cp.h` (`aspc_k`, `corrector_max_iter`) |
-| Evaluator | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (`k_mesh`, `k_time_reversal`; private SGCP mode bits) |
-| ASPC real / complex | `include/atomiverse/cpu/electronic/aspc_predictor.h` |
+| SGCP wrapper | `second_gen_cp.h` (`aspc_k`, `corrector_max_iter`) |
+| Evaluator | `gpw_evaluator.h` (`k_mesh`, `k_time_reversal`; private SGCP mode bits) |
+| ASPC real / complex | `aspc_predictor.h` |
 | Multi-k RKS SCF + SGCP payload | `src/cpu/gpw/` (GPW multi-k force path + ASPC seed/correct) |
 | Unit multi-k build / OT refuse | `tests/cpu/gpw/test_gpw_second_gen_cpmd.cpp` |
-| E2E | `regressions/dynamics/second-gen-cpmd-kpoints/` |
+| E2E | `second-gen-cpmd-kpoints` |
 
 ## Validation (vs CP2K / literature)
 
-Source: `regressions/dynamics/second-gen-cpmd-kpoints/REFERENCE.md` (offline
+Source: case `second-gen-cpmd-kpoints` pin (offline
 pin; never live CP2K in ctest).
 
 ### System
@@ -291,7 +294,7 @@ pin; never live CP2K in ctest).
 
 | Field | Value |
 | ----- | ----- |
-| Input | `tools/cp2k_oracle/inputs/second-gen-cpmd-kpoints/h2_sgcp_kpoints_nve.inp` |
+| Input | CP2K oracle |
 | Intent | Short NVE Quickstep RKS MD with `&KPOINTS` MONKHORST-PACK \(1\,1\,2\), `EXTRAPOLATION ASPC` order 1, `MAX_SCF 5` (SGCP signature) |
 | Status | **Unexecuted** on pin host 2026-07-26 (no `cp2k` binary / Lmod module) |
 | When binary available | Re-run offline; replace pin section with CP2K version + measured drift + fair wall |
@@ -302,8 +305,8 @@ bit-identical density history or energy.
 
 ## Performance
 
-Source: the case `REFERENCE.md` (wave 12),
-`REFERENCE.md` Perf gate.
+Source: the case pin notes (wave 12),
+pin notes Perf gate.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
 | ---- | ------------------------: | ----------------------: | -----------------------------------------: | ---- | ------ |
@@ -334,12 +337,11 @@ NVE drift + corrector-budget envelope, not a wall-clock ratio.
 
 ## References
 
-- Offline pin: `regressions/dynamics/second-gen-cpmd-kpoints/REFERENCE.md`
-- Regression: `regressions/dynamics/second-gen-cpmd-kpoints/reg_second-gen-cpmd-kpoints.cpp`
-- CP2K twin sketch: `tools/cp2k_oracle/inputs/second-gen-cpmd-kpoints/h2_sgcp_kpoints_nve.inp`
-- Oracle rules: `tools/cp2k_oracle/README.md`
-- Prior product paths: `regressions/dynamics/second-gen-cpmd-water`;
-  multi-k force pin `regressions/gpw/gpw-kpoint-forces`;
+- Offline pin: case `second-gen-cpmd-kpoints` pin
+- CP2K twin sketch: CP2K oracle
+- Oracle rules: CP2K oracle
+- Prior product paths: `second-gen-cpmd-water`;
+  multi-k force pin `gpw-kpoint-forces`;
   multi-k XL twin [xl-bomd-uks-kpoints](xl-bomd-uks-kpoints.md);
   classical CP [cpmd-water](cpmd-water.md)
 - T. D. Kühne, M. Krack, F. R. Mohamed, M. Parrinello, *Phys. Rev. Lett.*

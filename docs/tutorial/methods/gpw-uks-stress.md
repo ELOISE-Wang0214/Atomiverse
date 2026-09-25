@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | slug | `gpw-uks-stress` |
-| Regression | `regressions/gpw/gpw-uks-stress/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`n_alpha`/`n_beta`, `XcKind::PBE`, `compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd` |
+| Public API | `cpu::gpw::GpwDft` members (`n_alpha`/`n_beta`, `XcKind::PBE`) bound through `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd` |
 | Related narrative | [Ch. 9 GPW](../ch09-gpw.md) |
 
 ## Summary
@@ -20,10 +19,11 @@ and the analytic-vs-multi-SCF-FD stress dual-gate against offline **CP2K
 2026.1 Quickstep** (energy from the sibling `gpw-uks-forces` ENERGY_FORCE
 pin; stress twin input `STRESS_TENSOR NUMERICAL`).
 
-Public path: construct `cpu::gpw::GPWEvaluator` with one `Kind` for O
-(lookup constructors `GaussianBasis` / `GthPotential`), set members
-(`n_alpha=7`, `n_beta=5`, `cutoff_ry`, `xc=PBE`, `nonperiodic`,
-`compute_stress=true`, `stress_use_fd=false`), bind into `cpu::Evaluate`.
+Public path: construct `cpu::gpw::GpwDft` with one `Kind` for O
+(lookup constructors `GaussianBasis` / `GthPotential`), set its members
+(`n_alpha=7`, `n_beta=5`, `cutoff_ry`, `xc=PBE`, `nonperiodic`), move it into
+`cpu::gpw::GPWEvaluator` with `compute_stress=true`, `stress_use_fd=false`,
+bind into `cpu::Evaluate`.
 Frame energy is **eV** on `kEnergy`; pin channel is
 `last_energy_hartree()` [Ha] and `last_stress_ha_bohr3()` [Ha/Bohr³]; public
 stress on Frame is `kStress` [eV/Å³] Voigt. Product gate:
@@ -32,7 +32,7 @@ stress wall on the pin host; dual-gate multi-SCF FD dominates wall).
 
 Related: closed-shell analytic stress [gpw-analytic-stress](gpw-analytic-stress.md);
 strain-FD water pin [gpw-stress-water](gpw-stress-water.md); energy/forces
-sibling `regressions/gpw/gpw-uks-forces/`; PADE UKS energy foothold
+sibling `gpw-uks-forces`; PADE UKS energy foothold
 [gpw-uks-o2-gamma](gpw-uks-o2-gamma.md). **Out of loop scope:** multi-k UKS
 stress (residual; analytic path throws), molecular post-HF, classical MD.
 
@@ -109,7 +109,7 @@ in the cell. Citation: Martyna & Tuckerman, *J. Chem. Phys.* **110**, 2810
 
 ## Implementation
 
-Public surface only (`cpu::Frame`, concrete evaluator members; **no**
+Public surface only (`cpu::Frame`, concrete `GpwDft` members; **no**
 `*Config` bag, **no** `make_*` / `build_*` factories). Match the regression:
 
 ```cpp
@@ -146,19 +146,20 @@ const cpu::gpw::Kind O{
     cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
     cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
-cpu::gpw::GPWEvaluator eval({O});
-eval.cutoff_ry = 400.0;
-eval.max_iter = 200;
-eval.tol = 1e-7;
-eval.mix = 0.4;
-eval.xc = cpu::gpw::XcKind::PBE;
-eval.nonperiodic = true;
-eval.compute_forces = false;
+cpu::gpw::GpwDft dft{{O}};
+dft.cutoff_ry = 400.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.4;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = true;
+dft.n_alpha = 7;             // multiplicity 3, 12 valence e⁻
+dft.n_beta = 5;
+
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 eval.compute_stress = true;
 eval.stress_use_fd = false;   // product analytic fixed-P (default)
 eval.stress_strain_h = 2e-3;
-eval.n_alpha = 7;             // multiplicity 3, 12 valence e⁻
-eval.n_beta = 5;
 
 cpu::Evaluate driver;
 driver.on(evaluate::Phase::evaluate).add_ref(eval);
@@ -176,10 +177,9 @@ Multi-SCF FD oracle (public free function; dual-gate only, not the product
 default):
 
 ```cpp
-// After method.build(atoms) with the same UKS members…
+// `method`: a GpwDft with the same kinds + UKS members, `frame` as above
 const auto sfd = cpu::gpw::gpw_stress_fd(
-    atoms, method, /*h=*/2e-3, /*axes*/ {true, true, true},
-    /*C_guess*/ nullptr);
+    frame, method, /*h=*/2e-3, /*axes*/ {true, true, true});  // [Ha/Bohr³]
 ```
 
 Build (GPW needs HF + PW + FFTW3) and run the regression:
@@ -196,7 +196,7 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-uks-stress
-  ./build/regressions/reg_gpw-uks-stress
+  reg_gpw-uks-stress
 '
 ```
 
@@ -204,18 +204,17 @@ Relevant sources:
 
 | Piece | Path |
 | ----- | ---- |
-| Evaluator | `include/atomiverse/cpu/gpw/gpw_evaluator.h` |
-| Free stress API | `include/atomiverse/cpu/gpw/gpw_solver.h` (`gpw_stress` / `gpw_stress_fd`) |
+| Evaluator | `gpw_evaluator.h` |
+| Free stress API | `gpw_solver.h` (`gpw_stress` / `gpw_stress_fd`) |
 | Stress implementation | `src/cpu/gpw/internal/gpw_stress.cpp` |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` |
-| Regression | `regressions/gpw/gpw-uks-stress/reg_gpw-uks-stress.cpp` |
-| Offline pins | `regressions/gpw/gpw-uks-stress/REFERENCE.md` |
-| CP2K twin input | `tools/cp2k_oracle/inputs/gpw-uks-stress/o2_uks_stress_num.inp` |
-| Energy pin provenance | `regressions/gpw/gpw-uks-forces/REFERENCE.md` |
+| Offline pins | case `gpw-uks-stress` pin |
+| CP2K twin input | CP2K oracle |
+| Energy pin provenance | case `gpw-uks-forces` pin |
 
 ## Validation (CP2K)
 
-Source: `regressions/gpw/gpw-uks-stress/REFERENCE.md` (offline pin; **never**
+Source: case `gpw-uks-stress` pin (offline pin; **never**
 live CP2K in ctest). Engine: **CP2K 2026.1** Quickstep. Energy digits from
 sibling ENERGY_FORCE twin `gpw-uks-forces` (2026-07-25). Absolute NUMERICAL
 stress Voigt digits **not invented** (CP2K module absent on pin host); the
@@ -273,7 +272,7 @@ module load buildtool-easybuild/5.2.1-hpca3ef7d197 GCC/14.3.0 MPICH/4.3.2 CP2K/2
 export CP2K_DATA_DIR=$EBROOTCP2K/share/cp2k/data
 export OMP_NUM_THREADS=4
 cd /tmp && ln -sf $CP2K_DATA_DIR/{BASIS_MOLOPT,GTH_POTENTIALS} .
-# copy tools/cp2k_oracle/inputs/gpw-uks-stress/o2_uks_stress_num.inp
+# copy <CP2K oracle input for this case>
 mpirun -n 1 cp2k.psmp -i o2_uks_stress_num.inp -o o2_uks_stress_num.out
 # ENERGY| Total FORCE_EVAL ( QS ) energy [hartree]  ~ -31.9288
 # STRESS| Numerical stress tensor [bar]  …
@@ -282,7 +281,7 @@ mpirun -n 1 cp2k.psmp -i o2_uks_stress_num.inp -o o2_uks_stress_num.out
 
 ## Performance
 
-Source: `REFERENCE.md` + the case `REFERENCE.md`. **Not** a
+Source: pin notes + the case pin notes. **Not** a
 ctest gate.
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}}\) | ≤10× | Caveat |
@@ -320,11 +319,11 @@ ctest gate.
 
 ## References
 
-- Offline pin + walls: [`regressions/gpw/gpw-uks-stress/REFERENCE.md`](../../../regressions/gpw/gpw-uks-stress/REFERENCE.md)
-- Regression consumer: [`reg_gpw-uks-stress.cpp`](../../../regressions/gpw/gpw-uks-stress/reg_gpw-uks-stress.cpp)
-- CP2K twin: [`tools/cp2k_oracle/inputs/gpw-uks-stress/`](../../../tools/cp2k_oracle/inputs/gpw-uks-stress/)
-- Energy pin sibling: [`regressions/gpw/gpw-uks-forces/REFERENCE.md`](../../../regressions/gpw/gpw-uks-forces/REFERENCE.md)
-- Oracle contract: [`tools/cp2k_oracle/README.md`](../../../tools/cp2k_oracle/README.md)
+- Offline pin + walls: case `gpw-uks-stress` pin
+- Regression consumer: `reg_gpw-uks-stress.cpp`
+- CP2K twin: CP2K oracle
+- Energy pin sibling: case `gpw-uks-forces` pin
+- Oracle contract: CP2K oracle
 - Closed-shell analytic stress: [`gpw-analytic-stress.md`](gpw-analytic-stress.md)
 - Strain-FD water pin: [`gpw-stress-water.md`](gpw-stress-water.md)
 - PADE UKS energy foothold: [`gpw-uks-o2-gamma.md`](gpw-uks-o2-gamma.md)

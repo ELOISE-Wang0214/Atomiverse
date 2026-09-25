@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-mbd-periodic` |
-| Regression | `regressions/gpw/gpw-mbd-periodic/` |
-| Public API | `cpu::gpw::GpwDft::mbd` + `mbd_k_mesh[3]`; `cpu::gpw::GPWEvaluator::mbd` + `mbd_k_mesh[3]`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::GpwDft::mbd` + `mbd_k_mesh[3]` (bound by `cpu::gpw::GPWEvaluator`); `GpwResult::e_disp` [Ha] |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion / §10 |
 
 ## Summary
@@ -24,11 +23,11 @@ periodic Ewald dipole tensors and k-mesh ZPE averaging; free-atom volume
 ratios \(V/V_{\mathrm{free}}=1\) (no Hirshfeld on this pin — see
 `gpw-mbd-hirshfeld`).
 
-Public surface: bool `mbd` and `int mbd_k_mesh[3]` on `cpu::gpw::GpwDft` and
-`cpu::gpw::GPWEvaluator` (no `*Config` bag). Dispersion is reported on
+Public surface: bool `mbd` and `int mbd_k_mesh[3]` on `cpu::gpw::GpwDft`, bound
+into drivers by `cpu::gpw::GPWEvaluator` (no `*Config` bag). Dispersion is reported on
 `GpwResult::e_disp` [Hartree] and folded into `e_total`. Mutually exclusive
 with `d3` / `d3bj` / `d4` / `ts` / `vdw_df` / `vdw_df2` / `rvv10`. Product
-gate: `regressions/gpw/gpw-mbd-periodic` (`reg_gpw-mbd-periodic`). Wall ratio
+gate: `gpw-mbd-periodic` (`reg_gpw-mbd-periodic`). Wall ratio
 is **perf_exempt** (E_disp pin; full QS twin wall unfair — see Performance).
 
 ## Method
@@ -85,7 +84,7 @@ scope** (OT/grid/DIIS differences).
 `PAIR_POTENTIAL TYPE` is only `DFTD2|DFTD3|DFTD3(BJ)|DFTD4` — MBD is external
 libMBD when linked. Hard pin is **pure-Python pymbd** (same algorithm as
 libMBD Fortran), same policy as `gpw-mbd-ice`. Twin notes under
-`tools/cp2k_oracle/inputs/gpw-mbd-periodic/`.
+CP2K oracle.
 
 **Key exclusions (from closed product scope).**
 
@@ -99,28 +98,28 @@ libMBD Fortran), same policy as `gpw-mbd-ice`. Twin notes under
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
+Public surface only (`GpwDft` members + `GPWEvaluator`; no `*Config`, no
 `make_*` / `build_*` factories). Regression uses the concrete solver:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
 
-// Geometry [Å] → Bohr — water dimer (REFERENCE.md).
-constexpr double kA2B = 1.0 / 0.52917720859;
-// … fill 6 GpwAtom rows (2×O + 4×H) with DZVP-MOLOPT-SR-GTH + GTH-PBE-q* …
+// Frame [Å] — water dimer (REFERENCE.md).
+// … fill 6 rows (2×O + 4×H): kAtom_x/y/z [Å], Z in kAtom_type …
+frame.box = ATV::cpu::Box::cubic(12.0); // Å
 
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+// kinds O, H: DZVP-MOLOPT-SR-GTH + GTH-PBE-q6 / GTH-PBE-q1
+GpwDft gpw{{O, H}};
 gpw.cutoff_ry = 200.0; // e_disp is geometry-only; SCF only needs to run
 gpw.n_occ = 8;         // 16 valence e⁻ → 8 doubly occupied
 gpw.max_iter = 8;
@@ -131,8 +130,8 @@ gpw.nonperiodic = false;
 gpw.mbd = true;
 gpw.mbd_k_mesh[0] = gpw.mbd_k_mesh[1] = gpw.mbd_k_mesh[2] = 2; // periodic
 
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp [Ha] within 1e-8 of offline pymbd pin
 // res.e_total includes e_disp
 ```
@@ -141,12 +140,12 @@ Driver / Frame path (component; same members):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/300.0, /*max_iter=*/200,
-                                 /*tol=*/1e-7, /*mix=*/0.3,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false);
-eval.mbd = true;
-eval.mbd_k_mesh[0] = eval.mbd_k_mesh[1] = eval.mbd_k_mesh[2] = 2;
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 300.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;  dft.nonperiodic = false;
+dft.mbd = true;
+dft.mbd_k_mesh[0] = dft.mbd_k_mesh[1] = dft.mbd_k_mesh[2] = 2;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft));
 // single_point(frame, eval) or bind on Evaluate / MD / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 ```
@@ -168,29 +167,29 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_gpw-mbd-periodic -j$(nproc)
-  ./build/regressions/reg_gpw-mbd-periodic
+  reg_gpw-mbd-periodic
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `mbd`, `mbd_k_mesh` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::mbd`, `mbd_k_mesh` |
-| `include/atomiverse/cpu/gpw/internal/mbd_dispersion.h` | `mbd_rsscs_pbe` (private; periodic flag + k-mesh) |
-| `include/atomiverse/cpu/gpw/basis_data/ts_tables.h` | Free-atom \(\alpha_0\), \(C_6\), \(R_{\mathrm{vdW}}\) |
-| `regressions/gpw/gpw-mbd-periodic/reg_gpw-mbd-periodic.cpp` | Product gate |
-| `regressions/gpw/gpw-mbd-periodic/REFERENCE.md` | Offline pin + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-mbd-periodic/` | Oracle notes (pymbd reproduce) |
+| `gpw_solver.h` | `GpwDft`, `GpwResult::e_disp`, `mbd`, `mbd_k_mesh` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds `GpwDft` into a driver) |
+| `mbd_dispersion.h` | `mbd_rsscs_pbe` (private; periodic flag + k-mesh) |
+| `ts_tables.h` | Free-atom \(\alpha_0\), \(C_6\), \(R_{\mathrm{vdW}}\) |
+| `reg_gpw-mbd-periodic.cpp` | Product gate |
+| case `gpw-mbd-periodic` pin | Offline pin + perf_exempt |
+| CP2K oracle | Oracle notes (pymbd reproduce) |
 
 ## Validation (pymbd / libMBD family)
 
 Source:
-[`regressions/gpw/gpw-mbd-periodic/REFERENCE.md`](../../../regressions/gpw/gpw-mbd-periodic/REFERENCE.md).
+case `gpw-mbd-periodic` pin.
 Oracle: offline **pure-Python pymbd** (`libmbd/src/pymbd/pymbd.py` `mbd_energy`),
 ATV Å→Bohr factor `1/0.52917720859`. External engine pin — not a golden of
 Atomiverse’s own output; **never** launch live CP2K / libMBD / pymbd from
 ctest. Twin notes:
-`tools/cp2k_oracle/inputs/gpw-mbd-periodic/water_dimer_mbd_periodic.note`.
+CP2K oracle.
 
 **Setup:**
 
@@ -227,7 +226,7 @@ mbd_energy(coords, alpha_0, C6, R_vdw, beta=0.83, lattice=lattice, k_grid=(2,2,2
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 MBD evaluation is \(O(N_k \cdot (3N)^3)\) on a 6-atom system (milliseconds).
 Full GPW SCF wall is dominated by the electronic structure, not MBD. A fair
@@ -265,12 +264,12 @@ libMBD-linked CP2K.
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-mbd-periodic/REFERENCE.md`
-- Oracle notes: `tools/cp2k_oracle/inputs/gpw-mbd-periodic/`
-- Oracle rules: `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-mbd-periodic` pin
+- Oracle notes: CP2K oracle
+- Oracle rules: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
-- Related isolated MBD: `regressions/gpw/gpw-mbd-ice/` (no methods page yet)
-- Related Hirshfeld MBD: `regressions/gpw/gpw-mbd-hirshfeld/`
+- Related isolated MBD: `gpw-mbd-ice` (no methods page yet)
+- Related Hirshfeld MBD: `gpw-mbd-hirshfeld`
 - Related pairwise D3(BJ): [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice.md)
 - Related D4: [gpw-d4-water](gpw-d4-water.md)
 - GPW narrative chapter: `docs/tutorial/ch09-gpw.md`

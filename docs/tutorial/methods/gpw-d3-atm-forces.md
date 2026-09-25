@@ -5,9 +5,8 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d3-atm-forces` |
-| Regression | `regressions/gpw/gpw-d3-atm-forces/` |
-| Public API | `cpu::gpw::GPWEvaluator{d3 = true, d3_atm = true, compute_forces = true}` |
-| Roadmap / queue | `docs/roadmap/dft.md` §8 Dispersion; queue wave 14 |
+| Public API | `cpu::gpw::GpwDft` (`d3 = true`, `d3_atm = true`) + `forces(frame)`, or `cpu::gpw::GPWEvaluator{std::move(dft), /*compute_forces=*/true}` |
+| Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
 
@@ -51,7 +50,7 @@ pure ATM gradient at 4.6e−7 (iso) / 6.9e−7 (per) Ha/Bohr — ~500× above th
 
 ## Performance
 
-Twin walls from `REFERENCE.md` (CP2K TIMING `CP2K` TOTAL TIME, `mpirun -np 2`,
+Twin walls from pin notes (CP2K TIMING `CP2K` TOTAL TIME, `mpirun -np 2`,
 `OMP_NUM_THREADS=2`); ATV wall is the full regression (iso + per SCF + forces).
 
 | Twin | \(T_{\mathrm{CP2K}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -86,8 +85,8 @@ Not covered here: the ATM **virial** is still zero (`d3_atm` under
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DATV_BUILD_REGRESSIONS=ON \
       -DATV_BUILD_HF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON -DATV_BUILD_CUDA=OFF
 cmake --build build --target reg_gpw-d3-atm-forces -j$(nproc)
-./build/regressions/reg_gpw-d3-atm-forces
+reg_gpw-d3-atm-forces
 ```
 
 Offline oracle (never run from ctest): CP2K 2026.1 inputs under
-`tools/cp2k_oracle/inputs/gpw-d3-atm-forces/`.
+CP2K oracle.

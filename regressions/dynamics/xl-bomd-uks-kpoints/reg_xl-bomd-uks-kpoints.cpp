@@ -10,6 +10,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -62,18 +63,20 @@ int main() {
 
     // Cheap multi-k × dual-spin envelope (absolute force quality is pinned in
     // gpw-kpoint-uks-forces / gpw-kpoints-uks).
-    cpu::gpw::GPWEvaluator gpw(
-        /*kinds*/ {H}, /*cutoff_ry*/ 100.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-        /*compute_forces*/ true);
+    cpu::gpw::GpwDft dft{{H}};
+    dft.cutoff_ry = 100.0;
+    dft.max_iter = 60;
+    dft.tol = 1e-5;
+    dft.mix = 0.3;
     // Closed-shell fillings on the UKS path: both channels non-empty (dual
     // XL), molecule bound (unlike high-spin H₂ which is repulsive).
-    gpw.n_alpha = 1;
-    gpw.n_beta = 1;
-    gpw.k_mesh[0] = 1;
-    gpw.k_mesh[1] = 1;
-    gpw.k_mesh[2] = 2;
-    gpw.k_time_reversal = false; // two sampled k
+    dft.n_alpha = 1;
+    dft.n_beta = 1;
+    dft.k_mesh[0] = 1;
+    dft.k_mesh[1] = 1;
+    dft.k_mesh[2] = 2;
+    dft.k_time_reversal = false; // two sampled k
+    cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
     cpu::electronic::XlBomdForce eval{std::move(gpw), 5};
 
     constexpr double dt = 0.5; // fs

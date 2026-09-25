@@ -5,22 +5,23 @@
 /// metallic smear, Monkhorst–Pack 2×2×2. Gates free-energy pin, electron
 /// count, fractional f_k payload, finite free-energy forces, Newton-3,
 /// closed-shell UKS+smear ≡ RKS+smear force identity. See REFERENCE.md.
-/// Public: `GpwDft` + `gpw_forces_analytic` / `gpw_forces_from_scf`.
+/// Public: `GpwDft::forces(frame)` (SCF + analytic forces on the Frame).
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
-
-constexpr double kA2B = 1.0 / 0.52917720859; // Å → Bohr
 
 // Frozen ATV pins (Release, OMP=8) — filled after first green; see REFERENCE.
 // Free energy matches gpw-uks-smearing (same electronic path).
@@ -45,39 +46,69 @@ void check(bool ok, const char* what) {
 }
 
 /// BCC conventional cubic: 2 Na at (0,0,0) and (½,½,½).
-std::vector<ATV::cpu::gpw::GpwAtom> na_bcc(double a_bohr) {
-    using namespace ATV;
-    const cpu::gpw::GaussianBasis bNa(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH");
-    const cpu::gpw::GthPotential pNa(molrs::Element::Na, "GTH-PBE-q9");
+ATV::cpu::Frame na_bcc(double a_ang) {
     const double frac[2][3] = {{0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}};
-    std::vector<cpu::gpw::GpwAtom> atoms;
+    ATV::cpu::Frame frame(2);
     for (int i = 0; i < 2; ++i) {
-        const double pos[3] = {frac[i][0] * a_bohr, frac[i][1] * a_bohr,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bNa, pNa, 11);
+        frame.span(ATV::kAtom_type)[i] = 11;
+        frame.span(ATV::kAtom_x)[i] = frac[i][0] * a_ang;
+        frame.span(ATV::kAtom_y)[i] = frac[i][1] * a_ang;
+        frame.span(ATV::kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = ATV::cpu::Box::cubic(a_ang);
+    return frame;
+}
+
+std::vector<ATV::cpu::gpw::Kind> na_kinds() {
+    using namespace ATV::cpu::gpw;
+    return {Kind{molrs::Element::Na,
+                 GaussianBasis(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH"),
+                 GthPotential(molrs::Element::Na, "GTH-PBE-q9")}};
 }
 
 /// Slightly off-equilibrium H₂ for a nonzero free-energy force identity gate.
-std::vector<ATV::cpu::gpw::GpwAtom> h2_toy(double L_bohr) {
-    using namespace ATV;
-    const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-    const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-    const double r0[3] = {0.5 * L_bohr - 0.55, 0.5 * L_bohr, 0.5 * L_bohr};
-    const double r1[3] = {0.5 * L_bohr + 0.55, 0.5 * L_bohr, 0.5 * L_bohr};
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.emplace_back(r0, bH, pH, 1);
-    atoms.emplace_back(r1, bH, pH, 1);
-    return atoms;
+/// Geometry authored in Bohr (cubic cell of edge `L_bohr`).
+ATV::cpu::Frame h2_toy(double L_bohr) {
+    using ATV::units::kBohrInAngstrom;
+    const double r[2][3] = {{0.5 * L_bohr - 0.55, 0.5 * L_bohr, 0.5 * L_bohr},
+                            {0.5 * L_bohr + 0.55, 0.5 * L_bohr, 0.5 * L_bohr}};
+    ATV::cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(ATV::kAtom_type)[i] = 1;
+        frame.span(ATV::kAtom_x)[i] = r[i][0] * kBohrInAngstrom;
+        frame.span(ATV::kAtom_y)[i] = r[i][1] * kBohrInAngstrom;
+        frame.span(ATV::kAtom_z)[i] = r[i][2] * kBohrInAngstrom;
+    }
+    frame.box = ATV::cpu::Box::cubic(L_bohr * kBohrInAngstrom);
+    return frame;
+}
+
+std::vector<ATV::cpu::gpw::Kind> h_kinds() {
+    using namespace ATV::cpu::gpw;
+    return {Kind{molrs::Element::H,
+                 GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                 GthPotential(molrs::Element::H, "GTH-PADE-q1")}};
+}
+
+/// Frame forces [eV/Å] → per-atom [Ha/Bohr].
+std::vector<std::array<double, 3>> forces_ha_bohr(const ATV::cpu::Frame& f) {
+    const int n = f.nlocal();
+    std::vector<std::array<double, 3>> F(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        F[i][0] = f.span(ATV::kAtom_fx)[i]
+                  / ATV::units::kHartreePerBohrInEvPerAngstrom;
+        F[i][1] = f.span(ATV::kAtom_fy)[i]
+                  / ATV::units::kHartreePerBohrInEvPerAngstrom;
+        F[i][2] = f.span(ATV::kAtom_fz)[i]
+                  / ATV::units::kHartreePerBohrInEvPerAngstrom;
+    }
+    return F;
 }
 
 } // namespace
 
 int main() {
     using namespace ATV;
-    using cpu::gpw::gpw_forces_analytic;
-    using cpu::gpw::gpw_forces_from_scf;
     using cpu::gpw::GpwDft;
     using cpu::gpw::Smearing;
     using cpu::gpw::XcKind;
@@ -87,10 +118,9 @@ int main() {
     // ── A0: closed-shell multi-k UKS+smear forces ≡ RKS+smear (H₂) ────────
     {
         const double L = 10.0;
-        auto atoms = h2_toy(L);
+        auto frame = h2_toy(L);
 
-        GpwDft rks;
-        rks.cell[0] = rks.cell[1] = rks.cell[2] = L;
+        GpwDft rks{h_kinds()};
         rks.cutoff_ry = 100.0;
         rks.n_occ = 1;
         rks.max_iter = 80;
@@ -102,8 +132,7 @@ int main() {
         rks.smearing = Smearing::fermi_dirac;
         rks.degauss = 0.02;
 
-        GpwDft uks;
-        uks.cell[0] = uks.cell[1] = uks.cell[2] = L;
+        GpwDft uks{h_kinds()};
         uks.cutoff_ry = 100.0;
         uks.n_alpha = 1;
         uks.n_beta = 1;
@@ -116,8 +145,12 @@ int main() {
         uks.smearing = Smearing::fermi_dirac;
         uks.degauss = 0.02;
 
-        const auto Fr = gpw_forces_analytic(atoms, rks);
-        const auto Fu = gpw_forces_analytic(atoms, uks);
+        rks.build(frame);
+        rks.forces(frame);
+        const auto Fr = forces_ha_bohr(frame);
+        uks.build(frame);
+        uks.forces(frame);
+        const auto Fu = forces_ha_bohr(frame);
         check(Fr.size() == 2 && Fu.size() == 2, "A0 two force vectors each");
         double max_d = 0.0;
         for (int a = 0; a < 2; ++a)
@@ -136,12 +169,10 @@ int main() {
     // ── A1: BCC Na multi-k UKS + FD free energy + analytic forces ─────────
     {
         const double a_ang = 4.225;
-        const double a_bohr = a_ang * kA2B;
-        auto atoms = na_bcc(a_bohr);
+        auto frame = na_bcc(a_ang);
 
         auto make_cfg = [&]() {
-            GpwDft m;
-            m.cell[0] = m.cell[1] = m.cell[2] = a_bohr;
+            GpwDft m{na_kinds()};
             m.cutoff_ry = 150.0;
             m.n_alpha = 10;
             m.n_beta = 8;
@@ -158,8 +189,9 @@ int main() {
 
         const auto t_scf0 = std::chrono::steady_clock::now();
         GpwDft energy = make_cfg();
-        energy.build(atoms);
-        const auto er = energy.run(atoms);
+        energy.build(frame);
+        // One SCF + analytic forces at that density (Frame forces [eV/Å]).
+        const auto& er = energy.forces(frame);
         const auto t_scf1 = std::chrono::steady_clock::now();
         const double t_scf_s =
             std::chrono::duration<double>(t_scf1 - t_scf0).count();
@@ -185,7 +217,7 @@ int main() {
                     er.n_elec_occ, t_scf_s);
 
         const auto t_f0 = std::chrono::steady_clock::now();
-        const auto Fa = gpw_forces_from_scf(atoms, make_cfg(), er);
+        const auto Fa = forces_ha_bohr(frame);
         const auto t_f1 = std::chrono::steady_clock::now();
         const double t_force_s =
             std::chrono::duration<double>(t_f1 - t_f0).count();
@@ -210,7 +242,8 @@ int main() {
         check(sum_mag <= kSumFTol, "A1 |sum F| residual (Newton-3)");
 
         // Fair wall class: SCF + force assembly (matched twin is ENERGY_FORCE).
-        // One SCF + from_scf (no second cold SCF) — same density as energy pin.
+        // One SCF + forces (no second cold SCF) — same density as energy pin.
+        // `forces(frame)` times SCF + assembly together inside t_scf_s.
         const double t_atv = t_scf_s + t_force_s;
         std::printf("ATV_WALL_SCF_FORCE %.6f s\n", t_atv);
     }

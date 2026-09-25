@@ -9,10 +9,12 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/molrs.hpp"
 
@@ -41,10 +43,9 @@ constexpr double kWireTol = 1.0e-8;                   // Ha/Bohr
 int main() {
     using namespace ATV;
     using cpu::gpw::GaussianBasis;
-    using cpu::gpw::gpw_forces_from_scf;
-    using cpu::gpw::GpwAtom;
     using cpu::gpw::GpwDft;
     using cpu::gpw::GthPotential;
+    using cpu::gpw::Kind;
     using cpu::gpw::mbd_rsscs_pbe;
     using cpu::gpw::MbdResult;
     using cpu::gpw::XcKind;
@@ -97,16 +98,33 @@ int main() {
     check(sum_norm <= kSumFTol, "A4 |sum F_MBD|");
 
     // ── B: multi-k product wiring (H2 1×1×2 + free-atom MBD) ──────────────
-    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
-    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
-    const double rA[3] = {5.5, 6.0, 6.0};
-    const double rB[3] = {6.5, 6.0, 6.0};
-    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
-                                  GpwAtom(rB, basis, pot, 1)};
+    const double rA[3] = {5.5, 6.0, 6.0}; // Bohr
+    const double rB[3] = {6.5, 6.0, 6.0}; // Bohr
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        const double* r = (i == 0) ? rA : rB;
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_x)[i] = r[0] * units::kBohrInAngstrom;
+        frame.span(kAtom_y)[i] = r[1] * units::kBohrInAngstrom;
+        frame.span(kAtom_z)[i] = r[2] * units::kBohrInAngstrom;
+    }
+    frame.box = cpu::Box::cubic(12.0 * units::kBohrInAngstrom);
+    // Frame forces [eV/Å] → Ha/Bohr.
+    auto frame_forces_ha_bohr = [&]() {
+        std::vector<std::array<double, 3>> F(2);
+        for (int i = 0; i < 2; ++i)
+            F[static_cast<std::size_t>(i)] = {
+                frame.span(kAtom_fx)[i] / units::kHartreePerBohrInEvPerAngstrom,
+                frame.span(kAtom_fy)[i] / units::kHartreePerBohrInEvPerAngstrom,
+                frame.span(kAtom_fz)[i]
+                    / units::kHartreePerBohrInEvPerAngstrom};
+        return F;
+    };
 
     auto make_cfg = [](bool mbd) {
-        GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        GpwDft m{{Kind{molrs::Element::H,
+                       GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                       GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
         m.cutoff_ry = 100.0;
         m.n_occ = 1;
         m.tol = 1e-8;
@@ -123,17 +141,22 @@ int main() {
     };
 
     GpwDft cfg = make_cfg(true);
-    cfg.build(atoms);
-    const auto& scf = cfg.run(atoms);
+    cfg.build(frame);
+    // SCF + analytic forces (free-atom MBD folded).
+    const auto& scf = cfg.forces(frame);
+    const auto F_mbd = frame_forces_ha_bohr();
     check(scf.converged, "B multi-k SCF converged");
     // 1×1×2 + TR may collapse to n_kpts==1; Γ path reports n_kpts==0.
     check(scf.n_kpts >= 1 && !scf.C_occ_k.empty(), "B multi-k C_occ_k payload");
     check(std::isfinite(scf.e_disp) && scf.e_disp < 0.0, "B e_disp finite <0");
 
-    // GpwDft is non-copyable; rebuild a plain flag set for the second assembly.
-    const auto F_mbd = gpw_forces_from_scf(atoms, cfg, scf);
+    // Same electronic state: free-atom MBD is a geometry-only constant that
+    // never enters the KS matrix, so the plain SCF walks the identical
+    // iteration path and lands on the same density as `scf`.
     GpwDft plain = make_cfg(false);
-    const auto F_plain = gpw_forces_from_scf(atoms, plain, scf);
+    plain.build(frame);
+    plain.forces(frame);
+    const auto F_plain = frame_forces_ha_bohr();
     check(F_mbd.size() == 2 && F_plain.size() == 2, "B two force vectors");
 
     std::vector<int> Zh = {1, 1};

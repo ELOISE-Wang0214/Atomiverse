@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-mbd-kpoint-forces` |
-| Regression | `regressions/gpw/gpw-mbd-kpoint-forces/` |
-| Public API | `cpu::gpw::GpwDft::mbd` + `k_mesh` / `GPWEvaluator::mbd`; multi-k `gpw_forces_from_scf` / `GPWEvaluator(compute_forces=true)`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::GpwDft::mbd` + `k_mesh`; multi-k `GpwDft::forces(frame)` / `GPWEvaluator(std::move(dft), /*compute_forces=*/true)`; `GpwResult::e_disp` [Ha] |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion + §10 Periodic KS |
 
 ## Summary
@@ -24,7 +23,7 @@ adding \(F_{\mathrm{MBD}}\). The product path is:
    `mbd_rsscs_pbe` is **added** on the multi-k path (identical switch as Γ:
    isolated when `mbd_k_mesh={0,0,0}`; Ewald + MBD k-mesh when non-zero).
 
-Public surface: bool `mbd` on `GpwDft` / `GPWEvaluator` plus electronic
+Public surface: bool `mbd` on `GpwDft` plus electronic
 `k_mesh` (no `*Config` bag, no new force-API symbols). Hard gates:
 **libMBD energy** (water dimer free-atom) + **force dual-gate** + **multi-k
 wiring** on compressed H₂. Wall ratio is **perf_exempt** (same policy as
@@ -80,7 +79,7 @@ energy/force dual-gate and the multi-k H₂ wiring cell.
 external **libMBD** when linked. The offline oracle is therefore **libMBD
 Fortran energy** + **independent central-difference force dual-gate** +
 **multi-k product wiring**, same policy as sibling MBD slugs. Twin notes:
-`tools/cp2k_oracle/inputs/gpw-mbd-kpoint-forces/`.
+CP2K oracle.
 
 **Key exclusions.**
 
@@ -94,34 +93,40 @@ Fortran energy** + **independent central-difference force dual-gate** +
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no `*Config`, no
+Public surface only (`GpwDft` members + `GPWEvaluator`; no `*Config`, no
 `make_*` / `build_*` factories). Regression path (compressed H₂ multi-k +
 free-atom MBD; water-dimer geometry dual-gate is separate in the same binary):
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
-using ATV::cpu::gpw::gpw_forces_from_scf;
+using ATV::cpu::gpw::Kind;
 using ATV::cpu::gpw::XcKind;
 
-// H₂ [Bohr] — same geometry as gpw-kpoint-forces (REFERENCE.md).
-const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
-const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
-std::vector<GpwAtom> atoms = {
-    GpwAtom({5.5, 6.0, 6.0}, basis, pot, 1),
-    GpwAtom({6.5, 6.0, 6.0}, basis, pot, 1),
-};
+// H₂ — same geometry as gpw-kpoint-forces (REFERENCE.md): (5.5|6.5, 6, 6) Bohr
+// in a 12 Bohr cube; the Frame is in Å.
+constexpr double b2a = ATV::units::kBohrInAngstrom;
+ATV::cpu::Frame frame(2);
+for (int i = 0; i < 2; ++i) {
+    frame.span(ATV::kAtom_type)[i] = 1;
+    frame.span(ATV::kAtom_x)[i] = (5.5 + i) * b2a;
+    frame.span(ATV::kAtom_y)[i] = 6.0 * b2a;
+    frame.span(ATV::kAtom_z)[i] = 6.0 * b2a;
+}
+frame.box = ATV::cpu::Box::cubic(12.0 * b2a);
 
-GpwDft cfg;
-cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 12.0; // Bohr
+GpwDft cfg{{Kind{molrs::Element::H,
+                 GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                 GthPotential(molrs::Element::H, "GTH-PADE-q1")}}};
 cfg.cutoff_ry = 100.0;
 cfg.n_occ = 1;
 cfg.tol = 1e-8;
@@ -134,24 +139,24 @@ cfg.k_mesh[1] = 1;
 cfg.k_mesh[2] = 2;   // electronic multi-k
 cfg.mbd = true;      // free-atom MBD@rsSCS (mbd_k_mesh default {0,0,0})
 
-cfg.build(atoms);
-const auto& scf = cfg.run(atoms);
+cfg.build(frame);
+const auto& scf = cfg.forces(frame);   // SCF + analytic forces
 // scf.e_disp [Ha] finite and < 0; scf.n_kpts / C_occ_k multi-k payload
-const auto F_mbd = gpw_forces_from_scf(atoms, cfg, scf);
-// F_mbd = F_k-HF/Pulay + F_MBD(geom); compare to plain multi-k assembly
+// kAtom_fx/fy/fz [eV/Å] = F_k-HF/Pulay + F_MBD(geom); compare to plain multi-k assembly
 ```
 
-Driver / Frame path (component; same members):
+Driver path (component binding the same method):
 
 ```cpp
 // kinds = {H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/100.0, /*max_iter=*/60,
-                                 /*tol=*/1e-8, /*mix=*/0.3,
-                                 ATV::cpu::gpw::XcKind::PADE,
-                                 /*nonperiodic=*/false);
-eval.mbd = true;
-// set electronic multi-k on the owned GpwDft / evaluator mesh members
-// bind on Evaluate / Minimize / MD force slot with compute_forces=true
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 100.0;  dft.max_iter = 60;  dft.tol = 1e-8;  dft.mix = 0.3;
+dft.xc = ATV::cpu::gpw::XcKind::PADE;
+dft.nonperiodic = false;
+dft.mbd = true;
+dft.k_mesh[2] = 2;                      // electronic multi-k
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/true);
+// bind on Evaluate / Minimize / MD force slot
 // eval.last_result().e_disp  [Hartree]
 // public Frame energy remains eV via frame.meta.get(kEnergy)
 ```
@@ -170,26 +175,26 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-mbd-kpoint-forces
-  ./build/regressions/reg_gpw-mbd-kpoint-forces
+  reg_gpw-mbd-kpoint-forces
   # or: cmake --build build --target run_reg_gpw-mbd-kpoint-forces
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::mbd`, `k_mesh`, `mbd_k_mesh`; `GpwResult::e_disp` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::mbd`, `mbd_k_mesh` |
-| `include/atomiverse/cpu/gpw/internal/mbd_dispersion.h` | `mbd_rsscs_pbe` geometry kernel (private) |
-| `include/atomiverse/cpu/gpw/internal/gpw_forces.h` | multi-k + Γ force assembly |
+| `gpw_solver.h` | `GpwDft::mbd`, `k_mesh`, `mbd_k_mesh`; `GpwResult::e_disp` |
+| `gpw_evaluator.h` | `GPWEvaluator` (binds the configured `GpwDft`) |
+| `mbd_dispersion.h` | `mbd_rsscs_pbe` geometry kernel (private) |
+| `internal/gpw_forces.h` | multi-k + Γ force assembly (engine-private) |
 | `src/cpu/gpw/internal/gpw_forces.cpp` | multi-k path folds \(F_{\mathrm{MBD}}\) |
-| `regressions/gpw/gpw-mbd-kpoint-forces/reg_gpw-mbd-kpoint-forces.cpp` | Product gate |
-| `regressions/gpw/gpw-mbd-kpoint-forces/REFERENCE.md` | Offline pins + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-mbd-kpoint-forces/` | Twin notes (libMBD policy) |
+| `reg_gpw-mbd-kpoint-forces.cpp` | Product gate |
+| case `gpw-mbd-kpoint-forces` pin | Offline pins + perf_exempt |
+| CP2K oracle | Twin notes (libMBD policy) |
 
 ## Validation (libMBD / CP2K-campaign offline pins)
 
 Source:
-[`regressions/gpw/gpw-mbd-kpoint-forces/REFERENCE.md`](../../../regressions/gpw/gpw-mbd-kpoint-forces/REFERENCE.md).
+case `gpw-mbd-kpoint-forces` pin.
 Oracle: offline **libMBD** Fortran (`cmbd_mbd_scs_energy`, git `88069c6`) for
 \(E_{\mathrm{disp}}\); independent central FD for forces; multi-k wiring vs
 geometry kernel. Campaign home is the **CP2K method loop** (GPW / PW /
@@ -242,7 +247,7 @@ fold.
 
 ## Performance
 
-Source: `REFERENCE.md` (queue / handoff: **perf_exempt**).
+Source: pin notes (queue / handoff: **perf_exempt**).
 
 MBD is \(O(N^3)\) geometry-only; multi-k H₂ force assembly is a single
 gradient pass after one SCF. Full CP2K QS wall is not a fair twin (no stock
@@ -280,14 +285,14 @@ with libMBD-linked CP2K and a defined fair twin.
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-mbd-kpoint-forces/REFERENCE.md`
-- Oracle notes: `tools/cp2k_oracle/inputs/gpw-mbd-kpoint-forces/`,
-  `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-mbd-kpoint-forces` pin
+- Oracle notes: CP2K oracle,
+  CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion, §10 Periodic KS
-- Sibling force pins: `regressions/gpw/gpw-mbd-forces/`,
-  `regressions/gpw/gpw-kpoint-forces/`
-- Related energy pins: `regressions/gpw/gpw-mbd-ice/`,
-  `regressions/gpw/gpw-mbd-periodic/`
+- Sibling force pins: `gpw-mbd-forces`,
+  `gpw-kpoint-forces`
+- Related energy pins: `gpw-mbd-ice`,
+  `gpw-mbd-periodic`
 - GPW narrative chapter: `docs/tutorial/ch09-gpw.md`
 - Closed spec (git history): `.claude/specs/gpw-mbd-kpoint-forces/` (deleted
   at done, harness wave 10 2026-07-26)

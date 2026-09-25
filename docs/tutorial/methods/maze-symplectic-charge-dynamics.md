@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `maze-symplectic-charge-dynamics` |
-| Regression | `regressions/md/maze-symplectic-charge-dynamics/` |
 | Public API | `cpu::md::ConstPotMaZe` members `symplectic` (default `true`), `maze_tol` [V], `max_maze_iters`; accessors `constraint_residual()`, `last_maze_iters()`, `max_dQ()`, `solver()` (Component on `cpu::md::MD`, default `pre_force`) |
 | Roadmap | map §1 "MaZe mass-zero charge dynamics" ~ → ✓★ |
 | Oracle | **MetalWalls** physics — literature pin (Coretti et al. 2020, DOI 10.1063/5.0007192; no MW binary on host → `perf_exempt`) |
@@ -163,24 +162,24 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_maze-symplectic-charge-dynamics -j"$(nproc)"
-  ./build/regressions/reg_maze-symplectic-charge-dynamics
+  reg_maze-symplectic-charge-dynamics
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/const_pot_maze.h` | Public `ConstPotMaZe` (`symplectic`, `maze_tol`, `max_maze_iters`) |
+| `const_pot_maze.h` | Public `ConstPotMaZe` (`symplectic`, `maze_tol`, `max_maze_iters`) |
 | `src/cpu/dynamics/const_pot_maze.cpp` | Verlet extrapolation + SHAKE constraint CG (\(A^2\gamma = -\sigma\)) + χ neutrality shift |
-| `regressions/md/maze-symplectic-charge-dynamics/reg_maze-symplectic-charge-dynamics.cpp` | Product gate (palindrome + conservation vs loose twin) |
+| `reg_maze-symplectic-charge-dynamics.cpp` | Product gate (palindrome + conservation vs loose twin) |
 | `tests/cpu/dynamics/test_const_pot_maze_symplectic.cpp` | Unit: dense-BO match per site, neutrality, zero-iteration re-solve, warm-start, foothold twin unchanged, validation |
-| `tools/metalwalls_oracle/pin_notes_maze-symplectic-charge-dynamics.md` | Pin provenance |
+| MetalWalls oracle | Pin provenance |
 
 ## Validation (vs MetalWalls / Coretti 2020 MaZe)
 
 Source:
-[`regressions/md/maze-symplectic-charge-dynamics/REFERENCE.md`](../../../regressions/md/maze-symplectic-charge-dynamics/REFERENCE.md)
+case `maze-symplectic-charge-dynamics` pin
 (literature pin; **never** live MetalWalls in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/pin_notes_maze-symplectic-charge-dynamics.md`](../../../tools/metalwalls_oracle/pin_notes_maze-symplectic-charge-dynamics.md).
+MetalWalls oracle.
 
 **Oracle:** MetalWalls implements this MaZe path as one of its charge solvers
 (Marin-Laflèche et al., JOSS **5**, 2373 (2020)); with no MW binary on the
@@ -211,7 +210,7 @@ amu, V, e (Atomiverse public surface).
 ## Performance
 
 Source: REFERENCE.md runtime note; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 
 | Twin | \(T_{\mathrm{MetalWalls}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | ------------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -249,10 +248,8 @@ re-run an offline fair bench, record version + walls, and replace
 
 ## References
 
-- Literature pin: [`regressions/md/maze-symplectic-charge-dynamics/REFERENCE.md`](../../../regressions/md/maze-symplectic-charge-dynamics/REFERENCE.md)
-- Product gate: [`regressions/md/maze-symplectic-charge-dynamics/reg_maze-symplectic-charge-dynamics.cpp`](../../../regressions/md/maze-symplectic-charge-dynamics/reg_maze-symplectic-charge-dynamics.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/const_pot_maze.h`](../../../include/atomiverse/cpu/dynamics/const_pot_maze.h)
-- Pin notes: [`tools/metalwalls_oracle/pin_notes_maze-symplectic-charge-dynamics.md`](../../../tools/metalwalls_oracle/pin_notes_maze-symplectic-charge-dynamics.md)
+- Literature pin: case `maze-symplectic-charge-dynamics` pin
+- Pin notes: MetalWalls oracle
 - Capability map: `.claude/notes/metalwalls-capability-map.md` (§1 MaZe mass-zero charge dynamics)
 - Literature: Coretti, Scalfi, Bacon, Rotenberg, Vuilleumier, Salanne,
   Ciccotti, Bonella, *Mass-zero constrained molecular dynamics for electrode

@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `cpmd-water` |
-| Regression | `regressions/dynamics/cpmd-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{…, compute_forces=true}, mu_au}` bound with `set_evaluator_ref`; propagator `cpu::electronic::Cpmd`. CP mode is the **wrapper type**, not a flag — `cpmd`/`cpmd_mu` are private on `GPWEvaluator`. The nuclear dt is pushed from the integrator into the wrapper by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::CarParrinello{cpu::gpw::GPWEvaluator{GpwDft{…}, compute_forces=true}, mu_au}` bound with `set_evaluator_ref`; propagator `cpu::electronic::Cpmd`. CP mode is the **wrapper type**, not a flag — `cpmd`/`cpmd_mu` are private on `GPWEvaluator`. The nuclear dt is pushed from the integrator into the wrapper by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
 | Roadmap | MD roadmap Car–Parrinello |
 | Dual gate | Correctness A1–A15 of the spec acceptance; speed **`perf_exempt`** |
 | Wave | CP2K capability loop — wave 3 |
@@ -53,10 +52,10 @@ refused loudly at `build()`.
 
 ```cpp
 constexpr double dt = 0.1; // fs — nuclear and electronic share one step
-cpu::gpw::GPWEvaluator gpw(
-    {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-    /*mix*/ 0.3, cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 200.0;  dft.max_iter = 60;  dft.tol = 1e-5;  dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;  dft.nonperiodic = true;
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // Car–Parrinello is a wrapper TYPE around the pure GPW evaluator, not a
 // `method.cpmd = true` switch: the fictitious mass mu [a.u. electron mass] is a
 // constructor argument, and the mode bits it sets are private on GPWEvaluator.
@@ -133,7 +132,7 @@ double te_ha = cp.kinetic_ha();
   GTH-PBE / MT, 200 Ry, dt 0.1 fs, \(\mu=2000\)): relative \(E_{\mathrm{cons}}\)
   drift ~8×10⁻⁷ (tol 0.10) after Te is engaged, read from
   `frame.meta[kConserved]`; production `iters==0`; bounded O–H; wall ~32 s. See
-  `regressions/dynamics/cpmd-water/REFERENCE.md`.
+  case `cpmd-water` pin.
 
 ## Honest non-goals
 

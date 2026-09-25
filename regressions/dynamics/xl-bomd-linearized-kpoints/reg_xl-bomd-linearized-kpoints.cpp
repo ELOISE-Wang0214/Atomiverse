@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -72,16 +73,17 @@ cpu::gpw::GPWEvaluator make_gpw(int n_alpha, int n_beta) {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PADE-q1")};
     // CP2K twin settings: CUTOFF 300, EPS_SCF 1e-7, ALPHA 0.3, PADE.
-    cpu::gpw::GPWEvaluator gpw(
-        /*kinds*/ {H}, /*cutoff_ry*/ 300.0, /*max_iter*/ 60, /*tol*/ 1e-7,
-        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-        /*compute_forces*/ true);
-    gpw.k_mesh[0] = 1;
-    gpw.k_mesh[1] = 1;
-    gpw.k_mesh[2] = 2;
-    gpw.k_time_reversal = false; // two sampled k (CP2K FULL_GRID)
-    gpw.n_alpha = n_alpha;
-    gpw.n_beta = n_beta;
+    cpu::gpw::GpwDft dft{{H}};
+    dft.max_iter = 60;
+    dft.tol = 1e-7;
+    dft.mix = 0.3;
+    dft.k_mesh[0] = 1;
+    dft.k_mesh[1] = 1;
+    dft.k_mesh[2] = 2;
+    dft.k_time_reversal = false; // two sampled k (CP2K FULL_GRID)
+    dft.n_alpha = n_alpha;
+    dft.n_beta = n_beta;
+    cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
     return gpw;
 }
 

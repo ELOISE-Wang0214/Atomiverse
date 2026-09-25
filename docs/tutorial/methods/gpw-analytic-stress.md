@@ -3,7 +3,6 @@
 | | |
 |---|---|
 | Slug | `gpw-analytic-stress` |
-| Regression | `regressions/gpw/gpw-analytic-stress/` |
 | Public API | `cpu::gpw::gpw_stress` (analytic); oracle `gpw_stress_fd`; `GPWEvaluator` (`compute_stress`, `stress_use_fd=false` default) |
 | Roadmap | [dft.md](../../roadmap/dft.md) § Periodic response; queue `gpw-analytic-stress` |
 
@@ -45,9 +44,10 @@ nonperiodic MT (disagrees with NUMERICAL — see `gpw-stress-water`).
 ## Minimal sequence
 
 ```cpp
-cpu::gpw::GPWEvaluator eval({O, H}, /*cutoff_ry*/400.0, /*max_iter*/200,
-                            /*tol*/1e-7, /*mix*/0.3, cpu::gpw::XcKind::PBE,
-                            /*nonperiodic*/true);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 400.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;  dft.nonperiodic = true;
+cpu::gpw::GPWEvaluator eval(std::move(dft));
 eval.compute_stress = true;       // product analytic (default)
 // eval.stress_use_fd = true;     // multi-SCF oracle only
 eval.stress_strain_h = 2e-3;
@@ -65,14 +65,14 @@ const auto& s = eval.last_stress_ha_bohr3(); // Ha/Bohr³ Voigt
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `gpw_stress` / `gpw_stress_fd` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `compute_stress`, `stress_use_fd` |
+| `gpw_solver.h` | `gpw_stress` / `gpw_stress_fd` |
+| `gpw_evaluator.h` | `compute_stress`, `stress_use_fd` |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Fixed-\(P\)+Pulay + multi-SCF FD |
 | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` | Unit dual-gate |
-| `regressions/gpw/gpw-analytic-stress/` | Product twin |
+| `gpw-analytic-stress` | Product twin |
 
 ## References
 
-- Offline pins + deferred terms: [`REFERENCE.md`](../../../regressions/gpw/gpw-analytic-stress/REFERENCE.md)
+- Offline pins + deferred terms: pin notes
 - Strain-FD / CP2K NUMERICAL history: [`gpw-stress-water`](gpw-stress-water.md)
 - Nielsen & Martin, *Phys. Rev. B* **32**, 3780 (1985); Quickstep forces/stress (VandeVondele et al., CPC 167, 103 (2005))

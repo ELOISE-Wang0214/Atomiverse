@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `xl-bomd-water` |
-| Regression | `regressions/dynamics/xl-bomd-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{…, compute_forces=true}, k=5}` bound with `set_evaluator_ref`; propagator class `cpu::electronic::XlBomd` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{cpu::gpw::GpwDft{…}, compute_forces=true}, k=5}` bound with `set_evaluator_ref`; propagator class `cpu::electronic::XlBomd` |
 | Roadmap | MD roadmap XL-BOMD (`ASPC ≠ XL`) |
 | Dual gate | Correctness A1–A9 of the spec acceptance; speed **`perf_exempt`** (no CP2K AIMD twin wall) |
 | Wave | CP2K capability loop — wave 3 |
@@ -41,10 +40,14 @@ the zero-SCF linearized-functional XL force are refused loudly
 ## Usage
 
 ```cpp
-cpu::gpw::GPWEvaluator gpw(
-    {O, H}, /*cutoff_ry*/ 200.0, /*max_iter*/ 60, /*tol*/ 1e-5,
-    /*mix*/ 0.3, cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-    /*compute_forces*/ true);
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 200.0;
+dft.max_iter = 60;
+dft.tol = 1e-5;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = true;
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 // XL is a wrapper TYPE around the pure evaluator, not an `xl_bomd = true`
 // switch: the Niklasson 2009 Table-I dissipation order K is a constructor
 // argument, and the mode bits it sets are private on GPWEvaluator.
@@ -75,6 +78,6 @@ const auto& guess = xl.aux(); // SCF initial-density guess for the next step
   DZVP-MOLOPT-GTH / GTH-PBE / MT, 200 Ry, dt 0.5 fs, 1 + 4 steps) with
   `xl_bomd = true`: relative total-energy drift ≤ 0.05, SCF converged at
   every sampled step, bounded O–H, finite trajectory. See
-  `regressions/dynamics/xl-bomd-water/REFERENCE.md` (no CP2K binary on the
+  case `xl-bomd-water` pin (no CP2K binary on the
   worker host — literature envelope pin; CP2K twin input kept at
-  `tools/cp2k_oracle/inputs/xl_bomd_water_nve.inp`).
+  CP2K oracle).

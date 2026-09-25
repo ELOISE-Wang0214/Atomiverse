@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-finite-q-spin-smearing` |
-| Regression | `regressions/response/dfpt-finite-q-spin-smearing/` |
 | Public API | `cpu::pw::DfptPhonon` + `cpu::pw::DfptPhononResult`; GS members on `cpu::pw::PW` (`spin_polarized`, `multiplicity`, `smearing`, `degauss` [Ry], `extra_bands`) |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — finite-q / spin / smear product ✓ |
 | Dep | `dfpt-spin-incommensurate` ✓, `dfpt-finite-q-smearing` ✓, `dfpt-spin-smearing` ✓ |
@@ -80,8 +79,8 @@ true Fermi-surface DFPT on Al/Fe (Si stays gapped at these settings).
 
 ## Implementation
 
-Public headers: `include/atomiverse/cpu/planewave/dfpt_phonon.h`,
-`include/atomiverse/cpu/planewave/pw_solver.h`. Occupations /
+Public headers: `dfpt_phonon.h`,
+`pw_solver.h`. Occupations /
 Sternheimer internals under `planewave/internal/` (not user types).
 
 ```cpp
@@ -146,13 +145,13 @@ bash -lc '
         -DATV_BUILD_HF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_dfpt-finite-q-spin-smearing
-  ./build/regressions/reg_dfpt-finite-q-spin-smearing
+  reg_dfpt-finite-q-spin-smearing
   # or: cmake --build build --target run_reg_dfpt-finite-q-spin-smearing
 '
 ```
 
 Source consumer:
-`regressions/response/dfpt-finite-q-spin-smearing/reg_dfpt-finite-q-spin-smearing.cpp`.
+`reg_dfpt-finite-q-spin-smearing.cpp`.
 Unit coverage for spin+smear / finite-q acceptance:
 `tests/cpu/planewave/test_dfpt.cpp` → `test_cpu_pw_dfpt` (no e2e SCF under
 `tests/`).
@@ -160,7 +159,7 @@ Unit coverage for spin+smear / finite-q acceptance:
 ## Validation (CP2K)
 
 Source:
-[`regressions/response/dfpt-finite-q-spin-smearing/REFERENCE.md`](../../../regressions/response/dfpt-finite-q-spin-smearing/REFERENCE.md)
+case `dfpt-finite-q-spin-smearing` pin
 (offline pins only; **never** live CP2K in ctest).
 
 ### ATV system (spectrum gates)
@@ -200,14 +199,14 @@ electronic smearing.
 | Item | Value |
 | ---- | ----- |
 | Code | CP2K (when available offline) |
-| Note | `tools/cp2k_oracle/inputs/dfpt-finite-q-spin-smearing.note` |
+| Note | CP2K oracle |
 | Method sketch | Quickstep GPW, PADE/LDA, GTH-PADE + DZVP-MOLOPT-SR-GTH (Si q4) |
 | Spin | LSD / unrestricted, multiplicity 1 |
 | SMEAR | FERMI_DIRAC, \(T_e \approx 3158\) K (\(\approx 0.02\) Ry \(k_B T\)) |
 | \(\mathbf{q}\) | fractional ≈ (0.3, 0, 0) or closest commensurate mesh |
 | Host status (pin shift) | **CP2K binary not available** (`module avail cp2k` empty) |
 
-Oracle path: `tools/cp2k_oracle/README.md` (offline only). Preferred oracle
+Oracle path: CP2K oracle (offline only). Preferred oracle
 label when a binary exists: CP2K phonon / DFPT + LSD + `&SMEAR`.
 
 ## Performance
@@ -228,7 +227,7 @@ this slug is **`perf_exempt`**.
 | `ratio_atv_over_oracle` | n/a (exempt) |
 | `within_10x` | n/a (exempt; correctness gates only) |
 
-Handoff: the case `REFERENCE.md` (wave 11 row
+Handoff: the case pin notes (wave 11 row
 `dfpt-finite-q-spin-smearing` → **perf_exempt**).
 
 ## Limitations
@@ -252,13 +251,11 @@ Handoff: the case `REFERENCE.md` (wave 11 row
 
 ## References
 
-- Offline pin: `regressions/response/dfpt-finite-q-spin-smearing/REFERENCE.md`
-- Regression: `regressions/response/dfpt-finite-q-spin-smearing/reg_dfpt-finite-q-spin-smearing.cpp`
-- CP2K twin note: `tools/cp2k_oracle/inputs/dfpt-finite-q-spin-smearing.note`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin: case `dfpt-finite-q-spin-smearing` pin
+- CP2K twin note: CP2K oracle
+- Oracle notes: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §11 DFPT
-- Public header: `include/atomiverse/cpu/planewave/dfpt_phonon.h`
-- GS method: `include/atomiverse/cpu/planewave/pw_solver.h`
+- GS method: `pw_solver.h`
 - Unit tests: `tests/cpu/planewave/test_dfpt.cpp`
 - Siblings: `dfpt-spin-incommensurate`, `dfpt-finite-q-smearing`,
   `dfpt-spin-smearing`, `dfpt-phonon-si`, `dfpt-incommensurate-si`

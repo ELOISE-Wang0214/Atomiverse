@@ -9,7 +9,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
-#include <vector>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
@@ -69,14 +69,15 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 200.0;
-    eval.max_iter = 120;
-    eval.tol = 1e-6;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = false;
-    eval.d4 = true;
+    cpu::gpw::GpwDft dft{{O, H}};
+    dft.cutoff_ry = 200.0;
+    dft.max_iter = 120;
+    dft.tol = 1e-6;
+    dft.mix = 0.4;
+    dft.xc = cpu::gpw::XcKind::PBE;
+    dft.nonperiodic = false;
+    dft.d4 = true;
+    cpu::gpw::GPWEvaluator eval(std::move(dft));
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
@@ -125,33 +126,11 @@ int main() {
         return 1;
     }
 
-    // Multi-SCF strain-FD oracle twin (same geometry + d4).
-    constexpr double kAng2Bohr = 1.8897259885789;
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
-    for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double pos[3] = {x[i] * kAng2Bohr, y[i] * kAng2Bohr,
-                               zc[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(pos, k.basis, k.pot, z[i]));
-    }
-    cpu::gpw::GpwDft method;
-    method.cell[0] = method.cell[1] = method.cell[2] = L * kAng2Bohr;
-    method.cutoff_ry = 200.0;
-    method.n_occ = 8; // 2×O q6 + 4×H q1 = 16 e → 8 doubly occupied
-    method.max_iter = 120;
-    method.tol = 1e-6;
-    method.mix = 0.4;
-    method.xc = cpu::gpw::XcKind::PBE;
-    method.nonperiodic = false;
-    method.local_pp_on_grid = true;
-    method.d4 = true;
-    method.build(atoms);
-
+    // Multi-SCF strain-FD oracle twin (same geometry + d4; the evaluator's
+    // built method, n_occ = 8 derived from 2×O q6 + 4×H q1 = 16 e).
     const auto t2 = clock::now();
-    const auto sfd = cpu::gpw::gpw_stress_fd(
-        atoms, method, /*h=*/2e-3, /*axes*/ {true, true, true},
-        eval.last_result().C.size() > 0 ? &eval.last_result().C : nullptr);
+    const auto sfd = cpu::gpw::gpw_stress_fd(frame, eval.method(), /*h=*/2e-3,
+                                             /*axes*/ {true, true, true});
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 

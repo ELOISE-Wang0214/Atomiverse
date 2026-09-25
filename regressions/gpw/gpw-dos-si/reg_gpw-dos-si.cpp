@@ -11,8 +11,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
-#include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/bands_dos.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
@@ -21,7 +22,6 @@
 
 namespace {
 
-constexpr double kA2B = 1.0 / 0.52917720859; // Å → Bohr
 constexpr double kHa2Ev = 27.211386245988;
 
 // Offline CP2K 2026.1 pin (see REFERENCE.md) — replace after re-pin.
@@ -33,21 +33,21 @@ constexpr double kNelec = 16.0; // 4 Si × 4 valence e⁻
 constexpr double kNelecTol = 1.5;
 constexpr double kGapLoEv = 0.1;
 
-std::vector<ATV::cpu::gpw::GpwAtom> si_bct(double a_bohr) {
+/// Diamond Si as a 4-atom BCT cell (a/√2, a/√2, a) of cubic edge `a_ang` [Å].
+ATV::cpu::Frame si_bct(double a_ang) {
     using namespace ATV;
-    const double at = a_bohr / std::sqrt(2.0);
-    const ATV::cpu::gpw::GaussianBasis bSi(molrs::Element::Si,
-                                           "DZVP-MOLOPT-GTH");
-    const ATV::cpu::gpw::GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
+    const double at = a_ang / std::sqrt(2.0);
     const double frac[4][3] = {
         {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}, {0.5, 0.0, 0.25}, {0.0, 0.5, 0.75}};
-    std::vector<ATV::cpu::gpw::GpwAtom> atoms;
+    cpu::Frame frame(4);
     for (int i = 0; i < 4; ++i) {
-        const double pos[3] = {frac[i][0] * at, frac[i][1] * at,
-                               frac[i][2] * a_bohr};
-        atoms.emplace_back(pos, bSi, pSi, 14);
+        frame.span(kAtom_type)[i] = 14;
+        frame.span(kAtom_x)[i] = frac[i][0] * at;
+        frame.span(kAtom_y)[i] = frac[i][1] * at;
+        frame.span(kAtom_z)[i] = frac[i][2] * a_ang;
     }
-    return atoms;
+    frame.box = cpu::Box::orthorhombic(at, at, a_ang);
+    return frame;
 }
 
 } // namespace
@@ -56,16 +56,15 @@ int main() {
     using namespace ATV;
     using cpu::gpw::Dos;
     using cpu::gpw::DosResult;
-    using cpu::gpw::GpwAtom;
     using cpu::gpw::GpwDft;
     using cpu::gpw::XcKind;
 
-    const double a = 5.43 * kA2B; // 10.26120 Bohr
-    auto atoms = si_bct(a);
+    cpu::Frame frame = si_bct(5.43); // Å (10.26120 Bohr)
 
-    GpwDft method;
-    method.cell[0] = method.cell[1] = a / std::sqrt(2.0);
-    method.cell[2] = a;
+    GpwDft method{{cpu::gpw::Kind{
+        molrs::Element::Si,
+        cpu::gpw::GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+        cpu::gpw::GthPotential(molrs::Element::Si, "GTH-PBE-q4")}}};
     method.cutoff_ry = 150.0;
     method.n_occ = 8;
     method.max_iter = 60;
@@ -74,7 +73,7 @@ int main() {
     method.eps_default = 1e-7;
     method.diis_depth = 6;
     method.k_time_reversal = true;
-    method.build(atoms);
+    method.build(frame);
 
     Dos dos;
     dos.k_mesh = 2;
@@ -83,7 +82,7 @@ int main() {
     // Full AO spectrum from multi-k diagonalization (n_bands = 0).
 
     const auto t0 = std::chrono::steady_clock::now();
-    const DosResult dr = dos.compute(method, atoms);
+    const DosResult dr = dos.compute(method, frame);
     const auto t1 = std::chrono::steady_clock::now();
     const double wall_s = std::chrono::duration<double>(t1 - t0).count();
 

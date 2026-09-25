@@ -7,8 +7,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
+#include <utility>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/evaluate/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -44,13 +45,17 @@ cpu::gpw::GPWEvaluator make_eval(bool use_ot) {
         cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
         cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
     // 250 Ry: CP2K OT twin + ≤60 s regression budget.
-    cpu::gpw::GPWEvaluator eval(
-        /*kinds*/ {O}, /*cutoff_ry*/ 250.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-        /*mix*/ 0.4, cpu::gpw::XcKind::PADE, /*nonperiodic*/ true,
-        /*compute_forces*/ false, /*fd_step*/ 1e-3, /*d3*/ false,
-        /*use_ot*/ use_ot);
-    eval.n_alpha = 7;
-    eval.n_beta = 5;
+    cpu::gpw::GpwDft dft{{O}};
+    dft.cutoff_ry = 250.0;
+    dft.max_iter = 200;
+    dft.tol = 1e-7;
+    dft.mix = 0.4;
+    dft.xc = cpu::gpw::XcKind::PADE;
+    dft.nonperiodic = true;
+    dft.use_ot = use_ot;
+    dft.n_alpha = 7;
+    dft.n_beta = 5;
+    cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces*/ false);
     return eval;
 }
 
@@ -64,8 +69,6 @@ int main() {
     constexpr double kPinTolHa = 2.5e-3;
     constexpr double kOtDiisTolHa = 1.0e-4;
     constexpr double kTolS2 = 0.15;
-
-    unsetenv("ATV_GPW_OT");
 
     using clock = std::chrono::steady_clock;
 

@@ -5,7 +5,7 @@
 
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
+#include <utility>
 
 #include "atomiverse/cpu/evaluate/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -46,12 +46,16 @@ cpu::gpw::GPWEvaluator make_eval(bool use_ot) {
     // Cutoff 250 Ry. Single-grid (ngrids=1): product multigrid is a net loss
     // on this 3-atom / 10 Å cell (product list overhead > collocate win).
     // CP2K twin uses NGRIDS 4 — energy pin tol absorbs the residual.
-    cpu::gpw::GPWEvaluator eval(
-        /*kinds*/ {O, H}, /*cutoff_ry*/ 250.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-        /*mix*/ 0.3, cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-        /*compute_forces*/ false, /*fd_step*/ 1e-3, /*d3*/ false,
-        /*use_ot*/ use_ot);
-    return eval;
+    cpu::gpw::GpwDft dft({O, H});
+    dft.cutoff_ry = 250.0;
+    dft.max_iter = 200;
+    dft.tol = 1e-7;
+    dft.mix = 0.3;
+    dft.xc = cpu::gpw::XcKind::PBE;
+    dft.nonperiodic = true;
+    dft.d3 = false;
+    dft.use_ot = use_ot;
+    return cpu::gpw::GPWEvaluator(std::move(dft), /*compute_forces*/ false);
 }
 
 } // namespace
@@ -62,8 +66,6 @@ int main() {
     constexpr double kCp2kOtHa = -17.212848291913666;
     constexpr double kPinTolHa = 1.5e-3;
     constexpr double kOtDiisTolHa = 1.0e-4;
-
-    unsetenv("ATV_GPW_OT"); // product path is the member, not the env hack
 
     cpu::Frame frame_ot = make_water();
     auto eval_ot = make_eval(/*use_ot=*/true);

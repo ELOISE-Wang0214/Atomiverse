@@ -19,7 +19,7 @@ stress**:
 Oracle twin: multi-SCF strain-FD (`gpw_stress_fd`) on the same UKS+k method.
 Closed-shell identity: multi-k UKS (nα=nβ=1) ≡ multi-k RKS stress.
 
-Public path: `cpu::gpw::gpw_stress(atoms, method, h)` with
+Public path: `cpu::gpw::gpw_stress(frame, method, h)` with
 `n_alpha`/`n_beta` + `k_mesh`. No public `*Config`, no factories.
 
 ## System

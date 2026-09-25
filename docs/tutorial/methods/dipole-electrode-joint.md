@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dipole-electrode-joint` |
-| Regression | `regressions/md/dipole-electrode-joint/` |
 | Public API | `cpu::md::DipoleElectrodeJoint` (Component on `cpu::md::MD`, default `pre_force`) |
 | Roadmap | map slice E5 |
 | Oracle | **MetalWalls** multipole + Gaussian electrode BO form (offline algebraic pin; not LAMMPS) |
@@ -162,27 +161,27 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_dipole-electrode-joint -j"$(nproc)"
-  ./build/regressions/reg_dipole-electrode-joint
+  reg_dipole-electrode-joint
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/dipole_electrode_joint.h` | Public `DipoleElectrodeJoint` |
+| `dipole_electrode_joint.h` | Public `DipoleElectrodeJoint` |
 | `src/cpu/dynamics/dipole_electrode_joint.cpp` | Outer joint, BO \(A Q\), inner PIM SCC, write-back |
-| `include/atomiverse/cpu/dynamics/const_pot_bo.h` | Shared electrode BO kernels / \(\alpha=0\) parity |
-| `include/atomiverse/cpu/dynamics/md.h` | Host preset `cpu::md::MD` |
-| `regressions/md/dipole-electrode-joint/reg_dipole-electrode-joint.cpp` | Product gate |
+| `const_pot_bo.h` | Shared electrode BO kernels / \(\alpha=0\) parity |
+| `md.h` | Host preset `cpu::md::MD` |
+| `reg_dipole-electrode-joint.cpp` | Product gate |
 | `tests/cpu/dynamics/test_dipole_electrode_joint.cpp` | Unit surface |
-| `tools/metalwalls_oracle/inputs/metalwalls/dipole-electrode-joint/pin_joint.py` | Offline pin script |
+| MetalWalls oracle | Offline pin script |
 
 ## Validation (vs MetalWalls-form offline pin)
 
 Source:
-[`regressions/md/dipole-electrode-joint/REFERENCE.md`](../../../regressions/md/dipole-electrode-joint/REFERENCE.md)
+case `dipole-electrode-joint` pin
 (offline pin; **never** live MetalWalls in ctest). Oracle tooling notes:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md);
-pin notes in `tools/metalwalls_oracle/pin_notes.md` (§ `dipole-electrode-joint`).
+MetalWalls oracle;
+pin notes in MetalWalls oracle (§ `dipole-electrode-joint`).
 
 **Oracle:** MetalWalls multipole + Gaussian electrode BO form — Coretti et al.,
 *J. Chem. Phys.* (2022) (polarizable interfaces / MetalWalls
@@ -221,14 +220,14 @@ Related unit surface (not the e2e pin):
 ### Offline pin repro (never ctest)
 
 ```bash
-python3 tools/metalwalls_oracle/inputs/metalwalls/dipole-electrode-joint/pin_joint.py
+python <MetalWalls oracle pin for this case>
 # prints joint Q and mu pins; no MetalWalls binary required
 ```
 
 ## Performance
 
 Source: REFERENCE.md; handoff
-the case `REFERENCE.md`
+the case pin notes
 (wave 3, 2026-07-24).
 
 | Twin | \(T_{\mathrm{MetalWalls}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -263,11 +262,9 @@ available, record \(T_{\mathrm{atv}}/T_{\mathrm{MW}}\) in REFERENCE and require
 
 ## References
 
-- Offline pin: [`regressions/md/dipole-electrode-joint/REFERENCE.md`](../../../regressions/md/dipole-electrode-joint/REFERENCE.md)
-- Product gate: [`regressions/md/dipole-electrode-joint/reg_dipole-electrode-joint.cpp`](../../../regressions/md/dipole-electrode-joint/reg_dipole-electrode-joint.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/dipole_electrode_joint.h`](../../../include/atomiverse/cpu/dynamics/dipole_electrode_joint.h)
-- Pin script: [`tools/metalwalls_oracle/inputs/metalwalls/dipole-electrode-joint/pin_joint.py`](../../../tools/metalwalls_oracle/inputs/metalwalls/dipole-electrode-joint/pin_joint.py)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md), [`tools/metalwalls_oracle/pin_notes.md`](../../../tools/metalwalls_oracle/pin_notes.md)
+- Offline pin: case `dipole-electrode-joint` pin
+- Pin script: MetalWalls oracle
+- Oracle notes: MetalWalls oracle, MetalWalls oracle
 - Sibling methods: [pim-induced-dipole-bulk](pim-induced-dipole-bulk.md) (E4), [const-pot-bo-parallel-plate](const-pot-bo-parallel-plate.md) (E1 BO form)
 - Literature: Coretti et al., *J. Chem. Phys.* (2022) — polarizable electrolyte
   + metallic electrodes (MetalWalls `dipoles_and_electrodes`); Marin-Laflèche

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gfn0-xtb-forces` |
-| Regression | `regressions/semiempirical/gfn0-xtb-forces/` |
 | Public API | `cpu::semiempirical::GFN0` (`with_forces = true`); `cpu::Evaluate` |
 | Related narrative | [Ch. 17 Semiempirical AM1](../ch17-semiempirical-am1.md) (SE product surface; GFN-xTB is a sibling family) |
 | Queue | TB method loop — wave 8 done (`e870f86d`) |
@@ -120,7 +119,7 @@ own \(E\) (\(h=10^{-4}\) Å) as an identity gate, not as the production force.
 | Conversion | \(a_0=0.52917726\) Å (GFN0 table); \(1\,\mathrm{Ha}=27.211386245988\) eV |
 | Observable | Finite \(E\); net \(\sum_A\mathbf{F}_A=0\); analytic vs xtb \(\nabla E\); analytic vs energy FD |
 
-**Geometry [Å]** (`tools/tb_oracle/inputs/xtb/h2o_gfn0_offeq_grad/mol.xyz`):
+**Geometry [Å]** (TB oracle (OpenMOPAC / DFTB+ / xtb)):
 
 | Atom | \(Z\) | \(x\) | \(y\) | \(z\) |
 | ---- | ----: | ----: | ----: | ----: |
@@ -225,18 +224,18 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/semiempirical/gfn0.h` | Public `GFN0` (`charge`, `with_forces`) |
-| `include/atomiverse/cpu/semiempirical/basis_data/gfn0_tables.h` | Static H/C/N/O GFN0 rows + global scales |
+| `gfn0.h` | Public `GFN0` (`charge`, `with_forces`) |
+| `gfn0_tables.h` | Static H/C/N/O GFN0 rows + global scales |
 | `src/cpu/semiempirical/gfn0.cpp` | EEQ + EHT + analytic \(\nabla E\) (HF+Pulay, CN/\(q\), rep, D4, SRB) |
-| `regressions/semiempirical/gfn0-xtb-forces/reg_gfn0-xtb-forces.cpp` | Product gate |
-| `regressions/semiempirical/gfn0-xtb-forces/REFERENCE.md` | Offline pins + oracle line |
-| `tools/tb_oracle/inputs/xtb/h2o_gfn0_offeq_grad/` | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `gradient.txt`) |
+| `reg_gfn0-xtb-forces.cpp` | Product gate |
+| case `gfn0-xtb-forces` pin | Offline pins + oracle line |
+| TB oracle (OpenMOPAC / DFTB+ / xtb) | xtb 6.7.1 twin (`mol.xyz`, `xtb.out.txt`, `gradient.txt`) |
 | `tests/cpu/semiempirical/test_xtb_gfn0.cpp` | Unit analytic-vs-FD + net-force invariance |
 
 ## Validation (xtb)
 
 Source:
-[`regressions/semiempirical/gfn0-xtb-forces/REFERENCE.md`](../../../regressions/semiempirical/gfn0-xtb-forces/REFERENCE.md).
+case `gfn0-xtb-forces` pin.
 Oracle: **`xtb`** `--gfn 0 --grad` (Pracht et al., ChemRxiv 2019; Bannwarth et
 al., *WIREs Comput. Mol. Sci.* **11**, e01493 (2021)).
 `oracle_version`: **6.7.1**.
@@ -253,7 +252,7 @@ oracle_version: 6.7.1
 | ---- | ----- |
 | Engine (identity) | ATV GFN0-xTB closed shell, H/C/N/O tables |
 | Oracle family | xtb (not OpenMOPAC, not DFTB+) |
-| Offline twin | `tools/tb_oracle/inputs/xtb/h2o_gfn0_offeq_grad/` |
+| Offline twin | TB oracle (OpenMOPAC / DFTB+ / xtb) |
 | Command | `xtb mol.xyz --gfn 0 --chrg 0 --uhf 0 --acc 1.0 --grad` (`OMP_NUM_THREADS=1`) |
 | Atomiverse path | `GFN0` + `Evaluate`, `with_forces=true` |
 | FD protocol | Central energy-only, \(h=10^{-4}\) Å (identity, not the product force) |
@@ -293,7 +292,7 @@ noise on \(F_z\). Water has no SRB term; methanol SRB + C–O is covered by
 
 ## Performance
 
-Source: `REFERENCE.md`. Fair wall asserted in `reg_gfn0-xtb-forces`
+Source: pin notes. Fair wall asserted in `reg_gfn0-xtb-forces`
 (\(r\le 10\)). Analytic path is one EEQ + one diagonalization (replaces 18
 energy solves of a \(6N\) FD).
 
@@ -324,11 +323,11 @@ Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{oracle}} \le 10\) when a twin exists.
 
 ## References
 
-- Offline pin: [`regressions/semiempirical/gfn0-xtb-forces/REFERENCE.md`](../../../regressions/semiempirical/gfn0-xtb-forces/REFERENCE.md)
-- Twin: `tools/tb_oracle/inputs/xtb/h2o_gfn0_offeq_grad/` (`mol.xyz`,
+- Offline pin: case `gfn0-xtb-forces` pin
+- Twin: TB oracle (OpenMOPAC / DFTB+ / xtb) (`mol.xyz`,
   `xtb.out.txt`, `gradient.txt`)
-- Energy sibling: `regressions/semiempirical/gfn0-beyond-toy/REFERENCE.md`
-- Oracle README: `tools/tb_oracle/README.md`
+- Energy sibling: case `gfn0-beyond-toy` pin
+- Oracle README: TB oracle (OpenMOPAC / DFTB+ / xtb)
 - Roadmap: `docs/roadmap/semiempirical.md`
 - Spec history (closed, deleted at done): git `wf/gfn0-xtb-forces`
 - P. Pracht, E. Caldeweyher, S. Ehlert, S. Grimme, ChemRxiv (2019),

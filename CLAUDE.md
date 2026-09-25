@@ -472,13 +472,16 @@ concrete method (or a thin force-slot component owning it).
 *Properties* (charges, dipoles, Mulliken, AM1-BCC) are component **outputs
 written to Frame** — never Driver-level categories.
 
-**Remaining debt, do not extend:** `cuda::scf::RHF` is Component+private
-`RhfScfCycle` (not yet `cuda::Driver<scf::Phase>` — needs nested CUDA
-DriverNode); `cpu::pw::PW` is `cpu::Driver<pw::Phase>` for restricted
-fixed-occ — collinear spin / metallic smearing free-loop residual
-(`arch-pw-driver-paths`); `GpwDft` is `cpu::Driver<gpw::Phase>` for
-multi-path DIIS (Γ RKS/UKS + multi-k RKS/UKS) — OT free-loop residual
-(same-capability follow-on, not a new slug).
+**Remaining debt, do not extend:** ES method families do **not** yet share
+one public shape (science factorization OK; engineering dialects —
+method-as-Driver vs method+`*Evaluator` vs Solver-internal SCC; CUDA
+`cuda::gpw::GpwDft` still atom-in, not Frame-in). Full ledger and close order:
+[`.claude/notes/es-architecture-debt.md`](.claude/notes/es-architecture-debt.md).
+Named residuals still open there include: `cuda::scf::RHF` =
+Component+`RhfScfCycle` (not `cuda::Driver<scf::Phase>`); `cuda::pw::PW`
+has no Driver mirror; `GpwDft` OT free-loop (DIIS paths are Driver stages).
+`cpu::pw::PW` product paths are already `Driver<pw::Phase>` — do not re-open
+as free-loop debt.
 
 ### Component
 

@@ -5,11 +5,10 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `xl-bomd-linearized-kpoints` |
-| Regression | `regressions/dynamics/xl-bomd-linearized-kpoints/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{… k_mesh …}, k=5, cpu::electronic::XlBomdLinearized{}}` bound with `set_evaluator_ref`; one `cpu::electronic::XlBomdCplx` propagator per sampled (k, σ) |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::electronic::XlBomdForce{cpu::gpw::GPWEvaluator{cpu::gpw::GpwDft{… k_mesh …}}, k=5, cpu::electronic::XlBomdLinearized{}}` bound with `set_evaluator_ref`; one `cpu::electronic::XlBomdCplx` propagator per sampled (k, σ) |
 | Roadmap | closes the multi-k residual named by `xl-bomd-linearized-forces` / `xl-bomd-linearized-uks` |
 | Dual gate | Correctness unit (`test_cpu_gpw_xl_bomd`) + e2e `reg_xl-bomd-linearized-kpoints` (CP2K-anchored); speed measured ratio (see Performance) |
-| Oracle | Offline **CP2K 2026.1** converged-BOMD k-point `.ener` trace (`tools/cp2k_oracle/inputs/xl-bomd-linearized-kpoints/`); never live in ctest |
+| Oracle | Offline **CP2K 2026.1** converged-BOMD k-point `.ener` trace (CP2K oracle); never live in ctest |
 
 ## Summary
 
@@ -18,7 +17,7 @@ and collinear UKS. Nuclear forces of the Niklasson **shadow
 Born–Oppenheimer** potential are evaluated with **no iterative SCF** on warm
 MD steps, on the multi-k GPW path (complex Bloch densities). The outer loop
 is the MD preset; the force slot binds `cpu::electronic::XlBomdForce` with
-the **`XlBomdLinearized`** tag on a `GPWEvaluator` whose `k_mesh` is non-Γ.
+the **`XlBomdLinearized`** tag on a `GPWEvaluator` whose `GpwDft` `k_mesh` is non-Γ.
 
 Cold seed (first step): one full multi-k SCF seeds one complex auxiliary
 density history \(n_k^\sigma\) per sampled k (dual per spin for UKS). Warm
@@ -62,7 +61,7 @@ spin-degeneracy identity.
 | 1. Fixed-\(n\) KS | `max_iter = 0` with `guess_P_k^σ = n_k^σ` → \(H_k^\sigma[n]\), \(S_k\), \(E_{\mathrm{KS}}[n]\) |
 | 2. Diags | `KOrth(S_k)` + `diagonalize_k(H_k^σ)` per (k, σ) → \(D_k^\sigma\), \(\varepsilon_k^\sigma\) (occ 2 RKS / 1 per spin) |
 | 3. Shadow \(E\) | k-weighted formula above → `kEnergy` [eV] |
-| 4. Forces | `gpw_forces_from_scf` on the \((D_k, \varepsilon_k, C_k^{\mathrm{occ}})\) payload → eV/Å |
+| 4. Forces | `internal::gpw_forces_from_scf` on the \((D_k, \varepsilon_k, C_k^{\mathrm{occ}})\) payload → eV/Å |
 | 5. XL advance | `advance(D_k^σ)` per (k, σ); `last_result().iters = 0`, `converged = true` |
 
 ### System and observable
@@ -88,13 +87,16 @@ RKS-k (product under test), **C** linearized UKS-k with
 ## Implementation
 
 ```cpp
-cpu::gpw::GPWEvaluator gpw(
-    /*kinds*/ {H}, /*cutoff_ry*/ 300.0, /*max_iter*/ 60, /*tol*/ 1e-7,
-    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PADE, /*nonperiodic*/ false,
-    /*compute_forces*/ true);
-gpw.k_mesh[2] = 2;
-gpw.k_time_reversal = false;         // two sampled k (CP2K FULL_GRID)
-// gpw.n_alpha = gpw.n_beta = 1;     // collinear UKS leg (dual P_k^σ)
+cpu::gpw::GpwDft dft{{H}};
+dft.cutoff_ry = 300.0;
+dft.max_iter = 60;
+dft.tol = 1e-7;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PADE;
+dft.k_mesh[2] = 2;
+dft.k_time_reversal = false;         // two sampled k (CP2K FULL_GRID)
+// dft.n_alpha = dft.n_beta = 1;     // collinear UKS leg (dual P_k^σ)
+cpu::gpw::GPWEvaluator gpw(std::move(dft), /*compute_forces=*/true);
 cpu::electronic::XlBomdForce eval{std::move(gpw), /*k=*/5,
                                   cpu::electronic::XlBomdLinearized{}};
 
@@ -123,17 +125,17 @@ Relevant sources:
 
 | Layer | Path |
 | ----- | ---- |
-| Complex propagator (per k, σ) | `include/atomiverse/cpu/electronic/xl_bomd.h` (`XlBomdCplx`) |
-| XL wrapper / tag | `include/atomiverse/cpu/electronic/xl_bomd_force.h` |
+| Complex propagator (per k, σ) | `xl_bomd.h` (`XlBomdCplx`) |
+| XL wrapper / tag | `xl_bomd_force.h` |
 | Warm multi-k shadow path | `src/cpu/gpw/gpw_evaluator.cpp` |
 | k-UKS fixed-density eval | `src/cpu/gpw/gpw_solver.cpp` (`run_gpw_scf_kpoints_uks`, `max_iter == 0`) |
 | k forces | `src/cpu/gpw/internal/gpw_forces.cpp` (`assemble_gpw_forces_kpoints`) |
 | Unit | `tests/cpu/gpw/test_gpw_xl_bomd.cpp` |
-| E2E | `regressions/dynamics/xl-bomd-linearized-kpoints/` |
+| E2E | `xl-bomd-linearized-kpoints` |
 
 ## Validation and performance
 
-Source: `regressions/dynamics/xl-bomd-linearized-kpoints/REFERENCE.md`.
+Source: case `xl-bomd-linearized-kpoints` pin.
 Oracle: **CP2K 2026.1** (`cp2k.psmp`, EasyBuild `2026.1-gmpflf-2026.03`,
 Arrhenius epyc login node, 2026-07-31) converged-SCF k-point NVE `.ener`
 trace of the identical twin input — offline pin, never run at ctest time.
@@ -172,8 +174,8 @@ dual-spin, and k-weighted complex) are unit-pinned in
 
 ## References
 
-- Offline pin: `regressions/dynamics/xl-bomd-linearized-kpoints/REFERENCE.md`
-- CP2K twin: `tools/cp2k_oracle/inputs/xl-bomd-linearized-kpoints/h2_xl_linearized_kpoints_nve.inp`
+- Offline pin: case `xl-bomd-linearized-kpoints` pin
+- CP2K twin: CP2K oracle
 - Sibling pages: [xl-bomd-linearized-forces](xl-bomd-linearized-forces.md),
   [xl-bomd-linearized-uks](xl-bomd-linearized-uks.md),
   [xl-bomd-kpoints](xl-bomd-kpoints.md),

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-spin-smearing` |
-| Regression | `regressions/response/dfpt-spin-smearing/` |
 | Public API | `cpu::pw::DfptPhonon` + `cpu::pw::DfptPhononResult`; ground state via `cpu::pw::PW` members `spin_polarized`, `multiplicity`, `smearing`, `degauss` [Ry], `extra_bands` |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — collinear spin + metallic smear ✓ (`reg_dfpt-spin-smearing`) |
 | Dep | siblings `dfpt-spin-si` ✓, `dfpt-metallic-si` ✓; Γ foothold `dfpt-phonon-si` ✓ |
@@ -86,7 +85,7 @@ Cite: Baroni, de Gironcoli, Dal Corso, Giannozzi, *Rev. Mod. Phys.* **73**,
 
 Public surface only: construct `cpu::pw::PW`, set members (including spin +
 smear), construct `cpu::pw::DfptPhonon` with response members, call
-`compute`. Headers: `include/atomiverse/cpu/planewave/dfpt_phonon.h`,
+`compute`. Headers: `dfpt_phonon.h`,
 `pw_solver.h`. Frame is not mutated; spectra live on
 `DfptPhononResult` (Frame purity).
 
@@ -152,18 +151,18 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_dfpt-spin-smearing
-  ./build/regressions/reg_dfpt-spin-smearing
+  reg_dfpt-spin-smearing
   # or: cmake --build build --target run_reg_dfpt-spin-smearing
 '
 ```
 
 Source consumer:
-`regressions/response/dfpt-spin-smearing/reg_dfpt-spin-smearing.cpp`.
+`reg_dfpt-spin-smearing.cpp`.
 
 ## Validation (CP2K / offline pins)
 
 Source:
-[`regressions/response/dfpt-spin-smearing/REFERENCE.md`](../../../regressions/response/dfpt-spin-smearing/REFERENCE.md)
+case `dfpt-spin-smearing` pin
 (offline pins only; **never** live CP2K in ctest).
 
 ### ATV system (same-Hamiltonian gates)
@@ -211,14 +210,14 @@ Quickstep can combine `VIBRATIONAL_ANALYSIS` (or FD vib) with LSD and
 | Item | Value |
 | ---- | ----- |
 | Preferred product | CP2K `VIBRATIONAL_ANALYSIS` + LSD + `&SMEAR` |
-| Sketch | `tools/cp2k_oracle/inputs/dfpt-spin-smearing.note` |
+| Sketch | CP2K oracle |
 | Structure | diamond Si primitive \(a=5.43\) Å, 2 atoms |
 | Method sketch | GPW, PADE/LDA, GTH-PADE + DZVP-MOLOPT-SR-GTH (Si q4) |
 | Spin / smear | LSD / unrestricted, mult. 1; FERMI_DIRAC \(\sim 0.02\) Ry \(k_B T\) (~3158 K); `ADDED_MOS` ≥ 4 |
 | k-points | Monkhorst–Pack \(2\times2\times2\) |
 | CP2K binary this pin host | **not available** (`module avail cp2k` empty) |
 
-Oracle path: `tools/cp2k_oracle/README.md` (offline only). When a CP2K binary
+Oracle path: CP2K oracle (offline only). When a CP2K binary
 is available, record \(\omega(\Gamma)\) [cm⁻¹] + wall and optional fair
 ratio \(r=T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) (require \(\le 10\)).
 
@@ -233,7 +232,7 @@ unless exempted.
 
 `perf_exempt = true` — reason: no CP2K binary/module for a fair DFPT
 spin+smear wall twin this shift. Handoff records **perf_exempt**
-(the case `REFERENCE.md`). Informative ATV wall: ~30 s
+(the case pin notes). Informative ATV wall: ~30 s
 (2-atom Si, 6 responses × 2 spins, 8 k-points, OMP=8).
 
 ## Limitations
@@ -255,16 +254,15 @@ spin+smear wall twin this shift. Handoff records **perf_exempt**
 
 ## References
 
-- Offline pin: `regressions/response/dfpt-spin-smearing/REFERENCE.md`
-- Regression: `regressions/response/dfpt-spin-smearing/reg_dfpt-spin-smearing.cpp`
-- CP2K twin note: `tools/cp2k_oracle/inputs/dfpt-spin-smearing.note`
-- Oracle notes: `tools/cp2k_oracle/README.md`
-- Handoff **perf_exempt**: the case `REFERENCE.md`
+- Offline pin: case `dfpt-spin-smearing` pin
+- CP2K twin note: CP2K oracle
+- Oracle notes: CP2K oracle
+- Handoff **perf_exempt**: the case pin notes
 - Roadmap: `docs/roadmap/dft.md` §11 DFPT spin × smear productized
-- Public headers: `include/atomiverse/cpu/planewave/dfpt_phonon.h`,
+- Public headers: `dfpt_phonon.h`,
   `pw_solver.h`
 - Siblings: [dfpt-phonon-si](dfpt-phonon-si.md) (Γ restricted LSDA);
-  `regressions/response/dfpt-spin-si`, `dfpt-metallic-si`,
+  `dfpt-spin-si`, `dfpt-metallic-si`,
   `dfpt-finite-q-smearing`
 - Literature: Baroni *et al.*, *Rev. Mod. Phys.* **73**, 515 (2001);
   de Gironcoli, *Phys. Rev. B* **51**, 6773 (1995); Giannozzi *et al.*,

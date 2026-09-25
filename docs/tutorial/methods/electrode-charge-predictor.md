@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `electrode-charge-predictor` |
-| Regression | `regressions/md/electrode-charge-predictor/` |
 | Public API | `cpu::electrodes::ChargeASPC`; `cpu::md::ConstPotBO` members `use_cg`, `predictor_order`, `last_iters()`, `last_used_predictor()` |
 | Roadmap | map slice E2 |
 | Oracle | **MetalWalls** (algorithm pin: Kolafa ASPC + MW const-pot CG/BO warm-start). LAMMPS ELECTRODE has **no** ASPC twin. |
@@ -211,26 +210,26 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_electrode-charge-predictor -j"$(nproc)"
-  ./build/regressions/reg_electrode-charge-predictor
+  reg_electrode-charge-predictor
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/electrodes/charge_aspc.h` | Public `ChargeASPC` |
+| `charge_aspc.h` | Public `ChargeASPC` |
 | `src/cpu/electrodes/charge_aspc.cpp` | Lagrange \(\omega\), predict / correct / record |
-| `include/atomiverse/cpu/dynamics/const_pot_bo.h` | `ConstPotBO` CG + `predictor_order` |
+| `const_pot_bo.h` | `ConstPotBO` CG + `predictor_order` |
 | `src/cpu/dynamics/const_pot_bo.cpp` | CG solve, ASPC warm-start / record |
-| `regressions/md/electrode-charge-predictor/reg_electrode-charge-predictor.cpp` | Product gate |
-| `tools/metalwalls_oracle/inputs/metalwalls/electrode-charge-predictor/README.md` | Offline oracle notes |
+| `reg_electrode-charge-predictor.cpp` | Product gate |
+| MetalWalls oracle | Offline oracle notes |
 
 ## Validation (vs MetalWalls / Kolafa)
 
 Source:
-[`regressions/md/electrode-charge-predictor/REFERENCE.md`](../../../regressions/md/electrode-charge-predictor/REFERENCE.md)
+case `electrode-charge-predictor` pin
 (offline pin; **never** live MetalWalls in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md),
-[`tools/metalwalls_oracle/inputs/metalwalls/electrode-charge-predictor/README.md`](../../../tools/metalwalls_oracle/inputs/metalwalls/electrode-charge-predictor/README.md).
+MetalWalls oracle,
+MetalWalls oracle.
 
 **Oracle:** **metalwalls** (algorithm MetalWalls const-pot BO/CG + Kolafa ASPC).
 Cited algorithm sources in REFERENCE: Kolafa, *J. Comput. Chem.* **25**, 335
@@ -269,7 +268,7 @@ Read the constants straight out of the MetalWalls tree the pinned binary was
 built from (`sed -n '556,596p' src/electrode_charge.F90` at c8ad175d), or
 evaluate Kolafa's closed form at \(K=5\). A twin MetalWalls run of this
 regression's 18-site geometry lives at
-`tools/metalwalls_oracle/inputs/metalwalls/electrode-charge-predictor/`.
+MetalWalls oracle.
 MetalWalls has **no switch to disable its predictor** (it turns on at step 7,
 `src/system.F90:1430`) and its non-predictor branch initialises from the
 previous step rather than from zero, so the "warm &lt; cold" iteration claim is
@@ -278,7 +277,7 @@ not A/B-testable there — see REFERENCE. Never invoked from ctest.
 ## Performance
 
 Source: REFERENCE.md dual-gate summary; handoff
-the case `REFERENCE.md`;
+the case pin notes;
 queue row `electrode-charge-predictor`.
 
 | Twin | \(T_{\mathrm{MetalWalls}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
@@ -324,9 +323,8 @@ T_{\mathrm{oracle}}\).
 
 ## References
 
-- Offline pin: [`regressions/md/electrode-charge-predictor/REFERENCE.md`](../../../regressions/md/electrode-charge-predictor/REFERENCE.md)
-- Product gate: [`regressions/md/electrode-charge-predictor/reg_electrode-charge-predictor.cpp`](../../../regressions/md/electrode-charge-predictor/reg_electrode-charge-predictor.cpp)
-- Public headers: [`include/atomiverse/cpu/electrodes/charge_aspc.h`](../../../include/atomiverse/cpu/electrodes/charge_aspc.h), [`include/atomiverse/cpu/dynamics/const_pot_bo.h`](../../../include/atomiverse/cpu/dynamics/const_pot_bo.h)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md), [`tools/metalwalls_oracle/inputs/metalwalls/electrode-charge-predictor/README.md`](../../../tools/metalwalls_oracle/inputs/metalwalls/electrode-charge-predictor/README.md)
+- Offline pin: case `electrode-charge-predictor` pin
+- Public headers: `charge_aspc.h`, `const_pot_bo.h`
+- Oracle notes: MetalWalls oracle, MetalWalls oracle
 - Literature: J. Kolafa, *J. Comput. Chem.* **25**, 335 (2004) (ASPC); A. Coretti et al., *J. Chem. Phys.* **157**, 184801 (2022) (const-pot / electrode dynamics context); A. Marin-Laflèche et al., MetalWalls (JOSS) — const-pot CG electrode charge extrapolation practice
 - Sibling BO foothold (LAMMPS oracle): [`const-pot-bo-parallel-plate.md`](const-pot-bo-parallel-plate.md)

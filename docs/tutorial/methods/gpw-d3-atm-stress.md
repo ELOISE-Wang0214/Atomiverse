@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d3-atm-stress` |
-| Regression | `regressions/gpw/gpw-d3-atm-stress/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`d3`, `d3_atm`, `d3_rcut_bohr`, `compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd` with `GpwDft::{d3, d3_atm, d3_rcut_bohr}` |
+| Public API | `cpu::gpw::GpwDft` (`d3`, `d3_atm`, `d3_rcut_bohr`) bound by `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd` with `GpwDft::{d3, d3_atm, d3_rcut_bohr}` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -24,7 +23,7 @@ dispersion** stress cancel exactly, isolating the pure ATM stress
 Two things ship with the pin:
 
 1. **`d3_rcut_bohr`** — the DFT-D3 pair/triple hard cutoff as a public
-   member on `GpwDft` / `GPWEvaluator` (CP2K `&PAIR_POTENTIAL R_CUTOFF`,
+   member on `GpwDft` (CP2K `&PAIR_POTENTIAL R_CUTOFF`,
    doubled convention, default = CP2K default 20 Å → 75.59 Bohr). Energy,
    forces and stress all fold the one configured value, so the product can
    match any CP2K D3 input exactly (this twin: `R_CUTOFF 10.0` → 37.79 Bohr).
@@ -54,14 +53,17 @@ energy instead, which is exactly the fold this pin certifies.
 ## Implementation
 
 ```cpp
-cpu::gpw::GPWEvaluator eval({O, H});
-eval.cutoff_ry = 150.0;
-eval.tol = 1e-6;
-eval.xc = cpu::gpw::XcKind::PBE;
-eval.nonperiodic = false;
-eval.d3 = true;              // zero damping; exclusive vs d3bj / d4 / …
-eval.d3_atm = true;          // CP2K CALCULATE_C9_TERM
-eval.d3_rcut_bohr = 2.0 * 10.0 * 1.8897259885789; // CP2K R_CUTOFF 10.0 twin
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 150.0;
+dft.max_iter = 200;
+dft.tol = 1e-6;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = false;
+dft.d3 = true;               // zero damping; exclusive vs d3bj / d4 / …
+dft.d3_atm = true;           // CP2K CALCULATE_C9_TERM
+dft.d3_rcut_bohr = 2.0 * 10.0 * 1.8897259885789; // CP2K R_CUTOFF 10.0 twin
+cpu::gpw::GPWEvaluator eval(std::move(dft));
 eval.compute_stress = true;  // analytic fixed-P (product default)
 eval.stress_use_fd = false;
 
@@ -77,15 +79,15 @@ const auto& san = eval.last_stress_ha_bohr3();  // [Ha/Bohr³] Voigt
 | ---- | ---- |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | fixed-\(P\) Lagrangian + D3+ATM rebuild (`energy_fixed_P` / `energy_fixed_P_k`) |
 | `src/cpu/gpw/internal/dftd3.cpp` | `accumulate_atm_c9` (CASE 1/2/3 image triples, pbc anchoring) |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::d3_rcut_bohr` (new member) |
+| `gpw_solver.h` | `GpwDft::d3_rcut_bohr` (new member) |
 | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` | `GpwStress.AnalyticMatchesFdWithD3Atm` (cheap **periodic** H₂ — image triples engage) |
-| `regressions/gpw/gpw-d3-atm-stress/` | product gate + REFERENCE.md pins |
-| `tools/cp2k_oracle/inputs/gpw-d3-atm-stress/` | offline CP2K stress twin pair |
+| `gpw-d3-atm-stress` | product gate + REFERENCE.md pins |
+| CP2K oracle | offline CP2K stress twin pair |
 
 ## Validation (offline CP2K 2026.1)
 
 Source:
-[`regressions/gpw/gpw-d3-atm-stress/REFERENCE.md`](../../../regressions/gpw/gpw-d3-atm-stress/REFERENCE.md).
+case `gpw-d3-atm-stress` pin.
 Two runs (`mpirun -np 2`, OMP 2, `EPS_SCF 1e-8`, CUTOFF 300, per-6 Å cell):
 `water_dimer_d3_atm_per6_stress.inp` / `water_dimer_d3_per6_stress.inp`.
 
@@ -121,7 +123,7 @@ node — settings caveats in REFERENCE.md).
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-d3-atm-stress/REFERENCE.md`
+- Offline pin: case `gpw-d3-atm-stress` pin
 - S. Grimme et al., *J. Chem. Phys.* **132**, 154104 (2010) (DFT-D3 + ATM)
 - B. M. Axilrod, E. Teller, *J. Chem. Phys.* **11**, 299 (1943); Y. Muto,
   *Proc. Phys. Math. Soc. Jpn.* **17**, 629 (1943) (triple-dipole term)

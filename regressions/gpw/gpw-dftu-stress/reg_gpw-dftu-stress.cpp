@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -70,16 +71,17 @@ int main() {
         cpu::gpw::GthPotential(molrs::Element::O, "GTH-PADE-q6")};
 
     // Product path: analytic fixed-P UKS + DFT+U stress.
-    cpu::gpw::GPWEvaluator eval({Ni, O});
-    eval.cutoff_ry = 250.0;
-    eval.max_iter = 300;
-    eval.tol = 1e-5;
-    eval.mix = 0.35;
-    eval.xc = cpu::gpw::XcKind::PADE;
-    eval.nonperiodic = true;
-    eval.n_alpha = 13;
-    eval.n_beta = 11;
-    eval.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_ev=*/6.0});
+    cpu::gpw::GpwDft dft{{Ni, O}};
+    dft.cutoff_ry = 250.0;
+    dft.max_iter = 300;
+    dft.tol = 1e-5;
+    dft.mix = 0.35;
+    dft.xc = cpu::gpw::XcKind::PADE;
+    dft.nonperiodic = true;
+    dft.n_alpha = 13;
+    dft.n_beta = 11;
+    dft.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_ev=*/6.0});
+    cpu::gpw::GPWEvaluator eval(std::move(dft));
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
@@ -133,39 +135,10 @@ int main() {
         return 1;
     }
 
-    // Multi-SCF strain-FD oracle twin (public free function).
-    constexpr double kAng2Bohr = 1.8897259885789;
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(2);
-    const double x[2] = {0.5 * L, 0.5 * L};
-    const double y[2] = {0.5 * L, 0.5 * L};
-    const double zc[2] = {0.5 * L - 0.5 * R, 0.5 * L + 0.5 * R};
-    const cpu::gpw::Kind kinds[2] = {Ni, O};
-    const int Z[2] = {28, 8};
-    for (int i = 0; i < 2; ++i) {
-        const double pos[3] = {x[i] * kAng2Bohr, y[i] * kAng2Bohr,
-                               zc[i] * kAng2Bohr};
-        atoms.push_back(
-            cpu::gpw::GpwAtom(pos, kinds[i].basis, kinds[i].pot, Z[i]));
-    }
-    cpu::gpw::GpwDft method;
-    method.cell[0] = method.cell[1] = method.cell[2] = L * kAng2Bohr;
-    method.cutoff_ry = 250.0;
-    method.n_alpha = 13;
-    method.n_beta = 11;
-    method.max_iter = 300;
-    method.tol = 1e-5;
-    method.mix = 0.35;
-    method.xc = cpu::gpw::XcKind::PADE;
-    method.nonperiodic = true;
-    method.local_pp_on_grid = true;
-    method.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_ev=*/6.0});
-    method.build(atoms);
-
+    // Multi-SCF strain-FD oracle twin: the evaluator's own (built) method.
     const auto t2 = clock::now();
-    const auto sfd = cpu::gpw::gpw_stress_fd(
-        atoms, method, /*h=*/2e-3, /*axes*/ {true, true, true},
-        eval.last_result().C.size() > 0 ? &eval.last_result().C : nullptr);
+    const auto sfd = cpu::gpw::gpw_stress_fd(frame, eval.method(), /*h=*/2e-3,
+                                             /*axes*/ {true, true, true});
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 

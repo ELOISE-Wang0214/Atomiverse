@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -34,7 +35,6 @@
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_stress.h"
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/molrs.hpp"
 
@@ -150,18 +150,19 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GPWEvaluator eval({O, H});
-    eval.cutoff_ry = 120.0;
-    eval.max_iter = 120;
-    eval.tol = 1e-6;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PBE;
-    eval.nonperiodic = false;
-    eval.k_mesh[0] = 1;
-    eval.k_mesh[1] = 1;
-    eval.k_mesh[2] = 2; // MP 1×1×2, TR-folded
-    eval.mbd = true;
-    eval.mbd_k_mesh[0] = eval.mbd_k_mesh[1] = eval.mbd_k_mesh[2] = 2;
+    cpu::gpw::GpwDft dft{{O, H}};
+    dft.cutoff_ry = 120.0;
+    dft.max_iter = 120;
+    dft.tol = 1e-6;
+    dft.mix = 0.4;
+    dft.xc = cpu::gpw::XcKind::PBE;
+    dft.nonperiodic = false;
+    dft.k_mesh[0] = 1;
+    dft.k_mesh[1] = 1;
+    dft.k_mesh[2] = 2; // MP 1×1×2, TR-folded
+    dft.mbd = true;
+    dft.mbd_k_mesh[0] = dft.mbd_k_mesh[1] = dft.mbd_k_mesh[2] = 2;
+    cpu::gpw::GPWEvaluator eval(std::move(dft));
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
@@ -192,18 +193,8 @@ int main() {
               "E orthorhombic off-diagonal exactly 0");
 
     // ── C: multi-SCF strain-FD oracle on the same multi-k method ──────────
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.reserve(6);
-    for (int i = 0; i < 6; ++i) {
-        const cpu::gpw::Kind& k = (z[i] == 8) ? O : H;
-        const double p[3] = {xs[i] * kAng2Bohr, ys[i] * kAng2Bohr,
-                             zs[i] * kAng2Bohr};
-        atoms.push_back(cpu::gpw::GpwAtom(p, k.basis, k.pot, z[i]));
-    }
-
     auto make_cfg = [&](bool mbd) {
-        cpu::gpw::GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = L * kAng2Bohr;
+        cpu::gpw::GpwDft m{{O, H}};
         m.cutoff_ry = 120.0;
         m.n_occ = 8;
         m.max_iter = 120;
@@ -222,8 +213,7 @@ int main() {
     };
 
     const auto t2 = clock::now();
-    const auto sfd =
-        cpu::gpw::internal::gpw_stress_fd_impl(atoms, make_cfg(true), kStrainH);
+    const auto sfd = cpu::gpw::gpw_stress_fd(frame, make_cfg(true), kStrainH);
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -245,8 +235,7 @@ int main() {
     check(max_diag_err <= kAnFdTol, "C analytic vs multi-SCF FD diagonal");
 
     // ── D: MBD wiring — sigma(mbd) − sigma(plain) vs the pymbd FD term ────
-    const auto s_plain = cpu::gpw::internal::gpw_stress_analytic_impl(
-        atoms, make_cfg(false), kStrainH);
+    const auto s_plain = cpu::gpw::gpw_stress(frame, make_cfg(false), kStrainH);
     double max_wire = 0.0;
     for (int a = 0; a < 3; ++a) {
         const double shift = san[static_cast<std::size_t>(a)]

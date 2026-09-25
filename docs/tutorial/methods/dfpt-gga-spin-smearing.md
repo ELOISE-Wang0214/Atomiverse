@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `dfpt-gga-spin-smearing` |
-| Regression | `regressions/response/dfpt-gga-spin-smearing/` |
 | Public API | `cpu::pw::DfptPhonon` + `PW` members (`xc=PBE`, `spin_polarized`, `smearing=fermi_dirac`) |
 | Roadmap | [dft.md](../../roadmap/dft.md) §11 DFPT — **joint GGA × spin × smear** ✓ |
 | Dep | `dfpt-gga-spin-si` ✓; `dfpt-spin-smearing` ✓; `dfpt-gga-si` ✓ |
@@ -69,7 +68,7 @@ cmake --build build --target run_reg_dfpt-gga-spin-smearing
 
 ## Validation (vs offline pins)
 
-Source: `regressions/response/dfpt-gga-spin-smearing/REFERENCE.md`.
+Source: case `dfpt-gga-spin-smearing` pin.
 Measured 2026-08-01 (Release, OMP=1):
 
 | Gate | Value |
@@ -98,6 +97,6 @@ Measured 2026-08-01 (Release, OMP=1):
 
 ## References
 
-- `regressions/response/dfpt-gga-spin-smearing/REFERENCE.md`
-- `tools/cp2k_oracle/inputs/dfpt-gga-spin-smearing.note`
+- case `dfpt-gga-spin-smearing` pin
+- CP2K oracle
 - Baroni et al., *Rev. Mod. Phys.* **73**, 515 (2001)

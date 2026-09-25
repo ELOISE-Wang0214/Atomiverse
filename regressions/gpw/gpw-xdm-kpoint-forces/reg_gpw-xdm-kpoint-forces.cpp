@@ -10,10 +10,12 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/cpu/gpw/internal/xdm_dispersion.h"
 #include "atomiverse/molrs.hpp"
 
@@ -54,8 +56,6 @@ constexpr double kFIsoPin[6][3] = {
 int main() {
     using namespace ATV;
     using cpu::gpw::GaussianBasis;
-    using cpu::gpw::gpw_forces_from_scf;
-    using cpu::gpw::GpwAtom;
     using cpu::gpw::GpwDft;
     using cpu::gpw::GthPotential;
     using cpu::gpw::XcKind;
@@ -135,16 +135,22 @@ int main() {
     dual_gate(xdm_per, true, cellp, "A5 per max|F_product-F_fd|");
 
     // ── B: multi-k product wiring (H2 1×1×2 + free-atom XDM) ─────────────
-    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
-    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
-    const double rA[3] = {5.5, 6.0, 6.0};
-    const double rB[3] = {6.5, 6.0, 6.0};
-    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
-                                  GpwAtom(rB, basis, pot, 1)};
+    const double rA[3] = {5.5, 6.0, 6.0}; // Bohr
+    const double rB[3] = {6.5, 6.0, 6.0}; // Bohr
+    cpu::Frame frame(2);
+    const double* r[2] = {rA, rB};
+    for (int a = 0; a < 2; ++a) {
+        frame.span(kAtom_type)[a] = 1;
+        frame.span(kAtom_x)[a] = r[a][0] / kA2B;
+        frame.span(kAtom_y)[a] = r[a][1] / kA2B;
+        frame.span(kAtom_z)[a] = r[a][2] / kA2B;
+    }
+    frame.box = cpu::Box::cubic(12.0 / kA2B);
 
     auto make_cfg = [](bool xdm) {
-        GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        GpwDft m({cpu::gpw::Kind{
+            molrs::Element::H, GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+            GthPotential(molrs::Element::H, "GTH-PADE-q1")}});
         m.cutoff_ry = 100.0;
         m.n_occ = 1;
         m.tol = 1e-8;
@@ -160,18 +166,33 @@ int main() {
         return m;
     };
 
+    // One SCF + analytic forces with XDM folded (Frame forces in eV/Å).
     GpwDft cfg = make_cfg(true);
-    cfg.build(atoms);
-    const auto& scf = cfg.run(atoms);
+    cfg.build(frame);
+    const auto& scf = cfg.forces(frame);
+    auto frame_forces_au = [&frame]() {
+        std::vector<std::array<double, 3>> F(2);
+        for (int a = 0; a < 2; ++a)
+            F[static_cast<std::size_t>(a)] = {
+                frame.span(kAtom_fx)[a] / units::kHartreePerBohrInEvPerAngstrom,
+                frame.span(kAtom_fy)[a] / units::kHartreePerBohrInEvPerAngstrom,
+                frame.span(kAtom_fz)[a]
+                    / units::kHartreePerBohrInEvPerAngstrom};
+        return F;
+    };
+    const auto F_xdm = frame_forces_au();
     check(scf.converged, "B multi-k SCF converged");
     // 1×1×2 + TR may collapse to n_kpts==1; Γ path reports n_kpts==0.
     check(scf.n_kpts >= 1 && !scf.C_occ_k.empty(), "B multi-k C_occ_k payload");
     check(std::isfinite(scf.e_disp) && scf.e_disp < 0.0, "B e_disp finite <0");
 
-    // GpwDft is non-copyable; rebuild a plain flag set for the second assembly.
-    const auto F_xdm = gpw_forces_from_scf(atoms, cfg, scf);
+    // Plain twin: free-atom XDM is geometry-only (no KS potential), so the
+    // plain SCF converges to the same density; its forces are the
+    // electronic part the XDM forces are folded onto.
     GpwDft plain = make_cfg(false);
-    const auto F_plain = gpw_forces_from_scf(atoms, plain, scf);
+    plain.build(frame);
+    plain.forces(frame);
+    const auto F_plain = frame_forces_au();
     check(F_xdm.size() == 2 && F_plain.size() == 2, "B two force vectors");
 
     std::vector<int> Zh = {1, 1};

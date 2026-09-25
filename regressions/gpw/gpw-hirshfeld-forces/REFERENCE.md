@@ -23,12 +23,11 @@ stress.
 Public API:
 
 ```cpp
-GpwDft gpw;
+GpwDft gpw{kinds};
 gpw.ts = true;          // or gpw.mbd = true
 gpw.hirshfeld = true;   // post-SCF volumes → energy, forces, stress
-gpw.build(atoms);
-const auto& scf = gpw.run(atoms);
-auto F = gpw_forces_from_scf(atoms, gpw, scf);
+gpw.build(frame);
+const auto& scf = gpw.forces(frame);  // SCF + forces → kAtom_fx/fy/fz [eV/Å]
 ```
 
 Scaling of free-atom \(\alpha_0\) / \(C_6\) / \(R_{\mathrm{vdW}}\):

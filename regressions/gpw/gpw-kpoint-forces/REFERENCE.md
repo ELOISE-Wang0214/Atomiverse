@@ -7,7 +7,7 @@ sampling** and **analytic ionic forces** (one SCF + one gradient pass over
 Bloch-phased S_k / T_k / V_nl and complex χ^k on the density grid).
 
 Public path: `cpu::gpw::GpwDft` with `k_mesh = {1,1,2}` +
-`gpw_forces_analytic(atoms, cfg)`. No public `*Config`, no factories.
+`dft.forces(frame)` (writes kAtom_fx/fy/fz [eV/Å]). No public `*Config`, no factories.
 
 ## System
 

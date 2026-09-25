@@ -20,6 +20,8 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
+using internal::GpwAtom;
+
 namespace {
 
 using Cdouble = std::complex<double>;
@@ -360,9 +362,12 @@ BerryPolarization::string_kpoints(int dir) const {
     return kf;
 }
 
-BerryPolarizationResult
-BerryPolarization::compute(GpwDft& method,
-                           const std::vector<GpwAtom>& atoms) const {
+BerryPolarizationResult BerryPolarization::compute(GpwDft& method,
+                                                   Frame& frame) const {
+    internal::GpwDftAccess::set_cell(method,
+                                     internal::cell_from_box(frame.box));
+    const std::vector<GpwAtom> atoms =
+        internal::GpwDftAccess::atoms_from_frame(method, frame);
     if (method.smearing != Smearing::none)
         throw std::invalid_argument(
             "BerryPolarization::compute: Berry-phase polarization requires "
@@ -382,7 +387,7 @@ BerryPolarization::compute(GpwDft& method,
             "BerryPolarization::compute: n_alpha + n_beta must be >= 1");
 
     BerryPolarizationResult out;
-    fill_ionic(out, atoms, method.cell);
+    fill_ionic(out, atoms, method.cell_bohr().data());
     out.scf_converged = true;
 
     const auto basis = flatten_basis(atoms);
@@ -395,7 +400,8 @@ BerryPolarization::compute(GpwDft& method,
         rmax = std::max(rmax, radii[static_cast<std::size_t>(i)]);
     }
     int mimg[3];
-    pair_image_counts(method.cell, /*periodic=*/true, 2.0 * rmax, mimg);
+    pair_image_counts(method.cell_bohr().data(), /*periodic=*/true, 2.0 * rmax,
+                      mimg);
     const double screen = method.eps_default;
 
     const int n_up = uks ? method.n_alpha : method.n_occ;
@@ -418,7 +424,7 @@ BerryPolarization::compute(GpwDft& method,
         method.k_point_weights.assign(static_cast<std::size_t>(nk),
                                       1.0 / static_cast<double>(nk));
 
-        const GpwResult& res = method.run(atoms);
+        const GpwResult& res = method.run(frame);
         out.scf_converged = out.scf_converged && res.converged;
         out.energy_ha = res.e_total;
         if (!res.converged) {
@@ -434,7 +440,7 @@ BerryPolarization::compute(GpwDft& method,
         if (!uks) {
             const double phase = string_phase_channel(
                 res, n_up, /*spin=*/0, dir, k_string, k_perp, basis, radii,
-                method.cell, mimg, screen);
+                method.cell_bohr().data(), mimg, screen);
             out.phase_el[static_cast<std::size_t>(dir)] = phase;
             out.p_el_frac[static_cast<std::size_t>(dir)] = 2.0 * phase / kTwoPi;
         } else {
@@ -445,7 +451,7 @@ BerryPolarization::compute(GpwDft& method,
                     continue;
                 const double phi_s = string_phase_channel(
                     res, n_ch, s, dir, k_string, k_perp, basis, radii,
-                    method.cell, mimg, screen);
+                    method.cell_bohr().data(), mimg, screen);
                 phase_sum += phi_s;
                 ATV_DEBUG_CAT("gpw", "berry-spin dir={} spin={} phi={:+.6f}",
                               dir, s, phi_s);
@@ -456,7 +462,7 @@ BerryPolarization::compute(GpwDft& method,
         out.computed[static_cast<std::size_t>(dir)] = true;
     }
 
-    assemble_totals(out, method.cell, quantum);
+    assemble_totals(out, method.cell_bohr().data(), quantum);
     return out;
 }
 

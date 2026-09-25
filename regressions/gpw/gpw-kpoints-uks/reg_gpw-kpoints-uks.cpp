@@ -20,6 +20,9 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -38,16 +41,27 @@ void check(bool ok, const char* what) {
     }
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> h2_toy(double L_bohr) {
+/// H₂ toy in a cubic box of edge `L_bohr` [Bohr]; the Frame is in Å.
+ATV::cpu::Frame h2_toy(double L_bohr) {
     using namespace ATV;
-    const cpu::gpw::GaussianBasis bH(molrs::Element::H, "DZV-GTH-PADE");
-    const cpu::gpw::GthPotential pH(molrs::Element::H, "GTH-PADE-q1");
-    const double r0[3] = {0.5 * L_bohr - 0.7, 0.5 * L_bohr, 0.5 * L_bohr};
-    const double r1[3] = {0.5 * L_bohr + 0.7, 0.5 * L_bohr, 0.5 * L_bohr};
-    std::vector<cpu::gpw::GpwAtom> atoms;
-    atoms.emplace_back(r0, bH, pH, 1);
-    atoms.emplace_back(r1, bH, pH, 1);
-    return atoms;
+    constexpr double b2a = units::kBohrInAngstrom;
+    const double x[2] = {0.5 * L_bohr - 0.7, 0.5 * L_bohr + 0.7};
+    cpu::Frame frame(2);
+    for (int i = 0; i < 2; ++i) {
+        frame.span(kAtom_type)[i] = 1;
+        frame.span(kAtom_x)[i] = x[i] * b2a;
+        frame.span(kAtom_y)[i] = 0.5 * L_bohr * b2a;
+        frame.span(kAtom_z)[i] = 0.5 * L_bohr * b2a;
+    }
+    frame.box = cpu::Box::cubic(L_bohr * b2a);
+    return frame;
+}
+
+std::vector<ATV::cpu::gpw::Kind> h_kinds() {
+    using namespace ATV::cpu::gpw;
+    return {Kind{molrs::Element::H,
+                 GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                 GthPotential(molrs::Element::H, "GTH-PADE-q1")}};
 }
 
 } // namespace
@@ -61,23 +75,21 @@ int main() {
     const auto t0 = clock::now();
 
     const double L = 8.0;
-    auto atoms = h2_toy(L);
+    cpu::Frame frame = h2_toy(L);
 
     // ── A1: Γ-limit identity ──────────────────────────────────────────────
     {
-        GpwDft g;
-        g.cell[0] = g.cell[1] = g.cell[2] = L;
+        GpwDft g{h_kinds()};
         g.cutoff_ry = 100.0;
         g.n_alpha = 2;
         g.n_beta = 0;
         g.max_iter = 80;
         g.tol = 1e-7;
         g.xc = XcKind::PADE;
-        g.build(atoms);
-        const GpwResult rg = g.run(atoms);
+        g.build(frame);
+        const GpwResult rg = g.run(frame);
 
-        GpwDft k;
-        k.cell[0] = k.cell[1] = k.cell[2] = L;
+        GpwDft k{h_kinds()};
         k.cutoff_ry = 100.0;
         k.n_alpha = 2;
         k.n_beta = 0;
@@ -86,8 +98,8 @@ int main() {
         k.xc = XcKind::PADE;
         k.k_points = {{0.0, 0.0, 0.0}};
         k.k_point_weights = {1.0};
-        k.build(atoms);
-        const GpwResult rk = k.run(atoms);
+        k.build(frame);
+        const GpwResult rk = k.run(frame);
         check(rg.converged && rk.converged, "A1 both converge");
         check(std::fabs(rk.e_total - rg.e_total) <= 1e-6,
               "A1 |E_kΓ − E_Γ| ≤ 1e-6 Ha");
@@ -96,8 +108,7 @@ int main() {
 
     // ── A2: closed-shell multi-k UKS ≡ multi-k RKS ─────────────────────────
     {
-        GpwDft rks;
-        rks.cell[0] = rks.cell[1] = rks.cell[2] = L;
+        GpwDft rks{h_kinds()};
         rks.cutoff_ry = 100.0;
         rks.n_occ = 1;
         rks.max_iter = 80;
@@ -105,11 +116,10 @@ int main() {
         rks.xc = XcKind::PADE;
         rks.k_mesh[0] = rks.k_mesh[1] = 1;
         rks.k_mesh[2] = 2;
-        rks.build(atoms);
-        const GpwResult rr = rks.run(atoms);
+        rks.build(frame);
+        const GpwResult rr = rks.run(frame);
 
-        GpwDft uks;
-        uks.cell[0] = uks.cell[1] = uks.cell[2] = L;
+        GpwDft uks{h_kinds()};
         uks.cutoff_ry = 100.0;
         uks.n_alpha = 1;
         uks.n_beta = 1;
@@ -118,8 +128,8 @@ int main() {
         uks.xc = XcKind::PADE;
         uks.k_mesh[0] = uks.k_mesh[1] = 1;
         uks.k_mesh[2] = 2;
-        uks.build(atoms);
-        const GpwResult ru = uks.run(atoms);
+        uks.build(frame);
+        const GpwResult ru = uks.run(frame);
         check(rr.converged && ru.converged, "A2 both converge");
         check(std::fabs(ru.e_total - rr.e_total) <= 5e-6,
               "A2 |E_UKS − E_RKS| ≤ 5e-6 Ha");
@@ -129,8 +139,7 @@ int main() {
     // ── A3: time-reversal identity ────────────────────────────────────────
     {
         auto run = [&](bool tr) {
-            GpwDft m;
-            m.cell[0] = m.cell[1] = m.cell[2] = L;
+            GpwDft m{h_kinds()};
             m.cutoff_ry = 100.0;
             m.n_alpha = 2;
             m.n_beta = 0;
@@ -139,8 +148,8 @@ int main() {
             m.xc = XcKind::PADE;
             m.k_mesh[0] = m.k_mesh[1] = m.k_mesh[2] = 2;
             m.k_time_reversal = tr;
-            m.build(atoms);
-            return m.run(atoms);
+            m.build(frame);
+            return m.run(frame);
         };
         const GpwResult full = run(false);
         const GpwResult fold = run(true);
@@ -161,19 +170,17 @@ int main() {
     constexpr double kFloorAct = 1e-4;
 
     {
-        GpwDft gamma;
-        gamma.cell[0] = gamma.cell[1] = gamma.cell[2] = L;
+        GpwDft gamma{h_kinds()};
         gamma.cutoff_ry = 120.0;
         gamma.n_alpha = 2;
         gamma.n_beta = 0;
         gamma.max_iter = 80;
         gamma.tol = 1e-7;
         gamma.xc = XcKind::PADE;
-        gamma.build(atoms);
-        const GpwResult rg = gamma.run(atoms);
+        gamma.build(frame);
+        const GpwResult rg = gamma.run(frame);
 
-        GpwDft mp;
-        mp.cell[0] = mp.cell[1] = mp.cell[2] = L;
+        GpwDft mp{h_kinds()};
         mp.cutoff_ry = 120.0;
         mp.n_alpha = 2;
         mp.n_beta = 0;
@@ -182,8 +189,8 @@ int main() {
         mp.xc = XcKind::PADE;
         mp.k_mesh[0] = mp.k_mesh[1] = mp.k_mesh[2] = 2;
         mp.k_time_reversal = true;
-        mp.build(atoms);
-        const GpwResult rm = mp.run(atoms);
+        mp.build(frame);
+        const GpwResult rm = mp.run(frame);
 
         check(rg.converged && rm.converged, "A4/A5 both converge");
         check(rm.n_kpts == 4, "A5 TR-folded n_kpts == 4");

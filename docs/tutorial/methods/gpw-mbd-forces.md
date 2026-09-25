@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-mbd-forces` |
-| Regression | `regressions/gpw/gpw-mbd-forces/` |
-| Public API | `cpu::gpw::GpwDft::mbd` / `cpu::gpw::GPWEvaluator::mbd`; forces via `assemble_gpw_forces` / `compute_forces=true`; `MbdResult::{energy,forces}`; `GpwResult::e_disp` [Ha] |
+| Public API | `cpu::gpw::GpwDft::mbd` (bound by `cpu::gpw::GPWEvaluator`); forces via `GpwDft::forces(frame)` / `GPWEvaluator` `compute_forces=true`; `MbdResult::{energy,forces}`; `GpwResult::e_disp` [Ha] |
 | Related energy pin | `gpw-mbd-ice` (E_disp only); periodic mesh `gpw-mbd-periodic` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
@@ -26,11 +25,11 @@ these forces to electronic Hellmann–Feynman / Pulay terms when
 only `DFTD2|DFTD3|DFTD3(BJ)|DFTD4` — MBD is external libMBD when linked. Hard
 pin is **libMBD energy** + **force dual-gate** (product \(\nabla E\) vs
 independent central FD), same policy as `gpw-mbd-ice` / `gpw-ts-ice`. Twin
-notes under `tools/cp2k_oracle/inputs/gpw-mbd-forces/`.
+notes under CP2K oracle.
 
-Public surface: bool members `mbd` / `mbd_k_mesh` on `GpwDft` and
-`GPWEvaluator` (no `*Config` bag). Product gate:
-`regressions/gpw/gpw-mbd-forces` (`reg_gpw-mbd-forces`). Wall ratio is
+Public surface: bool members `mbd` / `mbd_k_mesh` on `GpwDft`, bound into
+drivers by `GPWEvaluator` (no `*Config` bag). Product gate:
+`gpw-mbd-forces` (`reg_gpw-mbd-forces`). Wall ratio is
 **perf_exempt** (E_disp + force dual-gate; full QS twin unfair / unavailable).
 
 ## Method
@@ -124,11 +123,13 @@ Hirshfeld-force chain not productized).
 
 ## Implementation
 
-Public surface only (`GpwDft` / `GPWEvaluator` members; no public `*Config`,
+Public surface only (`GpwDft` members + `GPWEvaluator`; no public `*Config`,
 no `make_*` / `build_*` factories). Regression uses the geometry-only MBD
 kernel + a short `GpwDft` SCF with `mbd=true` for `e_disp` materialization:
 
 ```cpp
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
@@ -136,7 +137,6 @@ kernel + a short `GpwDft` SCF with `mbd=true` for `e_disp` materialization:
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::mbd_rsscs_pbe;
@@ -155,10 +155,11 @@ const MbdResult mbd = mbd_rsscs_pbe(Z, pos, cell0, /*periodic=*/false);
 // mbd.energy  [Ha]     ↔ libMBD pin
 // mbd.forces  [Ha/Bohr] ↔ dual-gated vs independent FD of energy
 
-// Product path: short GPW SCF folds E_disp; assemble_gpw_forces adds F_MBD
-GpwDft gpw;
-const double L = 12.0 * kA2B;
-gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+// Product path: short GPW SCF folds E_disp; GpwDft::forces(frame) adds F_MBD
+// Frame: same 6 atoms in Å, Z in kAtom_type; cubic 12 Å box
+frame.box = ATV::cpu::Box::cubic(12.0);
+// kinds O, H: DZVP-MOLOPT-SR-GTH + GTH-PBE-q6 / GTH-PBE-q1
+GpwDft gpw{{O, H}};
 gpw.cutoff_ry = 200.0;
 gpw.n_occ = 8;
 gpw.max_iter = 8;
@@ -167,9 +168,8 @@ gpw.mix = 0.4;
 gpw.xc = XcKind::PBE;
 gpw.nonperiodic = false;
 gpw.mbd = true;              // exclusive vs d3/d3bj/d4/ts/xdm/vdW-DF*
-// kinds: DZVP-MOLOPT-SR-GTH + GTH-PBE-q* → GpwAtom rows …
-gpw.build(atoms);
-const auto& res = gpw.run(atoms);
+gpw.build(frame);
+const auto& res = gpw.run(frame);
 // res.e_disp  [Ha] within 1e-8 of libMBD pin; included in res.e_total
 ```
 
@@ -177,12 +177,11 @@ Driver / Frame path (component; same member):
 
 ```cpp
 // kinds = {O, H} Kind{Element, GaussianBasis, GthPotential}
-ATV::cpu::gpw::GPWEvaluator eval(kinds, /*cutoff_ry=*/300.0, /*max_iter=*/200,
-                                 /*tol=*/1e-7, /*mix=*/0.3,
-                                 ATV::cpu::gpw::XcKind::PBE,
-                                 /*nonperiodic=*/false,
-                                 /*compute_forces=*/true);
-eval.mbd = true;
+ATV::cpu::gpw::GpwDft dft{kinds};
+dft.cutoff_ry = 300.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
+dft.xc = ATV::cpu::gpw::XcKind::PBE;  dft.nonperiodic = false;
+dft.mbd = true;
+ATV::cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/true);
 // single_point / Evaluate / Minimize force slot
 // eval.last_result().e_disp  [Hartree]
 // Frame kAtom_f* [eV/Å] include MBD contribution after assembly
@@ -201,27 +200,27 @@ bash -lc '
         -DATV_BUILD_GPW=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc) --target atomiverse reg_gpw-mbd-forces
-  ./build/regressions/reg_gpw-mbd-forces
+  reg_gpw-mbd-forces
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/internal/mbd_dispersion.h` | `mbd_rsscs_pbe`, `MbdResult` |
+| `mbd_dispersion.h` | `mbd_rsscs_pbe`, `MbdResult` |
 | `src/cpu/gpw/internal/mbd_dispersion.cpp` | Energy kernel + product FD forces |
-| `src/cpu/gpw/internal/gpw_forces.cpp` | Adds \(\mathbf{F}^{\mathrm{MBD}}\) when `cfg.mbd` |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::mbd`, `GpwResult::e_disp` |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | `GPWEvaluator::mbd`, `compute_forces` |
-| `include/atomiverse/cpu/gpw/basis_data/ts_tables.h` | Free-atom TS/MBD parameters |
-| `regressions/gpw/gpw-mbd-forces/reg_gpw-mbd-forces.cpp` | Product gate |
-| `regressions/gpw/gpw-mbd-forces/REFERENCE.md` | Offline pins + perf_exempt |
-| `tools/cp2k_oracle/inputs/gpw-mbd-forces/` | Oracle notes (libMBD policy) |
+| `src/cpu/gpw/internal/gpw_forces.cpp` | Adds \(\mathbf{F}^{\mathrm{MBD}}\) when `mbd` |
+| `gpw_solver.h` | `GpwDft::mbd`, `GpwResult::e_disp` |
+| `gpw_evaluator.h` | `GPWEvaluator` (`compute_forces`; binds `GpwDft`) |
+| `ts_tables.h` | Free-atom TS/MBD parameters |
+| `reg_gpw-mbd-forces.cpp` | Product gate |
+| case `gpw-mbd-forces` pin | Offline pins + perf_exempt |
+| CP2K oracle | Oracle notes (libMBD policy) |
 | `tests/cpu/gpw/test_cpu_gpw_mbd.cpp` | Unit energy / force checks |
 
 ## Validation (libMBD / dual-gate)
 
 Source:
-[`regressions/gpw/gpw-mbd-forces/REFERENCE.md`](../../../regressions/gpw/gpw-mbd-forces/REFERENCE.md).
+case `gpw-mbd-forces` pin.
 Oracle: offline **libMBD** Fortran `cmbd_mbd_scs_energy` (git `88069c6`) for
 energy; force dual-gate is product \(\nabla E\) vs independent central FD of
 that energy. External-engine / analytic pins — **not** a golden of Atomiverse’s
@@ -258,7 +257,7 @@ spurious net force on the isolated system.
 Offline notes (human only; never ctest):
 
 ```text
-# tools/cp2k_oracle/inputs/gpw-mbd-forces/water_dimer_mbd_forces.note
+# <CP2K oracle input for this case>
 E_disp = -1.4928804171407961e-03 Ha (libMBD git 88069c6)
 max |F_product − F_fd(h=1e-5)| ≤ 1e-6 Ha/Bohr
 |sum F| ≤ 1e-8 Ha/Bohr
@@ -267,7 +266,7 @@ max |F_product − F_fd(h=1e-5)| ≤ 1e-6 Ha/Bohr
 
 ## Performance
 
-Source: `REFERENCE.md` / handoff (the case `REFERENCE.md`):
+Source: pin notes / handoff (the case pin notes):
 **perf_exempt**.
 
 MBD energy is \(O(N^3)\) on a \(3N\times 3N\) matrix; product force FD is
@@ -304,14 +303,14 @@ force dual-gate; full twin SCF wall vs CP2K is unavailable/unfair.
 
 ## References
 
-- Offline pin: `regressions/gpw/gpw-mbd-forces/REFERENCE.md`
-- Twin notes: `tools/cp2k_oracle/inputs/gpw-mbd-forces/water_dimer_mbd_forces.note`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin: case `gpw-mbd-forces` pin
+- Twin notes: CP2K oracle
+- Oracle notes: CP2K oracle
 - Roadmap: `docs/roadmap/dft.md` §8 Dispersion
-- Related energy pin: `regressions/gpw/gpw-mbd-ice/`
-- Related periodic MBD: `regressions/gpw/gpw-mbd-periodic/`
-- Related Hirshfeld volumes: `regressions/gpw/gpw-mbd-hirshfeld/`
-- Related D4 forces: `regressions/gpw/gpw-d4-forces/`
+- Related energy pin: `gpw-mbd-ice`
+- Related periodic MBD: `gpw-mbd-periodic`
+- Related Hirshfeld volumes: `gpw-mbd-hirshfeld`
+- Related D4 forces: `gpw-d4-forces`
 - GPW narrative chapter: `docs/tutorial/ch09-gpw.md`
 - A. Ambrosetti, A. M. Reilly, R. A. DiStasio Jr., A. Tkatchenko,
   *J. Chem. Phys.* **140**, 18A508 (2014) (MBD@rsSCS)

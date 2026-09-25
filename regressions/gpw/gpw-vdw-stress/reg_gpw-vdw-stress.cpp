@@ -10,14 +10,14 @@
 #include <cstdio>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {
-
-constexpr double kA2B = 1.0 / 0.52917720859;
 
 const double kAng[6][3] = {
     {0.000000, 0.000000, 0.000000},  // O
@@ -40,23 +40,27 @@ void check(bool ok, const char* what) {
     }
 }
 
-std::vector<ATV::cpu::gpw::GpwAtom> make_atoms() {
-    using namespace ATV::cpu::gpw;
-    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
-    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
-    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
-    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
-    std::vector<GpwAtom> atoms;
-    atoms.reserve(6);
+ATV::cpu::Frame make_frame() {
+    using namespace ATV;
+    cpu::Frame frame(6);
     for (int i = 0; i < 6; ++i) {
-        const double pos[3] = {kAng[i][0] * kA2B, kAng[i][1] * kA2B,
-                               kAng[i][2] * kA2B};
-        if (kZ[i] == 8)
-            atoms.emplace_back(pos, bO, pO, 8);
-        else
-            atoms.emplace_back(pos, bH, pH, 1);
+        frame.span(kAtom_type)[i] = kZ[i];
+        frame.span(kAtom_x)[i] = kAng[i][0];
+        frame.span(kAtom_y)[i] = kAng[i][1];
+        frame.span(kAtom_z)[i] = kAng[i][2];
     }
-    return atoms;
+    frame.box = cpu::Box::cubic(12.0);
+    return frame;
+}
+
+std::vector<ATV::cpu::gpw::Kind> water_kinds() {
+    using namespace ATV::cpu::gpw;
+    return {Kind{molrs::Element::O,
+                 GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH"),
+                 GthPotential(molrs::Element::O, "GTH-PBE-q6")},
+            Kind{molrs::Element::H,
+                 GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH"),
+                 GthPotential(molrs::Element::H, "GTH-PBE-q1")}};
 }
 
 } // namespace
@@ -69,12 +73,10 @@ int main() {
     constexpr double kEDispTol = 5.0e-4;
     constexpr double kETotSoftTol = 5.0e-2; // Ha twin-family residual
 
-    auto atoms = make_atoms();
-    const double L = 12.0 * kA2B;
+    ATV::cpu::Frame frame = make_frame();
 
     auto make_cfg = [&]() {
-        GpwDft m;
-        m.cell[0] = m.cell[1] = m.cell[2] = L;
+        GpwDft m(water_kinds());
         m.cutoff_ry = 200.0;
         m.n_occ = 8;
         m.max_iter = 40;
@@ -88,10 +90,10 @@ int main() {
     };
 
     GpwDft energy = make_cfg();
-    energy.build(atoms);
+    energy.build(frame);
 
     const auto t0 = std::chrono::steady_clock::now();
-    const auto& r = energy.run(atoms);
+    const auto& r = energy.run(frame);
     const auto t1 = std::chrono::steady_clock::now();
     const double wall_scf = std::chrono::duration<double>(t1 - t0).count();
 
@@ -106,9 +108,9 @@ int main() {
 
     const double h = 2e-3;
     const auto t2 = std::chrono::steady_clock::now();
-    const auto san = gpw_stress(atoms, make_cfg(), h);
+    const auto san = gpw_stress(frame, make_cfg(), h);
     const auto t3 = std::chrono::steady_clock::now();
-    const auto sfd = gpw_stress_fd(atoms, make_cfg(), h);
+    const auto sfd = gpw_stress_fd(frame, make_cfg(), h);
     const auto t4 = std::chrono::steady_clock::now();
     const double wall_an = std::chrono::duration<double>(t3 - t2).count();
     const double wall_fd = std::chrono::duration<double>(t4 - t3).count();
@@ -139,7 +141,7 @@ int main() {
     {
         auto bare = make_cfg();
         bare.vdw_df = false;
-        const auto s_bare = gpw_stress(atoms, bare, h);
+        const auto s_bare = gpw_stress(frame, bare, h);
         double max_diff = 0.0;
         for (int ax = 0; ax < 3; ++ax)
             max_diff = std::max(

@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pw-pbe-gga-si` |
-| Regression | `regressions/pw/pw-pbe-gga-si/` |
 | Public API | `cpu::pw::PW` (`xc = XCType::PBE`); `pw_forces_analytic` [eV/Å] |
 | Roadmap | `docs/roadmap/dft.md` / CP2K queue `pw-pbe-gga-si` (wave 1 ✓) |
 
@@ -18,7 +17,7 @@ functional on the FFT grid: density gradients enter both \(E_{\mathrm{xc}}\) and
 at a modest cutoff and \(2\times2\times2\) k-mesh so the e2e gate finishes in seconds.
 Public surface: concrete `cpu::pw::PW` with members (`upf_path`, `ecut_ry`, `k_mesh`,
 `xc`, …); Frame in / Frame out; analytic ionic forces via `pw_forces_analytic`.
-Product gate: `regressions/pw/pw-pbe-gga-si` (`reg_pw-pbe-gga-si`). Offline absolute
+Product gate: `pw-pbe-gga-si` (`reg_pw-pbe-gga-si`). Offline absolute
 CP2K/QE energy twin was **unavailable** on the pin host; correctness uses crystal-symmetry
 force zeros plus a PBE–LSDA energy-gap activation pin. Performance is **`perf_exempt`**.
 
@@ -125,24 +124,24 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_pw-pbe-gga-si -j$(nproc)
-  ./build/regressions/reg_pw-pbe-gga-si
+  reg_pw-pbe-gga-si
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/planewave/pw_solver.h` | Public `PW`, `PWResult`, `pw_forces_analytic` |
-| `include/atomiverse/cpu/planewave/pw_evaluator.h` | Driver-bound `PWEvaluator` |
-| `include/atomiverse/cpu/planewave/internal/xc_builder.h` | Internal GGA XC (not public) |
+| `pw_solver.h` | Public `PW`, `PWResult`, `pw_forces_analytic` |
+| `pw_evaluator.h` | Driver-bound `PWEvaluator` |
+| `xc_builder.h` | Internal GGA XC (not public) |
 | `src/cpu/planewave/internal/xc_builder.cpp` | Spectral \(\nabla\rho\), divergence \(v_{\mathrm{xc}}\) |
 | `tests/cpu/planewave/test_pw_components.cpp` | Unit: uniform \(\sigma=0\) limit; nonuniform GGA gap |
-| `regressions/pw/pw-pbe-gga-si/reg_pw-pbe-gga-si.cpp` | Product gate |
-| `regressions/pw/pw-pbe-gga-si/REFERENCE.md` | Offline pins + perf_exempt |
+| `reg_pw-pbe-gga-si.cpp` | Product gate |
+| case `pw-pbe-gga-si` pin | Offline pins + perf_exempt |
 
 ## Validation (CP2K)
 
 Source:
-[`regressions/pw/pw-pbe-gga-si/REFERENCE.md`](../../../regressions/pw/pw-pbe-gga-si/REFERENCE.md).
+case `pw-pbe-gga-si` pin.
 **Oracle status:** no CP2K Quickstep or Quantum ESPRESSO binary on the pin host
 (`module avail cp2k` / `qe` empty; no `cp2k.psmp` / `pw.x` on `PATH`). Absolute total-energy
 digits are **not** invented and **not** taken from a live third-party process at ctest time.
@@ -200,7 +199,7 @@ Re-run fair bench when an oracle is installed; target ratio \(\le 10\).
 Informational ATV wall only (REFERENCE, not a ratio gate): dual PBE+LSDA+forces package
 \(\sim 27\) s on the 2026-07-23 worker.
 
-Oracle notes when a twin is later available: `tools/cp2k_oracle/README.md`.
+Oracle notes when a twin is later available: CP2K oracle.
 Never spawn CP2K from ctest.
 
 ## Limitations
@@ -215,15 +214,15 @@ Never spawn CP2K from ctest.
 - **Scope gaps (other slugs):** collinear spin, metallic smearing, analytic cell stress,
   CUDA GGA, hybrid XC on PW.
 - **Unit vs e2e:** spectral GGA math is unit-tested under `tests/cpu/planewave/`; full SCF
-  product lives only under `regressions/pw/pw-pbe-gga-si/` (no e2e in ctest unit suite).
+  product lives only under `pw-pbe-gga-si` (no e2e in ctest unit suite).
 
 ## References
 
-- Offline pin: `regressions/pw/pw-pbe-gga-si/REFERENCE.md`
-- Oracle notes: `tools/cp2k_oracle/README.md`
+- Offline pin: case `pw-pbe-gga-si` pin
+- Oracle notes: CP2K oracle
 - Narrative PW chapter: `docs/tutorial/ch08-plane-wave.md`
 - Roadmap: `docs/roadmap/dft.md` (CPU true GGA PBE ✓)
 - Closed spec (history): `.claude/specs/pw-pbe-gga-si/spec.md` (deleted at done; git log)
 - J. P. Perdew, K. Burke, M. Ernzerhof, *Phys. Rev. Lett.* **77**, 3865 (1996) — PBE.
 - D. R. Hamann, *Phys. Rev. B* **88**, 085117 (2013) — ONCVPSP (class of shipped UPF).
-- Related regression: `regressions/pw/pw-lda-si` (LDA Si k-mesh energy foothold).
+- Related regression: `pw-lda-si` (LDA Si k-mesh energy foothold).

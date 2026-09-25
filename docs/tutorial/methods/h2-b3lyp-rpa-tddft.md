@@ -5,13 +5,12 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `h2-b3lyp-rpa-tddft` |
-| Regression | `regressions/scf/h2-b3lyp-rpa-tddft/` |
 | Public API | `cpu::scf::RKS` + `RKS::tddft` |
 | Roadmap | [Excited states](../../roadmap/excited-states.md) — full linear-response TDDFT (hybrid) |
 
 ## Summary
 
-Closed-shell **full linear-response TDDFT** (Casida **A,B** / RPA) on an **RKS/B3LYP** reference for H₂/STO-3G. Unlike hybrid TDA (`RKS::tda`; [h2-b3lyp-hybrid-tda](h2-b3lyp-hybrid-tda.md)), de-excitation (**B**) is retained; `ExcitedStatesResult::tda == false` and `alda == false` on the hybrid path. Primary observable: first singlet **S₁ [eV]** (one singles channel on this system: \(n_{\mathrm{occ}}=1\), \(n_{\mathrm{virt}}=1\)). Public surface is concrete `cpu::scf::RKS` with Frame I/O only — no `*Config` bags, no factories, no live PySCF in ctest. Offline oracle and gates: `regressions/scf/h2-b3lyp-rpa-tddft/REFERENCE.md`; binary `reg_h2-b3lyp-rpa-tddft`.
+Closed-shell **full linear-response TDDFT** (Casida **A,B** / RPA) on an **RKS/B3LYP** reference for H₂/STO-3G. Unlike hybrid TDA (`RKS::tda`; [h2-b3lyp-hybrid-tda](h2-b3lyp-hybrid-tda.md)), de-excitation (**B**) is retained; `ExcitedStatesResult::tda == false` and `alda == false` on the hybrid path. Primary observable: first singlet **S₁ [eV]** (one singles channel on this system: \(n_{\mathrm{occ}}=1\), \(n_{\mathrm{virt}}=1\)). Public surface is concrete `cpu::scf::RKS` with Frame I/O only — no `*Config` bags, no factories, no live PySCF in ctest. Offline oracle and gates: case `h2-b3lyp-rpa-tddft` pin; binary `reg_h2-b3lyp-rpa-tddft`.
 
 ## Method
 
@@ -83,21 +82,21 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_h2-b3lyp-rpa-tddft -j$(nproc)
-  ./build/regressions/reg_h2-b3lyp-rpa-tddft
+  reg_h2-b3lyp-rpa-tddft
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/rks.h` | `RKS::tddft` API |
-| `include/atomiverse/cpu/scf/tdhf.h` | `ExcitedStatesResult`, channels |
+| `rks.h` | `RKS::tddft` API |
+| `tdhf.h` | `ExcitedStatesResult`, channels |
 | `src/cpu/scf/tdhf.cpp` | dense Hermitian RPA from A,B |
-| `include/atomiverse/cpu/scf/internal/orbital_hessian.h` | hybrid A/B + \(f^{xc}\) |
-| `regressions/scf/h2-b3lyp-rpa-tddft/reg_h2-b3lyp-rpa-tddft.cpp` | e2e consumer |
+| `orbital_hessian.h` | hybrid A/B + \(f^{xc}\) |
+| `reg_h2-b3lyp-rpa-tddft.cpp` | e2e consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/h2-b3lyp-rpa-tddft/REFERENCE.md`](../../../regressions/scf/h2-b3lyp-rpa-tddft/REFERENCE.md) (offline pin; PySCF never imported by CMake/ctest).
+Source: case `h2-b3lyp-rpa-tddft` pin (offline pin; PySCF never imported by CMake/ctest).
 
 | Setup | Value |
 | ----- | ----- |
@@ -131,7 +130,7 @@ Geometry (Å):
 Oracle command (offline only):
 
 ```bash
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py rks-tddft \
+python <pyscf pin> rks-tddft \
   --geom h2 --basis sto-3g --xc b3lyp --nstates 3 --conv-tol 1e-12
 ```
 
@@ -139,7 +138,7 @@ Context (same geom/basis; not gates): CIS/RHF-TDA ≈ 25.81 eV; B3LYP hybrid TDA
 
 ## Performance
 
-Source: `REFERENCE.md` fair-bench table (2026-07-23); worker ratio **0.430**. Twin class: RKS/B3LYP + full RPA TDDFT (`rks_tddft`). Medians of ≥3 runs; \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}}\); gate \(r\le 10\).
+Source: pin notes fair-bench table (2026-07-23); worker ratio **0.430**. Twin class: RKS/B3LYP + full RPA TDDFT (`rks_tddft`). Medians of ≥3 runs; \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}}\); gate \(r\le 10\).
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | -------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -153,10 +152,10 @@ bash -lc '
   export OPENBLAS_ROOT=$OPENBLASDIR
   export RUSTUP_TOOLCHAIN=stable-x86_64-unknown-linux-gnu
   export LD_LIBRARY_PATH=$LIBRARY_PATH:$LD_LIBRARY_PATH
-  ~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+  python <pyscf fair-bench> \
     --method rks_tddft --geom h2 --basis sto-3g --xc b3lyp --nstates 3 \
     --repeat 3 --max-ratio 10.0 -- \
-    ./build/regressions/reg_h2-b3lyp-rpa-tddft
+    reg_h2-b3lyp-rpa-tddft
 '
 ```
 
@@ -168,12 +167,12 @@ bash -lc '
 - **Dense RPA ceiling:** \(n_{\mathrm{ov}}\le 512\); larger spaces throw (no automatic Davidson fallback on this API surface for production hybrid path as documented).
 - **Triplet / non-LSDA:** FD \(f^{xc}\) calibrated for singlet; triplet non-LSDA path omits that kernel.
 - **Gradients/NACs:** analytic CIS/TDA forces and NACs live on `RHF`; hybrid full-LR TDDFT analytic gradient is not the product path here.
-- **Oracle isolation:** PySCF is offline pin only (`tools/setup_pyscf_env.sh`, `tools/pyscf_oracle/pin_scf.py`); never a ctest dependency.
+- **Oracle isolation:** PySCF is offline pin only (PySCF oracle, PySCF oracle); never a ctest dependency.
 - **Related pins:** do not hard-gate this S₁ against hybrid TDA (25.928 eV) or pure PBE full LR ([full-lr-tddft-h2-pbe](full-lr-tddft-h2-pbe.md)).
 
 ## References
 
-- Offline pin: [`regressions/scf/h2-b3lyp-rpa-tddft/REFERENCE.md`](../../../regressions/scf/h2-b3lyp-rpa-tddft/REFERENCE.md)
+- Offline pin: case `h2-b3lyp-rpa-tddft` pin
 - Roadmap: [`docs/roadmap/excited-states.md`](../../roadmap/excited-states.md)
 - Related methods: [h2-b3lyp-hybrid-tda](h2-b3lyp-hybrid-tda.md) (TDA), [full-lr-tddft-h2-pbe](full-lr-tddft-h2-pbe.md) (pure GGA full LR)
 - M. E. Casida, in *Recent Advances in Density Functional Methods*, Part I (World Scientific, 1995) — Casida (A,B)

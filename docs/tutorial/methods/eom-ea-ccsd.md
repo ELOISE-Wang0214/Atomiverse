@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `eom-ea-ccsd` |
-| Regression | `regressions/scf/eom-ea-ccsd/` |
 | Public API | `cpu::scf::RHF::eom_ea_ccsd(Frame&, n_states)` → `EOMEACCSDResult` |
 | Roadmap | [Excited states §3 EOM-CC](../../roadmap/excited-states.md) |
 
@@ -19,7 +18,7 @@ Jacobian, returning unique attachment roots \(\omega = E(N+1) - E_{\mathrm{CCSD}
 [eV] (spin degeneracy de-duplicated) plus CCSD energetics [Ha]. Foothold case
 is H₂ / STO-3G (unbound attachment; lowest root ≈ 18.82 eV). Offline pin is
 PySCF 2.14.0 `cc.CCSD(...).eaccsd` (never live in ctest). End-to-end gate:
-`regressions/scf/eom-ea-ccsd` → binary `reg_eom-ea-ccsd`. Fair-bench ratio
+`eom-ea-ccsd` → binary `reg_eom-ea-ccsd`. Fair-bench ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} = 0.068\) (within 10×; startup-dominated).
 
 ## Method
@@ -91,7 +90,7 @@ const cpu::scf::EOMEACCSDResult eom = rhf.eom_ea_ccsd(frame, /*n_states=*/1);
 // eom.ccsd_iterations; eom.converged
 ```
 
-`EOMEACCSDResult` (`include/atomiverse/cpu/scf/eom_ea_ccsd.h`): `energy_ev`
+`EOMEACCSDResult` (`eom_ea_ccsd.h`): `energy_ev`
 (ascending unique attachment roots [eV]), `e_corr_ha`, `e_ccsd_ha` [Hartree],
 `ccsd_iterations`, `converged`. Pack-level
 `eom_ea_ccsd_energies` is private engine code.
@@ -110,21 +109,21 @@ bash -lc '
         -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_REGRESSIONS=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_eom-ea-ccsd -j$(nproc)
-  ./build/regressions/reg_eom-ea-ccsd
+  reg_eom-ea-ccsd
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/scf/eom_ea_ccsd.h` | Public `EOMEACCSDResult` |
-| `include/atomiverse/cpu/scf/rhf.h` | `RHF::eom_ea_ccsd(Frame&, n_states)` |
-| `include/atomiverse/cpu/scf/internal/eom_ea_ccsd_pack.h` | Private pack entry |
+| `eom_ea_ccsd.h` | Public `EOMEACCSDResult` |
+| `rhf.h` | `RHF::eom_ea_ccsd(Frame&, n_states)` |
+| `eom_ea_ccsd_pack.h` | Private pack entry |
 | `src/cpu/scf/eom_ea_ccsd.cpp` | Intermediates, Jacobian, root de-dup |
-| `regressions/scf/eom-ea-ccsd/reg_eom-ea-ccsd.cpp` | E2E consumer |
+| `reg_eom-ea-ccsd.cpp` | E2E consumer |
 
 ## Validation (vs PySCF)
 
-Source: [`regressions/scf/eom-ea-ccsd/REFERENCE.md`](../../../regressions/scf/eom-ea-ccsd/REFERENCE.md)
+Source: case `eom-ea-ccsd` pin
 (offline pin; PySCF never in ctest). Protocol:
 `docs/tutorial/appendix-pyscf-oracle.md`.
 
@@ -154,17 +153,17 @@ CCSD). LUMO Koopmans estimate ~18.26 eV (REFERENCE).
 Oracle repro (human / offline only):
 
 ```bash
-bash tools/setup_pyscf_env.sh
-~/work/.x86_64/bin/python tools/pyscf_oracle/pin_scf.py eom-ea-ccsd \
+bash <pyscf env setup>
+python <pyscf pin> eom-ea-ccsd \
     --geom h2 --basis sto-3g --nstates 1 --conv-tol 1e-12
 ```
 
 ## Performance
 
 Source: fair wall in
-[`regressions/scf/eom-ea-ccsd/REFERENCE.md`](../../../regressions/scf/eom-ea-ccsd/REFERENCE.md)
+case `eom-ea-ccsd` pin
 (2026-07-23; login node; `OMP_NUM_THREADS=1`; median of ≥3). Campaign rollup
-ratio **0.068** (the case `REFERENCE.md`). No standing comparison table in-tree at draft time.
+ratio **0.068** (the case pin notes). No standing comparison table in-tree at draft time.
 
 | Twin | \(T_{\mathrm{PySCF}}\) [s] | \(T_{\mathrm{ATV}}\) [s] | \(r\) | ≤10× | Caveat |
 | ---- | -------------------------: | -----------------------: | ----: | ---- | ------ |
@@ -172,9 +171,9 @@ ratio **0.068** (the case `REFERENCE.md`). No standing comparison table in-tree 
 
 ```bash
 export OMP_NUM_THREADS=1
-~/work/.x86_64/bin/python tools/pyscf_oracle/fair_bench.py \
+python <pyscf fair-bench> \
     --method eom-ea-ccsd --geom h2 --basis sto-3g --nstates 1 --repeat 3 -- \
-    ./build/regressions/reg_eom-ea-ccsd
+    reg_eom-ea-ccsd
 ```
 
 Gate: \(r = T_{\mathrm{ATV}}/T_{\mathrm{PySCF}} \le 10\). No ⚡ optimization pass
@@ -196,13 +195,13 @@ required on this case.
 
 ## References
 
-- Offline pin: `regressions/scf/eom-ea-ccsd/REFERENCE.md`
-- Regression consumer: `regressions/scf/eom-ea-ccsd/reg_eom-ea-ccsd.cpp`
+- Offline pin: case `eom-ea-ccsd` pin
+- Regression consumer: `reg_eom-ea-ccsd.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Roadmap: `docs/roadmap/excited-states.md` (§3 Equation-of-Motion Coupled Cluster);
   ground-state CC: `docs/roadmap/post-hf.md` (§3)
-- Public API: `include/atomiverse/cpu/scf/eom_ea_ccsd.h`,
-  `include/atomiverse/cpu/scf/rhf.h`
+- Public API: `eom_ea_ccsd.h`,
+  `rhf.h`
 - M. Nooijen & R. J. Bartlett, *Equation of motion coupled cluster method for
   electron attachment*, *J. Chem. Phys.* **102**, 3629 (1995).
   DOI [10.1063/1.468591](https://doi.org/10.1063/1.468591)

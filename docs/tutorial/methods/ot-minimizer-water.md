@@ -5,8 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ot-minimizer-water` |
-| Regression | `regressions/gpw/ot-minimizer-water/` |
-| Public API | `cpu::gpw::GPWEvaluator` + member `use_ot` (ctor arg or assign) |
+| Public API | `cpu::gpw::GpwDft` member `use_ot`, bound via `cpu::gpw::GPWEvaluator` |
 | Roadmap | `docs/roadmap/dft.md` §10 GPW — OT minimizer ✓ (`reg_ot-minimizer-water`) |
 
 ## Summary
@@ -15,11 +14,11 @@
 Γ-point **GPW** DFT: occupied MO coefficients are optimized on the Stiefel-type
 manifold \(C^\top S C = I\) instead of a dense generalized eigensolve + Pulay
 DIIS each outer step. Product surface is the public member
-`cpu::gpw::GPWEvaluator::use_ot` (default `false`; no `*Config` bag, no env
-required). This page pins **OT total energy** for the CP2K getting-started
+`cpu::gpw::GpwDft::use_ot` (default `false`; no `*Config` bag; the member is
+the only switch). This page pins **OT total energy** for the CP2K getting-started
 isolated water (PBE / DZVP-MOLOPT-GTH / GTH-PBE / Martyna–Tuckerman) against an
 offline **CP2K 2026.1** OT twin, and dual-checks OT vs in-tree DIIS on the same
-grids. Product gate: `regressions/gpw/ot-minimizer-water`
+grids. Product gate: `ot-minimizer-water`
 (`reg_ot-minimizer-water`). Fair OT-only wall ratio
 \(r = T_{\mathrm{ATV}}/T_{\mathrm{CP2K}} \approx 9.0\) (OMP=4, ≤10×).
 
@@ -71,7 +70,7 @@ gapped closed-shell ground state when both converge on identical grids.
 
 ## Implementation
 
-Public surface only (`cpu::Frame` + `GPWEvaluator` members / ctor args; no
+Public surface only (`cpu::Frame` + `GpwDft` members + `GPWEvaluator`; no
 `*Config`, no factories). Match the regression (`250` Ry pin budget; tutorial
 class in `examples/09_gpw.cpp` is `400` Ry):
 
@@ -107,21 +106,22 @@ const cpu::gpw::Kind H{
     cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
     cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-cpu::gpw::GPWEvaluator eval(
-    /*kinds*/ {O, H}, /*cutoff_ry*/ 250.0, /*max_iter*/ 200, /*tol*/ 1e-7,
-    /*mix*/ 0.3, cpu::gpw::XcKind::PBE, /*nonperiodic*/ true,
-    /*compute_forces*/ false, /*fd_step*/ 1e-3, /*d3*/ false,
-    /*use_ot*/ true);
-// equivalent after construction: eval.use_ot = true;
+cpu::gpw::GpwDft dft{{O, H}};
+dft.cutoff_ry = 250.0;
+dft.max_iter = 200;
+dft.tol = 1e-7;
+dft.mix = 0.3;
+dft.xc = cpu::gpw::XcKind::PBE;
+dft.nonperiodic = true;
+dft.use_ot = true;
+
+cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 
 cpu::single_point(frame, eval);
 const double e_ha = eval.last_energy_hartree();   // [Hartree]
 const bool ok = eval.last_result().converged;
 // frame.meta.get(kEnergy) is eV (public Frame unit)
 ```
-
-Diagnostic env `ATV_GPW_OT` may still force OT on (OR with the member); product
-code and the regression **must not** depend on it.
 
 Build and run the regression:
 
@@ -137,24 +137,24 @@ bash -lc '
         -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_CUDA=OFF \
         -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_ot-minimizer-water -j$(nproc)
-  ./build/regressions/reg_ot-minimizer-water
+  reg_ot-minimizer-water
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/gpw/gpw_evaluator.h` | Public `use_ot` member + ctor |
-| `include/atomiverse/cpu/gpw/gpw_solver.h` | `GpwDft::use_ot` (inner solver) |
-| `include/atomiverse/cpu/gpw/internal/ot.h` | OT parameterization / preconds (internal) |
-| `src/cpu/gpw/gpw_evaluator.cpp` | Wire member into `GpwDft` at `build()` |
+| `gpw_evaluator.h` | `GPWEvaluator(GpwDft, compute_forces)` bind shell |
+| `gpw_solver.h` | Public `GpwDft::use_ot` member |
+| `ot.h` | OT parameterization / preconds (internal) |
+| `src/cpu/gpw/gpw_evaluator.cpp` | Builds the bound `GpwDft` against the Frame at `build()` |
 | `tests/cpu/gpw/test_cpu_gpw_ot.cpp` | Unit: fixed-H OT, mini-H₂ OT≈DIIS, member toggle |
-| `regressions/gpw/ot-minimizer-water/` | E2E product gate + `REFERENCE.md` |
-| `tools/cp2k_oracle/inputs/ot-minimizer-water-ot.inp` | Offline CP2K OT twin |
-| `tools/cp2k_oracle/inputs/ot-minimizer-water-diag.inp` | Offline CP2K diag twin |
+| `ot-minimizer-water` | E2E product gate + pin notes |
+| CP2K oracle | Offline CP2K OT twin |
+| CP2K oracle | Offline CP2K diag twin |
 
 ## Validation (vs CP2K)
 
-Source: [`regressions/gpw/ot-minimizer-water/REFERENCE.md`](../../../regressions/gpw/ot-minimizer-water/REFERENCE.md).
+Source: case `ot-minimizer-water` pin.
 Oracle: offline **CP2K 2026.1** (`cp2k.psmp`, 1 MPI rank); **never** live in ctest.
 
 **Setup:**
@@ -190,14 +190,14 @@ Offline oracle sketch (host with CP2K module; not ctest):
 ```bash
 module load ... CP2K/2026.1
 export CP2K_DATA_DIR=.../share/cp2k/data
-cp2k.psmp -i tools/cp2k_oracle/inputs/ot-minimizer-water-ot.inp -o ot.out
+cp2k.psmp -i <CP2K oracle input for this case> -o ot.out
 # ENERGY| Total FORCE_EVAL ( QS ) energy [hartree]  -17.212848291913666
 ```
 
 ## Performance
 
 Source: fair wall table in
-`regressions/gpw/ot-minimizer-water/REFERENCE.md` (2026-07-23). Queue record:
+case `ot-minimizer-water` pin (2026-07-23). Queue record:
 ratio **~9.0** (fair OT-only, OMP=4). Gate \(r\le 10\) unless `perf_exempt`.
 
 Comparable settings: cutoff 250 Ry, PBE, MT, single rank, `OMP_NUM_THREADS=4`.
@@ -233,11 +233,11 @@ optimize pass required for this foothold.
 
 ## References
 
-- Offline pin + fair wall: `regressions/gpw/ot-minimizer-water/REFERENCE.md`
-- Regression binary: `regressions/gpw/ot-minimizer-water/reg_ot-minimizer-water.cpp`
+- Offline pin + fair wall: case `ot-minimizer-water` pin
+- Regression binary: `reg_ot-minimizer-water.cpp`
 - Closed spec (git history): `.claude/specs/ot-minimizer-water/` (deleted at
   done; see commit `feat(gpw): productize OT SCF + CP2K water pin`)
-- CP2K oracle inputs: `tools/cp2k_oracle/inputs/ot-minimizer-water-*.inp`
+- CP2K oracle inputs: CP2K oracle
 - Narrative GPW chapter: `docs/tutorial/ch09-gpw.md`
 - Roadmap: `docs/roadmap/dft.md` §10 (OT ✓ on GPW)
 - VandeVondele, J.; Hutter, J. *J. Chem. Phys.* **118**, 4365 (2003),

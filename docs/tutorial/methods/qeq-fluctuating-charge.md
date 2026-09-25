@@ -5,7 +5,6 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `qeq-fluctuating-charge` |
-| Regression | `regressions/md/qeq-fluctuating-charge/` |
 | Public API | `cpu::md::QEq` (Component on `cpu::md::MD`, default `pre_force` order −50) |
 | Roadmap | map §2 "Fluctuating-charge / QEq" |
 | Oracle | **LAMMPS** QEQ package (`fix qeq/point`), offline pin — ratio **0.45** |
@@ -86,9 +85,9 @@ QEq parameters (`param.qeq`; χ [eV], η [eV/e²]):
 Oracle command: `fix q all qeq/point 1 10.0 1.0e-10 500 param.qeq` with
 `pair_style coul/cut 10.0`, `run 0` (setup equilibrates charges before
 output). Inputs preserved at
-`tools/metalwalls_oracle/inputs/lammps/qeq-fluctuating-charge/`
+MetalWalls oracle
 (`in.qeq_point`, `in.qeq_perf`, `param.qeq`); procedure in
-`tools/metalwalls_oracle/pin_notes_qeq-fluctuating-charge.md`. ctest never
+MetalWalls oracle. ctest never
 launches LAMMPS.
 
 ### Key exclusions (non-goals of this slug)
@@ -165,24 +164,24 @@ bash -lc '
         -DATV_BUILD_HF=OFF -DATV_BUILD_PW=OFF -DATV_BUILD_GPW=OFF \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build --target reg_qeq-fluctuating-charge -j"$(nproc)"
-  ./build/regressions/reg_qeq-fluctuating-charge
+  reg_qeq-fluctuating-charge
 '
 ```
 
 | Path | Role |
 | ---- | ---- |
-| `include/atomiverse/cpu/dynamics/qeq.h` | Public `QEq` (ctor, `set_type`, `cutoff`, `qtot`, observables) |
+| `qeq.h` | Public `QEq` (ctor, `set_type`, `cutoff`, `qtot`, observables) |
 | `src/cpu/dynamics/qeq.cpp` | Dense \(H=\eta\delta+1/r\) build + Cholesky + two-vector constraint |
 | `tests/cpu/dynamics/test_qeq.cpp` | Unit pins: 2-atom closed form, constraint, cutoff decoupling, energy, throws |
-| `regressions/md/qeq-fluctuating-charge/reg_qeq-fluctuating-charge.cpp` | Product gate + fair perf twin |
-| `tools/metalwalls_oracle/inputs/lammps/qeq-fluctuating-charge/` | Offline LAMMPS inputs (`in.qeq_point`, `in.qeq_perf`, `param.qeq`) |
+| `reg_qeq-fluctuating-charge.cpp` | Product gate + fair perf twin |
+| MetalWalls oracle | Offline LAMMPS inputs (`in.qeq_point`, `in.qeq_perf`, `param.qeq`) |
 
 ## Validation (vs LAMMPS `fix qeq/point`)
 
 Source:
-[`regressions/md/qeq-fluctuating-charge/REFERENCE.md`](../../../regressions/md/qeq-fluctuating-charge/REFERENCE.md)
+case `qeq-fluctuating-charge` pin
 (offline pin; **never** live LAMMPS in ctest). Oracle tooling:
-[`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md).
+MetalWalls oracle.
 
 **Oracle:** LAMMPS 30 Mar 2026 development
 (patch_30Mar2026-1074-g7f680de296), QEQ package, run offline 2026-07-27
@@ -210,7 +209,7 @@ throw contracts.
 ### Offline pin repro (never ctest)
 
 ```bash
-cd tools/metalwalls_oracle/inputs/lammps/qeq-fluctuating-charge
+cd <LAMMPS oracle input dir for this case>
 lmp -in in.qeq_point   # charges + ecoul pins
 lmp -in in.qeq_perf    # 1000-solve fair perf wall
 ```
@@ -218,7 +217,7 @@ lmp -in in.qeq_perf    # 1000-solve fair perf wall
 ## Performance
 
 Source: REFERENCE.md fair perf twin; handoff
-the case `REFERENCE.md`.
+the case pin notes.
 Fair twin is `in.qeq_perf`: 1000 repeated `fix qeq/point` solves (dt = 0)
 vs 1000 `QEq::launch` equilibrations (dense rebuild + Cholesky each launch)
 on the same geometry, measured 2026-07-27 on the x86_64 epyc login node,
@@ -255,11 +254,9 @@ Limitations).
 
 ## References
 
-- Offline pin: [`regressions/md/qeq-fluctuating-charge/REFERENCE.md`](../../../regressions/md/qeq-fluctuating-charge/REFERENCE.md)
-- Product gate: [`regressions/md/qeq-fluctuating-charge/reg_qeq-fluctuating-charge.cpp`](../../../regressions/md/qeq-fluctuating-charge/reg_qeq-fluctuating-charge.cpp)
-- Public header: [`include/atomiverse/cpu/dynamics/qeq.h`](../../../include/atomiverse/cpu/dynamics/qeq.h)
-- Pin procedure: [`tools/metalwalls_oracle/pin_notes_qeq-fluctuating-charge.md`](../../../tools/metalwalls_oracle/pin_notes_qeq-fluctuating-charge.md)
-- Oracle notes: [`tools/metalwalls_oracle/README.md`](../../../tools/metalwalls_oracle/README.md)
+- Offline pin: case `qeq-fluctuating-charge` pin
+- Pin procedure: MetalWalls oracle
+- Oracle notes: MetalWalls oracle
 - Capability map: `.claude/notes/metalwalls-capability-map.md` (§2 "Fluctuating-charge / QEq")
 - Literature: Rappé, Goddard, *J. Phys. Chem.* **95**, 3358 (1991), DOI [10.1021/j100161a070](https://doi.org/10.1021/j100161a070) — QEq / electronegativity equalization
 - Oracle: LAMMPS 30 Mar 2026 development (patch_30Mar2026-1074-g7f680de296), QEQ package, `src/QEQ/fix_qeq_point.cpp`

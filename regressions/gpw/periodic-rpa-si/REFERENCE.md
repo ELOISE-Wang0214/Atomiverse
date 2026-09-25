@@ -19,9 +19,9 @@ Science matches molecular `RHF::direct_rpa` (Furche plasmon formula):
    replacement; periodic HF remains blocked).
 
 ```cpp
-cpu::gpw::GpwDft m;
-// ... members; build(); run(atoms);
-const cpu::gpw::RpaResult& r = m.direct_rpa(atoms);
+cpu::gpw::GpwDft m{{si_kind}};
+// ... members; build(frame); run(frame);  // frame: Å positions, Z, box
+const cpu::gpw::RpaResult& r = m.direct_rpa();
 // r.e_corr, r.e_total [Ha]; r.omega_ha; r.ri
 ```
 
