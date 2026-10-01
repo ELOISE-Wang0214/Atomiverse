@@ -395,7 +395,7 @@ defaults, not semantics.
 | `cpu::vib::Hessian` | `vib::Phase` | — (fixed 6N + finalize) |
 | `cpu::mc::MC` | `sampling::Phase` | **outcome** `Metropolis` |
 | `cpu::PathDriver` | `path::Phase` | criterion `AllReplicasConverged` |
-| Gaussian SCF (`MeanFieldMethod<D>`) | `scf::Phase` | residual / ΔE criteria |
+| Gaussian SCF (`MeanFieldMethod<D>`, `cuda::scf::RHF`) | `scf::Phase` | residual / ΔE criteria |
 
 **Two orthogonal policy slots.** `Criterion` answers *should the loop stop?* —
 `add_criterion(…)`, plural, composed by severity **Stop > Converged >
@@ -453,12 +453,13 @@ and no caller ever types the int.
 There is no generic "SCFSolver" and no electronic-structure *category*. The
 real thing is the concrete method — `RHF`, `UHF`, `RKS`, `UKS`, `AM1`, `RM1`,
 `PW`, `GpwDft` — each owning its Hamiltonian, density build, and parameters as
-members. Gaussian SCF is already a Driver node: `MeanFieldMethod<D> :
-cpu::Driver<scf::Phase>` with typed stages `fock → mix → diagonalize → density
-→ check` under `cpu/scf/stages/`, each stage a Component owned as a direct
-member, and the algorithms they call (`DIISMixer`, `EigenSolver`) staying
-`internal::` helpers. `scf::Phase` is legal **because** a Driver node carries
-it; a free-floating phase enum with no node is not.
+members. Gaussian SCF is a Driver node on both backends: `MeanFieldMethod<D> :
+cpu::Driver<scf::Phase>` and `cuda::scf::RHF : cuda::Driver<scf::Phase>`,
+with typed stages `fock → mix → diagonalize → density → check`. CPU stages
+live under `cpu/scf/stages/`; CUDA stages are owned by `RHF` and call the
+same-order device helpers (`DIISMixer`, `EigenSolver` stay `internal::`).
+`scf::Phase` is legal **because** a Driver node carries it; a free-floating
+phase enum with no node is not.
 
 ```cpp
 cpu::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-10};
@@ -477,9 +478,8 @@ one public shape (science factorization OK; engineering dialects —
 method-as-Driver vs method+`*Evaluator` vs Solver-internal SCC; CUDA
 `cuda::gpw::GpwDft` still atom-in, not Frame-in). Full ledger and close order:
 [`.claude/notes/es-architecture-debt.md`](.claude/notes/es-architecture-debt.md).
-Named residuals still open there include: `cuda::scf::RHF` =
-Component+`RhfScfCycle` (not `cuda::Driver<scf::Phase>`); `cuda::pw::PW`
-has no Driver mirror; `GpwDft` OT free-loop (DIIS paths are Driver stages).
+Named residuals still open there include: `cuda::pw::PW` has no Driver
+mirror; `GpwDft` OT free-loop (DIIS paths are Driver stages).
 `cpu::pw::PW` product paths are already `Driver<pw::Phase>` — do not re-open
 as free-loop debt.
 

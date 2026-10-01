@@ -7,14 +7,14 @@
 /// purity rule ("hot-path data structures carry only fundamental physical
 /// quantities -- never precomputed indices, caches, or derived maps") this
 /// is **not** part of `cuda::Frame`: it is owned by the concrete method's
-/// private cycle (`internal::RhfScfCycle` for RHF; synthetic tests use
+/// private workspace (`internal::RhfScfCycle` for RHF, owned by the driver; synthetic tests use
 /// `internal::SyntheticScfCycle`). Method-private (Frame purity).
 ///
 /// Allocated by the SCF `internal::*` step helpers in their `build()` and
 /// freed in their `destroy()`; the owning cycle holds the single instance and
 /// passes it by reference into every helper call.
 ///
-/// @see internal::RhfScfCycle for the RHF private cycle that owns this workspace
+/// @see cuda::scf::RHF for the driver that owns this workspace
 #pragma once
 
 #include "atomiverse/cuda/frame/types.cuh"

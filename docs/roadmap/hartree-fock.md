@@ -10,7 +10,7 @@ Shares one SCF solver with [Kohn–Sham DFT](dft.md): the 2×2 product
 
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
-| RHF | ✓ | ✓ | CUDA: device Fock/density/CDIIS; STO-3G s/p (l ≤ 1) native ERI+forces |
+| RHF | ✓ | ✓ | CUDA: `cuda::Driver<scf::Phase>` (fock, mix, diagonalize, density, check); device Fock/density/CDIIS; STO-3G s/p (l ≤ 1) native ERI+forces |
 | UHF | ✓ | ○ | Default open-shell workhorse |
 | ROHF | ✓ | ○ | Guest–Saunders; energy + analytic G + ROMP2 + FD Hessian |
 | GHF | ✓ | ○ | Real two-component; energy + analytic G |

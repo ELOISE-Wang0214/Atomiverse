@@ -6,7 +6,8 @@
 /// instantiations live in src/cpu/driver/driver.cpp and src/cuda/driver/driver.cu.
 ///
 /// Plan slots hold a Component*. A nested CPU loop is wrapped as
-/// `cpu::NestedLoopAdapter` at `on(phase).add` / `add_ref`.
+/// `cpu::NestedLoopAdapter` and a nested CUDA loop as
+/// `cuda::NestedLoopAdapter`, both at `on(phase).add` / `add_ref`.
 #pragma once
 
 #include <memory>
@@ -25,6 +26,8 @@
 #include "atomiverse/cpu/driver/nested_loop_adapter.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/device/timer.h"
+#include "atomiverse/cuda/driver/driver_node.h"
+#include "atomiverse/cuda/driver/nested_loop_adapter.h"
 
 namespace ATV {
 
@@ -137,6 +140,53 @@ class PhaseBuilder {
                                int> = 0>
     PhaseBuilder& add_ref(Nested& child, int order = 0, int budget = -1) {
         auto adapter = std::make_unique<cpu::NestedLoopAdapter>(child, budget);
+        Component* raw = adapter.get();
+        owned_->push_back(std::move(adapter));
+        bindings_->push_back({ATV::slot_of(phase_), order, raw});
+        return *this;
+    }
+
+    /// @brief Own a nested CUDA driver on this phase.
+    ///
+    /// Wraps `child` in `cuda::NestedLoopAdapter`. Dual-identity
+    /// Component+DriverNode types keep the Component overload.
+    /// `@param order` Binding order within the phase (lower runs earlier).
+    /// `@param budget` Dimensionless inner-loop iterations; `< 0` uses
+    /// `child.default_budget()`.
+    template <typename Nested,
+              std::enable_if_t<
+                  std::is_same_v<DeviceTag, cuda::device_tag>
+                      && std::is_base_of_v<cuda::DriverNode,
+                                           std::remove_reference_t<Nested>>
+                      && !std::is_base_of_v<Component,
+                                            std::remove_reference_t<Nested>>
+                      && !std::is_lvalue_reference_v<Nested>,
+                  int> = 0>
+    PhaseBuilder& add(Nested&& child, int order = 0, int budget = -1) {
+        using N = std::remove_reference_t<Nested>;
+        auto node = std::make_unique<N>(std::forward<Nested>(child));
+        auto adapter =
+            std::make_unique<cuda::NestedLoopAdapter>(std::move(node), budget);
+        Component* raw = adapter.get();
+        owned_->push_back(std::move(adapter));
+        bindings_->push_back({ATV::slot_of(phase_), order, raw});
+        return *this;
+    }
+
+    /// @brief Borrow a nested CUDA driver on this phase.
+    ///
+    /// The adapter is owned by this driver; `child` stays with the caller.
+    /// `@param order` Binding order within the phase (lower runs earlier).
+    /// `@param budget` Dimensionless inner-loop iterations; `< 0` uses
+    /// `child.default_budget()`.
+    template <
+        typename Nested,
+        std::enable_if_t<std::is_same_v<DeviceTag, cuda::device_tag>
+                             && std::is_base_of_v<cuda::DriverNode, Nested>
+                             && !std::is_base_of_v<Component, Nested>,
+                         int> = 0>
+    PhaseBuilder& add_ref(Nested& child, int order = 0, int budget = -1) {
+        auto adapter = std::make_unique<cuda::NestedLoopAdapter>(child, budget);
         Component* raw = adapter.get();
         owned_->push_back(std::move(adapter));
         bindings_->push_back({ATV::slot_of(phase_), order, raw});

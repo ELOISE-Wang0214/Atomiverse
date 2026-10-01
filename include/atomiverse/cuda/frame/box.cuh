@@ -24,6 +24,21 @@
 
 #include "atomiverse/cuda/frame/types.cuh"
 
+// Host TUs (the core Driver template) include this header. nvcc defines the
+// execution-space decorators; the host compiler does not.
+#if !defined(__CUDACC__)
+#if !defined(__host__)
+#define __host__
+#endif
+#if !defined(__device__)
+#define __device__
+#endif
+#if !defined(__forceinline__)
+#define __forceinline__ inline
+#endif
+#include <cmath>
+#endif
+
 namespace ATV {
 namespace cuda {
 

@@ -47,7 +47,6 @@ Priority: 🔴 bind/forces/Driver alignment before any new ES public API;
 | 🔴 | `es-kind-model` | `cpu/component/hf.h` vs SE/PW/GPW Kinds | `HF` is pure tag; others are Component kinds. One model for energy sources. |
 | 🔴 | `es-se-driver` | `am1_solver.h`, `rm1_solver.h`, NDDO SCC | Self-consistency not a typed Driver; RM1 lacks `QmEngine` / Kind / Frame write-back. |
 | 🔴 | `es-aimd-depth` | `cpu/electronic/aimd_method.h` | `CarParrinelloMethod` inheritance depth ≥ 3. Compose, do not publicly derive. |
-| 🔴 | `es-cuda-rhf-driver` | `cuda/scf/rhf.cuh` | Known: Component + `RhfScfCycle`, not `cuda::Driver<scf::Phase>`. |
 | 🔴 | `es-cuda-pw-driver` | `cuda/planewave/pw_solver.cuh` | No Driver; CPU/CUDA mirror broken (new vs CLAUDE). |
 | 🟡 | `es-gpw-ot-freeloop` | `GpwDft` `use_ot` | OT still free-loop; DIIS paths are Driver stages — do not add a third topology. |
 | 🟡 | `es-hf-cast` | `cpu/driver/driver.h` | `dynamic_cast<const HF*>` for energy sources vs protocol-probe law. |
@@ -64,7 +63,7 @@ Priority: 🔴 bind/forces/Driver alignment before any new ES public API;
 | Method family | Driver? | Frame `run`/`forces`? | Conforms? |
 | --- | --- | --- | --- |
 | CPU RHF/UHF/RKS/UKS/ROHF/ROKS/GHF | Yes | Yes | Pass (ghost_atoms / HF cast aside) |
-| CUDA RHF | No | Yes | Fail (`es-cuda-rhf-driver`) |
+| CUDA RHF | Yes | Yes | Pass |
 | AM1 / RM1 | No | Partial / no | Fail (`es-se-driver`, `es-forces-api`) |
 | CPU PW | Yes | `run` yes; forces free-fn | Partial |
 | CUDA PW | No | `run` yes | Fail (`es-cuda-pw-driver`) |
@@ -76,8 +75,8 @@ Priority: 🔴 bind/forces/Driver alignment before any new ES public API;
 ### Close order (recommended)
 
 1. `es-forces-api` + `es-bind-dialects` (PW / AM1 / RM1 onto the GPW shape)
-2. `es-se-driver` / `es-cuda-rhf-driver` / `es-cuda-pw-driver` /
-   `es-cuda-gpw-frame-io` (Driver + Frame shape on CUDA)
+2. `es-se-driver` / `es-cuda-pw-driver` / `es-cuda-gpw-frame-io`
+   (Driver + Frame shape on CUDA; CUDA RHF is already `cuda::Driver<scf::Phase>`)
 3. `es-kind-model` + QmEngine coverage
 4. Hygiene: `es-posthf-ks-gate`, docs, ghost_atoms, OT residual,
    `es-reg-internal`, `es-cuda-gpw-tests-e2e`
