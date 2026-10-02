@@ -195,65 +195,25 @@ struct EngineSlot {
 
 class RhfStage : public cuda::Component {
   public:
-    explicit RhfStage(EngineSlot* slot) : slot_(slot) {}
+    using Step = void (internal::RhfScfCycle::*)(void*, cuda::Frame&, int);
 
-  protected:
+    RhfStage(EngineSlot* slot, ATV::scf::Phase phase, const char* stage_name,
+             Step step)
+        : slot_(slot), phase_(phase), name_(stage_name), step_(step) {}
+
+    std::string name() const override { return name_; }
+
+    void launch(const cuda::LaunchContext& ctx) override {
+        if (!ctx.at(phase_) || !slot_ || !slot_->cycle)
+            return;
+        (slot_->cycle.get()->*step_)(ctx.runtime.stream, ctx.frame, ctx.step);
+    }
+
+  private:
     EngineSlot* slot_ = nullptr;
-};
-
-class RhfFockStage : public RhfStage {
-  public:
-    using RhfStage::RhfStage;
-    std::string name() const override { return "scf_fock_stage"; }
-    void launch(const cuda::LaunchContext& ctx) override {
-        if (!ctx.at(ATV::scf::Phase::fock) || !slot_ || !slot_->cycle)
-            return;
-        slot_->cycle->step_fock(ctx.runtime.stream, ctx.frame, ctx.step);
-    }
-};
-
-class RhfMixStage : public RhfStage {
-  public:
-    using RhfStage::RhfStage;
-    std::string name() const override { return "scf_mix_stage"; }
-    void launch(const cuda::LaunchContext& ctx) override {
-        if (!ctx.at(ATV::scf::Phase::mix) || !slot_ || !slot_->cycle)
-            return;
-        slot_->cycle->step_mix(ctx.runtime.stream, ctx.frame, ctx.step);
-    }
-};
-
-class RhfDiagStage : public RhfStage {
-  public:
-    using RhfStage::RhfStage;
-    std::string name() const override { return "scf_diagonalize_stage"; }
-    void launch(const cuda::LaunchContext& ctx) override {
-        if (!ctx.at(ATV::scf::Phase::diagonalize) || !slot_ || !slot_->cycle)
-            return;
-        slot_->cycle->step_diagonalize(ctx.runtime.stream, ctx.frame, ctx.step);
-    }
-};
-
-class RhfDensityStage : public RhfStage {
-  public:
-    using RhfStage::RhfStage;
-    std::string name() const override { return "scf_density_stage"; }
-    void launch(const cuda::LaunchContext& ctx) override {
-        if (!ctx.at(ATV::scf::Phase::density) || !slot_ || !slot_->cycle)
-            return;
-        slot_->cycle->step_density(ctx.runtime.stream, ctx.frame, ctx.step);
-    }
-};
-
-class RhfCheckStage : public RhfStage {
-  public:
-    using RhfStage::RhfStage;
-    std::string name() const override { return "scf_check_stage"; }
-    void launch(const cuda::LaunchContext& ctx) override {
-        if (!ctx.at(ATV::scf::Phase::check) || !slot_ || !slot_->cycle)
-            return;
-        slot_->cycle->step_check(ctx.runtime.stream, ctx.frame, ctx.step);
-    }
+    ATV::scf::Phase phase_ = ATV::scf::Phase::fock;
+    const char* name_ = "";
+    Step step_ = nullptr;
 };
 
 class RhfConverged : public cuda::Criterion {
@@ -277,14 +237,23 @@ class RhfConverged : public cuda::Criterion {
 
 struct RhfLoopState {
     EngineSlot slot;
-    RhfFockStage fock;
-    RhfMixStage mix;
-    RhfDiagStage diag;
-    RhfDensityStage density;
-    RhfCheckStage check;
+    RhfStage fock;
+    RhfStage mix;
+    RhfStage diag;
+    RhfStage density;
+    RhfStage check;
 
     RhfLoopState()
-        : fock(&slot), mix(&slot), diag(&slot), density(&slot), check(&slot) {}
+        : fock(&slot, ATV::scf::Phase::fock, "scf_fock_stage",
+               &internal::RhfScfCycle::step_fock),
+          mix(&slot, ATV::scf::Phase::mix, "scf_mix_stage",
+              &internal::RhfScfCycle::step_mix),
+          diag(&slot, ATV::scf::Phase::diagonalize, "scf_diagonalize_stage",
+               &internal::RhfScfCycle::step_diagonalize),
+          density(&slot, ATV::scf::Phase::density, "scf_density_stage",
+                  &internal::RhfScfCycle::step_density),
+          check(&slot, ATV::scf::Phase::check, "scf_check_stage",
+                &internal::RhfScfCycle::step_check) {}
 };
 
 RHF::RHF(cpu::scf::BasisSet basis_in, int charge_in, double tol_in,
@@ -506,7 +475,6 @@ void RHF::run(cpu::Frame& frame) {
         drive_loop_(this->backend_->context(), this->backend_->frame(),
                     max_iter);
     } catch (...) {
-        release_engine_();
         this->teardown_pass(frame);
         throw;
     }
