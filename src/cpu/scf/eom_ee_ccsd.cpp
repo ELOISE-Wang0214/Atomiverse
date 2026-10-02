@@ -610,20 +610,6 @@ EOMCC2Result eom_cc2_energies(const internal::IntegralView& ints,
     return out;
 }
 
-EOMEECCSDResult RHF::eom_ee_ccsd(Frame& frame, int n_states) {
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "RHF::eom_ee_ccsd: SCF reference did not converge — refusing to "
-            "compute EOM-EE-CCSD on a non-stationary determinant (no "
-            "fallback).");
-    return eom_ee_ccsd_energies(integral_view_(), determinant(), energy(),
-                                n_states);
-}
-
 EOMCC2Result RHF::eom_cc2(Frame& frame, int n_states) {
     const bool prev = compute_eri;
     compute_eri = true;

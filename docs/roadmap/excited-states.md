@@ -10,7 +10,7 @@ Response and many-body methods on HF/KS references. Legend:
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
 | ΔSCF / MOM / IMOM | ✓ | ○ | `UHF::delta_scf` |
-| CIS / TDA (RHF) | ✓ | ○ | `RHF::tda` |
+| CIS / TDA (RHF) | ✓ | ○ | `TDA<RHF>::run` after `RHF::run` |
 | TDHF / RPA (RHF) | ✓ | ○ | `RHF::tdhf` |
 | CIS(D) | ✓ | ○ | On RHF TDA |
 | TDA-TDDFT (RKS) | ✓ | ○ | Full MO-product LSDA ALDA + hybrid B3LYP/PBE0 |
@@ -35,7 +35,7 @@ Response and many-body methods on HF/KS references. Legend:
 
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
-| EOM-EE-CCSD | ✓ | ○ | Singlet roots on RHF+CCSD |
+| EOM-EE-CCSD | ✓ | ○ | `CCSD<RHF>::eom_ee_ccsd` (singlet). Not an `RHF` member |
 | EOM-IP / EA-CCSD | ✓ | ○ | |
 | EOM-SF-CCSD | ✓ | ○ | On UHF+UCCSD |
 | EOM-CC2 | ✓ | ○ | |

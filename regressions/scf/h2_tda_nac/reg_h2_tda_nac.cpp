@@ -21,7 +21,7 @@ int main() {
         std::printf("FAIL scf\n");
         return 1;
     }
-    auto es = rhf.tda(2);
+    auto es = cpu::scf::TDA<cpu::scf::RHF>{rhf}.run(2);
     if (es.energy_ev.size() < 2) {
         std::printf("FAIL nstates\n");
         return 1;

@@ -29,7 +29,10 @@ PW free-loop / GPW OT — those are rows in this ledger, not the whole story.
 ### Live dialects (do not grow)
 
 Gaussian post-HF, continuum solvent, the shared nuclear FD Hessian, and
-CPHF response are **not** members of `MeanFieldMethod`. `MP2` / `CCSD` /
+CPHF response are **not** members of `MeanFieldMethod`. `Stability<RHF>`,
+`TDA<RHF>`, and `CCSD<RHF>::eom_ee_ccsd` are not members of `RHF`
+(`pyscf.scf.stability.rhf_stability`, `pyscf.tdscf.rhf.TDA`,
+`cc.CCSD.eomee_ccsd_singlet`). `MP2` / `CCSD` /
 `CASCI` / … take the mean-field reference (`pyscf.mp.mp2.MP2(mf)`,
 `cc.CCSD.ccsd_t`). Solvent is `WithSolvent<Method>`
 (`pyscf.solvent._attach_solvent.SCFWithSolvent`). The FD skeleton is

@@ -16,6 +16,7 @@
 #include "atomiverse/cpu/scf/internal/ccsd_gradient.h"
 #include "atomiverse/cpu/scf/internal/ccsd_pack.h"
 #include "atomiverse/cpu/scf/internal/dispersion.h"
+#include "atomiverse/cpu/scf/internal/eom_ee_ccsd_pack.h"
 #include "atomiverse/cpu/scf/internal/fci_pack.h"
 #include "atomiverse/cpu/scf/internal/mp2_gradient.h"
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
@@ -310,6 +311,20 @@ GradientResult CCSD<Method>::forces(Frame& frame,
     mf.last_grad_ = gr;
     write_gradient(frame, gr);
     return gr;
+}
+
+template <typename Method>
+EOMEECCSDResult CCSD<Method>::eom_ee_ccsd(Frame& frame, int n_states) {
+    Method& mf = *mf_;
+    if (mf.spin_ != SpinType::Restricted)
+        throw std::invalid_argument(
+            "CCSD::eom_ee_ccsd: closed-shell RHF reference only — EOM-EE "
+            "singlet is CCSD.eomee_ccsd_singlet (PySCF), not a UHF / ROHF / "
+            "GHF entry (no fallback). Use RHF.");
+    drive_converged(mf, frame, nullptr, /*materialize_eri=*/true,
+                    "CCSD::eom_ee_ccsd");
+    return eom_ee_ccsd_energies(mf.integral_view_(), mf.determinant(),
+                                mf.energy(), n_states);
 }
 
 template <typename Method>

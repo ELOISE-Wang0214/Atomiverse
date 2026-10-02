@@ -1,7 +1,7 @@
 /// @file cpu/scf/tdhf.cpp
 /// @brief TDHFPack (TDA + TDHF/RPA lowest-roots solvers over the link-08
-///        OrbitalHessian A/B kernel) and the RHF::tda()/RHF::tdhf() method
-///        surface (stability pre-check, transition dipoles, oscillator
+///        OrbitalHessian A/B kernel), `TDA<RHF>::run` (`pyscf.tdscf.rhf.TDA`)
+///        and `RHF::tdhf` (stability pre-check, transition dipoles, oscillator
 ///        strengths). @see internal/tdhf_pack.h, tdhf.h.
 
 #include "atomiverse/cpu/scf/internal/tdhf_pack.h"
@@ -494,7 +494,7 @@ TDHFPack::Roots TDHFPack::rpa_davidson_(int n_states) const {
 
 } // namespace internal
 
-// ── RHF method surface: tda() / tdhf() beside stability() ────────────────
+// ── TDA<RHF>::run (not a member of RHF) and RHF::tdhf ────────────────────
 
 namespace {
 
@@ -766,12 +766,18 @@ excited_states_result(const SlaterDeterminant& det,
 
 } // namespace
 
-ExcitedStatesResult RHF::tda(int n_states, ExcitationChannel channel) const {
-    if (!has_result())
+template <typename Method>
+TDA<Method>::TDA(const Method& mf) : mf_(&mf) {}
+
+template <typename Method>
+ExcitedStatesResult TDA<Method>::run(int n_states,
+                                     ExcitationChannel channel) const {
+    const Method& mf = *mf_;
+    if (!mf.has_result())
         throw std::runtime_error(
-            "RHF::tda: no SCF result — call run(frame) first");
-    const SlaterDeterminant& det = determinant();
-    const internal::IntegralView pack = integral_view_();
+            "TDA::run: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = mf.determinant();
+    const internal::IntegralView pack = mf.integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
     const internal::OrbitalHessian hessian{det, eri};
@@ -779,6 +785,8 @@ ExcitedStatesResult RHF::tda(int n_states, ExcitationChannel channel) const {
     return excited_states_result(det, pack, tdhf_pack.tda(n_states), channel,
                                  /*tda_flag=*/true);
 }
+
+template class TDA<RHF>;
 
 ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
     if (!has_result())
@@ -946,7 +954,7 @@ std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state, double h,
         probe.compute_eri = prev;
         if (!probe.converged())
             throw std::runtime_error("RHF::tda_forces: SCF did not converge");
-        auto es0 = probe.tda(state + 1);
+        auto es0 = TDA<RHF>{probe}.run(state + 1);
         if (state < 0 || state >= static_cast<int>(es0.energy_ev.size()))
             throw std::invalid_argument("RHF::tda_forces: state out of range");
         return internal::tda_analytic_forces(frame, probe.integral_view_(),
@@ -962,7 +970,7 @@ std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state, double h,
         probe.run(frame);
         if (!probe.converged())
             throw std::runtime_error("RHF::tda_forces: SCF did not converge");
-        auto es0 = probe.tda(state + 1);
+        auto es0 = TDA<RHF>{probe}.run(state + 1);
         if (state < 0 || state >= static_cast<int>(es0.energy_ev.size()))
             throw std::invalid_argument("RHF::tda_forces: state out of range");
     }
@@ -976,13 +984,15 @@ std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state, double h,
             coords[d][a] = x0 + h;
             RHF rp = make_rhf();
             rp.run(frame);
-            const double Ep =
-                rp.tda(state + 1).energy_ev[static_cast<std::size_t>(state)];
+            const double Ep = TDA<RHF>{rp}
+                                  .run(state + 1)
+                                  .energy_ev[static_cast<std::size_t>(state)];
             coords[d][a] = x0 - h;
             RHF rm = make_rhf();
             rm.run(frame);
-            const double Em =
-                rm.tda(state + 1).energy_ev[static_cast<std::size_t>(state)];
+            const double Em = TDA<RHF>{rm}
+                                  .run(state + 1)
+                                  .energy_ev[static_cast<std::size_t>(state)];
             coords[d][a] = x0;
             F[static_cast<std::size_t>(3 * a + d)] = -(Ep - Em) / (2.0 * h);
         }
@@ -1017,7 +1027,7 @@ std::vector<double> RHF::tda_nac_vectors(cpu::Frame& frame, int state_i,
     r.run(frame);
     if (!r.converged())
         throw std::runtime_error("RHF::tda_nac_vectors: SCF did not converge");
-    auto es = r.tda(hi + 1);
+    auto es = TDA<RHF>{r}.run(hi + 1);
     const double Elo = es.energy_ev[static_cast<std::size_t>(lo)];
     const double Ehi = es.energy_ev[static_cast<std::size_t>(hi)];
     const double dE = Ehi - Elo;
@@ -1075,8 +1085,9 @@ ExcitedStatesResult RHF::tdhf(int n_states, ExcitationChannel channel) const {
               "eigenvalue = "
             + std::to_string(lowest)
             + " Ha) — full RPA would give imaginary excitation energies; "
-              "use tda() or reconverge the reference along the instability "
-              "mode (stability().rotated_C) first (no fallback)");
+              "use TDA<RHF>::run or reconverge the reference along the "
+              "instability mode (Stability<RHF>::run().rotated_C) first "
+              "(no fallback)");
 
     const internal::TDHFPack tdhf_pack{hessian, ch};
     return excited_states_result(det, pack, tdhf_pack.rpa(n_states), channel,

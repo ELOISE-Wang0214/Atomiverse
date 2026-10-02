@@ -90,7 +90,8 @@ int main() {
         return 1;
 
     // ── TDA and TDHF, first 3 singlet roots ──────────────────────────────
-    const cpu::scf::ExcitedStatesResult tda = rhf.tda(3);
+    const cpu::scf::ExcitedStatesResult tda =
+        cpu::scf::TDA<cpu::scf::RHF>{rhf}.run(3);
     const cpu::scf::ExcitedStatesResult tdhf = rhf.tdhf(3);
 
     std::printf("\n  %-6s %-14s %-14s %-12s\n", "root", "TDA [eV]", "TDHF [eV]",

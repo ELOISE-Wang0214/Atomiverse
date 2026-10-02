@@ -83,7 +83,7 @@ rhf.basis = cpu::scf::BasisSet::Pople631Gs;
 rhf.tol = 1e-12;
 rhf.run(frame); // formaldehyde geometry in regressions
 
-auto tda  = rhf.tda(3);
+auto tda  = cpu::scf::TDA<cpu::scf::RHF>{rhf}.run(3);
 auto tdhf = rhf.tdhf(3);
 ```
 

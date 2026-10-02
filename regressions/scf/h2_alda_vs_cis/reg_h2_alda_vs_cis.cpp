@@ -18,7 +18,7 @@ int main() {
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = 1e-8;
     rhf.run(f);
-    const double e_cis = rhf.tda(1).energy_ev[0];
+    const double e_cis = cpu::scf::TDA<cpu::scf::RHF>{rhf}.run(1).energy_ev[0];
     cpu::scf::RKS rks(cpu::scf::XCType::LSDA);
     rks.basis = cpu::scf::BasisSet::STO3G;
     rks.tol = 1e-8;

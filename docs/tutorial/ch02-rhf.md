@@ -315,6 +315,18 @@ cpu::vib::HessianResult H =
 first, then read the 3×3 tensor [a.u.]. Continuum solvent is
 `WithSolvent<RHF>{std::move(rhf), solvent}.run(frame)`.
 
+Orbital stability and CIS/TDA read that same converged determinant. They are
+not members of `RHF` (`pyscf.scf.stability.rhf_stability`,
+`pyscf.tdscf.rhf.TDA`). Singlet EOM-EE-CCSD is a method of the CC object
+(`pyscf.cc.ccsd.CCSD.eomee_ccsd_singlet`), not of `RHF`.
+
+```cpp
+cpu::scf::StabilityResult st = cpu::scf::Stability<cpu::scf::RHF>{rhf}.run();
+cpu::scf::ExcitedStatesResult ex = cpu::scf::TDA<cpu::scf::RHF>{rhf}.run(1);
+cpu::scf::EOMEECCSDResult eom =
+    cpu::scf::CCSD<cpu::scf::RHF>{rhf}.eom_ee_ccsd(frame, /*n_states=*/1);
+```
+
 ## Closed-shell limits
 
 **Concept.** RHF is not a general-purpose method with occasional failures — it

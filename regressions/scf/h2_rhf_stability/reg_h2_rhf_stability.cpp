@@ -7,7 +7,7 @@
 /// `cpu/frame/frame.h`, `core/units.h`), links `atomiverse`.
 ///
 /// H2/STO-3G (Cartesian, engine convention), RHF conv 1e-12:
-///  1. R = 1.5 Å: RHF.run() then stability() — the Seeger-Pople trap:
+///  1. R = 1.5 Å: RHF.run() then Stability<RHF>::run — the Seeger-Pople trap:
 ///     internal (singlet) lowest eigenvalue ≥ 0 while the external
 ///     (triplet) lowest eigenvalue is NEGATIVE and matches the PySCF pin
 ///     −0.2092471629 Ha to 1e-6 Ha (see REFERENCE.md).
@@ -88,7 +88,8 @@ int main() {
     if (!check("E_RHF [Ha]", e_rhf, kERhf15, kTolE))
         return 1;
 
-    const cpu::scf::StabilityResult st = rhf.stability();
+    const cpu::scf::StabilityResult st =
+        cpu::scf::Stability<cpu::scf::RHF>{rhf}.run();
     if (!check("internal lowest eig [Ha]", st.internal_eigenvalue, kInternal15,
                kTolEig))
         return 1;
@@ -153,7 +154,8 @@ int main() {
                      "FAIL: RHF/STO-3G(H2, R=0.735) did not converge\n");
         return 1;
     }
-    const cpu::scf::StabilityResult st_eq = rhf_eq.stability();
+    const cpu::scf::StabilityResult st_eq =
+        cpu::scf::Stability<cpu::scf::RHF>{rhf_eq}.run();
     std::printf("H2/STO-3G R=0.735 A:\n");
     if (!check("internal lowest eig [Ha]", st_eq.internal_eigenvalue,
                kInternalEq, kTolEig))

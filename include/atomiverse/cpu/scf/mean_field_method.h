@@ -103,6 +103,10 @@ template <typename Method>
 class Hessian;
 template <typename Method>
 class Polarizability;
+template <typename Method>
+class Stability;
+template <typename Method>
+class TDA;
 
 /// @brief Shared view for observers/recorders after a method run.
 ///
@@ -166,6 +170,10 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
     friend class Hessian;
     template <typename Method>
     friend class Polarizability;
+    template <typename Method>
+    friend class Stability;
+    template <typename Method>
+    friend class TDA;
 
   public:
     // ── Geometry / basis (inputs from Frame + these members) ──────────
@@ -636,7 +644,7 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
 
     /// @brief Non-owning view of this method's private integral **members**
     ///        (shells, S, c2s, dense ERI when materialized) for derived
-    ///        post-run analyses (e.g. `RHF::stability()`). Not a bag type —
+    ///        post-run analyses (`Stability`, `TDA`). Not a bag type —
     ///        only binds refs to the expanded fields below. Never public.
     [[nodiscard]] internal::IntegralView integral_view_() const {
         return internal::IntegralView{
