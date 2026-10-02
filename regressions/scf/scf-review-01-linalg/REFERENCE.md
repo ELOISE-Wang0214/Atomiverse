@@ -45,7 +45,7 @@ the refactor: ATV reproduces the PySCF pin to all 12 printed decimals, so a
 
 ## Part 2 — H₂O/STO-3G CPHF static isotropic polarizability
 
-Path: `RHF::polarizability()` (CPHF electric-field linear response, backed by
+Path: `Polarizability<RHF>` (CPHF electric-field linear response, backed by
 `solve_pcg`). Static dipole polarizability α_ab = ∂μ_a/∂F_b [a.u.].
 
 Golden source: `regressions/scf/static-polariz-h2o/REFERENCE.md`

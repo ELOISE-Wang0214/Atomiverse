@@ -28,6 +28,18 @@ PW free-loop / GPW OT — those are rows in this ledger, not the whole story.
 
 ### Live dialects (do not grow)
 
+Gaussian post-HF, continuum solvent, the shared nuclear FD Hessian, and
+CPHF response are **not** members of `MeanFieldMethod`. `MP2` / `CCSD` /
+`CASCI` / … take the mean-field reference (`pyscf.mp.mp2.MP2(mf)`,
+`cc.CCSD.ccsd_t`). Solvent is `WithSolvent<Method>`
+(`pyscf.solvent._attach_solvent.SCFWithSolvent`). The FD skeleton is
+`central_difference_nuclear_hessian`. Nuclear CPHF is
+`Hessian<RHF>` (`pyscf.hessian.rhf.Hessian(mf).kernel`); static
+polarizability is `Polarizability<RHF>`. `pyscf.scf.cphf.solve` is not an
+SCF method. Density fitting stays an SCF JK selector (`ri`);
+`pyscf.df.df_jk.density_fit` returns another SCF.
+
+
 1. **Method-as-Driver** — CPU Gaussian mean-field (`MeanFieldMethod`).
 2. **Method + `*Evaluator`** — PW / AM1 / RM1 (Frame write often only on the
    wrapper; evaluator duplicates method params). GPW is the reference shape:

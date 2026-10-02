@@ -61,7 +61,7 @@ double e_mp2_d3bj(const cpu::Frame& frame) {
     cpu::scf::RHF rhf;
     configure(rhf);
     cpu::Frame f = frame;
-    return rhf.mp2(f).e_tot;
+    return ATV::cpu::scf::MP2<decltype(rhf)>{rhf}.run(f).e_tot;
 }
 
 cpu::Frame displaced(const cpu::Frame& frame, int A, int d, double dx_ang) {
@@ -87,7 +87,8 @@ int main() {
     cpu::scf::RHF rhf;
     configure(rhf);
     cpu::Frame ff = frame;
-    const cpu::scf::GradientResult res = rhf.mp2_forces(ff);
+    const cpu::scf::GradientResult res =
+        ATV::cpu::scf::MP2<decltype(rhf)>{rhf}.forces(ff);
 
     // Bare D3(BJ) forces for materiality [Ha/Bohr] → eV/Å.
     const auto d3_f_au = cpu::scf::D3BJ{}.forces(frame);

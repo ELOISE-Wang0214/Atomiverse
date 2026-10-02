@@ -58,7 +58,8 @@ int main() {
 
     // Plain canonical RMP2 (default scales, no RI) → consumes the dense ERI
     // tensor assembled by IntegralWorkspace::eri_dense (the block path under test).
-    const cpu::scf::MP2Result mp2 = rhf.mp2(frame);
+    const cpu::scf::MP2Result mp2 =
+        ATV::cpu::scf::MP2<decltype(rhf)>{rhf}.run(frame);
 
     // PySCF 2.14.0 pins — see REFERENCE.md (never live-import PySCF here).
     constexpr double want_e_hf = -74.963023138463;  // RHF total [Ha]

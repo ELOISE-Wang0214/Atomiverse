@@ -59,7 +59,8 @@ int main() {
     rhf.tol = 1e-12;
     rhf.max_iter = 100;
 
-    const cpu::scf::CCSDTResult ct = rhf.ccsd_t(frame);
+    const cpu::scf::CCSDTResult ct =
+        ATV::cpu::scf::CCSD<decltype(rhf)>{rhf}.ccsd_t(frame);
     if (!rhf.converged()) {
         std::fprintf(stderr, "FAIL: RHF/STO-3G (H2O) did not converge\n");
         return 1;

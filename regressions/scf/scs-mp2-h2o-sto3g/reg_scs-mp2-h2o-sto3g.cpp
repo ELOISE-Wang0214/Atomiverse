@@ -45,10 +45,11 @@ int main() {
     rhf.tol = 1e-12;
     rhf.max_iter = 200;
     // Grimme SCS-MP2 (J. Chem. Phys. 118, 9095 (2003)): members, not a Config.
-    rhf.mp2_os_scale = 1.2;
-    rhf.mp2_ss_scale = 1.0 / 3.0;
+    ATV::cpu::scf::MP2<decltype(rhf)> mp_corr{rhf};
+    mp_corr.os_scale = 1.2;
+    mp_corr.ss_scale = 1.0 / 3.0;
 
-    const cpu::scf::MP2Result mp2 = rhf.mp2(frame);
+    const cpu::scf::MP2Result mp2 = mp_corr.run(frame);
 
     // PySCF 2.14.0 pins — see REFERENCE.md (never live-import PySCF here).
     constexpr double want_e_hf = -74.963023138463;
@@ -69,8 +70,8 @@ int main() {
                 mp2.e_corr, want_e_corr, mp2.e_corr - want_e_corr);
     std::printf("SCS-MP2 e_tot  = %.12f Ha (pin %.12f, dE = %.3e)\n", mp2.e_tot,
                 want_e_tot, mp2.e_tot - want_e_tot);
-    std::printf("scales: c_os=%.6f c_ss=%.6f\n", rhf.mp2_os_scale,
-                rhf.mp2_ss_scale);
+    std::printf("scales: c_os=%.6f c_ss=%.6f\n", mp_corr.os_scale,
+                mp_corr.ss_scale);
 
     bool ok = rhf.converged();
     ok = ok && std::fabs(e_hf - want_e_hf) < 1e-7;

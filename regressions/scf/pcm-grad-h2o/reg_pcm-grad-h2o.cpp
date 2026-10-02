@@ -42,21 +42,23 @@ cpu::Frame water() {
     return f;
 }
 
-void apply_solvent(cpu::scf::RHF& rhf) {
+cpu::scf::WithSolvent<cpu::scf::RHF> make_solvated() {
+    cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::Pople631Gs;
     rhf.tol = 1e-12;
     rhf.max_iter = 200;
-    rhf.solvent_eps = 78.4;
-    rhf.solvent_radii_scale = 1.2;
-    rhf.solvent_x = 0.0; // C-PCM
+    cpu::scf::ContinuumSolvent pcm;
+    pcm.eps = 78.4;
+    pcm.radii_scale = 1.2;
+    pcm.x = 0.0; // C-PCM
+    return {std::move(rhf), pcm};
 }
 
 double solvent_energy(const cpu::Frame& frame) {
-    cpu::scf::RHF rhf;
-    apply_solvent(rhf);
+    auto sol = make_solvated();
     cpu::Frame f = frame;
-    rhf.run(f);
-    return rhf.energy(); // Ha
+    sol.run(f);
+    return sol.mf.energy(); // Ha
 }
 
 cpu::Frame displaced(const cpu::Frame& frame, int A, int d, double dx_ang) {
@@ -76,16 +78,15 @@ int main() {
     using namespace ATV;
     const cpu::Frame frame = water();
 
-    cpu::scf::RHF rhf;
-    apply_solvent(rhf);
+    auto sol = make_solvated();
     cpu::Frame ff = frame;
-    const cpu::scf::GradientResult res = rhf.forces(ff);
-    if (!rhf.converged()) {
+    const cpu::scf::GradientResult res = sol.forces(ff);
+    if (!sol.mf.converged()) {
         std::printf("FAIL: C-PCM SCF did not converge\n");
         return 1;
     }
-    std::printf("E_cpcm = %.12f Ha   DG_el = %.12f Ha\n", rhf.energy(),
-                rhf.e_solvent());
+    std::printf("E_cpcm = %.12f Ha   DG_el = %.12f Ha\n", sol.mf.energy(),
+                sol.e_solvent());
 
     auto grad_ha_bohr = [&](int A, int d) {
         return -units::convert(res.forces(A, d), units::Force::eVPerAngstrom,

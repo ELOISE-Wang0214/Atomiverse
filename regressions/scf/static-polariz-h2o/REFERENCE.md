@@ -33,7 +33,7 @@ bash tools/setup_pyscf_env.sh
   derivative is the length-gauge dipole matrix (electron charge −1 a.u.
   ⇒ h += F·r). Helgaker, Jørgensen, Olsen, *Molecular Electronic-Structure
   Theory*, response chapter; Pople et al. for the nuclear CPHF twin used
-  by `RHF::hessian`.
+  by `Hessian<RHF>`.
 - STO-3G lacks diffuse / polarization functions — α_xx (out of plane) is
   unphysically small (~0.04 a.u.). The regression is engine-vs-engine at
   identical theory level, not a comparison to experiment (~9–10 a.u.

@@ -44,9 +44,10 @@ int main() {
     rhf.basis = cpu::scf::BasisSet::Pople631Gs;
     rhf.tol = 1e-12;
     rhf.max_iter = 200;
-    rhf.frozen = 1; // freeze O 1s (lowest occupied spatial MO)
+    ATV::cpu::scf::MP2<decltype(rhf)> mp_corr{rhf};
+    mp_corr.frozen = 1; // freeze O 1s (lowest occupied spatial MO)
 
-    const cpu::scf::MP2Result mp2 = rhf.mp2(frame);
+    const cpu::scf::MP2Result mp2 = mp_corr.run(frame);
 
     // PySCF 2.14.0 pins — see REFERENCE.md (never live-import PySCF here).
     constexpr double want_e_hf = -76.010504988257;

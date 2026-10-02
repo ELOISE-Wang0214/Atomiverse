@@ -5,6 +5,7 @@
 ///        Roothaan effective-Fock coupling lives in stages/rohf_couple_stage.h.
 
 #include "atomiverse/cpu/scf/rohf.h"
+#include "atomiverse/cpu/scf/nuclear_hessian.h"
 
 #include <stdexcept>
 #include <string>

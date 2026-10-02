@@ -64,10 +64,11 @@ int main() {
     rks.max_iter = 100;
     // Double-hybrid PT2 scale: E_tot = E_KS + a_c * E_MP2.
     const double a_c = cpu::scf::hybrid_pt2_fraction(xc);
-    rks.mp2_os_scale = a_c;
-    rks.mp2_ss_scale = a_c;
+    ATV::cpu::scf::MP2<decltype(rks)> mp_corr{rks};
+    mp_corr.os_scale = a_c;
+    mp_corr.ss_scale = a_c;
 
-    const cpu::scf::MP2Result dh = rks.mp2(frame);
+    const cpu::scf::MP2Result dh = mp_corr.run(frame);
 
     // PySCF 2.14.0 offline pin — see REFERENCE.md (never live-import PySCF).
     constexpr double want_e_ks = -75.198832360592;  // Ha (hybrid KS only)

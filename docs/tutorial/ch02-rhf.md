@@ -283,6 +283,38 @@ The electronic energy is the usual closed-shell trace form:
 $$ E_{\mathrm{RHF}} =
 \tfrac{1}{2}\mathrm{Tr}\!\left[P(H_{\mathrm{core}} + F)\right] + V_{\mathrm{nuc}}. $$
 
+## Beside the mean field
+
+`MeanFieldMethod` keeps the SCF. `run` writes the energy onto the Frame.
+`forces` writes that energy and the nuclear forces. Correlation, continuum
+solvent, and the closed-shell CPHF Hessian and polarizability are other
+types. They take an `RHF`; they are not members of it.
+
+```cpp
+cpu::Frame frame(2);
+frame.span(kAtom_x)[0] = 0;
+frame.span(kAtom_y)[0] = 0;
+frame.span(kAtom_z)[0] = 0;
+frame.span(kAtom_x)[1] = 0.74;
+frame.span(kAtom_y)[1] = 0;
+frame.span(kAtom_z)[1] = 0;
+frame.span(kAtom_type)[0] = 1;
+frame.span(kAtom_type)[1] = 1;
+frame.box = cpu::Box::cubic(100.0);
+
+cpu::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-10};
+rhf.run(frame);   // frame.meta.get(kEnergy) [eV]; rhf.energy() [Hartree]
+cpu::scf::GradientResult g = rhf.forces(frame); // kAtom_fx/fy/fz [eV/Å]
+
+cpu::scf::MP2Result mp2 = cpu::scf::MP2<cpu::scf::RHF>{rhf}.run(frame);
+cpu::vib::HessianResult H =
+    cpu::scf::Hessian<cpu::scf::RHF>{rhf}.run(frame); // [eV/Å²]
+```
+
+`Polarizability<RHF>::run()` does not take a Frame: call `rhf.run(frame)`
+first, then read the 3×3 tensor [a.u.]. Continuum solvent is
+`WithSolvent<RHF>{std::move(rhf), solvent}.run(frame)`.
+
 ## Closed-shell limits
 
 **Concept.** RHF is not a general-purpose method with occasional failures — it

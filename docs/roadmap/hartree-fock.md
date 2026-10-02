@@ -10,24 +10,25 @@ Shares one SCF solver with [Kohn–Sham DFT](dft.md): the 2×2 product
 
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
-| RHF | ✓ | ✓ | CUDA: `cuda::Driver<scf::Phase>` (fock, mix, diagonalize, density, check); device Fock/density/CDIIS; STO-3G s/p (l ≤ 1) native ERI+forces. PySCF energy: H₂/STO-3G on device; H₂O/6-31G on CPU (6-31G is not a device ERI kernel) |
-| UHF | ✓ | ○ | Default open-shell workhorse |
-| ROHF | ✓ | ○ | Guest–Saunders; energy + analytic G + ROMP2 + FD Hessian |
-| GHF | ✓ | ○ | Real two-component; energy + analytic G |
+| RHF | ✓ | ✓ | `cpu::scf::RHF::run(Frame&)` / `run(const Frame&)` / `forces(Frame&)`. CUDA `cuda::scf::RHF` : `cuda::Driver<scf::Phase>` (fock, mix, diagonalize, density, check); device Fock/density/CDIIS; STO-3G s/p (l ≤ 1) native ERI+forces. PySCF energy: H₂/STO-3G on device; H₂O/6-31G on CPU (6-31G is not a device ERI kernel) |
+| UHF | ✓ | ○ | `UHF::run` / `forces`. Default open-shell workhorse |
+| ROHF | ✓ | ○ | Guest–Saunders. `ROHF::run` / `forces`. Correlation is `MP2<ROHF>::run`, not a member |
+| GHF | ✓ | ○ | Real two-component. `GHF::run` / `forces` |
 | Complex / spinor HF | ○ | ○ | |
-| ΔSCF / MOM / IMOM | ✓ | ○ | `UHF::delta_scf` |
-| RHF analytic gradient | ✓ | ✓ | CUDA same envelope as RHF energy |
-| UHF / ROHF / GHF analytic gradient | ✓ | ○ | |
-| RHF / UHF analytic Hessian | ✓ | ○ | CPHF (`RHF::hessian` / `UHF::hessian`) |
-| ROHF Hessian | ✓ | ○ | FD of analytic forces (not full CPHF) |
-| RHF static polarizability | ✓ | ○ | CPHF |
-| Stability analysis | ✓ | ○ | Seeger–Pople |
+| ΔSCF / MOM / IMOM | ✓ | ○ | `UHF::delta_scf(Frame&, from, to, MomStyle)` |
+| RHF analytic gradient | ✓ | ✓ | `RHF::forces(Frame&)` and `cuda::scf::RHF::forces`. Same angular-momentum envelope as the energy |
+| UHF / ROHF / GHF analytic gradient | ✓ | ○ | `forces(Frame&)` |
+| RHF / UHF analytic Hessian | ✓ | ○ | CPHF: `Hessian<RHF>::run(Frame&)` / `UHF::hessian(Frame&)` |
+| ROHF Hessian | ✓ | ○ | `ROHF::hessian(Frame&)` — `central_difference_nuclear_hessian` of analytic `forces` (not CPHF) |
+| RHF static polarizability | ✓ | ○ | `Polarizability<RHF>::run()` after `RHF::run` (no Frame). Not an SCF method |
+| Stability analysis | ✓ | ○ | `RHF::stability` (Seeger–Pople) |
 
 ### Gaps
 
 - CUDA is a **restricted-HF engine**: no UHF/KS; forces outside l ≤ 1 throw —
   use `cpu::scf::RHF`.
-- ROHF: SOSCF / level shift still throw. GHF: mp2 / fci / soscf throw.
+- ROHF: SOSCF / level shift still throw. GHF: `MP2` / `FCI` / soscf throw.
+- Post-HF, continuum solvent, and CPHF response are not `MeanFieldMethod` members. Entries: `MP2<Method>::run(Frame&)` / `forces(Frame&)`, `CCSD<Method>::run` / `ccsd_t` / `forces`, `WithSolvent<Method>::run(Frame&)` / `forces(Frame&)`, `Hessian<RHF>::run(Frame&)`, `Polarizability<RHF>::run()`. The mean-field SCF surface is `run(Frame&)` / `run(const Frame&)` / `forces(Frame&)` only.
 
 ## 2. Periodic Hartree–Fock
 

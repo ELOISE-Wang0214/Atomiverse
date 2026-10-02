@@ -42,7 +42,8 @@ int main() {
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = 1e-12;
     rhf.max_iter = 200;
-    const cpu::vib::HessianResult h = rhf.hessian(frame);
+    const cpu::vib::HessianResult h =
+        cpu::scf::Hessian<cpu::scf::RHF>{rhf}.run(frame);
 
     if (h.dipole_derivatives.size() == 0) {
         std::printf("FAIL: no dipole derivatives produced\n");

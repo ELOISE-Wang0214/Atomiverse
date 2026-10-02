@@ -20,7 +20,6 @@
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/rpa.h"
 #include "atomiverse/cpu/scf/tdhf.h"
-#include "atomiverse/cpu/vibration/hessian_result.h"
 
 namespace ATV {
 namespace cpu {
@@ -372,52 +371,6 @@ class RHF : public MeanFieldMethod<RHF> {
     ///         non-restricted reference, or when dRPA is ill-conditioned.
     /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
     G0W0Result g0w0() const;
-
-    /// @brief Analytic nuclear Hessian d²E/dR² via CPHF linear response —
-    ///        a method output beside `forces()`, feeding the existing vib
-    ///        pipeline (`vib::MassWeighting` → `vib::HessianDiagonalizer`).
-    ///
-    /// Runs a fresh SCF on `frame` (writes the eV energy to
-    /// `frame.meta[kEnergy]`), assembles the skeleton second-derivative
-    /// integrals, solves the CPHF equations ¹(A+B)·U^x = −B^x for all 3N
-    /// nuclear perturbations (the LHS is the link-08 `OrbitalHessian`
-    /// singlet σ₊ kernel — its third configuration after stability and
-    /// SOSCF), and assembles E^{xy} per Pople-Krishnan-Schlegel-Binkley
-    /// 1979 (DOI 10.1002/qua.560160825).
-    ///
-    /// @param frame Geometry (Å) + Z in the type column; atoms not moved.
-    /// @return `vib::HessianResult` with the dense symmetric `[3N, 3N]`
-    ///         Hessian in eV/Å² and `n_atoms` set; the frequency /
-    ///         thermochemistry fields stay empty for the vib components.
-    /// @throws std::runtime_error when the SCF does not converge, on a
-    ///         spherical-convention basis or ECP pack (derivative
-    ///         integrals not wired — no fallback), with RI enabled, or on
-    ///         CPHF non-convergence (message carries the iteration count).
-    /// @throws std::invalid_argument when the system has no virtual
-    ///         orbitals (e.g. He/STO-3G — no occ→virt response exists).
-    vib::HessianResult hessian(Frame& frame);
-
-    /// @brief Static dipole polarizability α_ab = ∂μ_a/∂F_b [a.u.] of the
-    ///        most recent `run()` via CPHF electric-field response.
-    ///
-    /// Solves ¹(A+B)·U^{F_b} = −r_b^{vo} for the three Cartesian field
-    /// directions (the LHS is the link-08 `OrbitalHessian` singlet σ₊ —
-    /// the same kernel used by nuclear CPHF in `hessian()`), then assembles
-    ///
-    ///   α_ab = −4 Σ_ai U^{F_b}_ai ⟨a|r_a|i⟩
-    ///
-    /// with length-gauge dipole integrals about the center of nuclear charge
-    /// (same origin as `MultipoleObserver` / `ExternalField`). Closed-shell
-    /// RHF only; S^{(F)} = 0 so the nuclear multipole does not enter the
-    /// second derivative. Matches PySCF finite-field / CPHF polarizability
-    /// on the same geometry and basis (see regressions/scf/static-polariz-h2o).
-    ///
-    /// @return Dense symmetric 3×3 tensor [a.u. = e²·Bohr²/Ha], row a =
-    ///         Cartesian dipole axis, column b = field axis.
-    /// @throws std::runtime_error when called before `run()`.
-    /// @throws std::invalid_argument when the system has no virtual
-    ///         orbitals (e.g. He/STO-3G — no occ→virt response exists).
-    xt::xtensor<double, 2> polarizability() const;
 
   protected:
     /// @brief Closed-shell occupation: n_alpha = n_beta = n_electrons / 2

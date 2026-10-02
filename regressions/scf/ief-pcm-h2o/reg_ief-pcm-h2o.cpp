@@ -49,15 +49,17 @@ int main() {
         return 1;
     }
 
-    cpu::scf::RHF sol;
-    sol.basis = cpu::scf::BasisSet::Pople631Gs;
-    sol.tol = 1e-10;
-    sol.max_iter = 100;
-    sol.solvent_eps = 78.4;
-    sol.solvent_radii_scale = 1.2;
-    sol.solvent_model = cpu::scf::SolventModel::IEFPCM;
+    cpu::scf::RHF sol_mf;
+    sol_mf.basis = cpu::scf::BasisSet::Pople631Gs;
+    sol_mf.tol = 1e-10;
+    sol_mf.max_iter = 100;
+    cpu::scf::ContinuumSolvent pcm;
+    pcm.eps = 78.4;
+    pcm.radii_scale = 1.2;
+    pcm.model = cpu::scf::SolventModel::IEFPCM;
+    cpu::scf::WithSolvent<cpu::scf::RHF> sol{std::move(sol_mf), pcm};
     sol.run(frame);
-    if (!sol.converged()) {
+    if (!sol.mf.converged()) {
         std::printf("FAIL: IEF-PCM SCF did not converge\n");
         return 1;
     }
@@ -65,7 +67,7 @@ int main() {
     constexpr double kHaInKcal = 627.5094740631;
     const double e_solv = sol.e_solvent(); // ΔG_el [Hartree]
     const double e_gas = gas.energy();
-    const double e_sol = sol.energy();
+    const double e_sol = sol.mf.energy();
 
     std::printf("E_gas   = %.12f Ha\n", e_gas);
     std::printf("E_ief   = %.12f Ha\n", e_sol);

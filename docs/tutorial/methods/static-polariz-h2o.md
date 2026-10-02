@@ -19,7 +19,7 @@ and \(-\partial^2 E/\partial F^2\).
 cpu::scf::RHF rhf;
 rhf.basis = cpu::scf::BasisSet::STO3G;
 rhf.run(frame);
-auto alpha = rhf.polarizability();   // 3×3 [a.u.]
+auto alpha = cpu::scf::Polarizability<cpu::scf::RHF>{rhf}.run(); // 3×3 [a.u.]
 ```
 
 ```bash

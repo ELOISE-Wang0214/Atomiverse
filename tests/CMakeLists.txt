@@ -904,9 +904,8 @@ if(ATV_BUILD_HF)
     # e2e-in-tests wave-2 (were full RHF/UHF.hessian campaigns under tests/).
     # E2e: regressions/scf/{h2o_rhf_freq,uhf-hessian-o2,uks-hessian-o2-sto3g,
     # rks-hessian-h2o-sto3g,rohf-hessian-o2}.
-    # scf-review-04-meanfield-dedup: the FD nuclear-Hessian skeleton hoisted to
-    # the protected CRTP template
-    # MeanFieldMethod<Derived>::central_difference_nuclear_hessian, pinned in
+    # scf-review-04-meanfield-dedup: the FD nuclear-Hessian skeleton is
+    # central_difference_nuclear_hessian (not a MeanFieldMethod member), pinned in
     # isolation against an analytic quadratic mock force field (no SCF); and the
     # Ha/Bohr->eV/Angstrom gradient glue hoisted onto the tag ctor
     # GradientResult(FromHartreeBohr, ...), pinned against hand-computed

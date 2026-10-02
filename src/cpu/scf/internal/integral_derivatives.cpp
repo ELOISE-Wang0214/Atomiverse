@@ -1477,7 +1477,7 @@ void accumulate_two_electron_fock_derivative(
     // Coulomb feeds dJ(i,j) += P(k,l)·dg; exchange dK(i,k) −= ½·P(j,l)·dg
     // (closed-shell G = J − ½K contraction with the total density).
     // O(n_blocks⁴) without Schwarz screening — Hessian-assembly scale,
-    // executed once per RHF::hessian() call.
+    // executed once per Hessian<RHF>::run() call.
 #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic)
 #endif

@@ -21,7 +21,7 @@ int main() {
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = 1e-9;
-    auto mp2 = rhf.mp2(f);
+    auto mp2 = ATV::cpu::scf::MP2<decltype(rhf)>{rhf}.run(f);
     std::printf("MP2 Ecorr=%.8f Ha Etot=%.8f Ha\n", mp2.e_corr, mp2.e_tot);
     // Textbook: MP2 correlation negative for H2O/STO-3G (~ -0.03 to -0.1 Ha)
     if (!(mp2.e_corr < -1e-4) || !std::isfinite(mp2.e_tot)) {

@@ -1,0 +1,70 @@
+/// @file cpu/scf/response.h
+/// @brief CPHF response attached beside a mean-field method.
+///
+/// Transplanted from PySCF, not re-derived:
+/// - `pyscf.hessian.rhf.Hessian(mf).kernel()` — the nuclear Hessian object
+///   holds `base = mf`. `pyscf.scf.cphf.solve` is a free function, not a
+///   method of `scf.hf.RHF`.
+/// - Static polarizability is the electric-field instance of that same
+///   solver (`¹(A+B) U^F = −r^{vo}`), not an SCF method.
+///
+/// `MeanFieldMethod` keeps `run` / `forces` only.
+#pragma once
+
+#include <xtensor/containers/xtensor.hpp>
+
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/vibration/hessian_result.h"
+
+namespace ATV {
+namespace cpu {
+namespace scf {
+
+/// @brief Analytic nuclear Hessian on a closed-shell RHF reference.
+///
+/// Mirrors `pyscf.hessian.rhf.Hessian(mf)`: `run` is `kernel`. It drives a
+/// fresh SCF, solves nuclear CPHF, and returns the Cartesian Hessian plus
+/// the atomic polar tensor. Restricted Hartree–Fock only — UHF stays
+/// `UHF::hessian`; RKS / UKS / ROHF stay finite differences of forces.
+/// @tparam Method Concrete mean-field type. Instantiated for `RHF`.
+template <typename Method>
+class Hessian {
+  public:
+    /// @brief Bind a mean-field reference. The reference must outlive `*this`.
+    /// @param mf Mean-field method (not copied).
+    explicit Hessian(Method& mf);
+
+    /// @brief CPHF nuclear Hessian [eV/Å²] and dipole derivatives [a.u.].
+    /// @param frame Geometry [Å]. Energy [eV] written to `kEnergy`.
+    /// @return Symmetric `[3N, 3N]` Hessian. Frequency fields stay empty.
+    vib::HessianResult run(Frame& frame);
+
+  private:
+    Method* mf_ = nullptr;
+};
+
+/// @brief Static dipole polarizability of a converged closed-shell RHF.
+///
+/// Mirrors a property object on the mean field, not `RHF` itself. Call
+/// `mf.run` first. `run` solves the three electric-field CPHF responses
+/// and returns α_ab = ∂μ_a/∂F_b [a.u.].
+/// @tparam Method Concrete mean-field type. Instantiated for `RHF`.
+template <typename Method>
+class Polarizability {
+  public:
+    /// @brief Bind a mean-field reference. The reference must outlive `*this`.
+    /// @param mf Mean-field method that has already been run (not copied).
+    explicit Polarizability(Method& mf);
+
+    /// @brief Static polarizability of the most recent SCF.
+    /// @return Dense symmetric 3×3 tensor [a.u.], row = dipole axis,
+    ///         column = field axis.
+    xt::xtensor<double, 2> run() const;
+
+  private:
+    Method* mf_ = nullptr;
+};
+
+} // namespace scf
+} // namespace cpu
+} // namespace ATV

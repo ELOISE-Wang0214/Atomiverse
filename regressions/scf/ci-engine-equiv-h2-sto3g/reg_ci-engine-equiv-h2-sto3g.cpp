@@ -59,7 +59,8 @@ int main() {
     rhf_fci.basis = cpu::scf::BasisSet::STO3G;
     rhf_fci.tol = 1e-12;
     rhf_fci.max_iter = 100;
-    const cpu::scf::FCIResult fci = rhf_fci.fci(frame);
+    const cpu::scf::FCIResult fci =
+        ATV::cpu::scf::FCI<decltype(rhf_fci)>{rhf_fci}.run(frame);
     if (!rhf_fci.converged()) {
         std::fprintf(stderr,
                      "FAIL: RHF/STO-3G (H2) FCI reference did not converge\n");
@@ -72,7 +73,8 @@ int main() {
     rhf_cas.tol = 1e-12;
     rhf_cas.max_iter = 100;
     const cpu::scf::CASCIResult cas =
-        rhf_cas.casci(frame, /*ncas=*/2, /*nelecas=*/2);
+        ATV::cpu::scf::CASCI<decltype(rhf_cas)>{rhf_cas}.run(frame, /*ncas=*/2,
+                                                             /*nelecas=*/2);
     if (!rhf_cas.converged()) {
         std::fprintf(
             stderr, "FAIL: RHF/STO-3G (H2) CASCI reference did not converge\n");

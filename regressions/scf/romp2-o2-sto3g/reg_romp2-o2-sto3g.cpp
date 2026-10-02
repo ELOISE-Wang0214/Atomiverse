@@ -42,7 +42,8 @@ int main() {
     rohf.tol = 1e-12;
     rohf.max_iter = 200;
 
-    const cpu::scf::MP2Result mp2 = rohf.mp2(frame);
+    const cpu::scf::MP2Result mp2 =
+        ATV::cpu::scf::MP2<decltype(rohf)>{rohf}.run(frame);
 
     // PySCF 2.14.0 pins — see REFERENCE.md (never live-import PySCF here).
     constexpr double want_e_hf = -147.632166990682;

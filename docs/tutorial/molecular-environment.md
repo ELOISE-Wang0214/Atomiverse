@@ -124,18 +124,20 @@ the cavity).
 ### Practice
 
 ```cpp
-cpu::scf::RHF sol;
-sol.basis = cpu::scf::BasisSet::Pople631Gs;
-sol.solvent_eps = 78.4;
-sol.solvent_radii_scale = 1.2;
-sol.solvent_x = 0.0;
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::Pople631Gs;
+cpu::scf::ContinuumSolvent pcm;
+pcm.eps = 78.4;
+pcm.radii_scale = 1.2;
+pcm.x = 0.0;
+cpu::scf::WithSolvent<cpu::scf::RHF> sol{std::move(rhf), pcm};
 sol.run(frame);
 double dg_kcal = sol.e_solvent() * 627.509474;
 // forces of G = E_HF + ΔG_el:
 auto g = sol.forces(frame); // eV/Å on frame fx/fy/fz
 ```
 
-`solvent_eps = 0` is the gas-phase path.
+Gas phase is the unwrapped method. `ContinuumSolvent::eps = 0` is vacuum.
 
 ### Results
 

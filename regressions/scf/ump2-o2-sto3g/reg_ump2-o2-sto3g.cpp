@@ -61,7 +61,8 @@ int main() {
     uhf.tol = 1e-12;
     uhf.max_iter = 200;
 
-    const cpu::scf::MP2Result mp2 = uhf.mp2(frame, &guess);
+    const cpu::scf::MP2Result mp2 =
+        ATV::cpu::scf::MP2<decltype(uhf)>{uhf}.run(frame, &guess);
 
     // PySCF 2.14.0 pins — see REFERENCE.md (never live-import PySCF here).
     constexpr double want_e_hf = -147.633946785450;

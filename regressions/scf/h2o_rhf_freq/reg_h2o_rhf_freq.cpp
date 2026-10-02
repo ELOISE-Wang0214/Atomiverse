@@ -1,6 +1,6 @@
 /// @file regressions/scf/h2o_rhf_freq/reg_h2o_rhf_freq.cpp
 /// @brief H₂O HF/6-31G* harmonic frequencies from the analytic CPHF
-///        Hessian (`RHF::hessian`) via `cpu::vib::Hessian::run_from_cartesian`,
+///        Hessian (`Hessian<RHF>`) via `cpu::vib::Hessian::run_from_cartesian`,
 ///        gated against in-house FD (`Hessian::run`) and pinned PySCF 2.14.0.
 ///        See REFERENCE.md.
 ///
@@ -44,13 +44,14 @@ int main() {
         return frame;
     };
 
-    // ── Analytic: RHF::hessian (CPHF) → Hessian::run_from_cartesian.
+    // ── Analytic: Hessian<RHF> (CPHF) → vib::Hessian::run_from_cartesian.
     cpu::Frame frame = make_frame();
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::Pople631Gs;
     rhf.tol = 1e-12;
     rhf.conv_tol_grad = 1e-10;
-    const cpu::vib::HessianResult analytic_H = rhf.hessian(frame);
+    const cpu::vib::HessianResult analytic_H =
+        cpu::scf::Hessian<cpu::scf::RHF>{rhf}.run(frame);
 
     cpu::vib::Hessian vib;
     const cpu::vib::HessianResult analytic =

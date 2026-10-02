@@ -1,6 +1,6 @@
 /// @file regressions/scf/static-polariz-h2o/reg_static-polariz-h2o.cpp
 /// @brief H₂O RHF/STO-3G static polarizability via CPHF electric-field
-///        response (`RHF::polarizability`) vs the externally pinned PySCF
+///        response (`Polarizability<RHF>`) vs the externally pinned PySCF
 ///        CPHF/finite-field oracle (REFERENCE.md).
 ///
 /// Out-of-library consumer: public headers + link atomiverse only. Gates
@@ -37,7 +37,7 @@ int main() {
     rhf.max_iter = 200;
     rhf.run(frame);
 
-    const auto alpha = rhf.polarizability(); // 3×3 [a.u.]
+    const auto alpha = cpu::scf::Polarizability<cpu::scf::RHF>{rhf}.run();
 
     // PySCF 2.14.0 analytic CPHF (and FD dμ/dF) — REFERENCE.md.
     const double want[3] = {0.04190863, 5.20973255, 2.12715820};

@@ -53,7 +53,8 @@ int main() {
     rhf.tol = 1e-12;
     rhf.max_iter = 100;
 
-    const cpu::scf::CCSDResult ccsd = rhf.ccsd(frame);
+    const cpu::scf::CCSDResult ccsd =
+        ATV::cpu::scf::CCSD<decltype(rhf)>{rhf}.run(frame);
     if (!rhf.converged()) {
         std::fprintf(stderr, "FAIL: RHF/STO-3G (H2) did not converge\n");
         return 1;

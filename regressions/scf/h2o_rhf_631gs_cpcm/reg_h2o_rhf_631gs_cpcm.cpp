@@ -49,15 +49,17 @@ int main() {
         return 1;
     }
 
-    cpu::scf::RHF sol;
-    sol.basis = cpu::scf::BasisSet::Pople631Gs;
-    sol.tol = 1e-10;
-    sol.max_iter = 100;
-    sol.solvent_eps = 78.4;
-    sol.solvent_radii_scale = 1.2;
-    sol.solvent_x = 0.0; // C-PCM
+    cpu::scf::RHF sol_mf;
+    sol_mf.basis = cpu::scf::BasisSet::Pople631Gs;
+    sol_mf.tol = 1e-10;
+    sol_mf.max_iter = 100;
+    cpu::scf::ContinuumSolvent pcm;
+    pcm.eps = 78.4;
+    pcm.radii_scale = 1.2;
+    pcm.x = 0.0; // C-PCM
+    cpu::scf::WithSolvent<cpu::scf::RHF> sol{std::move(sol_mf), pcm};
     sol.run(frame);
-    if (!sol.converged()) {
+    if (!sol.mf.converged()) {
         std::printf("FAIL: C-PCM SCF did not converge\n");
         return 1;
     }
@@ -67,7 +69,7 @@ int main() {
     const double dg_el_ha = sol.e_solvent();
     const double dg_el_kcal = dg_el_ha * kHaInKcal;
     const double e_gas = gas.energy();
-    const double e_sol = sol.energy();
+    const double e_sol = sol.mf.energy();
 
     std::printf("E_gas      = %.12f Ha\n", e_gas);
     std::printf("E_cpcm    = %.12f Ha\n", e_sol);
