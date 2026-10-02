@@ -1,10 +1,10 @@
 /// @file tests/cpu/scf/test_stability.cpp
 /// @brief Unit checks for cpu::scf::internal::StabilityAnalysis and the
-///        RHF::stability() guards: Seeger-Pople channel split on H2/STO-3G,
+///        `Stability<RHF>::run` guards: Seeger-Pople split on H2/STO-3G,
 ///        Davidson-vs-dense lowest-root parity, no-virtuals / before-run
 ///        throws.
 ///
-/// NO SCF loop runs here (the full RHF.run()+stability() path lives in
+/// NO SCF loop runs here (the full RHF.run()+Stability<RHF>::run path lives in
 /// regressions/scf/h2_rhf_stability). The converged H2/STO-3G determinant
 /// is symmetry-exact in closed form (see test_orbital_hessian.cpp for the
 /// derivation): φ_g = (χ₁+χ₂)/√(2(1+S₁₂)), φ_u = (χ₁−χ₂)/√(2(1−S₁₂)),
@@ -31,6 +31,7 @@
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/orbital_hessian.h"
 #include "atomiverse/cpu/scf/internal/stability.h"
+#include "atomiverse/cpu/scf/response.h"
 #include "atomiverse/cpu/scf/rhf.h"
 
 using namespace ATV;
@@ -218,7 +219,8 @@ TEST(StabilityAnalysis, LowestVectorIsNormalizedEigenvector) {
 
 TEST(RhfStability, ThrowsBeforeRun) {
     cpu::scf::RHF rhf;
-    EXPECT_THROW(rhf.stability(), std::runtime_error);
+    using Stab = cpu::scf::Stability<cpu::scf::RHF>;
+    EXPECT_THROW(Stab{rhf}.run(), std::runtime_error);
 }
 
 TEST(OrbitalHessian, NoVirtualsThrowsWithClearMessage) {

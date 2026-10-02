@@ -57,7 +57,7 @@ ladder; accuracy pins use PySCF `nroots=15` → lowest 5.
 **Spin treatment.** Open-shell UHF + UCCSD only. Targets multiplet
 reconstruction and SF excitations from high-spin references (e.g. O₂ triplet →
 \(M_S=0\) singlets/triplets). No closed-shell EE path here (that is
-`RHF::eom_ee_ccsd`).
+`CCSD<RHF>::eom_ee_ccsd`).
 
 **Key approximations / scope of this foothold:**
 
@@ -200,7 +200,7 @@ required on this case (\(r=3.12\)).
 
 ## Limitations
 
-- **SF on UHF+UCCSD only** — EE (`RHF::eom_ee_ccsd`), EA, IP, DIP/DEA, CVS-EOM,
+- **SF on UHF+UCCSD only** — EE (`CCSD<RHF>::eom_ee_ccsd`), EA, IP, DIP/DEA, CVS-EOM,
   STEOM, EOM-CC2/MP2 remain separate roadmap rows
   (`docs/roadmap/excited-states.md` §3).
 - **Energies only** — no left eigenvectors, oscillator strengths, densities, or

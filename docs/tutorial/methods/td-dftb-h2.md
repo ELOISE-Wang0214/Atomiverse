@@ -21,7 +21,7 @@ method `cpu::semiempirical::DFTB2` gains a `const` query method
 coupling kernel, Ω) is private workspace inside it. Frame in, result out —
 no public `*Config` bag, no `*System`, no `make_*` / `build_*` factory.
 
-This is the tree's house shape for linear response: `RHF::tda`, `RKS::tddft`,
+This is the tree's house shape for linear response: `TDA<RHF>::run`, `RKS::tddft`,
 `UKS::tda` and `UHF::sf_tda` are all member queries on the concrete
 ground-state method that return a result-only struct
 (`cpu/scf/tdhf.h`). `cpu/semiempirical/td_dftb2.h` mirrors it for the

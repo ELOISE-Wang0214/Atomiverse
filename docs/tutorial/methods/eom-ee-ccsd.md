@@ -5,14 +5,14 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `eom-ee-ccsd` |
-| Public API | `cpu::scf::RHF::eom_ee_ccsd(Frame&, n_states)` → `EOMEECCSDResult` |
+| Public API | `cpu::scf::CCSD<RHF>::eom_ee_ccsd(Frame&, n_states)` → `EOMEECCSDResult` |
 | Roadmap | [Excited states §3 EOM-CC](../../roadmap/excited-states.md) |
 
 ## Summary
 
 Closed-shell **EOM-EE-CCSD** singlet electronic excitation energies on a
 converged RHF → CCSD reference. Product surface is
-`RHF::eom_ee_ccsd(frame, n_states)`: the call drives RHF (with ERI), spin-orbital
+`CCSD<RHF>::eom_ee_ccsd(frame, n_states)`: the call drives RHF (with ERI), spin-orbital
 Gauss–Stanton CCSD, then a dense non-symmetric eigen-solve of the EOM-EE
 Jacobian, returning singlet roots \(\omega\) [eV] plus CCSD energetics [Ha].
 Foothold case is H₂ / STO-3G (2e: EOM-EE-CCSD coincides with FCI in the basis).
@@ -79,7 +79,8 @@ rhf.basis = cpu::scf::BasisSet::STO3G;
 rhf.tol = 1e-12;
 rhf.max_iter = 100;
 
-const cpu::scf::EOMEECCSDResult eom = rhf.eom_ee_ccsd(frame, /*n_states=*/1);
+const cpu::scf::EOMEECCSDResult eom =
+    cpu::scf::CCSD<cpu::scf::RHF>{rhf}.eom_ee_ccsd(frame, /*n_states=*/1);
 // eom.energy_ev[0] [eV]; eom.e_ccsd_ha, eom.e_corr_ha [Ha];
 // eom.ccsd_iterations; eom.converged
 ```
@@ -88,7 +89,7 @@ const cpu::scf::EOMEECCSDResult eom = rhf.eom_ee_ccsd(frame, /*n_states=*/1);
 (ascending singlets [eV]), `e_corr_ha`, `e_ccsd_ha` [Hartree],
 `ccsd_iterations`, `converged`. Pack-level
 `eom_ee_ccsd_energies` is private engine code.
-(`internal/eom_ee_ccsd_pack.h`). `RHF::eom_ee_ccsd` forces `compute_eri`, runs
+(`internal/eom_ee_ccsd_pack.h`). `CCSD<RHF>::eom_ee_ccsd` forces `compute_eri`, runs
 SCF, then refuses a non-converged reference (no silent fallback).
 
 **Build / run regression** (CPU login; modules as in AGENTS.md):
@@ -110,7 +111,7 @@ bash -lc '
 | Path | Role |
 | ---- | ---- |
 | `eom_ee_ccsd.h` | Public `EOMEECCSDResult` |
-| `rhf.h` | `RHF::eom_ee_ccsd(Frame&, n_states)` |
+| `post_hf.h` | `CCSD<RHF>::eom_ee_ccsd(Frame&, n_states)` |
 | `eom_ee_ccsd_pack.h` | Private pack entry |
 | `src/cpu/scf/eom_ee_ccsd.cpp` | Intermediates, Jacobian, singlet select |
 | `reg_eom-ee-ccsd.cpp` | E2E consumer |

@@ -1,7 +1,7 @@
 # H2 EOM-EE-CCSD/STO-3G — singlet S1 excitation energy pin
 
 Closed-shell **EOM-EE-CCSD** on H₂ / STO-3G. Product API:
-`RHF::eom_ee_ccsd(frame, n_states)` (drives RHF + spin-orbital CCSD + EOM-EE;
+`CCSD<RHF>::eom_ee_ccsd(frame, n_states)` (drives RHF + spin-orbital CCSD + EOM-EE;
 singlet roots selected from the spin-orbital Jacobian).
 
 Literature / theory:

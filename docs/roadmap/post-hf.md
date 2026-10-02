@@ -32,7 +32,7 @@ on a non-converged reference. Legend: [Roadmap index](index.md).
 | Selected / heat-bath CI | ○ | ○ | |
 
 CIS excitation energies live under
-[Excited States](excited-states.md) (`RHF::tda`), not here.
+[Excited States](excited-states.md) (`TDA<RHF>::run`), not here.
 
 ## 3. Coupled cluster
 

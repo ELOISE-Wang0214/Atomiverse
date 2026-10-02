@@ -1,11 +1,11 @@
 /// @file regressions/scf/es-mean-field-split/reg_es-mean-field-split.cpp
 /// @brief Mean-field split on classic systems, pinned to offline PySCF.
 ///
-/// H₂/STO-3G: `RHF::run` and `RHF::forces` stay on the method. MP2 and the
-/// CPHF nuclear Hessian do not (`MP2<RHF>`, `Hessian<RHF>`).
-/// H₂O/6-31G: RHF energy stays on the method. C-PCM and static
-/// polarizability attach beside it (`WithSolvent<RHF>`,
-/// `Polarizability<RHF>`).
+/// H₂/STO-3G: `RHF::run` and `RHF::forces` stay on the method. Stability,
+/// TDA, and EOM-EE-CCSD do not (`Stability<RHF>`, `TDA<RHF>`,
+/// `CCSD<RHF>::eom_ee_ccsd`). MP2 and the CPHF Hessian stay beside it.
+/// H₂O/6-31G: `RHF::run` / `RHF::forces` are the SCF surface. C-PCM and
+/// static polarizability attach beside it.
 ///
 /// Out-of-library consumer: public headers + link atomiverse only.
 /// Pins and gates: REFERENCE.md. Exit non-zero on mismatch. ≤ 60 s.
@@ -94,6 +94,45 @@ int main() {
     if (!(max_g <= 1e-6))
         return fail("H2 RHF gradient off PySCF");
 
+    const cpu::scf::StabilityResult st =
+        cpu::scf::Stability<cpu::scf::RHF>{rhf}.run();
+    constexpr double kStabInt = 1.1296173364405577;
+    constexpr double kStabExt = 0.40477548837977023;
+    std::printf("H2 stability int=%.10f ext=%.10f\n", st.internal_eigenvalue,
+                st.external_eigenvalue);
+    if (!st.internal_stable || !st.external_stable)
+        return fail("H2 equilibrium RHF should be stable in both channels");
+    if (!(std::abs(st.internal_eigenvalue - kStabInt) <= 1e-6))
+        return fail("H2 internal stability eigenvalue off PySCF");
+    if (!(std::abs(st.external_eigenvalue - kStabExt) <= 1e-6))
+        return fail("H2 external stability eigenvalue off PySCF");
+
+    const cpu::scf::ExcitedStatesResult tda =
+        cpu::scf::TDA<cpu::scf::RHF>{rhf}.run(1);
+    constexpr double kTdaEv = 25.807465778338745;
+    constexpr double kTdaF = 1.0950117175889624;
+    if (tda.energy_ev.size() != 1)
+        return fail("H2 TDA root count");
+    std::printf("H2 TDA w=%.8f eV f=%.8f\n", tda.energy_ev[0],
+                tda.oscillator_strength[0]);
+    if (!(std::abs(tda.energy_ev[0] - kTdaEv) <= 1e-4))
+        return fail("H2 TDA energy off PySCF");
+    if (!(std::abs(tda.oscillator_strength[0] - kTdaF) <= 1e-3))
+        return fail("H2 TDA oscillator strength off PySCF");
+
+    const cpu::scf::EOMEECCSDResult eom =
+        cpu::scf::CCSD<cpu::scf::RHF>{rhf}.eom_ee_ccsd(h2_frame, 1);
+    constexpr double kEomEv = 26.365966612792256;
+    constexpr double kECcsd = -1.1372838344971299;
+    if (!eom.converged || eom.energy_ev.empty())
+        return fail("H2 EOM-EE-CCSD did not return a root");
+    std::printf("H2 EOM w=%.8f eV E_CCSD=%.12f\n", eom.energy_ev[0],
+                eom.e_ccsd_ha);
+    if (!(std::abs(eom.energy_ev[0] - kEomEv) <= 1e-4))
+        return fail("H2 EOM-EE-CCSD energy off PySCF");
+    if (!(std::abs(eom.e_ccsd_ha - kECcsd) <= 1e-6))
+        return fail("H2 CCSD total off PySCF");
+
     const cpu::scf::MP2Result mp2 =
         cpu::scf::MP2<cpu::scf::RHF>{rhf}.run(h2_frame);
     constexpr double kMp2Tot = -1.1298973809859585;
@@ -138,6 +177,27 @@ int main() {
                     kWaterEnergy);
         return 1;
     }
+
+    const cpu::scf::GradientResult wg = water_rhf.forces(water);
+    auto wgrad = [&](int atom, int axis) {
+        return -units::convert(wg.forces(atom, axis),
+                               units::Force::eVPerAngstrom,
+                               units::Force::HartreePerBohr);
+    };
+    // PySCF rhf --grad, Ha/Bohr, atom-major (O, H, H).
+    constexpr double kWGrad[3][3] = {
+        {-7.895448236624036e-18, -4.380176776841438e-16, 0.02381868594901171},
+        {2.2488029326764643e-16, -0.00441388034973933, -0.011909342974506965},
+        {-2.1698484503102673e-16, 0.004413880349741106, -0.011909342974504966},
+    };
+    double max_wg = 0.0;
+    for (int atom = 0; atom < 3; ++atom)
+        for (int axis = 0; axis < 3; ++axis)
+            max_wg = std::max(max_wg,
+                              std::abs(wgrad(atom, axis) - kWGrad[atom][axis]));
+    std::printf("H2O |grad err| = %.3e Ha/Bohr\n", max_wg);
+    if (!(max_wg <= 1e-6))
+        return fail("H2O RHF gradient off PySCF");
 
     const auto alpha = cpu::scf::Polarizability<cpu::scf::RHF>{water_rhf}.run();
     const double want_a[3] = {1.394213713033, 6.648784943839, 4.410031211301};

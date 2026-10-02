@@ -17,7 +17,7 @@ namespace scf {
 struct CISDResult {
     /// @brief CIS(D) excitation energies ω_CIS(D) = ω_CIS + U + V [eV],
     ///        ascending in the parent CIS order (same root indexing as
-    ///        `RHF::tda`).
+    ///        `TDA<RHF>::run`).
     std::vector<double> energy_ev;
 
     /// @brief Parent CIS / TDA excitation energies ω_CIS [eV].

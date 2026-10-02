@@ -5,6 +5,7 @@
 
 #include "atomiverse/cpu/scf/response.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -16,6 +17,7 @@
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
 #include "atomiverse/cpu/scf/internal/one_electron.h"
 #include "atomiverse/cpu/scf/internal/orbital_hessian.h"
+#include "atomiverse/cpu/scf/internal/stability.h"
 #include "atomiverse/cpu/scf/methods.h"
 #include "atomiverse/cpu/scf/nuclear_hessian.h"
 
@@ -229,7 +231,86 @@ xt::xtensor<double, 2> Polarizability<Method>::run() const {
     return alpha;
 }
 
+namespace {
+/// Numerical-zero guard on the stability eigenvalues [Hartree].
+constexpr double kStabilityZeroTol = 1e-8;
+/// Rotation amplitude [rad] of the leading external-instability component.
+constexpr double kRotationTheta = 0.3490658503988659;
+} // namespace
+
+template <typename Method>
+Stability<Method>::Stability(const Method& mf) : mf_(&mf) {}
+
+template <typename Method>
+StabilityResult Stability<Method>::run() const {
+    const Method& mf = *mf_;
+    if (!mf.has_result())
+        throw std::runtime_error(
+            "Stability::run: no SCF result — call run(frame) first");
+
+    const SlaterDeterminant& det = mf.determinant();
+    const internal::IntegralView pack = mf.integral_view_();
+
+    const xt::xtensor<double, 4> eri =
+        (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
+
+    const internal::OrbitalHessian hessian{det, eri};
+    const internal::StabilityAnalysis analysis{hessian};
+
+    StabilityResult out;
+    out.internal_eigenvalue = analysis.lowest(internal::Channel::singlet);
+    out.external_eigenvalue = analysis.lowest(internal::Channel::triplet);
+    out.internal_stable = out.internal_eigenvalue >= -kStabilityZeroTol;
+    out.external_stable = out.external_eigenvalue >= -kStabilityZeroTol;
+
+    const RealMatrix& C = det.coefficients(SlaterDeterminant::Spin::alpha);
+    out.rotated_C = C;
+    if (out.external_stable)
+        return out;
+
+    const RealVector mode = analysis.lowest_vector(internal::Channel::triplet);
+    const RealVector& f = det.occupations(SlaterDeterminant::Spin::alpha);
+    const int n_mo = static_cast<int>(C.shape()[1]);
+    std::vector<int> occ, virt;
+    for (int p = 0; p < n_mo; ++p)
+        (f(p) > 0.0 ? occ : virt).push_back(p);
+    const int no = static_cast<int>(occ.size());
+    const int nv = static_cast<int>(virt.size());
+
+    double x_max = 0.0;
+    for (std::size_t k = 0; k < mode.size(); ++k)
+        x_max = std::max(x_max, std::abs(mode(k)));
+    const double scale = kRotationTheta / x_max;
+
+    RealMatrix K = xt::zeros<double>(
+        {static_cast<std::size_t>(n_mo), static_cast<std::size_t>(n_mo)});
+    for (int a = 0; a < nv; ++a)
+        for (int i = 0; i < no; ++i) {
+            const double k_ai = scale * mode(a * no + i);
+            K(virt[static_cast<std::size_t>(a)],
+              occ[static_cast<std::size_t>(i)]) = k_ai;
+            K(occ[static_cast<std::size_t>(i)],
+              virt[static_cast<std::size_t>(a)]) = -k_ai;
+        }
+
+    RealMatrix U = xt::eye<double>(static_cast<std::size_t>(n_mo));
+    RealMatrix term = U;
+    for (int k = 1; k <= 40; ++k) {
+        term = xt::linalg::dot(term, K) / static_cast<double>(k);
+        U = U + term;
+        double t_max = 0.0;
+        for (int r = 0; r < n_mo; ++r)
+            for (int c = 0; c < n_mo; ++c)
+                t_max = std::max(t_max, std::abs(term(r, c)));
+        if (t_max < 1e-16)
+            break;
+    }
+    out.rotated_C = xt::linalg::dot(C, U);
+    return out;
+}
+
 template class Hessian<RHF>;
+template class Stability<RHF>;
 template class Polarizability<RHF>;
 
 } // namespace scf

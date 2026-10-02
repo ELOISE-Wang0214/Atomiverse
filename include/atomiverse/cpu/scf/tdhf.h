@@ -2,8 +2,9 @@
 /// @brief Excited-state result types of the TDHF/RPA and TDA (CIS) solvers
 ///        (public, result-only header — mp2.h precedent).
 ///
-/// User path: `RHF::tda(n_states, channel)` / `RHF::tdhf(n_states, channel)`
-/// (see rhf.h). The eigenproblem machinery is private workspace
+/// User path: `TDA<RHF>{mf}.run(n_states, channel)` after `mf.run`
+/// (`pyscf.tdscf.rhf.TDA(mf).kernel`) and `RHF::tdhf(n_states, channel)`.
+/// TDA is not a member of `RHF`. The eigenproblem machinery is private
 /// (`internal::TDHFPack` over the link-08 `internal::OrbitalHessian` A/B
 /// kernel) and is not part of this header.
 ///
@@ -55,6 +56,39 @@ struct ExcitedStatesResult {
     /// @brief true when full MO-product ALDA \(f^{\mathrm{xc}}\) was applied
     ///        to the Casida A matrix (RKS LSDA TDA path).
     bool alda = false;
+};
+
+/// @brief Tamm–Dancoff (CIS on HF) excitations of a converged closed-shell
+///        reference.
+///
+/// Mirrors `pyscf.tdscf.rhf.TDA(mf)`: `run` is `kernel`. Call `mf.run`
+/// first. Not a method of `RHF` or `MeanFieldMethod`. RKS / UKS TDA stay
+/// on those classes (KS linear response is a different kernel).
+/// @tparam Method Concrete mean-field type. Instantiated for `RHF`.
+template <typename Method>
+class TDA {
+  public:
+    /// @brief Bind a mean-field reference. The reference must outlive `*this`.
+    /// @param mf Mean-field method that has already been run (not copied).
+    explicit TDA(const Method& mf);
+
+    /// @brief Lowest `n_states` roots of the Hermitian A X = ωX problem.
+    /// @param n_states Number of lowest excited states (1 ≤ n_states ≤
+    ///                 n_occ·n_virt; dimensionless count).
+    /// @param channel  Spin channel. Singlet roots carry length-gauge
+    ///                 transition dipoles [a.u.] and oscillator strengths;
+    ///                 triplet roots are spin-forbidden (μ = 0, f = 0).
+    /// @return Excitation energies [eV], transition dipoles [a.u.],
+    ///         oscillator strengths, `tda = true`.
+    /// @throws std::runtime_error when called before `mf.run`.
+    /// @throws std::invalid_argument when n_states is outside
+    ///         [1, n_occ·n_virt] or the system has no virtual orbitals.
+    ExcitedStatesResult
+    run(int n_states,
+        ExcitationChannel channel = ExcitationChannel::singlet) const;
+
+  private:
+    const Method* mf_ = nullptr;
 };
 
 } // namespace scf

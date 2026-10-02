@@ -5,15 +5,12 @@
 #include <string>
 #include <vector>
 
-#include <xtensor/containers/xtensor.hpp>
-
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/adc.h"
 #include "atomiverse/cpu/scf/bse.h"
 #include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/eom_cc2.h"
 #include "atomiverse/cpu/scf/eom_ea_ccsd.h"
-#include "atomiverse/cpu/scf/eom_ee_ccsd.h"
 #include "atomiverse/cpu/scf/eom_ip_ccsd.h"
 #include "atomiverse/cpu/scf/g0w0.h"
 #include "atomiverse/cpu/scf/gf2.h"
@@ -24,34 +21,6 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
-
-/// @brief Result of the Seeger-Pople stability analysis of a converged RHF
-///        solution (Seeger & Pople, J. Chem. Phys. 66, 3045 (1977),
-///        DOI 10.1063/1.434318).
-///
-/// Internal = RHF→RHF (singlet channel of the orbital Hessian); external =
-/// RHF→UHF spin-symmetry breaking (triplet channel). The solution is stable
-/// in a channel iff the lowest eigenvalue of that channel's (A + B) block is
-/// non-negative.
-struct StabilityResult {
-    /// @brief Lowest eigenvalue of the singlet (A + B) block [Hartree].
-    double internal_eigenvalue = 0.0;
-    /// @brief Lowest eigenvalue of the triplet (A + B) block [Hartree].
-    double external_eigenvalue = 0.0;
-    /// @brief Internal (RHF→RHF) stability: internal_eigenvalue ≥ 0 up to
-    ///        the numerical-zero guard (dimensionless flag).
-    bool internal_stable = true;
-    /// @brief External (RHF→UHF triplet) stability: external_eigenvalue ≥ 0
-    ///        up to the numerical-zero guard (dimensionless flag).
-    bool external_stable = true;
-    /// @brief MO coefficients rotated along the external instability mode
-    ///        [n × n_mo, dimensionless] — a broken-symmetry α-channel
-    ///        initial guess for UHF (bridge to `scf_guess.h`: build a
-    ///        per-spin density P_α = C_occ C_occᵀ from these columns and
-    ///        pass it via `SCFInitialGuess`). Equals the unrotated C when
-    ///        the solution is externally stable.
-    RealMatrix rotated_C;
-};
 
 /// @brief Restricted Hartree–Fock — a mean-field electronic-structure method
 ///        (a single Slater determinant in which every electron moves in the
@@ -91,44 +60,6 @@ class RHF : public MeanFieldMethod<RHF> {
     ///        lattice-image window (no Ewald). A cell larger than the
     ///        Gaussian pair reach has only T = 0 and recovers molecular RHF.
     bool periodic = false;
-
-    /// @brief Seeger-Pople stability analysis of the most recent `run()`:
-    ///        lowest eigenvalue of the singlet (internal, RHF→RHF) and
-    ///        triplet (external, RHF→UHF) (A + B) orbital-Hessian blocks,
-    ///        plus a broken-symmetry rotated coefficient matrix when the
-    ///        solution is externally unstable. The dense working-dimension
-    ///        ERI tensor is rebuilt from the private shell workspace.
-    /// @return Eigenvalues [Hartree], stability flags, and `rotated_C`.
-    /// @throws std::runtime_error when called before `run()`, or
-    ///         std::invalid_argument when the system has no virtual
-    ///         orbitals (e.g. He/STO-3G — no fallback).
-    StabilityResult stability() const;
-
-    /// @brief Tamm-Dancoff excitation energies (CIS on the HF reference) of
-    ///        the most recent `run()`: the lowest `n_states` roots of the
-    ///        Hermitian A X = ωX eigenproblem in the requested spin channel
-    ///        — the link-08 orbital-Hessian A/B kernel's fourth
-    ///        configuration (after stability, SOSCF, and CPHF). The TDA
-    ///        spectrum stays real on any reference, including ones carrying
-    ///        a triplet instability (Hirata & Head-Gordon 1999,
-    ///        DOI 10.1016/S0009-2614(99)01149-5). The dense
-    ///        working-dimension ERI tensor is rebuilt from the private
-    ///        shell workspace (stability() precedent).
-    /// @param n_states Number of lowest excited states (1 ≤ n_states ≤
-    ///                 n_occ·n_virt; dimensionless count).
-    /// @param channel  Spin channel: singlet roots carry length-gauge
-    ///                 transition dipoles [a.u.] and oscillator strengths
-    ///                 f = (2/3)·ω[Ha]·|μ|²; triplet roots are
-    ///                 spin-forbidden (μ = 0, f = 0).
-    /// @return Excitation energies [eV], transition dipoles [a.u.],
-    ///         oscillator strengths (dimensionless), `tda = true`.
-    /// @throws std::runtime_error when called before `run()`.
-    /// @throws std::invalid_argument when n_states is outside
-    ///         [1, n_occ·n_virt] or the system has no virtual orbitals
-    ///         (e.g. He/STO-3G — no fallback).
-    ExcitedStatesResult
-    tda(int n_states,
-        ExcitationChannel channel = ExcitationChannel::singlet) const;
 
     /// @brief Nuclear forces on TDA excited-state energy of root `state`
     ///        [eV/Å]. Default path is **analytic** CIS/TDA (integral
@@ -171,11 +102,13 @@ class RHF : public MeanFieldMethod<RHF> {
     ///        Runs the link-08 stability analysis of the requested
     ///        channel's (A + B) block first: an unstable reference makes ω
     ///        imaginary in that channel, so the call throws with the lowest
-    ///        eigenvalue instead of solving (use `tda()` — real on any
-    ///        reference — or reconverge along `stability().rotated_C`).
+    ///        eigenvalue instead of solving (use `TDA<RHF>::run` — real on
+    ///        any reference — or reconverge along
+    ///        `Stability<RHF>::run().rotated_C`).
     /// @param n_states Number of lowest excited states (1 ≤ n_states ≤
     ///                 n_occ·n_virt; dimensionless count).
-    /// @param channel  Spin channel (transition properties as in `tda()`).
+    /// @param channel  Spin channel (transition properties as in
+    ///                 `TDA<RHF>::run`).
     /// @return Excitation energies [eV] (ω_RPA ≤ ω_TDA root by root),
     ///         transition dipoles [a.u.], oscillator strengths, `tda = false`.
     /// @throws std::runtime_error when called before `run()`, when the
@@ -183,7 +116,7 @@ class RHF : public MeanFieldMethod<RHF> {
     ///         carries the lowest eigenvalue [Hartree] and the guidance
     ///         above), or when (A − B) is not positive definite — no
     ///         fallback values.
-    /// @throws std::invalid_argument as `tda()`.
+    /// @throws std::invalid_argument as `TDA<RHF>::run`.
     ExcitedStatesResult
     tdhf(int n_states,
          ExcitationChannel channel = ExcitationChannel::singlet) const;
@@ -194,7 +127,7 @@ class RHF : public MeanFieldMethod<RHF> {
     ///        DOI 10.1016/0009-2614(94)00070-0. Size-consistent O(N⁵)
     ///        second-order correction; spin-orbital evaluation over the
     ///        closed-shell reference. Reuses the same TDA roots as
-    ///        `tda(n_states, singlet)`.
+    ///        `TDA<RHF>::run(n_states, singlet)`.
     /// @param n_states Number of lowest CIS roots to correct (1 ≤ n_states ≤
     ///                 n_occ·n_virt; dimensionless count).
     /// @return CIS(D) and parent CIS excitation energies [eV] plus the
@@ -334,18 +267,6 @@ class RHF : public MeanFieldMethod<RHF> {
     ///         non-restricted reference.
     /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
     GF2Result gf2() const;
-
-    /// @brief Singlet EOM-EE-CCSD excitation energies — drives a fresh RHF
-    ///        (materializes ERI), spin-orbital Gauss–Stanton CCSD, then the
-    ///        non-symmetric EOM-EE Jacobian (Wang, Tu & Wang, JCTC **10**,
-    ///        5567 (2014); Stanton & Bartlett, J. Chem. Phys. **98**, 7029
-    ///        (1993)). Matches PySCF `cc.CCSD(...).eomee_ccsd_singlet()`.
-    /// @param frame Geometry; drives SCF + CCSD + EOM.
-    /// @param n_states Number of lowest singlet roots (≥ 1).
-    /// @return Singlet ω [eV] plus CCSD energetics [Hartree].
-    /// @throws std::invalid_argument on open-shell / missing virtuals /
-    ///         non-converged SCF or CCSD / n_states out of range.
-    EOMEECCSDResult eom_ee_ccsd(Frame& frame, int n_states = 1);
 
     /// @brief Singlet EOM-CC2 excitation energies — drives a fresh RHF
     ///        (materializes ERI), spin-orbital Christiansen–Koch–Jørgensen

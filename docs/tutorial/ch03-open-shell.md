@@ -429,7 +429,7 @@ imply external stability. Stretched H₂ sits in exactly that trap.
 
 ### Example: stability of stretched H₂
 
-`RHF::stability()` after `run()` returns the lowest eigenvalues, stability
+`Stability<RHF>::run()` after `run()` returns the lowest eigenvalues, stability
 flags, and—when external instability is found—orbitals rotated along the
 unstable mode for use as a UHF guess:
 
@@ -439,7 +439,7 @@ rhf.basis = cpu::scf::BasisSet::STO3G;
 rhf.tol = 1e-12;
 rhf.run(frame); // H2, R = 1.5 Å
 
-auto st = rhf.stability();
+auto st = cpu::scf::Stability<cpu::scf::RHF>{rhf}.run();
 // st.internal_eigenvalue ≈ +0.71 Ha  → internally stable
 // st.external_eigenvalue ≈ −0.21 Ha  → externally unstable
 if (!st.external_stable) {

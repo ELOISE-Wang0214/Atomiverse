@@ -4,7 +4,8 @@
 /// Boundary transplanted from PySCF (not re-derived):
 /// - `pyscf.mp.mp2.MP2(mf)` / `kernel` — correlation on a mean-field reference
 /// - `pyscf.cc.ccsd.CCSD` / `ccsd_t` — CCSD and the (T) correction live on the
-///   CC object, not on the SCF class
+///   CC object, not on the SCF class. `eomee_ccsd_singlet` is
+///   `CCSD.eomee_ccsd_singlet`, which constructs `EOMEESinglet` — not `RHF`.
 /// - `pyscf.mcscf.CASCI` / `CASSCF(mf, ncas, nelecas)` and `mrpt.NEVPT(mc)`
 ///
 /// Each type holds a reference to a concrete mean-field method (`RHF`, `UHF`,
@@ -17,6 +18,7 @@
 #include "atomiverse/cpu/scf/casscf.h"
 #include "atomiverse/cpu/scf/cc2.h"
 #include "atomiverse/cpu/scf/ccsd.h"
+#include "atomiverse/cpu/scf/eom_ee_ccsd.h"
 #include "atomiverse/cpu/scf/fci.h"
 #include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/mp2.h"
@@ -192,6 +194,16 @@ class CCSD {
     /// @param guess Optional density guess for the reference SCF.
     /// @return Forces [eV/Å] and total CCSD energy [eV].
     GradientResult forces(Frame& frame, const SCFInitialGuess* guess = nullptr);
+
+    /// @brief Singlet EOM-EE-CCSD. Mirrors
+    ///        `pyscf.cc.ccsd.CCSD.eomee_ccsd_singlet` (which builds
+    ///        `eom_rccsd.EOMEESinglet(cc)`). Not a member of `RHF`.
+    /// @param frame Geometry [Å]. Drives a fresh SCF, then CCSD, then EOM.
+    /// @param n_states Number of lowest singlet roots (≥ 1).
+    /// @return Singlet ω [eV] plus CCSD energetics [Hartree].
+    /// @throws std::invalid_argument on a non-restricted reference, missing
+    ///         virtuals, a non-converged SCF or CCSD, or n_states out of range.
+    EOMEECCSDResult eom_ee_ccsd(Frame& frame, int n_states = 1);
 
   private:
     Method* mf_ = nullptr;

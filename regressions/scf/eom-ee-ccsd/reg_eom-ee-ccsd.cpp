@@ -53,7 +53,7 @@ int main() {
     rhf.max_iter = 100;
 
     const cpu::scf::EOMEECCSDResult eom =
-        rhf.eom_ee_ccsd(frame, /*n_states=*/1);
+        cpu::scf::CCSD<cpu::scf::RHF>{rhf}.eom_ee_ccsd(frame, /*n_states=*/1);
     if (!rhf.converged()) {
         std::fprintf(stderr, "FAIL: RHF/STO-3G (H2) did not converge\n");
         return 1;
