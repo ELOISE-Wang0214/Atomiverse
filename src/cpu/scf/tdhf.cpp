@@ -1649,86 +1649,108 @@ ExcitedStatesResult TDDFT<UKS>::run(int n_states, ExcitationChannel) const {
     return package_uks_excited(det, pack, w, roots, /*tda_flag=*/false);
 }
 
-template <typename Method>
-ExcitedStatesResult SfTDA<Method>::run(int n_states) const {
-    const Method& mf = *mf_;
+namespace {
 
+struct SfIdx {
+    bool alpha_to_beta = false;
+    int no = 0;
+    int nv = 0;
+    int nov = 0;
+    std::vector<int> occ_a, virt_a, occ_b, virt_b;
+    RealMatrix Ca, Cb;
+    RealVector ea, eb;
+};
+
+template <typename Method>
+SfIdx sf_indices(const Method& mf, int n_states, int nov_cap, const char* entry,
+                 const char* cap_tail) {
     if (!mf.has_result())
-        throw std::runtime_error(
-            "SfTDA::run: no SCF result — call run(frame) first");
+        throw std::runtime_error(std::string(entry)
+                                 + ": no SCF result — call run(frame) first");
     const SlaterDeterminant& det = mf.determinant();
     if (det.restricted() || det.generalized())
         throw std::runtime_error(
-            "SfTDA::run: requires an unrestricted (UHF) determinant");
+            std::string(entry)
+            + ": requires an unrestricted (UHF) determinant");
 
     using Spin = SlaterDeterminant::Spin;
-    const RealMatrix& Ca = det.coefficients(Spin::alpha);
-    const RealMatrix& Cb = det.coefficients(Spin::beta);
-    const RealVector& ea = det.orbital_energies(Spin::alpha);
-    const RealVector& eb = det.orbital_energies(Spin::beta);
-    const RealVector& fa = det.occupations(Spin::alpha);
-    const RealVector& fb = det.occupations(Spin::beta);
-
-    std::vector<int> occ_a, virt_a, occ_b, virt_b;
-    split_occ_virt(fa, occ_a, virt_a);
-    split_occ_virt(fb, occ_b, virt_b);
-    const int noa = static_cast<int>(occ_a.size());
-    const int nva = static_cast<int>(virt_a.size());
-    const int nob = static_cast<int>(occ_b.size());
-    const int nvb = static_cast<int>(virt_b.size());
-
-    // High-spin convention: flip majority → minority (Ms decreases for
-    // n_alpha ≥ n_beta). Collinear SF-CIS space is one spin-flip block only.
-    const bool alpha_to_beta = (noa >= nob);
-    const int no = alpha_to_beta ? noa : nob;
-    const int nv = alpha_to_beta ? nvb : nva;
-    if (no == 0 || nv == 0)
+    SfIdx s;
+    s.Ca = det.coefficients(Spin::alpha);
+    s.Cb = det.coefficients(Spin::beta);
+    s.ea = det.orbital_energies(Spin::alpha);
+    s.eb = det.orbital_energies(Spin::beta);
+    split_occ_virt(det.occupations(Spin::alpha), s.occ_a, s.virt_a);
+    split_occ_virt(det.occupations(Spin::beta), s.occ_b, s.virt_b);
+    const int noa = static_cast<int>(s.occ_a.size());
+    const int nva = static_cast<int>(s.virt_a.size());
+    const int nob = static_cast<int>(s.occ_b.size());
+    const int nvb = static_cast<int>(s.virt_b.size());
+    s.alpha_to_beta = (noa >= nob);
+    s.no = s.alpha_to_beta ? noa : nob;
+    s.nv = s.alpha_to_beta ? nvb : nva;
+    if (s.no == 0 || s.nv == 0)
         throw std::runtime_error(
-            "SfTDA::run: empty SF manifold (need majority occupied and "
-            "minority virtual orbitals — no fallback)");
-    const int nov = no * nv;
-    if (n_states < 1 || n_states > nov)
+            std::string(entry)
+            + ": empty SF manifold (need majority occupied and "
+              "minority virtual orbitals — no fallback)");
+    s.nov = s.no * s.nv;
+    if (n_states < 1 || n_states > s.nov)
         throw std::invalid_argument(
-            "SfTDA::run: n_states = " + std::to_string(n_states)
-            + " outside [1, n_ov = " + std::to_string(nov) + "]");
-    if (nov > 512)
-        throw std::runtime_error(
-            "SfTDA::run: n_ov = " + std::to_string(nov)
-            + " exceeds dense threshold 512 (no fallback)");
+            std::string(entry) + ": n_states = " + std::to_string(n_states)
+            + " outside [1, n_ov = " + std::to_string(s.nov) + "]");
+    if (s.nov > nov_cap)
+        throw std::runtime_error(std::string(entry) + ": n_ov = "
+                                 + std::to_string(s.nov) + cap_tail);
+    return s;
+}
 
-    const internal::IntegralView pack = mf.integral_view_();
-    const xt::xtensor<double, 4> eri =
-        (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
-
-    RealMatrix Co, Cv;
-    if (alpha_to_beta) {
+void sf_mo_blocks(const SfIdx& s, RealMatrix& Co, RealMatrix& Cv) {
+    if (s.alpha_to_beta) {
         RealMatrix dummy_v, dummy_o;
-        coeff_blocks(Ca, occ_a, virt_a, Co, dummy_v);
-        coeff_blocks(Cb, occ_b, virt_b, dummy_o, Cv);
+        coeff_blocks(s.Ca, s.occ_a, s.virt_a, Co, dummy_v);
+        coeff_blocks(s.Cb, s.occ_b, s.virt_b, dummy_o, Cv);
     } else {
         RealMatrix dummy_v, dummy_o;
-        coeff_blocks(Cb, occ_b, virt_b, Co, dummy_v);
-        coeff_blocks(Ca, occ_a, virt_a, dummy_o, Cv);
+        coeff_blocks(s.Cb, s.occ_b, s.virt_b, Co, dummy_v);
+        coeff_blocks(s.Ca, s.occ_a, s.virt_a, dummy_o, Cv);
     }
+}
 
-    // (ij|ab) with i,j majority-occ, a,b minority-virt — exchange block only.
-    const xt::xtensor<double, 4> ijab = mo_transform_eri(eri, Co, Co, Cv, Cv);
+void symmetrize_matrix(RealMatrix& M) {
+    const int n = static_cast<int>(M.shape()[0]);
+    for (int p = 0; p < n; ++p)
+        for (int q = p + 1; q < n; ++q) {
+            const double avg =
+                0.5
+                * (M(static_cast<std::size_t>(p), static_cast<std::size_t>(q))
+                   + M(static_cast<std::size_t>(q),
+                       static_cast<std::size_t>(p)));
+            M(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) = avg;
+            M(static_cast<std::size_t>(q), static_cast<std::size_t>(p)) = avg;
+        }
+}
 
+RealMatrix sf_cis_A(const SfIdx& s, const xt::xtensor<double, 4>& ijab) {
+    const int no = s.no;
+    const int nv = s.nv;
+    const int nov = s.nov;
     RealMatrix A = xt::zeros<double>(
         {static_cast<std::size_t>(nov), static_cast<std::size_t>(nov)});
     for (int i = 0; i < no; ++i) {
         for (int a = 0; a < nv; ++a) {
             const int p = i * nv + a;
-            const int ii = alpha_to_beta ? occ_a[static_cast<std::size_t>(i)]
-                                         : occ_b[static_cast<std::size_t>(i)];
-            const int aa = alpha_to_beta ? virt_b[static_cast<std::size_t>(a)]
-                                         : virt_a[static_cast<std::size_t>(a)];
-            const double e_virt = alpha_to_beta
-                                      ? eb(static_cast<std::size_t>(aa))
-                                      : ea(static_cast<std::size_t>(aa));
-            const double e_occ = alpha_to_beta
-                                     ? ea(static_cast<std::size_t>(ii))
-                                     : eb(static_cast<std::size_t>(ii));
+            const int ii = s.alpha_to_beta
+                               ? s.occ_a[static_cast<std::size_t>(i)]
+                               : s.occ_b[static_cast<std::size_t>(i)];
+            const int aa = s.alpha_to_beta
+                               ? s.virt_b[static_cast<std::size_t>(a)]
+                               : s.virt_a[static_cast<std::size_t>(a)];
+            const double e_virt = s.alpha_to_beta
+                                      ? s.eb(static_cast<std::size_t>(aa))
+                                      : s.ea(static_cast<std::size_t>(aa));
+            const double e_occ = s.alpha_to_beta
+                                     ? s.ea(static_cast<std::size_t>(ii))
+                                     : s.eb(static_cast<std::size_t>(ii));
             A(static_cast<std::size_t>(p), static_cast<std::size_t>(p)) =
                 e_virt - e_occ;
             for (int j = 0; j < no; ++j) {
@@ -1744,18 +1766,50 @@ ExcitedStatesResult SfTDA<Method>::run(int n_states) const {
             }
         }
     }
+    symmetrize_matrix(A);
+    return A;
+}
 
-    // Numerical symmetrize then dense Hermitian eigensolve.
-    for (int p = 0; p < nov; ++p)
-        for (int q = p + 1; q < nov; ++q) {
-            const double s =
-                0.5
-                * (A(static_cast<std::size_t>(p), static_cast<std::size_t>(q))
-                   + A(static_cast<std::size_t>(q),
-                       static_cast<std::size_t>(p)));
-            A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) = s;
-            A(static_cast<std::size_t>(q), static_cast<std::size_t>(p)) = s;
+RealMatrix sf_cis_B(const SfIdx& s, const xt::xtensor<double, 4>& ibaj) {
+    const int no = s.no;
+    const int nv = s.nv;
+    const int nov = s.nov;
+    RealMatrix B = xt::zeros<double>(
+        {static_cast<std::size_t>(nov), static_cast<std::size_t>(nov)});
+    for (int i = 0; i < no; ++i) {
+        for (int a = 0; a < nv; ++a) {
+            const int p = i * nv + a;
+            for (int j = 0; j < no; ++j) {
+                for (int b = 0; b < nv; ++b) {
+                    const int q = j * nv + b;
+                    // B_ia,jb = -(ib|aj)
+                    B(static_cast<std::size_t>(p),
+                      static_cast<std::size_t>(q)) -=
+                        ibaj(static_cast<std::size_t>(i),
+                             static_cast<std::size_t>(b),
+                             static_cast<std::size_t>(a),
+                             static_cast<std::size_t>(j));
+                }
+            }
         }
+    }
+    symmetrize_matrix(B);
+    return B;
+}
+
+} // namespace
+
+template <typename Method>
+ExcitedStatesResult SfTDA<Method>::run(int n_states) const {
+    const Method& mf = *mf_;
+    const SfIdx ix = sf_indices(mf, n_states, /*nov_cap=*/512, "SfTDA::run",
+                                " exceeds dense threshold 512 (no fallback)");
+    const internal::IntegralView pack = mf.integral_view_();
+    const xt::xtensor<double, 4> eri =
+        (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
+    RealMatrix Co, Cv;
+    sf_mo_blocks(ix, Co, Cv);
+    const RealMatrix A = sf_cis_A(ix, mo_transform_eri(eri, Co, Co, Cv, Cv));
 
     auto [w, U] = xt::linalg::eigh(A);
     (void)U;
@@ -1826,126 +1880,16 @@ std::vector<double> sf_rpa_positive_roots_(const RealMatrix& A,
 template <typename Method>
 ExcitedStatesResult SfTDHF<Method>::run(int n_states) const {
     const Method& mf = *mf_;
-
-    if (!mf.has_result())
-        throw std::runtime_error(
-            "SfTDHF::run: no SCF result — call run(frame) first");
-    const SlaterDeterminant& det = mf.determinant();
-    if (det.restricted() || det.generalized())
-        throw std::runtime_error(
-            "SfTDHF::run: requires an unrestricted (UHF) determinant");
-
-    using Spin = SlaterDeterminant::Spin;
-    const RealMatrix& Ca = det.coefficients(Spin::alpha);
-    const RealMatrix& Cb = det.coefficients(Spin::beta);
-    const RealVector& ea = det.orbital_energies(Spin::alpha);
-    const RealVector& eb = det.orbital_energies(Spin::beta);
-    const RealVector& fa = det.occupations(Spin::alpha);
-    const RealVector& fb = det.occupations(Spin::beta);
-
-    std::vector<int> occ_a, virt_a, occ_b, virt_b;
-    split_occ_virt(fa, occ_a, virt_a);
-    split_occ_virt(fb, occ_b, virt_b);
-    const int noa = static_cast<int>(occ_a.size());
-    const int nva = static_cast<int>(virt_a.size());
-    const int nob = static_cast<int>(occ_b.size());
-    const int nvb = static_cast<int>(virt_b.size());
-
-    const bool alpha_to_beta = (noa >= nob);
-    const int no = alpha_to_beta ? noa : nob;
-    const int nv = alpha_to_beta ? nvb : nva;
-    if (no == 0 || nv == 0)
-        throw std::runtime_error(
-            "SfTDHF::run: empty SF manifold (need majority occupied and "
-            "minority virtual orbitals — no fallback)");
-    const int nov = no * nv;
-    if (n_states < 1 || n_states > nov)
-        throw std::invalid_argument(
-            "SfTDHF::run: n_states = " + std::to_string(n_states)
-            + " outside [1, n_ov = " + std::to_string(nov) + "]");
-    // Doubled non-Hermitian space is 2*n_ov; cap so dgeev stays tiny.
-    if (nov > 256)
-        throw std::runtime_error(
-            "SfTDHF::run: n_ov = " + std::to_string(nov)
-            + " exceeds dense SF-RPA threshold 256 (no fallback)");
-
+    const SfIdx ix =
+        sf_indices(mf, n_states, /*nov_cap=*/256, "SfTDHF::run",
+                   " exceeds dense SF-RPA threshold 256 (no fallback)");
     const internal::IntegralView pack = mf.integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
-
     RealMatrix Co, Cv;
-    if (alpha_to_beta) {
-        RealMatrix dummy_v, dummy_o;
-        coeff_blocks(Ca, occ_a, virt_a, Co, dummy_v);
-        coeff_blocks(Cb, occ_b, virt_b, dummy_o, Cv);
-    } else {
-        RealMatrix dummy_v, dummy_o;
-        coeff_blocks(Cb, occ_b, virt_b, Co, dummy_v);
-        coeff_blocks(Ca, occ_a, virt_a, dummy_o, Cv);
-    }
-
-    // A: exchange-only SF-CIS block (same as sf_tda).
-    const xt::xtensor<double, 4> ijab = mo_transform_eri(eri, Co, Co, Cv, Cv);
-    // B: exchange de-excitation (ib|aj) — Co,Cv,Cv,Co → [i,b,a,j].
-    const xt::xtensor<double, 4> ibaj = mo_transform_eri(eri, Co, Cv, Cv, Co);
-
-    RealMatrix A = xt::zeros<double>(
-        {static_cast<std::size_t>(nov), static_cast<std::size_t>(nov)});
-    RealMatrix B = xt::zeros<double>(
-        {static_cast<std::size_t>(nov), static_cast<std::size_t>(nov)});
-    for (int i = 0; i < no; ++i) {
-        for (int a = 0; a < nv; ++a) {
-            const int p = i * nv + a;
-            const int ii = alpha_to_beta ? occ_a[static_cast<std::size_t>(i)]
-                                         : occ_b[static_cast<std::size_t>(i)];
-            const int aa = alpha_to_beta ? virt_b[static_cast<std::size_t>(a)]
-                                         : virt_a[static_cast<std::size_t>(a)];
-            const double e_virt = alpha_to_beta
-                                      ? eb(static_cast<std::size_t>(aa))
-                                      : ea(static_cast<std::size_t>(aa));
-            const double e_occ = alpha_to_beta
-                                     ? ea(static_cast<std::size_t>(ii))
-                                     : eb(static_cast<std::size_t>(ii));
-            A(static_cast<std::size_t>(p), static_cast<std::size_t>(p)) =
-                e_virt - e_occ;
-            for (int j = 0; j < no; ++j) {
-                for (int b = 0; b < nv; ++b) {
-                    const int q = j * nv + b;
-                    A(static_cast<std::size_t>(p),
-                      static_cast<std::size_t>(q)) -=
-                        ijab(static_cast<std::size_t>(i),
-                             static_cast<std::size_t>(j),
-                             static_cast<std::size_t>(a),
-                             static_cast<std::size_t>(b));
-                    // B_ia,jb = -(ib|aj)
-                    B(static_cast<std::size_t>(p),
-                      static_cast<std::size_t>(q)) -=
-                        ibaj(static_cast<std::size_t>(i),
-                             static_cast<std::size_t>(b),
-                             static_cast<std::size_t>(a),
-                             static_cast<std::size_t>(j));
-                }
-            }
-        }
-    }
-
-    for (int p = 0; p < nov; ++p)
-        for (int q = p + 1; q < nov; ++q) {
-            const double sa =
-                0.5
-                * (A(static_cast<std::size_t>(p), static_cast<std::size_t>(q))
-                   + A(static_cast<std::size_t>(q),
-                       static_cast<std::size_t>(p)));
-            A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) = sa;
-            A(static_cast<std::size_t>(q), static_cast<std::size_t>(p)) = sa;
-            const double sb =
-                0.5
-                * (B(static_cast<std::size_t>(p), static_cast<std::size_t>(q))
-                   + B(static_cast<std::size_t>(q),
-                       static_cast<std::size_t>(p)));
-            B(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) = sb;
-            B(static_cast<std::size_t>(q), static_cast<std::size_t>(p)) = sb;
-        }
+    sf_mo_blocks(ix, Co, Cv);
+    const RealMatrix A = sf_cis_A(ix, mo_transform_eri(eri, Co, Co, Cv, Cv));
+    const RealMatrix B = sf_cis_B(ix, mo_transform_eri(eri, Co, Cv, Cv, Co));
 
     const std::vector<double> pos = sf_rpa_positive_roots_(A, B);
     if (static_cast<int>(pos.size()) < n_states)
