@@ -92,7 +92,7 @@ frequencies by tens to hundreds of cm⁻¹.
 
 ## What is checked
 
-`cpu::scf::RHF{basis = Pople631Gs}.hessian(frame)` →
+`cpu::scf::Hessian<RHF>{rhf}.run(frame)` →
 `vib::MassWeighting` + `vib::HessianDiagonalizer` gives 3 real modes
 (`n_imaginary == 0` is NOT asserted — this geometry is slightly off the
 HF/6-31G* minimum, but all three vibrational modes are real and positive);

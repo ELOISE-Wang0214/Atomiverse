@@ -173,7 +173,7 @@ struct IntegralSecondDerivPack {
 ///
 /// The derivative ERIs come from `native::rys_eri_block_deriv` per shell-
 /// block quartet (full ordered enumeration — Hessian-assembly scale, run
-/// once per `RHF::hessian`), never materialized as a 5-index tensor.
+/// once per `Hessian<RHF>::run`), never materialized as a 5-index tensor.
 ///
 /// @param[out] dF     Accumulator [n_atoms, 3, n_basis, n_basis]
 ///                    [Hartree/Bohr]; the caller pre-fills it with the

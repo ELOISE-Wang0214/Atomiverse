@@ -314,7 +314,7 @@ Analytic Hessians are currently **RHF only**.
 cpu::scf::RHF rhf;
 rhf.basis = cpu::scf::BasisSet::Pople631Gs;
 rhf.tol = 1e-12;
-cpu::vib::HessianResult H = rhf.hessian(frame); // eV/Å²
+cpu::vib::HessianResult H = cpu::scf::Hessian<cpu::scf::RHF>{rhf}.run(frame); // eV/Å²
 // mass-weight → project TR → diagonalise → frequencies [cm⁻¹]
 ```
 

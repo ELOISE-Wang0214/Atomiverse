@@ -13,7 +13,7 @@
 ///       case regressions/scf/direct-rpa-h2-sto3g. Gate E_c ≤ 1e-12 Ha (the
 ///       spec's honest bitwise-subset gate; ATV reproduces the PySCF pin to
 ///       all 12 printed decimals).
-///   (2) CPHF static isotropic polarizability via `RHF::polarizability()`
+///   (2) CPHF static isotropic polarizability via `Polarizability<RHF>`
 ///       — solve_pcg-backed linear response. Same literature value as the
 ///       sibling case regressions/scf/static-polariz-h2o. Gate α ≤ 1e-6 a.u.
 ///
@@ -158,7 +158,7 @@ bool run_polarizability() {
         return false;
     }
 
-    const auto alpha = rhf.polarizability(); // 3×3 [a.u.]
+    const auto alpha = cpu::scf::Polarizability<cpu::scf::RHF>{rhf}.run();
 
     // PySCF 2.14.0 analytic CPHF diagonal α_ii [a.u.] — static-polariz-h2o.
     constexpr double kAxx = 0.04190863;

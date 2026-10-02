@@ -25,6 +25,7 @@
 #include "atomiverse/cpu/scf/ghf.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/post_hf.h"
+#include "atomiverse/cpu/scf/response.h"
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cpu/scf/rks.h"
 #include "atomiverse/cpu/scf/rohf.h"

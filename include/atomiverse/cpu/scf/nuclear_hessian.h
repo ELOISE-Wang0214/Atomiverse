@@ -35,7 +35,7 @@ vib::HessianResult central_difference_nuclear_hessian(
 
 /// @brief Throw if a converged reference cannot support an analytic second
 ///        derivative (SCF not converged, spherical AOs, or an ECP).
-/// @param method_name Label interpolated into the message, e.g. "RHF::hessian".
+/// @param method_name Label interpolated into the message, e.g. "Hessian::run".
 /// @param converged Whether the reference SCF converged.
 /// @param stop_reason Driver stop reason when it did not.
 /// @param pack Integral view of the reference.
