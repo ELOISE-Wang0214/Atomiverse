@@ -72,7 +72,7 @@ TDHF/RPA:
 
 **TDA** drops \(B\) (CIS on HF). \(\omega_{\mathrm{RPA}}\le\omega_{\mathrm{TDA}}\)
 for corresponding roots. Triplet-unstable references make RPA \(\omega^2\)
-non-physical; `tdhf()` runs a stability check first. Oscillator strengths use
+non-physical; `TDHF<RHF>::run` runs a stability check first. Oscillator strengths use
 the length-gauge transition dipole.
 
 ### Practice
@@ -84,7 +84,7 @@ rhf.tol = 1e-12;
 rhf.run(frame); // formaldehyde geometry in regressions
 
 auto tda  = cpu::scf::TDA<cpu::scf::RHF>{rhf}.run(3);
-auto tdhf = rhf.tdhf(3);
+auto tdhf = cpu::scf::TDHF<cpu::scf::RHF>{rhf}.run(3);
 ```
 
 ### Results

@@ -21,7 +21,7 @@ int main() {
         std::printf("FAIL scf\n");
         return 1;
     }
-    auto F = rhf.tda_forces(f, 0, 2e-3);
+    auto F = cpu::scf::TDA<cpu::scf::RHF>{rhf}.forces(f, 0, 2e-3);
     const double fx0 = F[0], fx1 = F[3];
     std::printf("TDA force Fx0=%.6e Fx1=%.6e\n", fx0, fx1);
     if (!std::isfinite(fx0) || !std::isfinite(fx1)) {

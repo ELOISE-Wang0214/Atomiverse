@@ -16,7 +16,7 @@ meta-GGA, GAPW/PAW, stock VV10. rVV10 ships.
 | RKS / UKS | ✓ | ○ | No Gaussian KS on device |
 | ROKS | ✓ | ○ | Energy + analytic G |
 | RKS / UKS / ROKS analytic gradient | ✓ | ○ | Incl. XC + Becke grid response |
-| RKS / UKS Hessian | ✓ | ○ | FD of analytic forces (not full CPKS) |
+| RKS / UKS Hessian | ✓ | ○ | `Hessian<RKS>::run` / `Hessian<UKS>::run` — FD of analytic forces (not full CPKS) |
 | Molecular DFT+U / ΔSCF-DFT / GKS | ○ | ○ | Periodic DFT+U is GPW (§4) |
 
 ## 2. Functionals (molecular + shared)

@@ -1,8 +1,8 @@
 /// @file cpu/scf/tdhf.cpp
-/// @brief TDHFPack (TDA + TDHF/RPA lowest-roots solvers over the link-08
-///        OrbitalHessian A/B kernel), `TDA<RHF>::run` (`pyscf.tdscf.rhf.TDA`)
-///        and `RHF::tdhf` (stability pre-check, transition dipoles, oscillator
-///        strengths). @see internal/tdhf_pack.h, tdhf.h.
+/// @brief TDHFPack plus the response objects that are not mean-field
+///        methods: `TDA` (`pyscf.tdscf.rhf.TDA` / `rks.TDA` / `uks.TDA`),
+///        `TDHF` (`pyscf.tdscf.rhf.TDHF`), `TDDFT` (`rks.TDDFT` /
+///        `uks.TDDFT`), `SfTDA` / `SfTDHF`. @see internal/tdhf_pack.h, tdhf.h.
 
 #include "atomiverse/cpu/scf/internal/tdhf_pack.h"
 
@@ -494,7 +494,7 @@ TDHFPack::Roots TDHFPack::rpa_davidson_(int n_states) const {
 
 } // namespace internal
 
-// ── TDA<RHF>::run (not a member of RHF) and RHF::tdhf ────────────────────
+// ── TDA / TDHF / TDDFT / SfTDA (not members of the mean field) ───────────
 
 namespace {
 
@@ -786,14 +786,16 @@ ExcitedStatesResult TDA<Method>::run(int n_states,
                                  /*tda_flag=*/true);
 }
 
-template class TDA<RHF>;
+template <>
+ExcitedStatesResult TDA<RKS>::run(int n_states,
+                                  ExcitationChannel channel) const {
+    const RKS& mf = *mf_;
 
-ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
-    if (!has_result())
+    if (!mf.has_result())
         throw std::runtime_error(
-            "RKS::tda: no SCF result — call run(frame) first");
-    const SlaterDeterminant& det = determinant();
-    const internal::IntegralView pack = integral_view_();
+            "TDA::run: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = mf.determinant();
+    const internal::IntegralView pack = mf.integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
     const internal::OrbitalHessian hessian{det, eri};
@@ -806,7 +808,7 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
         const std::size_t n = A.shape()[0];
         const std::size_t k = static_cast<std::size_t>(n_states);
         if (n_states < 1 || static_cast<std::size_t>(n_states) > n)
-            throw std::invalid_argument("RKS::tda: n_states outside [1, n_ov]");
+            throw std::invalid_argument("TDA::run: n_states outside [1, n_ov]");
         internal::TDHFPack::Roots roots;
         roots.omega = xt::zeros<double>({k});
         roots.X = xt::zeros<double>({k, n});
@@ -826,11 +828,11 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
     // A_ia,jb += 2 (ia|f_xc|jb) (singlet) or (ia|f_xc|jb) (triplet), with
     // (ia|f_xc|jb) = ∫ φ_i φ_a f_ALDA(n) φ_j φ_b dτ from Dirac-exchange
     // second derivative on the molecular quadrature.
-    if (xc == XCType::LSDA && hessian.n_ov() <= 512) {
+    if (mf.xc == XCType::LSDA && hessian.n_ov() <= 512) {
         RealMatrix A = 0.5 * (hessian.dense_plus(ch) + hessian.dense_minus(ch));
         const MolecularGrid grid(pack.atoms.data(),
                                  static_cast<int>(pack.atoms.size()),
-                                 grid_level, n_radial, n_angular);
+                                 mf.grid_level, mf.n_radial, mf.n_angular);
         const RealMatrix K =
             internal::alda_kernel_matrix(det, pack, grid, channel);
         const double coulomb_spin =
@@ -848,12 +850,12 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
     // matches PySCF tdscf.TDA / get_ab hybrid path).
     //
     //   ¹A = δε + 2(ia|jb) − α_hf (ij|ab) + A_xc
-    const double alpha_hf = hybrid_exchange_fraction(xc);
+    const double alpha_hf = hybrid_exchange_fraction(mf.xc);
     if (alpha_hf > 0.0 && hessian.n_ov() <= 512
         && channel == ExcitationChannel::singlet) {
         RealMatrix A = hessian.dense_A(ch, alpha_hf);
-        const RealMatrix K =
-            fxc_kernel_fd(det, pack, xc, grid_level, n_radial, n_angular);
+        const RealMatrix K = fxc_kernel_fd(det, pack, mf.xc, mf.grid_level,
+                                           mf.n_radial, mf.n_angular);
         const std::size_t n = A.shape()[0];
         for (std::size_t p = 0; p < n; ++p)
             for (std::size_t q = 0; q < n; ++q)
@@ -863,7 +865,7 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
 
     // Pure GGA (PBE) and other residual paths: CIS@RKS (HF-like A on KS
     // orbitals; no semi-local f^xc) — hybrid/ALDA axes are above.
-    // Full LR-TDDFT for pure GGA is RKS::tddft().
+    // Full LR-TDDFT for pure GGA is TDDFT::run().
     const internal::TDHFPack tdhf_pack{hessian, ch};
     auto out =
         excited_states_result(det, pack, tdhf_pack.tda(n_states), channel,
@@ -872,12 +874,16 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
     return out;
 }
 
-ExcitedStatesResult RKS::tddft(int n_states, ExcitationChannel channel) const {
-    if (!has_result())
+template <>
+ExcitedStatesResult TDDFT<RKS>::run(int n_states,
+                                    ExcitationChannel channel) const {
+    const RKS& mf = *mf_;
+
+    if (!mf.has_result())
         throw std::runtime_error(
-            "RKS::tddft: no SCF result — call run(frame) first");
-    const SlaterDeterminant& det = determinant();
-    const internal::IntegralView pack = integral_view_();
+            "TDDFT::run: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = mf.determinant();
+    const internal::IntegralView pack = mf.integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
     const internal::OrbitalHessian hessian{det, eri};
@@ -885,24 +891,24 @@ ExcitedStatesResult RKS::tddft(int n_states, ExcitationChannel channel) const {
 
     if (n_states < 1 || n_states > hessian.n_ov())
         throw std::invalid_argument(
-            "RKS::tddft: n_states = " + std::to_string(n_states)
+            "TDDFT::run: n_states = " + std::to_string(n_states)
             + " outside [1, n_ov = " + std::to_string(hessian.n_ov()) + "]");
     if (hessian.n_ov() > 512)
         throw std::runtime_error(
-            "RKS::tddft: n_ov = " + std::to_string(hessian.n_ov())
+            "TDDFT::run: n_ov = " + std::to_string(hessian.n_ov())
             + " exceeds dense threshold 512 (no fallback)");
 
     // Casida A,B with exact-exchange fraction α_hf; pure functionals use α=0.
-    const double alpha_hf = hybrid_exchange_fraction(xc);
+    const double alpha_hf = hybrid_exchange_fraction(mf.xc);
     RealMatrix A = hessian.dense_A(ch, alpha_hf);
     RealMatrix B = hessian.dense_B(ch, alpha_hf);
     bool alda_flag = false;
 
     // Adiabatic f^xc on both A and B (Casida 1995; Dreuw & Head-Gordon 2005).
-    if (xc == XCType::LSDA) {
+    if (mf.xc == XCType::LSDA) {
         const MolecularGrid grid(pack.atoms.data(),
                                  static_cast<int>(pack.atoms.size()),
-                                 grid_level, n_radial, n_angular);
+                                 mf.grid_level, mf.n_radial, mf.n_angular);
         const RealMatrix K =
             internal::alda_kernel_matrix(det, pack, grid, channel);
         const double coulomb_spin =
@@ -917,8 +923,8 @@ ExcitedStatesResult RKS::tddft(int n_states, ExcitationChannel channel) const {
         alda_flag = true;
     } else if (channel == ExcitationChannel::singlet) {
         // Pure GGA (PBE/BLYP) and global hybrids: FD of V_xc on the KS grid.
-        const RealMatrix K =
-            fxc_kernel_fd(det, pack, xc, grid_level, n_radial, n_angular);
+        const RealMatrix K = fxc_kernel_fd(det, pack, mf.xc, mf.grid_level,
+                                           mf.n_radial, mf.n_angular);
         const std::size_t n = A.shape()[0];
         for (std::size_t p = 0; p < n; ++p)
             for (std::size_t q = 0; q < n; ++q) {
@@ -935,14 +941,17 @@ ExcitedStatesResult RKS::tddft(int n_states, ExcitationChannel channel) const {
     return out;
 }
 
-std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state, double h,
-                                    bool analytic) const {
-    auto make_rhf = [this]() {
+template <>
+std::vector<double> TDA<RHF>::forces(cpu::Frame& frame, int state, double h,
+                                     bool analytic) const {
+    const RHF& src = *mf_;
+
+    auto make_rhf = [&src]() {
         RHF r;
-        r.basis = this->basis;
-        r.tol = this->tol;
-        r.max_iter = this->max_iter;
-        r.charge = this->charge;
+        r.basis = src.basis;
+        r.tol = src.tol;
+        r.max_iter = src.max_iter;
+        r.charge = src.charge;
         return r;
     };
 
@@ -953,26 +962,26 @@ std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state, double h,
         probe.run(frame);
         probe.compute_eri = prev;
         if (!probe.converged())
-            throw std::runtime_error("RHF::tda_forces: SCF did not converge");
+            throw std::runtime_error("TDA::forces: SCF did not converge");
         auto es0 = TDA<RHF>{probe}.run(state + 1);
         if (state < 0 || state >= static_cast<int>(es0.energy_ev.size()))
-            throw std::invalid_argument("RHF::tda_forces: state out of range");
+            throw std::invalid_argument("TDA::forces: state out of range");
         return internal::tda_analytic_forces(frame, probe.integral_view_(),
                                              probe.determinant(),
                                              probe.energy(), state);
     }
 
     if (!(h > 0.0))
-        throw std::invalid_argument("RHF::tda_forces: h must be > 0");
+        throw std::invalid_argument("TDA::forces: h must be > 0");
     const int n = frame.nlocal();
     {
         RHF probe = make_rhf();
         probe.run(frame);
         if (!probe.converged())
-            throw std::runtime_error("RHF::tda_forces: SCF did not converge");
+            throw std::runtime_error("TDA::forces: SCF did not converge");
         auto es0 = TDA<RHF>{probe}.run(state + 1);
         if (state < 0 || state >= static_cast<int>(es0.energy_ev.size()))
-            throw std::invalid_argument("RHF::tda_forces: state out of range");
+            throw std::invalid_argument("TDA::forces: state out of range");
     }
 
     std::vector<double> F(static_cast<std::size_t>(3 * n), 0.0);
@@ -1002,11 +1011,14 @@ std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state, double h,
     return F;
 }
 
-std::vector<double> RHF::tda_nac_vectors(cpu::Frame& frame, int state_i,
-                                         int state_j) const {
+template <>
+std::vector<double> TDA<RHF>::nac_vectors(cpu::Frame& frame, int state_i,
+                                          int state_j) const {
+    const RHF& src = *mf_;
+
     if (state_i == state_j)
         throw std::invalid_argument(
-            "RHF::tda_nac_vectors: i and j must differ (no fallback)");
+            "TDA::nac_vectors: i and j must differ (no fallback)");
     // d_ij = (F_i − F_j) / (E_j − E_i)  [1/Å] (force eV/Å over energy eV).
     // Antisymmetry: d_ji = −d_ij exactly by construction (same F, E).
     // Phase: only when state_i < state_j, flip so the first large component
@@ -1017,22 +1029,22 @@ std::vector<double> RHF::tda_nac_vectors(cpu::Frame& frame, int state_i,
     // Use FD forces for the vector construction so the gap factor and force
     // difference share one consistent oracle (analytic CIS 2-RDM path is
     // still calibrating against FD on H2).
-    auto Flo = tda_forces(frame, lo, 2e-3, /*analytic=*/false);
-    auto Fhi = tda_forces(frame, hi, 2e-3, /*analytic=*/false);
+    auto Flo = forces(frame, lo, 2e-3, /*analytic=*/false);
+    auto Fhi = forces(frame, hi, 2e-3, /*analytic=*/false);
     RHF r;
-    r.basis = basis;
-    r.tol = tol;
-    r.max_iter = max_iter;
-    r.charge = charge;
+    r.basis = src.basis;
+    r.tol = src.tol;
+    r.max_iter = src.max_iter;
+    r.charge = src.charge;
     r.run(frame);
     if (!r.converged())
-        throw std::runtime_error("RHF::tda_nac_vectors: SCF did not converge");
+        throw std::runtime_error("TDA::nac_vectors: SCF did not converge");
     auto es = TDA<RHF>{r}.run(hi + 1);
     const double Elo = es.energy_ev[static_cast<std::size_t>(lo)];
     const double Ehi = es.energy_ev[static_cast<std::size_t>(hi)];
     const double dE = Ehi - Elo;
     if (!(std::fabs(dE) > 1e-12))
-        throw std::runtime_error("RHF::tda_nac_vectors: degenerate roots");
+        throw std::runtime_error("TDA::nac_vectors: degenerate roots");
     std::vector<double> d(Flo.size());
     for (std::size_t k = 0; k < Flo.size(); ++k)
         d[k] = (Flo[k] - Fhi[k]) / dE; // d_lo,hi
@@ -1053,21 +1065,27 @@ std::vector<double> RHF::tda_nac_vectors(cpu::Frame& frame, int state_i,
     return d;
 }
 
-double RHF::tda_nac_strength(cpu::Frame& frame, int state_i, int state_j,
-                             double /*h*/) const {
-    auto d = tda_nac_vectors(frame, state_i, state_j);
+template <>
+double TDA<RHF>::nac_strength(cpu::Frame& frame, int state_i, int state_j,
+                              double /*h*/) const {
+
+    auto d = nac_vectors(frame, state_i, state_j);
     double n2 = 0.0;
     for (double v : d)
         n2 += v * v;
     return std::sqrt(n2);
 }
 
-ExcitedStatesResult RHF::tdhf(int n_states, ExcitationChannel channel) const {
-    if (!has_result())
+template <typename Method>
+ExcitedStatesResult TDHF<Method>::run(int n_states,
+                                      ExcitationChannel channel) const {
+    const Method& mf = *mf_;
+
+    if (!mf.has_result())
         throw std::runtime_error(
-            "RHF::tdhf: no SCF result — call run(frame) first");
-    const SlaterDeterminant& det = determinant();
-    const internal::IntegralView pack = integral_view_();
+            "TDHF::run: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = mf.determinant();
+    const internal::IntegralView pack = mf.integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
     const internal::OrbitalHessian hessian{det, eri};
@@ -1079,7 +1097,7 @@ ExcitedStatesResult RHF::tdhf(int n_states, ExcitationChannel channel) const {
     const double lowest = analysis.lowest(ch);
     if (lowest < -1e-8)
         throw std::runtime_error(
-            std::string("RHF::tdhf: the ")
+            std::string("TDHF::run: the ")
             + (channel == ExcitationChannel::triplet ? "triplet" : "singlet")
             + " (A + B) block of the reference is unstable (lowest "
               "eigenvalue = "
@@ -1134,7 +1152,7 @@ void split_occ_virt(const RealVector& f, std::vector<int>& occ,
             virt.push_back(p);
         else
             throw std::invalid_argument(
-                "UKS::tda: fractional occupation f[" + std::to_string(p)
+                "TDA::run: fractional occupation f[" + std::to_string(p)
                 + "] = " + std::to_string(fp)
                 + " — open-shell TDA requires integer occupations");
     }
@@ -1564,22 +1582,26 @@ ExcitedStatesResult package_uks_excited(const SlaterDeterminant& det,
 
 } // namespace
 
-ExcitedStatesResult UKS::tda(int n_states) const {
-    if (!has_result())
+template <>
+ExcitedStatesResult TDA<UKS>::run(int n_states, ExcitationChannel) const {
+    const UKS& mf = *mf_;
+
+    if (!mf.has_result())
         throw std::runtime_error(
-            "UKS::tda: no SCF result — call run(frame) first");
-    const SlaterDeterminant& det = determinant();
+            "TDA::run: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = mf.determinant();
     if (det.restricted() || det.generalized())
         throw std::runtime_error(
-            "UKS::tda: requires an unrestricted (UKS) determinant");
-    if (xc != XCType::LSDA)
+            "TDA::run: requires an unrestricted (UKS) determinant");
+    if (mf.xc != XCType::LSDA)
         throw std::runtime_error(
-            "UKS::tda: only LSDA is implemented (pure open-shell ALDA); "
+            "TDA::run: only LSDA is implemented (pure open-shell ALDA); "
             "requested functional is not LSDA (no fallback)");
 
-    const internal::IntegralView pack = integral_view_();
-    const UksLsdaCasidaWork w = build_uks_lsda_casida_A(
-        det, pack, grid_level, n_radial, n_angular, n_states, "UKS::tda");
+    const internal::IntegralView pack = mf.integral_view_();
+    const UksLsdaCasidaWork w =
+        build_uks_lsda_casida_A(det, pack, mf.grid_level, mf.n_radial,
+                                mf.n_angular, n_states, "TDA::run");
 
     auto [evals, U] = xt::linalg::eigh(w.A);
     const std::size_t k = static_cast<std::size_t>(n_states);
@@ -1596,22 +1618,26 @@ ExcitedStatesResult UKS::tda(int n_states) const {
     return package_uks_excited(det, pack, w, roots, /*tda_flag=*/true);
 }
 
-ExcitedStatesResult UKS::tddft(int n_states) const {
-    if (!has_result())
+template <>
+ExcitedStatesResult TDDFT<UKS>::run(int n_states, ExcitationChannel) const {
+    const UKS& mf = *mf_;
+
+    if (!mf.has_result())
         throw std::runtime_error(
-            "UKS::tddft: no SCF result — call run(frame) first");
-    const SlaterDeterminant& det = determinant();
+            "TDDFT::run: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = mf.determinant();
     if (det.restricted() || det.generalized())
         throw std::runtime_error(
-            "UKS::tddft: requires an unrestricted (UKS) determinant");
-    if (xc != XCType::LSDA)
+            "TDDFT::run: requires an unrestricted (UKS) determinant");
+    if (mf.xc != XCType::LSDA)
         throw std::runtime_error(
-            "UKS::tddft: only LSDA is implemented (pure open-shell ALDA); "
+            "TDDFT::run: only LSDA is implemented (pure open-shell ALDA); "
             "requested functional is not LSDA (no fallback)");
 
-    const internal::IntegralView pack = integral_view_();
-    const UksLsdaCasidaWork w = build_uks_lsda_casida_A(
-        det, pack, grid_level, n_radial, n_angular, n_states, "UKS::tddft");
+    const internal::IntegralView pack = mf.integral_view_();
+    const UksLsdaCasidaWork w =
+        build_uks_lsda_casida_A(det, pack, mf.grid_level, mf.n_radial,
+                                mf.n_angular, n_states, "TDDFT::run");
 
     // Pure LSDA, real MOs: B = Coulomb + fxc = A − diag(ε_a − ε_i).
     RealMatrix B = w.A;
@@ -1623,14 +1649,17 @@ ExcitedStatesResult UKS::tddft(int n_states) const {
     return package_uks_excited(det, pack, w, roots, /*tda_flag=*/false);
 }
 
-ExcitedStatesResult UHF::sf_tda(int n_states) const {
-    if (!has_result())
+template <typename Method>
+ExcitedStatesResult SfTDA<Method>::run(int n_states) const {
+    const Method& mf = *mf_;
+
+    if (!mf.has_result())
         throw std::runtime_error(
-            "UHF::sf_tda: no SCF result — call run(frame) first");
-    const SlaterDeterminant& det = determinant();
+            "SfTDA::run: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = mf.determinant();
     if (det.restricted() || det.generalized())
         throw std::runtime_error(
-            "UHF::sf_tda: requires an unrestricted (UHF) determinant");
+            "SfTDA::run: requires an unrestricted (UHF) determinant");
 
     using Spin = SlaterDeterminant::Spin;
     const RealMatrix& Ca = det.coefficients(Spin::alpha);
@@ -1655,19 +1684,19 @@ ExcitedStatesResult UHF::sf_tda(int n_states) const {
     const int nv = alpha_to_beta ? nvb : nva;
     if (no == 0 || nv == 0)
         throw std::runtime_error(
-            "UHF::sf_tda: empty SF manifold (need majority occupied and "
+            "SfTDA::run: empty SF manifold (need majority occupied and "
             "minority virtual orbitals — no fallback)");
     const int nov = no * nv;
     if (n_states < 1 || n_states > nov)
         throw std::invalid_argument(
-            "UHF::sf_tda: n_states = " + std::to_string(n_states)
+            "SfTDA::run: n_states = " + std::to_string(n_states)
             + " outside [1, n_ov = " + std::to_string(nov) + "]");
     if (nov > 512)
         throw std::runtime_error(
-            "UHF::sf_tda: n_ov = " + std::to_string(nov)
+            "SfTDA::run: n_ov = " + std::to_string(nov)
             + " exceeds dense threshold 512 (no fallback)");
 
-    const internal::IntegralView pack = integral_view_();
+    const internal::IntegralView pack = mf.integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 
@@ -1757,7 +1786,7 @@ std::vector<double> sf_rpa_positive_roots_(const RealMatrix& A,
         || static_cast<int>(B.shape()[0]) != nov
         || static_cast<int>(B.shape()[1]) != nov)
         throw std::invalid_argument(
-            "UHF::sf_tddft: A/B must be square and equal size");
+            "SfTDHF::run: A/B must be square and equal size");
     // Non-Hermitian RPA: [[A, B], [-B, -A]] (X;Y) = ω (X;Y). Spectrum is
     // ± pairs when stable; collinear SF may leave (A−B) indefinite so the
     // Hermitian Casida reduction is not used. RealMatrix is column-major, so
@@ -1781,7 +1810,7 @@ std::vector<double> sf_rpa_positive_roots_(const RealMatrix& A,
         }
     }
     RealVector wr, wi;
-    linalg::eig_nonsymmetric(M, wr, wi, nullptr, "UHF::sf_tddft");
+    linalg::eig_nonsymmetric(M, wr, wi, nullptr, "SfTDHF::run");
     std::vector<double> pos;
     pos.reserve(static_cast<std::size_t>(nov));
     for (std::size_t i = 0; i < n; ++i) {
@@ -1794,14 +1823,17 @@ std::vector<double> sf_rpa_positive_roots_(const RealMatrix& A,
 
 } // namespace
 
-ExcitedStatesResult UHF::sf_tddft(int n_states) const {
-    if (!has_result())
+template <typename Method>
+ExcitedStatesResult SfTDHF<Method>::run(int n_states) const {
+    const Method& mf = *mf_;
+
+    if (!mf.has_result())
         throw std::runtime_error(
-            "UHF::sf_tddft: no SCF result — call run(frame) first");
-    const SlaterDeterminant& det = determinant();
+            "SfTDHF::run: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = mf.determinant();
     if (det.restricted() || det.generalized())
         throw std::runtime_error(
-            "UHF::sf_tddft: requires an unrestricted (UHF) determinant");
+            "SfTDHF::run: requires an unrestricted (UHF) determinant");
 
     using Spin = SlaterDeterminant::Spin;
     const RealMatrix& Ca = det.coefficients(Spin::alpha);
@@ -1824,20 +1856,20 @@ ExcitedStatesResult UHF::sf_tddft(int n_states) const {
     const int nv = alpha_to_beta ? nvb : nva;
     if (no == 0 || nv == 0)
         throw std::runtime_error(
-            "UHF::sf_tddft: empty SF manifold (need majority occupied and "
+            "SfTDHF::run: empty SF manifold (need majority occupied and "
             "minority virtual orbitals — no fallback)");
     const int nov = no * nv;
     if (n_states < 1 || n_states > nov)
         throw std::invalid_argument(
-            "UHF::sf_tddft: n_states = " + std::to_string(n_states)
+            "SfTDHF::run: n_states = " + std::to_string(n_states)
             + " outside [1, n_ov = " + std::to_string(nov) + "]");
     // Doubled non-Hermitian space is 2*n_ov; cap so dgeev stays tiny.
     if (nov > 256)
         throw std::runtime_error(
-            "UHF::sf_tddft: n_ov = " + std::to_string(nov)
+            "SfTDHF::run: n_ov = " + std::to_string(nov)
             + " exceeds dense SF-RPA threshold 256 (no fallback)");
 
-    const internal::IntegralView pack = integral_view_();
+    const internal::IntegralView pack = mf.integral_view_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 
@@ -1918,7 +1950,7 @@ ExcitedStatesResult UHF::sf_tddft(int n_states) const {
     const std::vector<double> pos = sf_rpa_positive_roots_(A, B);
     if (static_cast<int>(pos.size()) < n_states)
         throw std::runtime_error(
-            "UHF::sf_tddft: only " + std::to_string(pos.size())
+            "SfTDHF::run: only " + std::to_string(pos.size())
             + " positive real RPA roots (need " + std::to_string(n_states)
             + ") — possible SF-RPA instability or complex spectrum "
               "(no fallback)");
@@ -1935,6 +1967,46 @@ ExcitedStatesResult UHF::sf_tddft(int n_states) const {
         out.energy_ev[s] = pos[s] * units::kHartreeInEv;
     return out;
 }
+
+template <typename Method>
+std::vector<double> TDA<Method>::forces(cpu::Frame&, int, double, bool) const {
+    throw std::logic_error(
+        "TDA::forces: CIS nuclear forces are closed-shell RHF only "
+        "(TDA<RHF>)");
+}
+
+template <typename Method>
+std::vector<double> TDA<Method>::nac_vectors(cpu::Frame&, int, int) const {
+    throw std::logic_error(
+        "TDA::nac_vectors: NAC vectors are closed-shell RHF only (TDA<RHF>)");
+}
+
+template <typename Method>
+double TDA<Method>::nac_strength(cpu::Frame&, int, int, double) const {
+    throw std::logic_error(
+        "TDA::nac_strength: NAC strength is closed-shell RHF only (TDA<RHF>)");
+}
+
+template <typename Method>
+TDHF<Method>::TDHF(const Method& mf) : mf_(&mf) {}
+
+template <typename Method>
+TDDFT<Method>::TDDFT(const Method& mf) : mf_(&mf) {}
+
+template <typename Method>
+SfTDA<Method>::SfTDA(const Method& mf) : mf_(&mf) {}
+
+template <typename Method>
+SfTDHF<Method>::SfTDHF(const Method& mf) : mf_(&mf) {}
+
+template class TDA<RHF>;
+template class TDA<RKS>;
+template class TDA<UKS>;
+template class TDHF<RHF>;
+template class TDDFT<RKS>;
+template class TDDFT<UKS>;
+template class SfTDA<UHF>;
+template class SfTDHF<UHF>;
 
 } // namespace scf
 } // namespace cpu

@@ -90,7 +90,8 @@ int main() {
     if (!check("E_UKS [Ha]", uks.energy(), kEUksHa, kTolEHa))
         return 1;
 
-    const cpu::scf::ExcitedStatesResult es = uks.tda(5);
+    const cpu::scf::ExcitedStatesResult es =
+        cpu::scf::TDA<cpu::scf::UKS>{uks}.run(5);
     if (es.energy_ev.size() < 5) {
         std::fprintf(stderr, "FAIL: expected 5 roots, got %zu\n",
                      es.energy_ev.size());

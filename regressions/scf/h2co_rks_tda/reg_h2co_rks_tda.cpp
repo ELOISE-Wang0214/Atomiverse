@@ -31,7 +31,8 @@ int main() {
         std::printf("FAIL: RKS did not converge\n");
         return 1;
     }
-    auto es = rks.tda(1, cpu::scf::ExcitationChannel::singlet);
+    auto es = cpu::scf::TDA<cpu::scf::RKS>{rks}.run(
+        1, cpu::scf::ExcitationChannel::singlet);
     if (es.energy_ev.empty() || !std::isfinite(es.energy_ev[0])) {
         std::printf("FAIL: empty/non-finite excitation\n");
         return 1;

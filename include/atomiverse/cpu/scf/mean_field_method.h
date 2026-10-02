@@ -107,6 +107,14 @@ template <typename Method>
 class Stability;
 template <typename Method>
 class TDA;
+template <typename Method>
+class TDHF;
+template <typename Method>
+class TDDFT;
+template <typename Method>
+class SfTDA;
+template <typename Method>
+class SfTDHF;
 
 /// @brief Shared view for observers/recorders after a method run.
 ///
@@ -174,6 +182,14 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
     friend class Stability;
     template <typename Method>
     friend class TDA;
+    template <typename Method>
+    friend class TDHF;
+    template <typename Method>
+    friend class TDDFT;
+    template <typename Method>
+    friend class SfTDA;
+    template <typename Method>
+    friend class SfTDHF;
 
   public:
     // ── Geometry / basis (inputs from Frame + these members) ──────────

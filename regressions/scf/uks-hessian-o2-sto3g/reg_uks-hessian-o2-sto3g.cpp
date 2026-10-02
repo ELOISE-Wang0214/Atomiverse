@@ -63,7 +63,8 @@ int main() {
     uks.max_iter = 200;
     uks.grid_level = cpu::scf::GridLevel::MatchPySCF;
 
-    const cpu::vib::HessianResult res = uks.hessian(frame, &guess);
+    const cpu::vib::HessianResult res =
+        cpu::scf::Hessian<cpu::scf::UKS>{uks}.run(frame, &guess);
 
     // PySCF 2.14.0 FD-of-grad pins — see REFERENCE.md (never live PySCF).
     constexpr double want_e = -147.193805922283;

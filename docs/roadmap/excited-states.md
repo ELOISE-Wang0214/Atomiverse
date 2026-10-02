@@ -11,15 +11,15 @@ Response and many-body methods on HF/KS references. Legend:
 | ---------- | :-: | :--: | ----- |
 | ΔSCF / MOM / IMOM | ✓ | ○ | `UHF::delta_scf` |
 | CIS / TDA (RHF) | ✓ | ○ | `TDA<RHF>::run` after `RHF::run` |
-| TDHF / RPA (RHF) | ✓ | ○ | `RHF::tdhf` |
+| TDHF / RPA (RHF) | ✓ | ○ | `TDHF<RHF>::run` after `RHF::run` (`pyscf.tdscf.rhf.TDHF`) |
 | CIS(D) | ✓ | ○ | On RHF TDA |
-| TDA-TDDFT (RKS) | ✓ | ○ | Full MO-product LSDA ALDA + hybrid B3LYP/PBE0 |
-| TDA-TDDFT (UKS) | ✓ | ○ | Spin-conserving LSDA |
-| Full LR-TDDFT (RKS) | ✓ | ○ | Casida A/B; pure KS + hybrid B3LYP |
-| Full LR-TDDFT (UKS) | ✓ | ○ | Pure LSDA |
-| Spin-flip TDA / TDDFT | ✓ | ○ | `UHF::sf_tda` / `sf_tddft` |
-| CIS/TDA analytic forces | ✓ | ○ | Default analytic; FD fallback |
-| TDA NAC vectors | ✓ | ○ | True NAC; no FSSH consumer yet |
+| TDA-TDDFT (RKS) | ✓ | ○ | `TDA<RKS>::run` (`pyscf.tdscf.rks.TDA`). LSDA ALDA + hybrid B3LYP/PBE0 |
+| TDA-TDDFT (UKS) | ✓ | ○ | `TDA<UKS>::run` (`pyscf.tdscf.uks.TDA`). Spin-conserving LSDA |
+| Full LR-TDDFT (RKS) | ✓ | ○ | `TDDFT<RKS>::run` (`pyscf.tdscf.rks.TDDFT`). Casida A/B |
+| Full LR-TDDFT (UKS) | ✓ | ○ | `TDDFT<UKS>::run` (`pyscf.tdscf.uks.TDDFT`). Pure LSDA |
+| Spin-flip TDA / TDDFT | ✓ | ○ | `SfTDA<UHF>::run` / `SfTDHF<UHF>::run` |
+| CIS/TDA analytic forces | ✓ | ○ | `TDA<RHF>::forces`. Default analytic; FD fallback |
+| TDA NAC vectors | ✓ | ○ | `TDA<RHF>::nac_vectors`. No FSSH consumer yet |
 | Real-time / CVS / REW TDDFT | ○ | ○ | |
 
 ## 2. ADC

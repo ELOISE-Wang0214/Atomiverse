@@ -47,7 +47,8 @@ int main() {
     rks.max_iter = 200;
     rks.grid_level = cpu::scf::GridLevel::MatchPySCF;
 
-    const cpu::vib::HessianResult res = rks.hessian(frame);
+    const cpu::vib::HessianResult res =
+        cpu::scf::Hessian<cpu::scf::RKS>{rks}.run(frame);
 
     // PySCF 2.14.0 FD-of-grad pins — see REFERENCE.md (never live PySCF).
     constexpr double want_e = -74.732038853874;

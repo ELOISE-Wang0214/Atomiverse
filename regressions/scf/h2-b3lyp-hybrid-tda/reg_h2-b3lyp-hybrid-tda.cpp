@@ -67,7 +67,8 @@ int main() {
         return 1;
 
     const cpu::scf::ExcitedStatesResult es =
-        rks.tda(1, cpu::scf::ExcitationChannel::singlet);
+        cpu::scf::TDA<cpu::scf::RKS>{rks}.run(
+            1, cpu::scf::ExcitationChannel::singlet);
     if (es.energy_ev.empty() || !std::isfinite(es.energy_ev[0])) {
         std::fprintf(stderr, "FAIL: empty/non-finite S1\n");
         return 1;

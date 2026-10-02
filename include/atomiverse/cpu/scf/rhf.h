@@ -16,7 +16,6 @@
 #include "atomiverse/cpu/scf/gf2.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/rpa.h"
-#include "atomiverse/cpu/scf/tdhf.h"
 
 namespace ATV {
 namespace cpu {
@@ -60,66 +59,6 @@ class RHF : public MeanFieldMethod<RHF> {
     ///        lattice-image window (no Ewald). A cell larger than the
     ///        Gaussian pair reach has only T = 0 and recovers molecular RHF.
     bool periodic = false;
-
-    /// @brief Nuclear forces on TDA excited-state energy of root `state`
-    ///        [eV/Å]. Default path is **analytic** CIS/TDA (integral
-    ///        derivatives + relaxed difference density / Z-vector). Set
-    ///        `analytic=false` to use central finite difference of
-    ///        \(E_n^{\mathrm{TDA}}\) with step `h` [Å] (oracle / debug).
-    /// @param frame Geometry (mutated temporarily on FD path; restored).
-    /// @param state Excited root index (0-based).
-    /// @param h Finite-difference step [Å] (FD path only; default 1e-3).
-    /// @param analytic true (default) analytic CIS gradient; false = FD.
-    /// @return Per-atom force array size 3N (fx,fy,fz interleaved) [eV/Å].
-    std::vector<double> tda_forces(cpu::Frame& frame, int state = 0,
-                                   double h = 1e-3, bool analytic = true) const;
-
-    /// @brief Nonadiabatic coupling *strength* between TDA roots `i` and `j`:
-    ///        ‖d_ij‖ [1/Å] where d_ij = tda_nac_vectors(...) (true NAC).
-    /// @param frame Geometry [Å].
-    /// @param state_i Lower root index (0-based).
-    /// @param state_j Upper root index (0-based).
-    /// @param h FD step if analytic forces fall back is not used [Å].
-    double tda_nac_strength(cpu::Frame& frame, int state_i = 0, int state_j = 1,
-                            double h = 2e-3) const;
-
-    /// @brief True first-order NAC vectors d_ij = ⟨Ψ_i|∇_R|Ψ_j⟩ [1/Å],
-    ///        length 3N (fx,fy,fz interleaved per atom). Built from analytic
-    ///        TDA force difference / energy gap (Chernyak–Mukamel form) with
-    ///        phase fixed so the first large component is positive.
-    /// @param frame Geometry [Å].
-    /// @param state_i Root i (0-based).
-    /// @param state_j Root j (0-based); must differ from i.
-    /// @return d_ij [1/Å]; d_ji = −d_ij.
-    /// @throws on i==j, unconverged SCF, or degenerate gap.
-    std::vector<double> tda_nac_vectors(cpu::Frame& frame, int state_i = 0,
-                                        int state_j = 1) const;
-
-    /// @brief Full TDHF/RPA excitation energies of the most recent `run()`:
-    ///        [[A,B],[−B,−A]](X;Y) = ω(X;Y), solved via the Hermitian
-    ///        reduced form (A−B)^{1/2}(A+B)(A−B)^{1/2} Z = ω²Z (Dreuw &
-    ///        Head-Gordon 2005, DOI 10.1021/cr0505627; Szabo & Ostlund §7).
-    ///        Runs the link-08 stability analysis of the requested
-    ///        channel's (A + B) block first: an unstable reference makes ω
-    ///        imaginary in that channel, so the call throws with the lowest
-    ///        eigenvalue instead of solving (use `TDA<RHF>::run` — real on
-    ///        any reference — or reconverge along
-    ///        `Stability<RHF>::run().rotated_C`).
-    /// @param n_states Number of lowest excited states (1 ≤ n_states ≤
-    ///                 n_occ·n_virt; dimensionless count).
-    /// @param channel  Spin channel (transition properties as in
-    ///                 `TDA<RHF>::run`).
-    /// @return Excitation energies [eV] (ω_RPA ≤ ω_TDA root by root),
-    ///         transition dipoles [a.u.], oscillator strengths, `tda = false`.
-    /// @throws std::runtime_error when called before `run()`, when the
-    ///         requested channel's (A + B) block is unstable (message
-    ///         carries the lowest eigenvalue [Hartree] and the guidance
-    ///         above), or when (A − B) is not positive definite — no
-    ///         fallback values.
-    /// @throws std::invalid_argument as `TDA<RHF>::run`.
-    ExcitedStatesResult
-    tdhf(int n_states,
-         ExcitationChannel channel = ExcitationChannel::singlet) const;
 
     /// @brief CIS(D) doubles correction on the lowest `n_states` singlet CIS
     ///        (TDA) roots of the most recent `run()` — Head-Gordon, Rico,

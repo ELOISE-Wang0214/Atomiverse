@@ -6,7 +6,7 @@
 ///        §7).
 ///
 /// Out-of-library consumer: public headers only (`cpu/scf/methods.h`,
-/// `cpu/scf/tdhf.h` via rhf.h, `cpu/frame/frame.h`, `core/units.h`), links
+/// `cpu/scf/tdhf.h`, `cpu/frame/frame.h`, `core/units.h`), links
 /// `atomiverse`.
 ///
 /// CH2O, r(CO) = 1.203 Å, r(CH) = 1.099 Å, ∠HCH = 116.5°, planar (xz
@@ -92,7 +92,8 @@ int main() {
     // ── TDA and TDHF, first 3 singlet roots ──────────────────────────────
     const cpu::scf::ExcitedStatesResult tda =
         cpu::scf::TDA<cpu::scf::RHF>{rhf}.run(3);
-    const cpu::scf::ExcitedStatesResult tdhf = rhf.tdhf(3);
+    const cpu::scf::ExcitedStatesResult tdhf =
+        cpu::scf::TDHF<cpu::scf::RHF>{rhf}.run(3);
 
     std::printf("\n  %-6s %-14s %-14s %-12s\n", "root", "TDA [eV]", "TDHF [eV]",
                 "f(TDA)/f(TDHF)");

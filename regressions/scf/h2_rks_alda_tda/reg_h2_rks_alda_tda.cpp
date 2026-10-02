@@ -21,7 +21,7 @@ int main() {
         std::printf("FAIL scf\n");
         return 1;
     }
-    auto es = rks.tda(1);
+    auto es = cpu::scf::TDA<cpu::scf::RKS>{rks}.run(1);
     std::printf("ALDA-path S1=%.4f eV alda=%d\n", es.energy_ev[0],
                 (int)es.alda);
     if (!es.alda || !(es.energy_ev[0] > 1.0 && es.energy_ev[0] < 30.0)) {

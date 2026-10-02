@@ -21,7 +21,7 @@ int main() {
         std::printf("FAIL scf\n");
         return 1;
     }
-    auto d = rhf.tda_nac_vectors(f, 0, 1);
+    auto d = cpu::scf::TDA<cpu::scf::RHF>{rhf}.nac_vectors(f, 0, 1);
     if (d.size() != 6u) {
         std::printf("FAIL size\n");
         return 1;
@@ -43,7 +43,7 @@ int main() {
         return 1;
     }
     // Antisymmetry smoke: d_10 ≈ −d_01 (allow FD noise).
-    auto d10 = rhf.tda_nac_vectors(f, 1, 0);
+    auto d10 = cpu::scf::TDA<cpu::scf::RHF>{rhf}.nac_vectors(f, 1, 0);
     double maxa = 0;
     for (std::size_t k = 0; k < d.size(); ++k)
         maxa = std::max(maxa, std::fabs(d10[k] + d[k]));

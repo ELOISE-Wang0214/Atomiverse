@@ -31,6 +31,7 @@
 #include "atomiverse/cpu/scf/rohf.h"
 #include "atomiverse/cpu/scf/roks.h"
 #include "atomiverse/cpu/scf/solvent.h"
+#include "atomiverse/cpu/scf/tdhf.h"
 #include "atomiverse/cpu/scf/uhf.h"
 #include "atomiverse/cpu/scf/uks.h"
 

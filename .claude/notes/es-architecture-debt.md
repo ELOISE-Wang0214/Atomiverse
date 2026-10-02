@@ -30,9 +30,13 @@ PW free-loop / GPW OT — those are rows in this ledger, not the whole story.
 
 Gaussian post-HF, continuum solvent, the shared nuclear FD Hessian, and
 CPHF response are **not** members of `MeanFieldMethod`. `Stability<RHF>`,
-`TDA<RHF>`, and `CCSD<RHF>::eom_ee_ccsd` are not members of `RHF`
-(`pyscf.scf.stability.rhf_stability`, `pyscf.tdscf.rhf.TDA`,
-`cc.CCSD.eomee_ccsd_singlet`). `MP2` / `CCSD` /
+`TDA<RHF>`, `TDHF<RHF>`, and `CCSD<RHF>::eom_ee_ccsd` are not members of
+`RHF` (`pyscf.scf.stability.rhf_stability`, `pyscf.tdscf.rhf.TDA` /
+`TDHF`, `cc.CCSD.eomee_ccsd_singlet`). Nuclear Hessians are
+`Hessian<RHF|UHF|RKS|UKS|ROHF>` (`pyscf.hessian.rhf.Hessian` /
+`hessian.uhf.Hessian`; KS and ROHF differentiate `forces`). KS linear
+response is `TDA<RKS|UKS>` / `TDDFT<RKS|UKS>` (`pyscf.tdscf.rks` /
+`uks`). Spin-flip is `SfTDA<UHF>` / `SfTDHF<UHF>`. `MP2` / `CCSD` /
 `CASCI` / … take the mean-field reference (`pyscf.mp.mp2.MP2(mf)`,
 `cc.CCSD.ccsd_t`). Solvent is `WithSolvent<Method>`
 (`pyscf.solvent._attach_solvent.SCFWithSolvent`). The FD skeleton is
@@ -68,7 +72,6 @@ Priority: 🔴 bind/forces/Driver alignment before any new ES public API;
 | 🟡 | `es-ghost-atoms` | `MeanFieldMethod::ghost_atoms` | Selection on method, not Frame (named exception or move to Frame). |
 | 🟡 | `es-dftb-qmengine` | DFTB0/3 / GFN0 vs DFTB2 / GFN1/2 | Uneven `QmEngine` coverage for QM/MM `set_engine`. |
 | 🟡 | `es-kind-name-hf` | `hf.h` | Kind name `HF` covers pure KS; rename or document as Gaussian mean-field. |
-| 🟡 | `es-posthf-ks-gate` | `mean_field_method.cpp` post-HF entry | Restricted gate allows RKS into CC/CAS; refuse KS reference unless product path is explicit. |
 | 🟡 | `es-docs-drift` | tutorials / `*Evaluator` comments | “mirrors Gaussian” without Evaluator caveat; ch09 `role()/capabilities()` prose (no Capability set exists); stale UKS / multi-k “throws” guard lists in `periodic-{mp2,ri-mp2,rpa,gw}-si.md`, `periodic-gw-kpoints.md`, `ot-smearing.md`; `second-gen-cpmd-uks.md` presents private `second_gen_cp*` flags as members. |
 | 🟡 | `es-reg-internal` | `regressions/gpw/*` standalone dispersion pins | ~25 GPW cases still include `internal/{dftd3,dftd3_params,ts_dispersion,mbd_dispersion,xdm_dispersion}.h` to pin the standalone kernel — out-of-library consumer law. Pin through the public method (E_disp on `GpwResult`, F(disp)−F(plain)) or move the kernel pin to `tests/`. |
 | 🟡 | `es-cuda-gpw-tests-e2e` | `tests/cuda/gpw/test_gpw_full_product.cu`, `test_gpw_kpoints.cu`, `test_gpw_stress.cu` | Run full SCFs (and CPU-oracle SCFs) under ctest — iron law 1. Move to `regressions/gpw/cuda-*`. |

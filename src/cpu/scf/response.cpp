@@ -18,6 +18,7 @@
 #include "atomiverse/cpu/scf/internal/one_electron.h"
 #include "atomiverse/cpu/scf/internal/orbital_hessian.h"
 #include "atomiverse/cpu/scf/internal/stability.h"
+#include "atomiverse/cpu/scf/internal/ucphf_pack.h"
 #include "atomiverse/cpu/scf/methods.h"
 #include "atomiverse/cpu/scf/nuclear_hessian.h"
 
@@ -32,7 +33,8 @@ template <typename Method>
 Polarizability<Method>::Polarizability(Method& mf) : mf_(&mf) {}
 
 template <typename Method>
-vib::HessianResult Hessian<Method>::run(Frame& frame) {
+vib::HessianResult Hessian<Method>::run(Frame& frame,
+                                        const SCFInitialGuess* guess) {
     Method& mf = *mf_;
     if (mf.ri != RI::None)
         throw std::runtime_error(
@@ -41,7 +43,7 @@ vib::HessianResult Hessian<Method>::run(Frame& frame) {
             "follow-up chain link; use ri = RI::None (no silent fallback)");
 
     // Fresh SCF at this geometry (writes the eV energy to frame.meta).
-    mf.run(frame);
+    mf.run(frame, guess);
 
     const SlaterDeterminant& det = mf.determinant();
     const internal::IntegralView pack = mf.integral_view_();
@@ -309,7 +311,185 @@ StabilityResult Stability<Method>::run() const {
     return out;
 }
 
+template <>
+vib::HessianResult Hessian<UHF>::run(Frame& frame,
+                                     const SCFInitialGuess* guess) {
+    UHF& mf = *mf_;
+    if (mf.ri != RI::None)
+        throw std::runtime_error(
+            "Hessian::run: the analytic Hessian is not wired for density "
+            "fitting (RI) — derivative three-center integrals are a "
+            "follow-up chain link; use ri = RI::None (no silent fallback)");
+
+    // pyscf.hessian.uhf.Hessian.kernel: fresh UHF, then UCPHF.
+    mf.run(frame, guess);
+
+    const SlaterDeterminant& det = mf.determinant();
+    const internal::IntegralView pack = mf.integral_view_();
+    check_hessian_preconditions("Hessian::run", mf.converged(),
+                                mf.stop_reason(), pack);
+
+    const xt::xtensor<double, 4> eri =
+        (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
+
+    using Spin = SlaterDeterminant::Spin;
+    const RealMatrix Pa = det.density(Spin::alpha);
+    const RealMatrix Pb = det.density(Spin::beta);
+
+    const IntegralDerivPack dpack{pack};
+    xt::xtensor<double, 4> dFa = dpack.dT + dpack.dV;
+    xt::xtensor<double, 4> dFb = dpack.dT + dpack.dV;
+    accumulate_two_electron_fock_derivative_uhf(dFa, dFb, pack, Pa, Pb);
+
+    internal::UCphfPack cphf{det, pack, eri, dpack.dS, dFa, dFb};
+    cphf.solve();
+    const xt::xtensor<double, 2> H_ha = cphf.hessian();
+
+    const int natm = static_cast<int>(frame.nlocal());
+    const double to_ev_ang2 =
+        units::kHartreeInEv / (units::kBohrInAngstrom * units::kBohrInAngstrom);
+    vib::HessianResult out;
+    out.n_atoms = natm;
+    out.hessian = H_ha * to_ev_ang2;
+    return out;
+}
+
+template <>
+vib::HessianResult Hessian<RKS>::run(Frame& frame,
+                                     const SCFInitialGuess* guess) {
+    RKS& mf = *mf_;
+    if (mf.ri != RI::None)
+        throw std::runtime_error(
+            "Hessian::run: the analytic Hessian is not wired for density "
+            "fitting (RI) — use ri = RI::None (no silent fallback)");
+
+    mf.run(frame, guess);
+    if (!mf.converged())
+        throw std::runtime_error(
+            "Hessian::run: SCF did not converge — no reference "
+            "wavefunction to differentiate ("
+            + mf.stop_reason() + ")");
+
+    // FD of analytic RKS forces. Full CPKS is not this path.
+    auto forces_at = [&](Frame& f) -> GradientResult {
+        RKS s(mf.xc);
+        s.basis = mf.basis;
+        s.tol = mf.tol;
+        s.max_iter = mf.max_iter;
+        s.init_guess = mf.init_guess;
+        s.damping_factor = mf.damping_factor;
+        s.diis_max_vectors = mf.diis_max_vectors;
+        s.diis_start_iter = mf.diis_start_iter;
+        s.grid_level = mf.grid_level;
+        s.n_radial = mf.n_radial;
+        s.n_angular = mf.n_angular;
+        s.conv_tol_grad = mf.conv_tol_grad;
+        const GradientResult g = s.forces(f);
+        if (!s.converged())
+            throw std::runtime_error(
+                "Hessian::run: SCF failed on a displaced geometry");
+        return g;
+    };
+
+    vib::HessianResult out =
+        central_difference_nuclear_hessian(frame, forces_at);
+    mf.run(frame, guess);
+    return out;
+}
+
+template <>
+vib::HessianResult Hessian<ROHF>::run(Frame& frame,
+                                      const SCFInitialGuess* guess) {
+    ROHF& mf = *mf_;
+    if (mf.ri != RI::None)
+        throw std::runtime_error(
+            "Hessian::run: the analytic Hessian is not wired for density "
+            "fitting (RI) — use ri = RI::None (no silent fallback)");
+
+    mf.run(frame, guess);
+    if (!mf.converged())
+        throw std::runtime_error(
+            "Hessian::run: SCF did not converge — no reference "
+            "wavefunction to differentiate ("
+            + mf.stop_reason() + ")");
+
+    // PySCF has no hessian.ROHF. Differentiate analytic forces.
+    auto forces_at = [&](Frame& f) -> GradientResult {
+        ROHF s(mf.n_alpha, mf.n_beta);
+        s.basis = mf.basis;
+        s.tol = mf.tol;
+        s.max_iter = mf.max_iter;
+        s.init_guess = mf.init_guess;
+        s.damping_factor = mf.damping_factor;
+        s.diis_max_vectors = mf.diis_max_vectors;
+        s.diis_start_iter = mf.diis_start_iter;
+        const GradientResult g = s.forces(f);
+        if (!s.converged())
+            throw std::runtime_error(
+                "Hessian::run: SCF failed on a displaced geometry");
+        return g;
+    };
+
+    vib::HessianResult out =
+        central_difference_nuclear_hessian(frame, forces_at);
+    mf.run(frame, guess);
+    return out;
+}
+
+template <>
+vib::HessianResult Hessian<UKS>::run(Frame& frame,
+                                     const SCFInitialGuess* guess) {
+    UKS& mf = *mf_;
+    if (mf.ri != RI::None)
+        throw std::runtime_error(
+            "Hessian::run: the analytic Hessian is not wired for density "
+            "fitting (RI) — use ri = RI::None (no silent fallback)");
+
+    mf.run(frame, guess);
+    if (!mf.converged())
+        throw std::runtime_error(
+            "Hessian::run: SCF did not converge — no reference "
+            "wavefunction to differentiate ("
+            + mf.stop_reason() + ")");
+
+    using Spin = SlaterDeterminant::Spin;
+    SCFInitialGuess ref_guess;
+    ref_guess.P_alpha = mf.determinant().density(Spin::alpha);
+    ref_guess.P_beta = mf.determinant().density(Spin::beta);
+    ref_guess.has_alpha = true;
+    ref_guess.has_beta = true;
+
+    auto forces_at = [&](Frame& f) -> GradientResult {
+        UKS s(mf.n_alpha, mf.n_beta, mf.xc);
+        s.basis = mf.basis;
+        s.tol = mf.tol;
+        s.max_iter = mf.max_iter;
+        s.init_guess = mf.init_guess;
+        s.damping_factor = mf.damping_factor;
+        s.diis_max_vectors = mf.diis_max_vectors;
+        s.diis_start_iter = mf.diis_start_iter;
+        s.grid_level = mf.grid_level;
+        s.n_radial = mf.n_radial;
+        s.n_angular = mf.n_angular;
+        s.conv_tol_grad = mf.conv_tol_grad;
+        const GradientResult g = s.forces(f, &ref_guess);
+        if (!s.converged())
+            throw std::runtime_error(
+                "Hessian::run: SCF failed on a displaced geometry");
+        return g;
+    };
+
+    vib::HessianResult out =
+        central_difference_nuclear_hessian(frame, forces_at);
+    mf.run(frame, guess);
+    return out;
+}
+
 template class Hessian<RHF>;
+template class Hessian<UHF>;
+template class Hessian<RKS>;
+template class Hessian<UKS>;
+template class Hessian<ROHF>;
 template class Stability<RHF>;
 template class Polarizability<RHF>;
 
