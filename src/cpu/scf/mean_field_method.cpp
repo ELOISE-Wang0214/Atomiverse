@@ -28,13 +28,8 @@
 #include "atomiverse/cpu/linalg/eigensolve.h" // CanonicalOrth, build_orthogonalization_matrix
 #include "atomiverse/cpu/observe/mulliken.h"
 #include "atomiverse/cpu/scf/ecp_potential.h"
-#include "atomiverse/cpu/scf/internal/casci_pack.h"
-#include "atomiverse/cpu/scf/internal/casscf_pack.h"
-#include "atomiverse/cpu/scf/internal/ccsd_gradient.h"
-#include "atomiverse/cpu/scf/internal/ccsd_pack.h"
 #include "atomiverse/cpu/scf/internal/dispersion.h"
 #include "atomiverse/cpu/scf/internal/external_field.h"
-#include "atomiverse/cpu/scf/internal/fci_pack.h"
 #include "atomiverse/cpu/scf/internal/gradient.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/internal/hueckel_guess.h"
@@ -42,11 +37,6 @@
 #include "atomiverse/cpu/scf/internal/level_shift.h" // kLevelShiftSkipThreshold
 #include "atomiverse/cpu/scf/internal/mean_field_energy.h"
 #include "atomiverse/cpu/scf/internal/minao.h"
-#include "atomiverse/cpu/scf/internal/mp2_gradient.h"
-#include "atomiverse/cpu/scf/internal/mp2_pack.h"
-#include "atomiverse/cpu/scf/internal/mp3_pack.h"
-#include "atomiverse/cpu/scf/internal/mp4_pack.h"
-#include "atomiverse/cpu/scf/internal/nevpt2_pack.h"
 #include "atomiverse/cpu/scf/internal/pcm.h"
 #include "atomiverse/cpu/scf/internal/periodic_hf.h"
 #include "atomiverse/cpu/scf/internal/point_charges.h"
@@ -905,7 +895,7 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     const bool field_active = std::abs(external_field[0]) > 0.0
                               || std::abs(external_field[1]) > 0.0
                               || std::abs(external_field[2]) > 0.0;
-    const bool solvent_active = solvent_eps > 0.0;
+    const bool solvent_active = solvent_eps_ > 0.0;
 
     // Apply environment to the n-dimensional Hcore / classical energy
     // *before* any GHF spinor embed so both spin blocks share the same
@@ -950,7 +940,7 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     ints_V_nuc_ = v_nuc;
 
     // C-PCM: private reaction-field workspace. Rebuilt every run (geometry
-    // may have moved). solvent_eps == 0 keeps pcm_ null so FockStage is a
+    // may have moved). solvent_eps_ == 0 keeps pcm_ null so FockStage is a
     // pure vacuum path. FockStage captures pcm_.get() at wire time, so any
     // rebuild of pcm_ (or a toggle on/off) must re-wire the stages.
     e_solvent_ = 0;
@@ -959,27 +949,28 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     if (solvent_active) {
         if (generalized)
             throw std::invalid_argument(
-                "MeanFieldMethod::run: solvent_eps > 0 is not supported for "
-                "GHF in this link — clear solvent_eps or use RHF/UHF/RKS/UKS.");
+                "MeanFieldMethod::run: solvent_eps_ > 0 is not supported for "
+                "GHF in this link — clear solvent_eps_ or use "
+                "RHF/UHF/RKS/UKS.");
         pcm_ = std::make_unique<internal::Pcm>(
-            ints.atoms, solvent_eps, solvent_radii_scale, solvent_x,
-            /*lebedev_n=*/302, solvent_model);
+            ints.atoms, solvent_eps_, solvent_radii_scale_, solvent_x_,
+            /*lebedev_n=*/302, solvent_model_);
         if (ints.spherical())
             pcm_->prepare(ints.shells, ints.c2s);
         else
             pcm_->prepare(ints.shells);
         // Retain solvent parameters so ScfGradient can rebuild the cavity at
         // displaced geometries for ∂ΔG_el/∂R at fixed density.
-        ints_solvent_eps_ = solvent_eps;
-        ints_solvent_radii_scale_ = solvent_radii_scale;
-        ints_solvent_x_ = solvent_x;
-        ints_solvent_model_ = solvent_model;
+        ints_solvent_eps_ = solvent_eps_;
+        ints_solvent_radii_scale_ = solvent_radii_scale_;
+        ints_solvent_x_ = solvent_x_;
+        ints_solvent_model_ = solvent_model_;
     } else {
         pcm_.reset();
         ints_solvent_eps_ = 0.0;
-        ints_solvent_radii_scale_ = solvent_radii_scale;
-        ints_solvent_x_ = solvent_x;
-        ints_solvent_model_ = solvent_model;
+        ints_solvent_radii_scale_ = solvent_radii_scale_;
+        ints_solvent_x_ = solvent_x_;
+        ints_solvent_model_ = solvent_model_;
     }
     // Rebind whenever the solvent workspace is present (pointer always new)
     // or when it was dropped after a previous solvent run.
@@ -1288,7 +1279,7 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     // Geometry-only DFT-D3(BJ) / DFT-D4 additive correction (after SCF; not in
     // Fock). Every gradient this class publishes carries the matching
     // −∂E_disp/∂R for the SAME flag pair — `ScfGradient` below for the mean
-    // field, `add_dispersion_forces` in mp2_forces/ccsd_forces — all four
+    // field, `add_dispersion_forces` in post-HF forces — all four
     // routed through `internal/dispersion.h` so the choice is made once.
     e_disp_ = internal::dispersion_energy(frame, d3bj, d4);
     e_total_ += e_disp_;
@@ -1424,11 +1415,11 @@ void MeanFieldMethod<D>::validate_cpmd_config_() const {
             "h^X2C nuclear gradient (picture change + decoupling-matrix "
             "response) is not derived, so the CP nuclei would feel a "
             "non-relativistic force under a relativistic energy.");
-    if (solvent_eps > 0.0)
+    if (solvent_eps_ > 0.0)
         throw std::invalid_argument(
             "MeanFieldMethod: cpmd is not supported with a continuum solvent "
             "— the reaction field is a fixed-point of the SCF density, which "
-            "a propagated density never solves. Set solvent_eps = 0.");
+            "a propagated density never solves. Set solvent_eps_ = 0.");
     if (mom != MomStyle::Off)
         throw std::invalid_argument(
             "MeanFieldMethod: cpmd and mom != Off are mutually exclusive — "
@@ -1726,376 +1717,6 @@ GradientResult MeanFieldMethod<D>::forces(Frame& frame,
     return last_grad_;
 }
 
-template <typename D>
-MP2Result MeanFieldMethod<D>::mp2(Frame& frame, const SCFInitialGuess* guess) {
-    if (spin_ == SpinType::Generalized)
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp2: a GHF (spinor) reference is not supported "
-            "— the MP2 pack has no spinor transformation. Use RHF or UHF.");
-    const bool prev = compute_eri;
-    // Canonical MP2 needs a dense ERI; RI-MP2 builds 3-center integrals only.
-    if (ri == RI::None)
-        compute_eri = true;
-    run(frame, guess);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp2: SCF reference did not converge — refusing "
-            "to compute a correlation correction on a non-stationary "
-            "determinant (no fallback)");
-    if ((spin_ == SpinType::Unrestricted || spin_ == SpinType::RestrictedOpen)
-        && frozen != 0) {
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp2: frozen-core UMP2/ROMP2 is not supported — "
-            "set frozen=0, or use closed-shell RHF.");
-    }
-    if (ri != RI::None) {
-        if (spin_ != SpinType::Restricted)
-            throw std::invalid_argument(
-                "MeanFieldMethod::mp2: RI-MP2 is closed-shell only — set "
-                "ri=RI::None for UMP2/ROMP2, or use RHF.");
-        return ri_mp2_energy(integral_view_(), *det_sp_, e_total_, aux_basis,
-                             frozen, mp2_os_scale, mp2_ss_scale);
-    }
-    if (spin_ == SpinType::RestrictedOpen) {
-        // PySCF ROMP2: UMP2 on ROHF orbitals with semi-canonical spin-Fock
-        // diagonal denominators (F_alpha_uncoupled_ / F_beta_uncoupled_).
-        return romp2_energy(integral_view_(), *det_sp_, F_alpha_uncoupled_,
-                            F_beta_uncoupled_, e_total_, mp2_os_scale,
-                            mp2_ss_scale);
-    }
-    if (spin_ == SpinType::Unrestricted)
-        return ump2_energy(integral_view_(), *det_sp_, e_total_, mp2_os_scale,
-                           mp2_ss_scale);
-    return mp2_energy(integral_view_(), *det_sp_, e_total_, frozen,
-                      mp2_os_scale, mp2_ss_scale);
-}
-
-template <typename D>
-GradientResult MeanFieldMethod<D>::mp2_forces(Frame& frame,
-                                              const SCFInitialGuess* guess) {
-    if (spin_ != SpinType::Restricted && spin_ != SpinType::Unrestricted)
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp2_forces: RMP2 (RHF) or UMP2 (UHF) analytic "
-            "gradient only — ROHF/ROMP2 gradients are a follow-up");
-    if (ri != RI::None)
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp2_forces: RI-MP2 gradients are not "
-            "implemented — set ri=RI::None");
-    if (frozen != 0)
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp2_forces: frozen-core MP2 gradients are not "
-            "implemented — set frozen=0");
-    if (std::fabs(mp2_os_scale - 1.0) > 0.0
-        || std::fabs(mp2_ss_scale - 1.0) > 0.0)
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp2_forces: spin-component-scaled MP2 gradients "
-            "are not implemented — keep mp2_os_scale=mp2_ss_scale=1");
-
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame, guess);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp2_forces: SCF reference did not converge — "
-            "refusing gradient on a non-stationary determinant (no fallback)");
-
-    GradientResult gr;
-    if (spin_ == SpinType::Unrestricted) {
-        const MP2Result corr =
-            ump2_energy(integral_view_(), *det_sp_, e_total_, /*os_scale=*/1.0,
-                        /*ss_scale=*/1.0);
-        gr = internal::ump2_analytic_forces(frame, integral_view_(), *det_sp_,
-                                            e_total_, corr.e_corr);
-    } else {
-        const MP2Result corr =
-            mp2_energy(integral_view_(), *det_sp_, e_total_, /*n_frozen=*/0,
-                       /*os_scale=*/1.0, /*ss_scale=*/1.0);
-        gr = internal::mp2_analytic_forces(frame, integral_view_(), *det_sp_,
-                                           e_total_, corr.e_corr);
-    }
-    // `e_total_` (and therefore `gr.energy`) already carries E_disp; the MP2
-    // gradient routines know nothing about dispersion, so the leg is added
-    // here. Same switch as the energy — see internal/dispersion.h.
-    internal::add_dispersion_forces(frame, d3bj, d4, gr);
-    last_grad_ = gr;
-
-    // Publish force / energy on Frame (same contract as forces()).
-    AccReal* __restrict fx = frame.span(kAtom_fx);
-    AccReal* __restrict fy = frame.span(kAtom_fy);
-    AccReal* __restrict fz = frame.span(kAtom_fz);
-    const int natm = static_cast<int>(frame.nlocal());
-    for (int A = 0; A < natm; ++A) {
-        fx[A] = gr.forces(A, 0);
-        fy[A] = gr.forces(A, 1);
-        fz[A] = gr.forces(A, 2);
-    }
-    frame.meta.get(kEnergy) = gr.energy;
-    return gr;
-}
-
-template <typename D>
-MP3Result MeanFieldMethod<D>::mp3(Frame& frame, const SCFInitialGuess* guess) {
-    if (spin_ != SpinType::Restricted)
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp3: closed-shell RMP3 only — use RHF "
-            "(open-shell MP3 is a follow-up).");
-    if (ri != RI::None)
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp3: RI-MP3 is not implemented — set "
-            "ri=RI::None");
-    if (std::fabs(mp2_os_scale - 1.0) > 0.0
-        || std::fabs(mp2_ss_scale - 1.0) > 0.0)
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp3: spin-component-scaled MP3 is not "
-            "implemented — keep mp2_os_scale=mp2_ss_scale=1");
-
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame, guess);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp3: SCF reference did not converge — refusing "
-            "to compute a correlation correction on a non-stationary "
-            "determinant (no fallback)");
-    return mp3_energy(integral_view_(), *det_sp_, e_total_, frozen);
-}
-
-template <typename D>
-MP4Result MeanFieldMethod<D>::mp4(Frame& frame, const SCFInitialGuess* guess) {
-    if (spin_ != SpinType::Restricted)
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp4: closed-shell RMP4 only — use RHF "
-            "(open-shell MP4 is a follow-up).");
-    if (ri != RI::None)
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp4: RI-MP4 is not implemented — set "
-            "ri=RI::None");
-    if (std::fabs(mp2_os_scale - 1.0) > 0.0
-        || std::fabs(mp2_ss_scale - 1.0) > 0.0)
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp4: spin-component-scaled MP4 is not "
-            "implemented — keep mp2_os_scale=mp2_ss_scale=1");
-
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame, guess);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp4: SCF reference did not converge — refusing "
-            "to compute a correlation correction on a non-stationary "
-            "determinant (no fallback)");
-    return mp4_energy(integral_view_(), *det_sp_, e_total_, frozen);
-}
-
-template <typename D>
-FCIResult MeanFieldMethod<D>::fci(Frame& frame) {
-    if (spin_ == SpinType::RestrictedOpen)
-        throw std::invalid_argument(
-            "MeanFieldMethod::fci: an ROHF reference is not supported — the "
-            "FCI pack requires a closed-shell reference. Use RHF.");
-    if (spin_ == SpinType::Generalized)
-        throw std::invalid_argument(
-            "MeanFieldMethod::fci: a GHF (spinor) reference is not supported "
-            "— the FCI pack requires a closed-shell reference. Use RHF.");
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "MeanFieldMethod::fci: SCF reference did not converge — refusing "
-            "to compute a correlation correction on a non-stationary "
-            "determinant (no fallback)");
-    return fci_energy(integral_view_(), *det_sp_, e_total_);
-}
-
-template <typename D>
-CASCIResult MeanFieldMethod<D>::casci(Frame& frame, int ncas, int nelecas) {
-    if (spin_ == SpinType::RestrictedOpen)
-        throw std::invalid_argument(
-            "MeanFieldMethod::casci: an ROHF reference is not supported — "
-            "closed-shell CASCI requires RHF.");
-    if (spin_ == SpinType::Generalized)
-        throw std::invalid_argument(
-            "MeanFieldMethod::casci: a GHF (spinor) reference is not "
-            "supported — closed-shell CASCI requires RHF.");
-    if (spin_ != SpinType::Restricted)
-        throw std::invalid_argument(
-            "MeanFieldMethod::casci: closed-shell RHF reference only — UHF "
-            "CASCI is not implemented (no fallback). Use RHF.");
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "MeanFieldMethod::casci: SCF reference did not converge — refusing "
-            "to compute a correlation correction on a non-stationary "
-            "determinant (no fallback)");
-    return casci_energy(integral_view_(), *det_sp_, e_total_, ncas, nelecas);
-}
-
-template <typename D>
-CASSCFResult MeanFieldMethod<D>::casscf(Frame& frame, int ncas, int nelecas) {
-    if (spin_ == SpinType::RestrictedOpen)
-        throw std::invalid_argument(
-            "MeanFieldMethod::casscf: an ROHF reference is not supported — "
-            "closed-shell CASSCF requires RHF.");
-    if (spin_ == SpinType::Generalized)
-        throw std::invalid_argument(
-            "MeanFieldMethod::casscf: a GHF (spinor) reference is not "
-            "supported — closed-shell CASSCF requires RHF.");
-    if (spin_ != SpinType::Restricted)
-        throw std::invalid_argument(
-            "MeanFieldMethod::casscf: closed-shell RHF reference only — UHF "
-            "CASSCF is not implemented (no fallback). Use RHF.");
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument("MeanFieldMethod::casscf: SCF reference "
-                                    "did not converge — refusing "
-                                    "to optimize orbitals on a non-stationary "
-                                    "determinant (no fallback)");
-    // Orbital gradient tol tracks the SCF energy tolerance (Ha).
-    return casscf_energy(integral_view_(), *det_sp_, e_total_, ncas, nelecas,
-                         /*orb_tol=*/std::max(tol, 1e-8), /*max_macro=*/50);
-}
-
-template <typename D>
-NEVPT2Result MeanFieldMethod<D>::nevpt2(Frame& frame, int ncas, int nelecas) {
-    if (spin_ == SpinType::RestrictedOpen)
-        throw std::invalid_argument(
-            "MeanFieldMethod::nevpt2: an ROHF reference is not supported — "
-            "closed-shell SC-NEVPT2 requires RHF.");
-    if (spin_ == SpinType::Generalized)
-        throw std::invalid_argument(
-            "MeanFieldMethod::nevpt2: a GHF (spinor) reference is not "
-            "supported — closed-shell SC-NEVPT2 requires RHF.");
-    if (spin_ != SpinType::Restricted)
-        throw std::invalid_argument(
-            "MeanFieldMethod::nevpt2: closed-shell RHF reference only — UHF "
-            "NEVPT2 is not implemented (no fallback). Use RHF.");
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument("MeanFieldMethod::nevpt2: SCF reference "
-                                    "did not converge — refusing "
-                                    "to run CASSCF/NEVPT2 on a non-stationary "
-                                    "determinant (no fallback)");
-    return nevpt2_energy(integral_view_(), *det_sp_, e_total_, ncas, nelecas,
-                         /*orb_tol=*/std::max(tol, 1e-8), /*max_macro=*/50);
-}
-
-template <typename D>
-CCSDResult MeanFieldMethod<D>::ccsd(Frame& frame) {
-    if (spin_ != SpinType::Restricted)
-        throw std::invalid_argument(
-            "MeanFieldMethod::ccsd: closed-shell RHF reference only — UHF / "
-            "ROHF / GHF CCSD is not implemented (no fallback). Use RHF.");
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "MeanFieldMethod::ccsd: SCF reference did not converge — refusing "
-            "to compute a correlation correction on a non-stationary "
-            "determinant (no fallback)");
-    return ccsd_energy(integral_view_(), *det_sp_, e_total_, /*tol=*/1e-10,
-                       /*max_iter=*/100, /*use_diis=*/cc_diis);
-}
-
-template <typename D>
-GradientResult MeanFieldMethod<D>::ccsd_forces(Frame& frame,
-                                               const SCFInitialGuess* guess) {
-    if (spin_ != SpinType::Restricted)
-        throw std::invalid_argument(
-            "MeanFieldMethod::ccsd_forces: closed-shell RHF reference only — "
-            "UCCSD gradients are not implemented (no fallback). Use RHF.");
-    if (ri != RI::None)
-        throw std::invalid_argument(
-            "MeanFieldMethod::ccsd_forces: RI-CCSD gradients are not "
-            "implemented — set ri=RI::None");
-    if (frozen != 0)
-        throw std::invalid_argument(
-            "MeanFieldMethod::ccsd_forces: frozen-core CCSD gradients are not "
-            "implemented — set frozen=0");
-
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame, guess);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "MeanFieldMethod::ccsd_forces: SCF reference did not converge — "
-            "refusing gradient on a non-stationary determinant (no fallback)");
-
-    const CCSDResult corr = ccsd_energy(integral_view_(), *det_sp_, e_total_);
-    GradientResult gr = internal::ccsd_analytic_forces(
-        frame, integral_view_(), *det_sp_, e_total_, corr.e_corr);
-    // Same reason as mp2_forces: the reference energy folded in E_disp, so the
-    // published force must fold in −∂E_disp/∂R (internal/dispersion.h).
-    internal::add_dispersion_forces(frame, d3bj, d4, gr);
-    last_grad_ = gr;
-
-    AccReal* __restrict fx = frame.span(kAtom_fx);
-    AccReal* __restrict fy = frame.span(kAtom_fy);
-    AccReal* __restrict fz = frame.span(kAtom_fz);
-    const int natm = static_cast<int>(frame.nlocal());
-    for (int A = 0; A < natm; ++A) {
-        fx[A] = gr.forces(A, 0);
-        fy[A] = gr.forces(A, 1);
-        fz[A] = gr.forces(A, 2);
-    }
-    frame.meta.get(kEnergy) = gr.energy;
-    return gr;
-}
-
-template <typename D>
-CC2Result MeanFieldMethod<D>::cc2(Frame& frame) {
-    if (spin_ != SpinType::Restricted)
-        throw std::invalid_argument(
-            "MeanFieldMethod::cc2: closed-shell RHF reference only — UHF / "
-            "ROHF / GHF CC2 is not implemented (no fallback). Use RHF.");
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "MeanFieldMethod::cc2: SCF reference did not converge — refusing "
-            "to compute a correlation correction on a non-stationary "
-            "determinant (no fallback)");
-    return cc2_energy(integral_view_(), *det_sp_, e_total_);
-}
-
-template <typename D>
-CCSDTResult MeanFieldMethod<D>::ccsd_t(Frame& frame) {
-    if (spin_ != SpinType::Restricted)
-        throw std::invalid_argument(
-            "MeanFieldMethod::ccsd_t: closed-shell RHF reference only — UHF / "
-            "ROHF / GHF CCSD(T) is not implemented (no fallback). Use RHF.");
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "MeanFieldMethod::ccsd_t: SCF reference did not converge — "
-            "refusing "
-            "to compute a correlation correction on a non-stationary "
-            "determinant (no fallback)");
-    return ccsd_t_energy(integral_view_(), *det_sp_, e_total_);
-}
-
 // ── MOM/IMOM reference install ────────────────────────────────────────────────
 
 namespace {
@@ -2140,115 +1761,6 @@ void MeanFieldMethod<D>::set_mom_reference(const SlaterDeterminant& det) {
         mom_ref_C_beta_ = mom_ref_C_alpha_;
     else
         mom_ref_C_beta_ = gather_occupied_columns(det, Spin::beta);
-}
-
-template <typename D>
-vib::HessianResult MeanFieldMethod<D>::central_difference_nuclear_hessian(
-    Frame& frame, const std::function<GradientResult(Frame&)>& forces_at) {
-    const int natm = static_cast<int>(frame.nlocal());
-    const int n3 = 3 * natm;
-    // Central FD of the caller's analytic forces. Match the offline PySCF pin
-    // step (h = 1e-4 Bohr); convert forces eV/Å → Ha/Bohr for the FD, then
-    // scale the Hessian to eV/Å². A fresh solver per ±h displacement (owned by
-    // forces_at) avoids DIIS/MO state bleed.
-    //   g = −F;  H_ha = ∂g/∂R [Ha/Bohr²];  H_ev = H_ha * scale.
-    const double h_bohr = 1e-4;
-    const double h_ang = h_bohr * units::kBohrInAngstrom;
-    const double f_to_ha_bohr = units::kBohrInAngstrom / units::kHartreeInEv;
-    const double hess_to_ev_ang2 =
-        units::kHartreeInEv / (units::kBohrInAngstrom * units::kBohrInAngstrom);
-
-    auto x = frame.span(kAtom_x);
-    auto y = frame.span(kAtom_y);
-    auto z = frame.span(kAtom_z);
-    auto coord = [&](int A, int d) -> StorageReal& {
-        if (d == 0)
-            return x[A];
-        if (d == 1)
-            return y[A];
-        return z[A];
-    };
-
-    std::vector<double> r0(static_cast<std::size_t>(n3));
-    for (int A = 0; A < natm; ++A)
-        for (int d = 0; d < 3; ++d)
-            r0[static_cast<std::size_t>(3 * A + d)] =
-                static_cast<double>(coord(A, d));
-
-    xt::xtensor<double, 2> H = xt::zeros<double>({n3, n3});
-
-    for (int A = 0; A < natm; ++A) {
-        for (int d = 0; d < 3; ++d) {
-            const int col = 3 * A + d;
-            for (int B = 0; B < natm; ++B)
-                for (int e = 0; e < 3; ++e)
-                    coord(B, e) = static_cast<StorageReal>(
-                        r0[static_cast<std::size_t>(3 * B + e)]);
-            coord(A, d) = static_cast<StorageReal>(
-                r0[static_cast<std::size_t>(col)] + h_ang);
-            const GradientResult gp = forces_at(frame);
-
-            coord(A, d) = static_cast<StorageReal>(
-                r0[static_cast<std::size_t>(col)] - h_ang);
-            const GradientResult gm = forces_at(frame);
-
-            // g = −F; H = ∂g/∂R = −∂F/∂R.
-            for (int B = 0; B < natm; ++B)
-                for (int e = 0; e < 3; ++e) {
-                    const int row = 3 * B + e;
-                    const double Fp =
-                        static_cast<double>(gp.forces(B, e)) * f_to_ha_bohr;
-                    const double Fm =
-                        static_cast<double>(gm.forces(B, e)) * f_to_ha_bohr;
-                    const double dF_dR = (Fp - Fm) / (2.0 * h_bohr);
-                    H(row, col) = (-dF_dR) * hess_to_ev_ang2;
-                }
-        }
-    }
-
-    // Restore geometry to the reference r0.
-    for (int A = 0; A < natm; ++A)
-        for (int d = 0; d < 3; ++d)
-            coord(A, d) = static_cast<StorageReal>(
-                r0[static_cast<std::size_t>(3 * A + d)]);
-
-    // Symmetrize (FD noise).
-    for (int i = 0; i < n3; ++i)
-        for (int j = 0; j < i; ++j) {
-            const double s = 0.5 * (H(i, j) + H(j, i));
-            H(i, j) = s;
-            H(j, i) = s;
-        }
-
-    vib::HessianResult out;
-    out.n_atoms = natm;
-    out.hessian = std::move(H);
-    return out;
-}
-
-template <typename D>
-void MeanFieldMethod<D>::check_hessian_preconditions(
-    std::string_view method_name, const internal::IntegralView& pack) const {
-    if (!converged())
-        throw std::runtime_error(std::string(method_name)
-                                 + ": SCF did not converge — no reference "
-                                   "wavefunction to differentiate ("
-                                 + stop_reason() + ")");
-    if (pack.spherical())
-        throw std::runtime_error(
-            std::string(method_name)
-            + ": analytic second derivatives are not implemented "
-              "for spherical-harmonic basis sets (def2 family) yet — the "
-              "derivative c2s transform is a follow-up chain link. Use a "
-              "Cartesian-convention basis or the finite-difference "
-              "vib::Hessian driver.");
-    if (pack.has_ecp)
-        throw std::runtime_error(
-            std::string(method_name)
-            + ": analytic second derivatives are not implemented "
-              "for ECP packs — d²U/dR² of the semi-local potential is a "
-              "follow-up chain link. Use the finite-difference vib::Hessian "
-              "driver.");
 }
 
 // ── QmEngine / EmbeddingEngine (esmm-qmmm-02) ─────────────────────────

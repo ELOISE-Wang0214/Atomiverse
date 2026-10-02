@@ -9,8 +9,8 @@
 /// semi-local exchange-correlation part; `evaluate_xc` returns only the
 /// semi-local part, the HF-exchange admixture is applied by the Fock
 /// builder. Double hybrids add a PT2/MP2 correlation scale
-/// (`hybrid_pt2_fraction`) applied after the KS SCF via `RKS::mp2`
-/// (`mp2_os_scale` / `mp2_ss_scale` = a_c).
+/// (`hybrid_pt2_fraction`) applied after the KS SCF by `MP2` on the RKS reference
+/// (`MP2::os_scale` / `ss_scale` = a_c), not a mean-field member.
 ///
 /// Evaluates XC energy density and potential derivatives at a single grid point.
 ///
@@ -104,8 +104,8 @@ double hybrid_exchange_fraction(XCType type);
 /// Returns `0.27` for B2PLYP (Grimme 2006) and `0.0` for every pure or
 /// single-hybrid functional. When non-zero, the total double-hybrid energy
 /// is \(E_{\mathrm{KS}} + a_c\,E_{\mathrm{MP2}}\) on the converged KS
-/// orbitals; callers set `mp2_os_scale = mp2_ss_scale = a_c` before
-/// `RKS::mp2(frame)`.
+/// orbitals; callers set `MP2::os_scale = MP2::ss_scale = a_c` and
+/// `MP2{rks}.run(frame)`.
 ///
 /// @param type XC functional type.
 /// @return a_c, the dimensionless PT2 coefficient in [0, 1].

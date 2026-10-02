@@ -53,7 +53,8 @@ int main() {
     rhf.max_iter = 100;
 
     const cpu::scf::CASSCFResult cas =
-        rhf.casscf(frame, /*ncas=*/2, /*nelecas=*/2);
+        ATV::cpu::scf::CASSCF<decltype(rhf)>{rhf}.run(frame, /*ncas=*/2,
+                                                      /*nelecas=*/2);
     if (!rhf.converged()) {
         std::fprintf(stderr, "FAIL: RHF/STO-3G (H2) did not converge\n");
         return 1;
@@ -83,7 +84,8 @@ int main() {
         return 1;
 
     // Full-valence CAS(2,2) on H2/STO-3G: CASSCF ≡ CASCI ≡ FCI.
-    const cpu::scf::CASCIResult ci = rhf.casci(frame, 2, 2);
+    const cpu::scf::CASCIResult ci =
+        ATV::cpu::scf::CASCI<decltype(rhf)>{rhf}.run(frame, 2, 2);
     if (!check("CASSCF == CASCI", cas.e_casscf, ci.e_casci, 1e-10))
         return 1;
 

@@ -54,7 +54,8 @@ int main() {
     rhf.max_iter = 100;
 
     const cpu::scf::NEVPT2Result nev =
-        rhf.nevpt2(frame, /*ncas=*/2, /*nelecas=*/2);
+        ATV::cpu::scf::NEVPT2<decltype(rhf)>{rhf}.run(frame, /*ncas=*/2,
+                                                      /*nelecas=*/2);
     if (!rhf.converged()) {
         std::fprintf(stderr, "FAIL: RHF/STO-3G (H2) did not converge\n");
         return 1;
@@ -84,7 +85,8 @@ int main() {
         return 1;
 
     // Full-valence CAS(2,2): NEVPT2 ≡ CASSCF ≡ CASCI ≡ FCI.
-    const cpu::scf::CASSCFResult cas = rhf.casscf(frame, 2, 2);
+    const cpu::scf::CASSCFResult cas =
+        ATV::cpu::scf::CASSCF<decltype(rhf)>{rhf}.run(frame, 2, 2);
     if (!check("NEVPT2 == CASSCF", nev.e_nevpt2, cas.e_casscf, 1e-10))
         return 1;
 

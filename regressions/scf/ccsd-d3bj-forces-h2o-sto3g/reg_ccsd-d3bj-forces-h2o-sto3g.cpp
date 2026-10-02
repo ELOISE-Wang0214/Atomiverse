@@ -60,12 +60,14 @@ int main() {
     cpu::scf::RHF rhf_off;
     configure(rhf_off, /*d3=*/false);
     cpu::Frame f_off = frame;
-    const auto g_off = rhf_off.ccsd_forces(f_off);
+    const auto g_off =
+        ATV::cpu::scf::CCSD<decltype(rhf_off)>{rhf_off}.forces(f_off);
 
     cpu::scf::RHF rhf_on;
     configure(rhf_on, /*d3=*/true);
     cpu::Frame f_on = frame;
-    const auto g_on = rhf_on.ccsd_forces(f_on);
+    const auto g_on =
+        ATV::cpu::scf::CCSD<decltype(rhf_on)>{rhf_on}.forces(f_on);
 
     const auto f_d3 = cpu::scf::D3BJ{}.forces(frame); // Ha/Bohr
     double d3_max = 0.0;

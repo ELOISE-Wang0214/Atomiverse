@@ -24,10 +24,12 @@
 #include "atomiverse/cpu/scf/dftd3.h"
 #include "atomiverse/cpu/scf/ghf.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
+#include "atomiverse/cpu/scf/post_hf.h"
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cpu/scf/rks.h"
 #include "atomiverse/cpu/scf/rohf.h"
 #include "atomiverse/cpu/scf/roks.h"
+#include "atomiverse/cpu/scf/solvent.h"
 #include "atomiverse/cpu/scf/uhf.h"
 #include "atomiverse/cpu/scf/uks.h"
 

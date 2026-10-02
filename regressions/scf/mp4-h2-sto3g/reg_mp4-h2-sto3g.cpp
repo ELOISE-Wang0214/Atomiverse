@@ -41,7 +41,8 @@ int main() {
     rhf.tol = 1e-12;
     rhf.max_iter = 100;
 
-    const cpu::scf::MP4Result mp4 = rhf.mp4(frame);
+    const cpu::scf::MP4Result mp4 =
+        ATV::cpu::scf::MP4<decltype(rhf)>{rhf}.run(frame);
 
     // Offline pins — see REFERENCE.md (never live-import PySCF here).
     constexpr double want_e_hf = -1.116759307396;

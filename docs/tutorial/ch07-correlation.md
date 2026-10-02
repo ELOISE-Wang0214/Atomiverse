@@ -182,13 +182,13 @@ vibrations) — DFT is the method of choice.
 On top of the SCF reference, Atomiverse also implements two **wavefunction**
 correlation methods as post-SCF steps on the concrete method:
 
-- **Closed-shell MP2** — `rhf.mp2(frame)` returns an `MP2Result` with the
+- **Closed-shell MP2** — `MP2{rhf}.run(frame)` returns an `MP2Result` with the
   second-order correlation energy from the `(ia|jb)` MO integral block built by
   `ao2mo_ovov`. For water in STO-3G it recovers E_HF = −74.96302314 Ha →
   E_corr = −0.03554565 Ha → E_MP2 = −74.99856879 Ha (see
   the MP2 path; every digit is pinned by
   `val_mp2_vs_pyscf`).
-- **Exact tiny full CI** — `rhf.fci(frame)` gives the *exact*
+- **Exact tiny full CI** — `FCI{rhf}.run(frame)` gives the *exact*
   in-basis energy for a handful of orbitals (the "Exact correlation in a finite
   basis" section below); for H₂/STO-3G, E_FCI = −1.1372702 Ha.
 
@@ -213,7 +213,7 @@ in principle, a correlated density and gradient).
 In Atomiverse's vocabulary that is not a new `Driver` at all. The Gaussian SCF
 engine already exposes exactly the inputs such a method needs:
 
-- `cpu::scf::RHF rhf; rhf.mp2(frame);` (or `rhf.fci(frame)`) drives a fresh
+- `cpu::scf::RHF rhf; MP2{rhf}.run(frame);` (or `FCI{rhf}.run(frame)`) drives a fresh
   SCF with the dense two-electron (ERI) tensor materialized in the method's
   private workspace — the same integrals the CUDA `RHFFock` kernel reads.
 - `rhf.run(frame)` puts the orbitals and their energies on

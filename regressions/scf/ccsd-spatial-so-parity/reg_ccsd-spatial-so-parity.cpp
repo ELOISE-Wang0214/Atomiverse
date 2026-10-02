@@ -82,7 +82,9 @@ int main() {
     rhf_spatial.tol = 1e-12;
     rhf_spatial.max_iter = 100;
     auto frame_spatial = make_water();
-    const cpu::scf::CCSDResult ccsd_spatial = rhf_spatial.ccsd(frame_spatial);
+    const cpu::scf::CCSDResult ccsd_spatial =
+        ATV::cpu::scf::CCSD<decltype(rhf_spatial)>{rhf_spatial}.run(
+            frame_spatial);
     if (!rhf_spatial.converged() || !ccsd_spatial.converged) {
         std::fprintf(stderr,
                      "FAIL: spatial RHF/CCSD (H2O/STO-3G) did not converge\n");
@@ -97,7 +99,8 @@ int main() {
     rhf_so.tol = 1e-12;
     rhf_so.max_iter = 100;
     auto frame_so = make_water();
-    const cpu::scf::CCSDTResult ccsd_so = rhf_so.ccsd_t(frame_so);
+    const cpu::scf::CCSDTResult ccsd_so =
+        ATV::cpu::scf::CCSD<decltype(rhf_so)>{rhf_so}.ccsd_t(frame_so);
     if (!rhf_so.converged() || !ccsd_so.converged) {
         std::fprintf(
             stderr,
@@ -111,9 +114,10 @@ int main() {
     rhf_jacobi.basis = cpu::scf::BasisSet::STO3G;
     rhf_jacobi.tol = 1e-12;
     rhf_jacobi.max_iter = 100;
-    rhf_jacobi.cc_diis = false; // PROPOSED public member (see PUBLIC-API NOTE)
     auto frame_jacobi = make_water();
-    const cpu::scf::CCSDResult ccsd_jacobi = rhf_jacobi.ccsd(frame_jacobi);
+    ATV::cpu::scf::CCSD<decltype(rhf_jacobi)> cc_jacobi{rhf_jacobi};
+    cc_jacobi.diis = false;
+    const cpu::scf::CCSDResult ccsd_jacobi = cc_jacobi.run(frame_jacobi);
     if (!rhf_jacobi.converged() || !ccsd_jacobi.converged) {
         std::fprintf(stderr,
                      "FAIL: Jacobi RHF/CCSD (H2O/STO-3G) did not converge\n");

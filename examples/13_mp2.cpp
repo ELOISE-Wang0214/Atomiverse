@@ -33,7 +33,7 @@ static cpu::Frame make_water() {
 int main() {
     auto frame = make_water();
     cpu::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-12};
-    auto mp2 = rhf.mp2(frame);
+    auto mp2 = ATV::cpu::scf::MP2<decltype(rhf)>{rhf}.run(frame);
     std::cout << std::setprecision(10) << "E_SCF = " << rhf.energy() << " Ha\n"
               << "E_corr = " << mp2.e_corr << " Ha\n"
               << "E_MP2 = " << mp2.e_tot << " Ha\n";

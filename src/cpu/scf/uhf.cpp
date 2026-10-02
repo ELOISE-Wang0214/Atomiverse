@@ -4,6 +4,7 @@
 ///        in mean_field_method.cpp (explicitly instantiated there).
 
 #include "atomiverse/cpu/scf/uhf.h"
+#include "atomiverse/cpu/scf/nuclear_hessian.h"
 
 #include <stdexcept>
 #include <string>
@@ -54,7 +55,8 @@ vib::HessianResult UHF::hessian(Frame& frame, const SCFInitialGuess* guess) {
     const SlaterDeterminant& det = determinant();
     const internal::IntegralView pack = integral_view_();
     // Shared guard: non-convergence, spherical-harmonic pack, ECP pack.
-    check_hessian_preconditions("UHF::hessian", pack);
+    check_hessian_preconditions("UHF::hessian", converged(), stop_reason(),
+                                pack);
 
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();

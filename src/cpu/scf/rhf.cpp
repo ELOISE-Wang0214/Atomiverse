@@ -4,6 +4,7 @@
 ///        mean_field_method.cpp (explicitly instantiated there).
 
 #include "atomiverse/cpu/scf/rhf.h"
+#include "atomiverse/cpu/scf/nuclear_hessian.h"
 
 #include <cmath>
 #include <stdexcept>
@@ -149,7 +150,8 @@ vib::HessianResult RHF::hessian(Frame& frame) {
     const SlaterDeterminant& det = determinant();
     const internal::IntegralView pack = integral_view_();
     // Shared guard: non-convergence, spherical-harmonic pack, ECP pack.
-    check_hessian_preconditions("RHF::hessian", pack);
+    check_hessian_preconditions("RHF::hessian", converged(), stop_reason(),
+                                pack);
 
     // Dense working-dimension ERI (stability() precedent): reuse the
     // materialized tensor when the run kept one, else rebuild.

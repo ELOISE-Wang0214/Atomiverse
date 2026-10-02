@@ -4,6 +4,7 @@
 ///        The shared SCF driver lives in mean_field_method.cpp.
 
 #include "atomiverse/cpu/scf/rks.h"
+#include "atomiverse/cpu/scf/nuclear_hessian.h"
 
 #include <stdexcept>
 #include <string>

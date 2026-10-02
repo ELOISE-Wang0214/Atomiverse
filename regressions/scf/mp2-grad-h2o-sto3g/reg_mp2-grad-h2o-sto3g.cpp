@@ -39,7 +39,8 @@ int main() {
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = 1e-12;
     rhf.max_iter = 200;
-    const cpu::scf::GradientResult res = rhf.mp2_forces(frame);
+    const cpu::scf::GradientResult res =
+        ATV::cpu::scf::MP2<decltype(rhf)>{rhf}.forces(frame);
 
     auto grad_ha_bohr = [&](int A, int d) {
         return -units::convert(res.forces(A, d), units::Force::eVPerAngstrom,

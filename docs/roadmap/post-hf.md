@@ -2,9 +2,9 @@
 
 Tutorial: [Electron correlation](../tutorial/ch07-correlation.md).
 
-Methods on a converged HF reference, exposed as post-SCF members
-(`RHF::mp2`, `UHF::mp2`, `ROHF::mp2`, `RHF::mp3` / `mp4` / `cc2` / `ccsd` /
-`ccsd_t` / `casci` / `casscf` / `fci` / `nevpt2`, …). Not Drivers — they throw
+Correlation on a converged HF reference. Each method is its own type
+(`MP2{mf}`, `MP3`, `MP4`, `CC2`, `CCSD` with `ccsd_t`, `CASCI`, `CASSCF`,
+`FCI`, `NEVPT2`), not a member of `MeanFieldMethod`. Not Drivers — they throw
 on a non-converged reference. Legend: [Roadmap index](index.md).
 
 ## 1. Møller–Plesset
@@ -12,11 +12,11 @@ on a non-converged reference. Legend: [Roadmap index](index.md).
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
 | RMP2 | ✓ | ○ | Canonical O(N⁵) |
-| UMP2 | ✓ | ○ | `UHF::mp2` |
+| UMP2 | ✓ | ○ | `MP2` on `UHF` |
 | ROMP2 | ✓ | ○ | UMP2 on ROHF reference |
-| Frozen-core MP2 | ✓ | ○ | `rhf.frozen = N`; RMP2 / RI-MP2 |
+| Frozen-core MP2 | ✓ | ○ | `MP2::frozen = N`; RMP2 / RI-MP2 |
 | RI-MP2 | ✓ | ○ | `ri = RI::{J,JK}` + aux; RHF only |
-| SCS-MP2 / SOS-MP2 | ✓ | ○ | `mp2_os_scale` / `mp2_ss_scale` |
+| SCS-MP2 / SOS-MP2 | ✓ | ○ | `MP2::os_scale` / `ss_scale` |
 | RMP2 / UMP2 analytic gradient | ✓ | ○ | Lagrangian + Z-vector |
 | ROMP2 gradient | ○ | ○ | |
 | MP2 Hessian | ○ | ○ | |

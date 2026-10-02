@@ -18,7 +18,7 @@ Shares one SCF solver with [Kohn–Sham DFT](dft.md): the 2×2 product
 | ΔSCF / MOM / IMOM | ✓ | ○ | `UHF::delta_scf` |
 | RHF analytic gradient | ✓ | ✓ | CUDA same envelope as RHF energy |
 | UHF / ROHF / GHF analytic gradient | ✓ | ○ | |
-| RHF / UHF analytic Hessian | ✓ | ○ | CPHF (`RHF::hessian` / `UHF::hessian`) |
+| RHF / UHF analytic Hessian | ✓ | ○ | CPHF (`RHF::hessian` / `UHF::hessian`); FD skeleton is not a mean-field method |
 | ROHF Hessian | ✓ | ○ | FD of analytic forces (not full CPHF) |
 | RHF static polarizability | ✓ | ○ | CPHF |
 | Stability analysis | ✓ | ○ | Seeger–Pople |
@@ -27,7 +27,8 @@ Shares one SCF solver with [Kohn–Sham DFT](dft.md): the 2×2 product
 
 - CUDA is a **restricted-HF engine**: no UHF/KS; forces outside l ≤ 1 throw —
   use `cpu::scf::RHF`.
-- ROHF: SOSCF / level shift still throw. GHF: mp2 / fci / soscf throw.
+- ROHF: SOSCF / level shift still throw. GHF: `MP2` / `FCI` / soscf throw.
+- Post-HF and continuum solvent are not `MeanFieldMethod` members (`MP2` / `CCSD` / `WithSolvent`). SCF there is `run` / `forces` only.
 
 ## 2. Periodic Hartree–Fock
 

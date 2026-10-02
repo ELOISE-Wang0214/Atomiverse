@@ -23,7 +23,7 @@ int main() {
     rhf.tol = 1e-9;
     rhf.ri = cpu::scf::RI::JK;
     rhf.aux_basis = cpu::scf::AuxBasis::Def2JKFIT;
-    auto m = rhf.mp2(f);
+    auto m = ATV::cpu::scf::MP2<decltype(rhf)>{rhf}.run(f);
     std::printf("RI-MP2 e_corr=%.8f Ha ri=%d\n", m.e_corr, (int)m.ri);
     // Hard-coded window: H2O/STO-3G MP2 correlation ~ -0.03..-0.1 Ha
     if (!m.ri || !(m.e_corr < -1e-3) || !(m.e_corr > -0.2)) {

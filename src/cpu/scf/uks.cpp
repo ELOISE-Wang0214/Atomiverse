@@ -5,6 +5,7 @@
 ///        instantiated there).
 
 #include "atomiverse/cpu/scf/uks.h"
+#include "atomiverse/cpu/scf/nuclear_hessian.h"
 
 #include <stdexcept>
 #include <string>

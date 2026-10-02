@@ -65,7 +65,8 @@ int main() {
     uhf.tol = 1e-12;
     uhf.max_iter = 200;
 
-    const cpu::scf::GradientResult res = uhf.mp2_forces(frame, &guess);
+    const cpu::scf::GradientResult res =
+        ATV::cpu::scf::MP2<decltype(uhf)>{uhf}.forces(frame, &guess);
 
     auto grad_ha_bohr = [&](int A, int d) {
         return -units::convert(res.forces(A, d), units::Force::eVPerAngstrom,
