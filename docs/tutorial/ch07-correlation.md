@@ -102,7 +102,7 @@ There is one place where Atomiverse computes correlation *exactly* — not
 approximated by a functional, not truncated at second order, but the true
 lowest energy the basis can express. That is **full configuration interaction
 (full CI)**, available as a small post-SCF reference solver
-(`RHF::fci`) for *tiny* systems only.
+(`FCI{rhf}.run(frame)`) for *tiny* systems only.
 
 **The determinant expansion.** Hartree-Fock uses a single Slater determinant:
 each electron in its own molecular orbital, the occupied set fixed. Full CI
@@ -149,7 +149,7 @@ tests encode this correct inequality.)
 factorially with system size, and the dense $N_\text{det} \times N_\text{det}$
 eigenproblem grows as its cube. A handful of orbitals is already thousands of
 determinants; a real molecule is astronomically out of reach. Atomiverse
-therefore caps `fci()` at a hard TINY limit ($n_\text{mo} \le 14$,
+therefore caps `FCI::run` at a hard TINY limit ($n_\text{mo} \le 14$,
 $N_\text{det} \le 2000$) and throws past it. Its job is to be *exactly right*
 on toy systems, as the golden yardstick that validates MP2 today and coupled
 cluster tomorrow — the same role Szabo & Ostlund's hand-worked H2 table plays
@@ -268,8 +268,8 @@ theory does not fully capture that avoidance.
 
 This chapter explains what mean-field theories miss, sketches the hierarchy of
 methods built to recover it, and then puts two of them to work: Atomiverse
-implements **closed-shell MP2** (`RHF::mp2`) and an **exact tiny full
-CI** (`RHF::fci`) as post-SCF steps on the concrete method. Both require a
+implements **closed-shell MP2** (`MP2{rhf}.run(frame)`) and an **exact tiny full
+CI** (`FCI{rhf}.run(frame)`) as post-SCF steps on the concrete method. Both require a
 converged SCF reference and return a correlation energy — real, runnable, and
 validated against reference values. What remains out of scope is the expensive
 tail of the hierarchy: coupled cluster, multi-reference, and large-scale CI. DFT
