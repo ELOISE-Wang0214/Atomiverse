@@ -9,7 +9,7 @@
 /// 4-centre form, no density fitting). Matches the PySCF
 /// `pyscf.gw.bse.BSE` working equations (Hillenbrand, Li & Zhu, JCP 162,
 /// 174117 (2025); J. Comput. Chem. 38, 383 (2017)) evaluated with
-/// frequency-exact G0W0 poles (`RHF::g0w0` / `gw.gw_exact.GWExact`) and
+/// frequency-exact G0W0 poles (`G0W0<RHF>::run` / `gw.gw_exact.GWExact`) and
 /// non-DF ERIs.
 ///
 /// Singlet channel (closed-shell spatial MOs):

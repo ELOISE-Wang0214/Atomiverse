@@ -45,7 +45,7 @@ enum class Channel { singlet, triplet };
 /// @brief Result of the shared direct random-phase-approximation (dRPA) /
 ///        Casida (linear-response) Hermitian reduction
 ///        \((A-B)^{1/2}(A+B)(A-B)^{1/2}\) — the single solve behind both
-///        `RHF::direct_rpa` (reads `omega` + `e_c`) and `RHF::g0w0` (reads
+///        `RHF::direct_rpa` (reads `omega` + `e_c`) and `G0W0<RHF>::run` (reads
 ///        `omega` + the `X`/`Y` amplitude matrices its screened Coulomb
 ///        consumes). Lightweight value object; \(T,T^{-1}\) stay method-private.
 struct DirectRpaResult {
@@ -166,7 +166,7 @@ class OrbitalHessian {
     ///        excitation energies \(\Omega_s=\sqrt{\omega_s^2}\), the plasmon
     ///        correlation energy \(E_c=\tfrac12(\sum_s\Omega_s-\mathrm{Tr}\,A)\),
     ///        and the RPA \(X,Y\) amplitudes. The one solve shared by
-    ///        `RHF::direct_rpa` (dRPA correlation) and `RHF::g0w0` (screened W).
+    ///        `RHF::direct_rpa` (dRPA correlation) and `G0W0<RHF>::run` (screened W).
     ///
     /// The \((A-B)^{\pm1/2}\) factors use `linalg::sym_power`; a positive-
     /// definiteness guard on \(\lambda_{\min}(A-B)\le\)`kAmBFloor` and the

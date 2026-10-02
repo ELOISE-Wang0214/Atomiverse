@@ -12,8 +12,9 @@
 ///
 /// SCF self-consistency is a **Driver loop**: `MeanFieldMethod<D>` derives
 /// `cpu::Driver<ATV::scf::Phase>` and the pure tag `HF` (not a Component).
-/// Post-HF (`post_hf.h`), continuum solvent (`solvent.h`), the nuclear
-/// FD Hessian (`nuclear_hessian.h`), and CPHF response (`response.h`) are
+/// Post-HF (`post_hf.h`), CIS(D) (`cisd.h`), spectral G0W0 (`g0w0.h`),
+/// TDHF (`tdhf.h`), continuum solvent (`solvent.h`), the nuclear FD
+/// Hessian (`nuclear_hessian.h`), and CPHF response (`response.h`) are
 /// separate types — not methods here.
 /// Nested under an outer MD/Evaluate/Minimize force or energy phase it runs
 /// via `run_nested` → `drive_scf_`. Standalone entry is `run(frame)`. Integrals
@@ -115,6 +116,10 @@ template <typename Method>
 class SfTDA;
 template <typename Method>
 class SfTDHF;
+template <typename Method>
+class CISD;
+template <typename Method>
+class G0W0;
 
 /// @brief Shared view for observers/recorders after a method run.
 ///
@@ -190,6 +195,10 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
     friend class SfTDA;
     template <typename Method>
     friend class SfTDHF;
+    template <typename Method>
+    friend class CISD;
+    template <typename Method>
+    friend class G0W0;
 
   public:
     // ── Geometry / basis (inputs from Frame + these members) ──────────

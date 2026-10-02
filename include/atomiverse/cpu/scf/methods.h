@@ -20,8 +20,10 @@
 /// @endcode
 #pragma once
 
+#include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/counterpoise.h"
 #include "atomiverse/cpu/scf/dftd3.h"
+#include "atomiverse/cpu/scf/g0w0.h"
 #include "atomiverse/cpu/scf/ghf.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/post_hf.h"

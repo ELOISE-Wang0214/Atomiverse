@@ -12,7 +12,7 @@ Response and many-body methods on HF/KS references. Legend:
 | ΔSCF / MOM / IMOM | ✓ | ○ | `UHF::delta_scf` |
 | CIS / TDA (RHF) | ✓ | ○ | `TDA<RHF>::run` after `RHF::run` |
 | TDHF / RPA (RHF) | ✓ | ○ | `TDHF<RHF>::run` after `RHF::run` (`pyscf.tdscf.rhf.TDHF`) |
-| CIS(D) | ✓ | ○ | On RHF TDA |
+| CIS(D) | ✓ | ○ | `CISD<RHF>::run` after `RHF::run`. Not an `RHF` member |
 | TDA-TDDFT (RKS) | ✓ | ○ | `TDA<RKS>::run` (`pyscf.tdscf.rks.TDA`). LSDA ALDA + hybrid B3LYP/PBE0 |
 | TDA-TDDFT (UKS) | ✓ | ○ | `TDA<UKS>::run` (`pyscf.tdscf.uks.TDA`). Spin-conserving LSDA |
 | Full LR-TDDFT (RKS) | ✓ | ○ | `TDDFT<RKS>::run` (`pyscf.tdscf.rks.TDDFT`). Casida A/B |
@@ -53,7 +53,7 @@ Response and many-body methods on HF/KS references. Legend:
 
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
-| G0W0 (spectral) | ✓ | ○ | On RHF; also periodic on GPW |
+| G0W0 (spectral) | ✓ | ○ | `G0W0<RHF>::run` (`pyscf.gw.gw_exact.GWExact`). Not an `RHF` member. Periodic GPW is `GpwDft::g0w0` |
 | Direct RPA | ✓ | ○ | `RHF::direct_rpa`; periodic on GPW |
 | BSE@G0W0 | ✓ | ○ | |
 | One-shot GF2 | ✓ | ○ | |

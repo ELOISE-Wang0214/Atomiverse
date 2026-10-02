@@ -68,7 +68,7 @@ BZ-weighted density projected onto MOs at each \(k\).
 
 **Not** the linearized \(Z\)-factor form. References: Hybertsen & Louie,
 *Phys. Rev. B* **34**, 5390 (1986); Furche, *J. Chem. Phys.* **114**, 5982
-(2001); molecular twin `RHF::g0w0` / spectral form.
+(2001); molecular twin `G0W0<RHF>::run` / spectral form.
 
 **Observables (public `G0W0Result`):**
 

@@ -28,7 +28,7 @@ Shares one SCF solver with [Kohn–Sham DFT](dft.md): the 2×2 product
 - CUDA is a **restricted-HF engine**: no UHF/KS; forces outside l ≤ 1 throw —
   use `cpu::scf::RHF`.
 - ROHF: SOSCF / level shift still throw. GHF: `MP2` / `FCI` / soscf throw.
-- Post-HF, continuum solvent, and CPHF response are not `MeanFieldMethod` members. Orbital stability, CIS/TDA, and EOM-EE-CCSD are not members of `RHF` either: `Stability<RHF>::run()`, `TDA<RHF>::run(n_states)`, `CCSD<RHF>::eom_ee_ccsd(Frame&, n_states)`. Other entries: `MP2<Method>::run(Frame&)` / `forces(Frame&)`, `CCSD<Method>::run` / `ccsd_t` / `forces`, `WithSolvent<Method>::run(Frame&)` / `forces(Frame&)`, `Hessian<RHF>::run(Frame&)`, `Polarizability<RHF>::run()`. The mean-field SCF surface is `run(Frame&)` / `run(const Frame&)` / `forces(Frame&)` only. `TDHF<RHF>::run` is not an `RHF` member (`pyscf.tdscf.rhf.TDHF`).
+- Post-HF, continuum solvent, and CPHF response are not `MeanFieldMethod` members. Orbital stability, CIS/TDA, and EOM-EE-CCSD are not members of `RHF` either: `Stability<RHF>::run()`, `TDA<RHF>::run(n_states)`, `CCSD<RHF>::eom_ee_ccsd(Frame&, n_states)`. Other entries: `MP2<Method>::run(Frame&)` / `forces(Frame&)`, `CCSD<Method>::run` / `ccsd_t` / `forces`, `WithSolvent<Method>::run(Frame&)` / `forces(Frame&)`, `Hessian<RHF>::run(Frame&)`, `Polarizability<RHF>::run()`. The mean-field SCF surface is `run(Frame&)` / `run(const Frame&)` / `forces(Frame&)` only. `TDHF<RHF>::run` (`pyscf.tdscf.rhf.TDHF`), `CISD<RHF>::run` (CIS(D); not `pyscf.ci.cisd.CISD`), and `G0W0<RHF>::run` (`pyscf.gw.gw_exact.GWExact`) are not `RHF` members.
 
 ## 2. Periodic Hartree–Fock
 

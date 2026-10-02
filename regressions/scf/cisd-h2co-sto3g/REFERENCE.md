@@ -1,7 +1,7 @@
 # H2CO CIS(D)/STO-3G — S1 excitation energy pin
 
 Closed-shell **CIS(D)** (doubles correction on RHF TDA/CIS) for the lowest
-singlet of formaldehyde / STO-3G. Product API: `RHF::cisd(n_states)` after
+singlet of formaldehyde / STO-3G. Product API: `CISD<RHF>::run(n_states)` after
 `run(frame)`.
 
 Literature / theory:

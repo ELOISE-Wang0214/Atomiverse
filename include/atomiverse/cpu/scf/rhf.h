@@ -8,11 +8,9 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/adc.h"
 #include "atomiverse/cpu/scf/bse.h"
-#include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/eom_cc2.h"
 #include "atomiverse/cpu/scf/eom_ea_ccsd.h"
 #include "atomiverse/cpu/scf/eom_ip_ccsd.h"
-#include "atomiverse/cpu/scf/g0w0.h"
 #include "atomiverse/cpu/scf/gf2.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/rpa.h"
@@ -59,22 +57,6 @@ class RHF : public MeanFieldMethod<RHF> {
     ///        lattice-image window (no Ewald). A cell larger than the
     ///        Gaussian pair reach has only T = 0 and recovers molecular RHF.
     bool periodic = false;
-
-    /// @brief CIS(D) doubles correction on the lowest `n_states` singlet CIS
-    ///        (TDA) roots of the most recent `run()` — Head-Gordon, Rico,
-    ///        Oumi & Lee, Chem. Phys. Lett. **219**, 21 (1994),
-    ///        DOI 10.1016/0009-2614(94)00070-0. Size-consistent O(N⁵)
-    ///        second-order correction; spin-orbital evaluation over the
-    ///        closed-shell reference. Reuses the same TDA roots as
-    ///        `TDA<RHF>::run(n_states, singlet)`.
-    /// @param n_states Number of lowest CIS roots to correct (1 ≤ n_states ≤
-    ///                 n_occ·n_virt; dimensionless count).
-    /// @return CIS(D) and parent CIS excitation energies [eV] plus the
-    ///         doubles correction U+V [eV] per root.
-    /// @throws std::runtime_error when called before `run()`.
-    /// @throws std::invalid_argument when n_states is outside
-    ///         [1, n_occ·n_virt] or the system has no virtual orbitals.
-    CISDResult cisd(int n_states = 1) const;
 
     /// @brief Strict ADC(2) electronic excitation energies of the most recent
     ///        `run()` — Schirmer, Phys. Rev. A **26**, 2395 (1982); Trofimov &
@@ -178,7 +160,7 @@ class RHF : public MeanFieldMethod<RHF> {
 
     /// @brief Singlet BSE@G0W0 excitation energies of the most recent
     ///        `run()` (closed-shell RHF). Spectral G0W0 poles
-    ///        (`g0w0()`) enter the ph energy differences and the static
+    ///        (`G0W0<RHF>::run`) enter the ph energy differences and the static
     ///        direct-RPA screened interaction \(W\) (exact 4-centre form).
     ///        Full BSE (default) solves the Casida A/B RPA problem; with
     ///        `tda = true` only A is diagonalized (BSE-TDA).
@@ -218,19 +200,6 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument on open-shell / missing virtuals /
     ///         non-converged SCF or CC2 / n_states out of range.
     EOMCC2Result eom_cc2(Frame& frame, int n_states = 1);
-
-    /// @brief Spectral G0W0 quasiparticle energies of the most recent `run()`
-    ///        (closed-shell RHF reference). Direct-RPA (dRPA, α_hf = 0)
-    ///        screens W; the diagonal correlation self-energy is the
-    ///        frequency-exact spectral sum over RPA poles; each orbital's
-    ///        quasiparticle equation is solved by Newton (non-linear, not
-    ///        linearized). Matches PySCF `gw.gw_exact.GWExact` on
-    ///        `dft.RKS(mol, xc='hf')` (same HF density / orbitals).
-    /// @return QP energies [Hartree], HOMO–LUMO gap / IP / EA [eV].
-    /// @throws std::runtime_error when called before `run()`, on a
-    ///         non-restricted reference, or when dRPA is ill-conditioned.
-    /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
-    G0W0Result g0w0() const;
 
   protected:
     /// @brief Closed-shell occupation: n_alpha = n_beta = n_electrons / 2
