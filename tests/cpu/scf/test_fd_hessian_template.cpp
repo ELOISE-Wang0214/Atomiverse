@@ -1,12 +1,10 @@
 /// @file tests/cpu/scf/test_fd_hessian_template.cpp
 /// @brief scf-review-04-meanfield-dedup (Item 3): the central-difference
-///        nuclear-Hessian skeleton — three byte-identical copies in
-///        rks.cpp / uks.cpp / rohf.cpp — is hoisted to a protected CRTP
-///        member template
+///        nuclear-Hessian skeleton is the free function
 ///        central_difference_nuclear_hessian(Frame&, forces_at).
-///        The skeleton is not a MeanFieldMethod member (PySCF cphf.solve is
-///        not an SCF method). This unit pins it with an analytic quadratic
-///        mock force field — no SCF, microseconds.
+///        It is not a MeanFieldMethod member (PySCF cphf.solve is not an
+///        SCF method). This unit pins it with an analytic quadratic mock
+///        force field — no SCF, microseconds.
 ///
 /// Mock physics: F(R) = -K.(R - R0), forces in eV/Angstrom, R in Angstrom,
 /// K in eV/Angstrom^2. This is the force field of E = 1/2 (R-R0)^T K (R-R0),

@@ -43,17 +43,13 @@ void write_gradient(Frame& frame, const GradientResult& gr) {
 }
 
 template <typename Method>
-void drive_reference(Method& mf, Frame& frame, const SCFInitialGuess* guess,
-                     bool materialize_eri) {
+void drive_converged(Method& mf, Frame& frame, const SCFInitialGuess* guess,
+                     bool materialize_eri, const char* entry) {
     const bool prev = mf.compute_eri;
     if (materialize_eri)
         mf.compute_eri = true;
     mf.run(frame, guess);
     mf.compute_eri = prev;
-}
-
-template <typename Method>
-void require_converged(const Method& mf, const char* entry) {
     if (!mf.converged())
         throw std::invalid_argument(
             std::string(entry)
@@ -74,8 +70,8 @@ MP2Result MP2<Method>::run(Frame& frame, const SCFInitialGuess* guess) {
         throw std::invalid_argument(
             "MP2::run: a GHF (spinor) reference is not supported — the MP2 "
             "pack has no spinor transformation. Use RHF or UHF.");
-    drive_reference(mf, frame, guess, /*materialize_eri=*/mf.ri == RI::None);
-    require_converged(mf, "MP2::run");
+    drive_converged(mf, frame, guess, /*materialize_eri=*/mf.ri == RI::None,
+                    "MP2::run");
     if ((mf.spin_ == SpinType::Unrestricted
          || mf.spin_ == SpinType::RestrictedOpen)
         && frozen != 0) {
@@ -123,8 +119,7 @@ GradientResult MP2<Method>::forces(Frame& frame, const SCFInitialGuess* guess) {
             "MP2::forces: spin-component-scaled MP2 gradients are not "
             "implemented — keep os_scale=ss_scale=1");
 
-    drive_reference(mf, frame, guess, /*materialize_eri=*/true);
-    require_converged(mf, "MP2::forces");
+    drive_converged(mf, frame, guess, /*materialize_eri=*/true, "MP2::forces");
 
     GradientResult gr;
     if (mf.spin_ == SpinType::Unrestricted) {
@@ -161,8 +156,7 @@ MP3Result MP3<Method>::run(Frame& frame, const SCFInitialGuess* guess) {
     if (mf.ri != RI::None)
         throw std::invalid_argument(
             "MP3::run: RI-MP3 is not implemented — set ri=RI::None");
-    drive_reference(mf, frame, guess, /*materialize_eri=*/true);
-    require_converged(mf, "MP3::run");
+    drive_converged(mf, frame, guess, /*materialize_eri=*/true, "MP3::run");
     return mp3_energy(mf.integral_view_(), mf.determinant(), mf.energy(),
                       frozen);
 }
@@ -180,8 +174,7 @@ MP4Result MP4<Method>::run(Frame& frame, const SCFInitialGuess* guess) {
     if (mf.ri != RI::None)
         throw std::invalid_argument(
             "MP4::run: RI-MP4 is not implemented — set ri=RI::None");
-    drive_reference(mf, frame, guess, /*materialize_eri=*/true);
-    require_converged(mf, "MP4::run");
+    drive_converged(mf, frame, guess, /*materialize_eri=*/true, "MP4::run");
     return mp4_energy(mf.integral_view_(), mf.determinant(), mf.energy(),
                       frozen);
 }
@@ -200,8 +193,7 @@ FCIResult FCI<Method>::run(Frame& frame) {
         throw std::invalid_argument(
             "FCI::run: a GHF (spinor) reference is not supported — the FCI "
             "pack requires a closed-shell reference. Use RHF.");
-    drive_reference(mf, frame, nullptr, /*materialize_eri=*/true);
-    require_converged(mf, "FCI::run");
+    drive_converged(mf, frame, nullptr, /*materialize_eri=*/true, "FCI::run");
     return fci_energy(mf.integral_view_(), mf.determinant(), mf.energy());
 }
 
@@ -223,8 +215,7 @@ CASCIResult CASCI<Method>::run(Frame& frame, int ncas, int nelecas) {
         throw std::invalid_argument(
             "CASCI::run: closed-shell RHF reference only — UHF CASCI is not "
             "implemented (no fallback). Use RHF.");
-    drive_reference(mf, frame, nullptr, /*materialize_eri=*/true);
-    require_converged(mf, "CASCI::run");
+    drive_converged(mf, frame, nullptr, /*materialize_eri=*/true, "CASCI::run");
     return casci_energy(mf.integral_view_(), mf.determinant(), mf.energy(),
                         ncas, nelecas);
 }
@@ -247,8 +238,8 @@ CASSCFResult CASSCF<Method>::run(Frame& frame, int ncas, int nelecas) {
         throw std::invalid_argument(
             "CASSCF::run: closed-shell RHF reference only — UHF CASSCF is not "
             "implemented (no fallback). Use RHF.");
-    drive_reference(mf, frame, nullptr, /*materialize_eri=*/true);
-    require_converged(mf, "CASSCF::run");
+    drive_converged(mf, frame, nullptr, /*materialize_eri=*/true,
+                    "CASSCF::run");
     return casscf_energy(mf.integral_view_(), mf.determinant(), mf.energy(),
                          ncas, nelecas, /*orb_tol=*/std::max(mf.tol, 1e-8),
                          /*max_macro=*/50);
@@ -272,8 +263,8 @@ NEVPT2Result NEVPT2<Method>::run(Frame& frame, int ncas, int nelecas) {
         throw std::invalid_argument(
             "NEVPT2::run: closed-shell RHF reference only — UHF NEVPT2 is not "
             "implemented (no fallback). Use RHF.");
-    drive_reference(mf, frame, nullptr, /*materialize_eri=*/true);
-    require_converged(mf, "NEVPT2::run");
+    drive_converged(mf, frame, nullptr, /*materialize_eri=*/true,
+                    "NEVPT2::run");
     return nevpt2_energy(mf.integral_view_(), mf.determinant(), mf.energy(),
                          ncas, nelecas, /*orb_tol=*/std::max(mf.tol, 1e-8),
                          /*max_macro=*/50);
@@ -289,8 +280,7 @@ CCSDResult CCSD<Method>::run(Frame& frame) {
         throw std::invalid_argument(
             "CCSD::run: closed-shell RHF reference only — UHF / ROHF / GHF "
             "CCSD is not implemented (no fallback). Use RHF.");
-    drive_reference(mf, frame, nullptr, /*materialize_eri=*/true);
-    require_converged(mf, "CCSD::run");
+    drive_converged(mf, frame, nullptr, /*materialize_eri=*/true, "CCSD::run");
     return ccsd_energy(mf.integral_view_(), mf.determinant(), mf.energy(),
                        /*tol=*/1e-10, /*max_iter=*/100, /*use_diis=*/diis);
 }
@@ -311,8 +301,7 @@ GradientResult CCSD<Method>::forces(Frame& frame,
         throw std::invalid_argument(
             "CCSD::forces: frozen-core CCSD gradients are not implemented — "
             "set frozen=0");
-    drive_reference(mf, frame, guess, /*materialize_eri=*/true);
-    require_converged(mf, "CCSD::forces");
+    drive_converged(mf, frame, guess, /*materialize_eri=*/true, "CCSD::forces");
     const CCSDResult corr =
         ccsd_energy(mf.integral_view_(), mf.determinant(), mf.energy());
     GradientResult gr = internal::ccsd_analytic_forces(
@@ -330,8 +319,8 @@ CCSDTResult CCSD<Method>::ccsd_t(Frame& frame) {
         throw std::invalid_argument(
             "CCSD::ccsd_t: closed-shell RHF reference only — UHF / ROHF / GHF "
             "CCSD(T) is not implemented (no fallback). Use RHF.");
-    drive_reference(mf, frame, nullptr, /*materialize_eri=*/true);
-    require_converged(mf, "CCSD::ccsd_t");
+    drive_converged(mf, frame, nullptr, /*materialize_eri=*/true,
+                    "CCSD::ccsd_t");
     return ccsd_t_energy(mf.integral_view_(), mf.determinant(), mf.energy());
 }
 
@@ -345,8 +334,7 @@ CC2Result CC2<Method>::run(Frame& frame) {
         throw std::invalid_argument(
             "CC2::run: closed-shell RHF reference only — UHF / ROHF / GHF CC2 "
             "is not implemented (no fallback). Use RHF.");
-    drive_reference(mf, frame, nullptr, /*materialize_eri=*/true);
-    require_converged(mf, "CC2::run");
+    drive_converged(mf, frame, nullptr, /*materialize_eri=*/true, "CC2::run");
     return cc2_energy(mf.integral_view_(), mf.determinant(), mf.energy());
 }
 

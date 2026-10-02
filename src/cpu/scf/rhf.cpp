@@ -12,7 +12,6 @@
 #include <xtensor-blas/xlinalg.hpp>
 
 #include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/internal/one_electron.h"
 #include "atomiverse/cpu/scf/internal/orbital_hessian.h"
 #include "atomiverse/cpu/scf/internal/stability.h"
 
