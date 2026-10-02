@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `g0w0-h2-sto3g` |
-| Public API | `cpu::scf::RHF::g0w0()` → `G0W0Result` |
+| Public API | `cpu::scf::G0W0<RHF>::run()` → `G0W0Result` |
 | Roadmap | [excited-states.md](../../roadmap/excited-states.md) §5 G0W0 |
 
 ## Summary
@@ -14,7 +14,7 @@ Closed-shell **spectral G0W0** quasiparticle (QP) energies on a converged **RHF*
 reference: direct-RPA (dRPA) screening of \(W\), frequency-exact diagonal
 correlation self-energy, non-linear Newton QP equation per MO. Primary
 observable on this pin is the **HOMO–LUMO QP gap [eV]** (also IP / EA). Public
-path is `RHF::run(frame)` then `RHF::g0w0()` — no `*Config` bag, no factory.
+path is `RHF::run(frame)` then `G0W0<RHF>{rhf}.run()` — no `*Config` bag, no factory.
 Regression binary: `reg_g0w0-h2-sto3g` under `g0w0-h2-sto3g`.
 Twin is PySCF 2.14.0 `gw.gw_exact.GWExact` + `tdscf.dRPA` on HF density
 (`dft.RKS` with `xc='hf'`), not the analytic-continuation `gw.GW` path.
@@ -59,7 +59,7 @@ scGW; BSE; RPA total energies; open-shell G0W0; CUDA.
 
 ## Implementation
 
-Frame in → RHF members → `run` → post-SCF `g0w0()`. Headers:
+Frame in → RHF members → `run` → post-SCF `G0W0<RHF>::run`. Headers:
 `rhf.h`, `g0w0.h`; impl `src/cpu/scf/g0w0.cpp`.
 
 ```cpp
@@ -72,13 +72,11 @@ f.span(kAtom_z)[1] = 0.74;
 f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 1;
 f.box = cpu::Box::cubic(20.0);
 
-cpu::scf::RHF rhf;
-rhf.basis = cpu::scf::BasisSet::STO3G;
-rhf.tol = 1e-12;
+cpu::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-12};
 rhf.max_iter = 100;
 rhf.run(f);
 
-cpu::scf::G0W0Result gw = rhf.g0w0();
+cpu::scf::G0W0Result gw = cpu::scf::G0W0<cpu::scf::RHF>{rhf}.run();
 // gw.gap_ev, gw.ip_ev, gw.ea_ev, gw.qp_energy_ha, gw.converged
 ```
 

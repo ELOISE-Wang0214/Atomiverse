@@ -72,7 +72,7 @@ periodic-HF path. Quasiparticle equation (Newton, orbit-by-orbit):
 Primary report: **α-channel** spectrum (`qp_energy_ha`, `gap_ev` =
 HOMO→LUMO QP gap [eV]). Citations: Hybertsen & Louie, *Phys. Rev. B*
 **34**, 5390 (1986); Furche, *J. Chem. Phys.* **114**, 5982 (2001);
-molecular twin `RHF::g0w0` / PySCF `gw.gw_exact.GWExact` form.
+molecular twin `G0W0<RHF>::run` / PySCF `gw.gw_exact.GWExact` form.
 
 **Deck choice.** Artificial sc-Si₂ (a = 5.43 Å, 30 Ry, DZVP-MOLOPT-GTH)
 matches `periodic-ugw-si` / `periodic-gw-si` so PBE vs RPBE functional

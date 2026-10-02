@@ -26,7 +26,8 @@ int main() {
         std::printf("FAIL nstates\n");
         return 1;
     }
-    const double s = rhf.tda_nac_strength(f, 0, 1, 5e-3);
+    const double s =
+        cpu::scf::TDA<cpu::scf::RHF>{rhf}.nac_strength(f, 0, 1, 5e-3);
     std::printf("NAC strength=%.6e 1/A\n", s);
     if (!std::isfinite(s) || !(s > 0.0)) {
         std::printf("FAIL\n");

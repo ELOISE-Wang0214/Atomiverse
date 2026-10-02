@@ -4,7 +4,7 @@
 /// Public-API consumer only. Geometry, basis, and oracle numbers are pinned
 /// in REFERENCE.md (PySCF 2.14.0 offline; no live import in ctest).
 ///
-/// Observable: HOMO–LUMO QP gap [eV] (and IP / EA) from `RHF::g0w0()` —
+/// Observable: HOMO–LUMO QP gap [eV] (and IP / EA) from `G0W0<RHF>::run()` —
 /// frequency-exact G0W0 with dRPA screening (PySCF `gw.gw_exact.GWExact` twin).
 #include <cmath>
 #include <cstdio>
@@ -67,7 +67,7 @@ int main() {
     if (!check("E_RHF [Ha]", rhf.energy(), kERhfHa, kTolEHa))
         return 1;
 
-    const cpu::scf::G0W0Result gw = rhf.g0w0();
+    const cpu::scf::G0W0Result gw = cpu::scf::G0W0<cpu::scf::RHF>{rhf}.run();
     if (!gw.converged) {
         std::fprintf(stderr, "FAIL: G0W0 QP Newton did not converge\n");
         return 1;

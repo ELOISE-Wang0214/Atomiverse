@@ -21,8 +21,8 @@ int main() {
         std::printf("FAIL scf\n");
         return 1;
     }
-    auto Fa = rhf.tda_forces(f, 0, 1e-3, true);
-    auto Fn = rhf.tda_forces(f, 0, 2e-3, false);
+    auto Fa = cpu::scf::TDA<cpu::scf::RHF>{rhf}.forces(f, 0, 1e-3, true);
+    auto Fn = cpu::scf::TDA<cpu::scf::RHF>{rhf}.forces(f, 0, 2e-3, false);
     double maxd = 0;
     for (size_t i = 0; i < Fa.size(); ++i)
         maxd = std::max(maxd, std::fabs(Fa[i] - Fn[i]));

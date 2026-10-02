@@ -8,15 +8,12 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/adc.h"
 #include "atomiverse/cpu/scf/bse.h"
-#include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/eom_cc2.h"
 #include "atomiverse/cpu/scf/eom_ea_ccsd.h"
 #include "atomiverse/cpu/scf/eom_ip_ccsd.h"
-#include "atomiverse/cpu/scf/g0w0.h"
 #include "atomiverse/cpu/scf/gf2.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/rpa.h"
-#include "atomiverse/cpu/scf/tdhf.h"
 
 namespace ATV {
 namespace cpu {
@@ -60,82 +57,6 @@ class RHF : public MeanFieldMethod<RHF> {
     ///        lattice-image window (no Ewald). A cell larger than the
     ///        Gaussian pair reach has only T = 0 and recovers molecular RHF.
     bool periodic = false;
-
-    /// @brief Nuclear forces on TDA excited-state energy of root `state`
-    ///        [eV/Å]. Default path is **analytic** CIS/TDA (integral
-    ///        derivatives + relaxed difference density / Z-vector). Set
-    ///        `analytic=false` to use central finite difference of
-    ///        \(E_n^{\mathrm{TDA}}\) with step `h` [Å] (oracle / debug).
-    /// @param frame Geometry (mutated temporarily on FD path; restored).
-    /// @param state Excited root index (0-based).
-    /// @param h Finite-difference step [Å] (FD path only; default 1e-3).
-    /// @param analytic true (default) analytic CIS gradient; false = FD.
-    /// @return Per-atom force array size 3N (fx,fy,fz interleaved) [eV/Å].
-    std::vector<double> tda_forces(cpu::Frame& frame, int state = 0,
-                                   double h = 1e-3, bool analytic = true) const;
-
-    /// @brief Nonadiabatic coupling *strength* between TDA roots `i` and `j`:
-    ///        ‖d_ij‖ [1/Å] where d_ij = tda_nac_vectors(...) (true NAC).
-    /// @param frame Geometry [Å].
-    /// @param state_i Lower root index (0-based).
-    /// @param state_j Upper root index (0-based).
-    /// @param h FD step if analytic forces fall back is not used [Å].
-    double tda_nac_strength(cpu::Frame& frame, int state_i = 0, int state_j = 1,
-                            double h = 2e-3) const;
-
-    /// @brief True first-order NAC vectors d_ij = ⟨Ψ_i|∇_R|Ψ_j⟩ [1/Å],
-    ///        length 3N (fx,fy,fz interleaved per atom). Built from analytic
-    ///        TDA force difference / energy gap (Chernyak–Mukamel form) with
-    ///        phase fixed so the first large component is positive.
-    /// @param frame Geometry [Å].
-    /// @param state_i Root i (0-based).
-    /// @param state_j Root j (0-based); must differ from i.
-    /// @return d_ij [1/Å]; d_ji = −d_ij.
-    /// @throws on i==j, unconverged SCF, or degenerate gap.
-    std::vector<double> tda_nac_vectors(cpu::Frame& frame, int state_i = 0,
-                                        int state_j = 1) const;
-
-    /// @brief Full TDHF/RPA excitation energies of the most recent `run()`:
-    ///        [[A,B],[−B,−A]](X;Y) = ω(X;Y), solved via the Hermitian
-    ///        reduced form (A−B)^{1/2}(A+B)(A−B)^{1/2} Z = ω²Z (Dreuw &
-    ///        Head-Gordon 2005, DOI 10.1021/cr0505627; Szabo & Ostlund §7).
-    ///        Runs the link-08 stability analysis of the requested
-    ///        channel's (A + B) block first: an unstable reference makes ω
-    ///        imaginary in that channel, so the call throws with the lowest
-    ///        eigenvalue instead of solving (use `TDA<RHF>::run` — real on
-    ///        any reference — or reconverge along
-    ///        `Stability<RHF>::run().rotated_C`).
-    /// @param n_states Number of lowest excited states (1 ≤ n_states ≤
-    ///                 n_occ·n_virt; dimensionless count).
-    /// @param channel  Spin channel (transition properties as in
-    ///                 `TDA<RHF>::run`).
-    /// @return Excitation energies [eV] (ω_RPA ≤ ω_TDA root by root),
-    ///         transition dipoles [a.u.], oscillator strengths, `tda = false`.
-    /// @throws std::runtime_error when called before `run()`, when the
-    ///         requested channel's (A + B) block is unstable (message
-    ///         carries the lowest eigenvalue [Hartree] and the guidance
-    ///         above), or when (A − B) is not positive definite — no
-    ///         fallback values.
-    /// @throws std::invalid_argument as `TDA<RHF>::run`.
-    ExcitedStatesResult
-    tdhf(int n_states,
-         ExcitationChannel channel = ExcitationChannel::singlet) const;
-
-    /// @brief CIS(D) doubles correction on the lowest `n_states` singlet CIS
-    ///        (TDA) roots of the most recent `run()` — Head-Gordon, Rico,
-    ///        Oumi & Lee, Chem. Phys. Lett. **219**, 21 (1994),
-    ///        DOI 10.1016/0009-2614(94)00070-0. Size-consistent O(N⁵)
-    ///        second-order correction; spin-orbital evaluation over the
-    ///        closed-shell reference. Reuses the same TDA roots as
-    ///        `TDA<RHF>::run(n_states, singlet)`.
-    /// @param n_states Number of lowest CIS roots to correct (1 ≤ n_states ≤
-    ///                 n_occ·n_virt; dimensionless count).
-    /// @return CIS(D) and parent CIS excitation energies [eV] plus the
-    ///         doubles correction U+V [eV] per root.
-    /// @throws std::runtime_error when called before `run()`.
-    /// @throws std::invalid_argument when n_states is outside
-    ///         [1, n_occ·n_virt] or the system has no virtual orbitals.
-    CISDResult cisd(int n_states = 1) const;
 
     /// @brief Strict ADC(2) electronic excitation energies of the most recent
     ///        `run()` — Schirmer, Phys. Rev. A **26**, 2395 (1982); Trofimov &
@@ -239,7 +160,7 @@ class RHF : public MeanFieldMethod<RHF> {
 
     /// @brief Singlet BSE@G0W0 excitation energies of the most recent
     ///        `run()` (closed-shell RHF). Spectral G0W0 poles
-    ///        (`g0w0()`) enter the ph energy differences and the static
+    ///        (`G0W0<RHF>::run`) enter the ph energy differences and the static
     ///        direct-RPA screened interaction \(W\) (exact 4-centre form).
     ///        Full BSE (default) solves the Casida A/B RPA problem; with
     ///        `tda = true` only A is diagonalized (BSE-TDA).
@@ -279,19 +200,6 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument on open-shell / missing virtuals /
     ///         non-converged SCF or CC2 / n_states out of range.
     EOMCC2Result eom_cc2(Frame& frame, int n_states = 1);
-
-    /// @brief Spectral G0W0 quasiparticle energies of the most recent `run()`
-    ///        (closed-shell RHF reference). Direct-RPA (dRPA, α_hf = 0)
-    ///        screens W; the diagonal correlation self-energy is the
-    ///        frequency-exact spectral sum over RPA poles; each orbital's
-    ///        quasiparticle equation is solved by Newton (non-linear, not
-    ///        linearized). Matches PySCF `gw.gw_exact.GWExact` on
-    ///        `dft.RKS(mol, xc='hf')` (same HF density / orbitals).
-    /// @return QP energies [Hartree], HOMO–LUMO gap / IP / EA [eV].
-    /// @throws std::runtime_error when called before `run()`, on a
-    ///         non-restricted reference, or when dRPA is ill-conditioned.
-    /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
-    G0W0Result g0w0() const;
 
   protected:
     /// @brief Closed-shell occupation: n_alpha = n_beta = n_electrons / 2

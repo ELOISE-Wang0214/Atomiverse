@@ -41,7 +41,8 @@ int main() {
     rohf.tol = 1e-12;
     rohf.max_iter = 200;
 
-    const cpu::vib::HessianResult res = rohf.hessian(frame);
+    const cpu::vib::HessianResult res =
+        cpu::scf::Hessian<cpu::scf::ROHF>{rohf}.run(frame);
 
     // Offline pin: FD of PySCF 2.14.0 analytic ROHF gradient — see REFERENCE.md
     // (PySCF has no hessian.ROHF; never live-import PySCF here).

@@ -77,8 +77,8 @@ BSEResult RHF::bse(int n_states, bool tda) const {
         throw std::runtime_error(
             "RHF::bse: closed-shell RHF reference required (no fallback)");
 
-    // Spectral G0W0 poles (and HF audit fields) — same path as RHF::g0w0().
-    const G0W0Result gw = g0w0();
+    // Spectral G0W0 poles — GWExact(mf).kernel, not an RHF member.
+    const G0W0Result gw = G0W0<RHF>{*this}.run();
     if (!gw.converged)
         throw std::runtime_error(
             "RHF::bse: G0W0 quasiparticle Newton did not converge");

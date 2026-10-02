@@ -7,7 +7,7 @@ GPW PBE** SCF. Screening is **direct RPA** (Coulomb-only Casida /
 Furche reduction) on the same product **RI-GPW** `(ia|jb)` path as
 `periodic-rpa-si` / `periodic-ri-mp2-si`. The correlation self-energy is
 the frequency-exact spectral sum over RPA poles (same form as molecular
-`RHF::g0w0` / PySCF `GWExact`). Exact-exchange diagonals use **truncated
+`G0W0<RHF>::run` / PySCF `GWExact`). Exact-exchange diagonals use **truncated
 (MT) Coulomb** so the Γ-only foothold is G=0-safe without a periodic-HF
 product path. Local \(v_{\mathrm{xc}}\) is PBE on the closed-shell density.
 

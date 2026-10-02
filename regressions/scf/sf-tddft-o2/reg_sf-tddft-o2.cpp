@@ -89,7 +89,8 @@ int main() {
     if (!check("E_UHF [Ha]", uhf.energy(), kEUhfHa, kTolEHa))
         return 1;
 
-    const cpu::scf::ExcitedStatesResult es = uhf.sf_tddft(5);
+    const cpu::scf::ExcitedStatesResult es =
+        cpu::scf::SfTDHF<cpu::scf::UHF>{uhf}.run(5);
     if (es.energy_ev.size() < 5) {
         std::fprintf(stderr, "FAIL: expected 5 roots, got %zu\n",
                      es.energy_ev.size());

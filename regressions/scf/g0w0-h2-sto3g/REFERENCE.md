@@ -17,11 +17,9 @@ solver).
 Public API:
 
 ```cpp
-cpu::scf::RHF rhf;
-rhf.basis = cpu::scf::BasisSet::STO3G;
-rhf.tol = 1e-12;
+cpu::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-12};
 rhf.run(frame);
-cpu::scf::G0W0Result gw = rhf.g0w0();
+cpu::scf::G0W0Result gw = cpu::scf::G0W0<cpu::scf::RHF>{rhf}.run();
 // gw.gap_ev, gw.ip_ev, gw.ea_ev, gw.qp_energy_ha
 ```
 
@@ -58,7 +56,7 @@ Interpreter: `~/work/.x86_64/bin/python` (pyscf **2.14.0**).
 ```
 
 (`g0w0` builds `dft.RKS(mol, xc='hf')` then `gw.gw_exact.GWExact` + `tdscf.dRPA`
-— spectral twin of Atomiverse `RHF::g0w0()`. Default `gw.GW` / AC is also
+— spectral twin of Atomiverse `G0W0<RHF>::run()`. Default `gw.GW` / AC is also
 reported under `gap_ac_ev` for comparison.)
 
 ### Verbatim twin

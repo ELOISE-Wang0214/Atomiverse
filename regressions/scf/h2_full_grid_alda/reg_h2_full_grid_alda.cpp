@@ -31,7 +31,7 @@ int main() {
         std::printf("FAIL scf\n");
         return 1;
     }
-    auto es = rks.tda(1);
+    auto es = cpu::scf::TDA<cpu::scf::RKS>{rks}.run(1);
     std::printf("full-grid ALDA S1=%.6f eV alda=%d\n", es.energy_ev[0],
                 (int)es.alda);
     if (!es.alda) {

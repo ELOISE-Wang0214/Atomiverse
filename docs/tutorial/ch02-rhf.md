@@ -327,6 +327,42 @@ cpu::scf::EOMEECCSDResult eom =
     cpu::scf::CCSD<cpu::scf::RHF>{rhf}.eom_ee_ccsd(frame, /*n_states=*/1);
 ```
 
+## TDHF, CIS(D), and G0W0
+
+Full TDHF, CIS(D), and spectral G0W0 are not members of `RHF`.
+`TDHF<RHF>::run`, `CISD<RHF>::run`, and `G0W0<RHF>::run` read the
+determinant from a finished `run` and do not write the Frame. `run` writes
+the energy. `forces` writes the energy and the nuclear forces.
+`Hessian<RHF>::run` writes the energy and returns the nuclear Hessian.
+Open-shell Hessians use the same shape: `Hessian<UHF>::run(frame)` and
+`Hessian<ROHF>::run(frame)`.
+
+```cpp
+cpu::Frame frame(2);
+frame.span(kAtom_x)[0] = 0;
+frame.span(kAtom_y)[0] = 0;
+frame.span(kAtom_z)[0] = 0;
+frame.span(kAtom_x)[1] = 0;
+frame.span(kAtom_y)[1] = 0;
+frame.span(kAtom_z)[1] = 0.74;
+frame.span(kAtom_type)[0] = 1;
+frame.span(kAtom_type)[1] = 1;
+frame.box = cpu::Box::cubic(20.0);
+
+cpu::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-12};
+rhf.run(frame); // frame.meta.get(kEnergy) [eV]
+cpu::scf::GradientResult g = rhf.forces(frame); // kAtom_fx/fy/fz [eV/Å]
+
+cpu::scf::ExcitedStatesResult tdhf =
+    cpu::scf::TDHF<cpu::scf::RHF>{rhf}.run(1); // pyscf.tdscf.rhf.TDHF
+cpu::scf::CISDResult cisd =
+    cpu::scf::CISD<cpu::scf::RHF>{rhf}.run(1); // not pyscf.ci.cisd.CISD
+cpu::scf::G0W0Result gw =
+    cpu::scf::G0W0<cpu::scf::RHF>{rhf}.run(); // pyscf.gw.gw_exact.GWExact
+cpu::vib::HessianResult H =
+    cpu::scf::Hessian<cpu::scf::RHF>{rhf}.run(frame); // [eV/Å²]
+```
+
 ## Closed-shell limits
 
 **Concept.** RHF is not a general-purpose method with occasional failures — it

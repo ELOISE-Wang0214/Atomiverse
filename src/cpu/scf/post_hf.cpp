@@ -30,6 +30,16 @@ namespace cpu {
 namespace scf {
 namespace {
 
+void refuse_ks(MeanFieldType method, const char* entry) {
+    if (method == MeanFieldType::KS)
+        throw std::invalid_argument(
+            std::string(entry)
+            + ": a Kohn–Sham reference is refused. CC, CI, CAS, and MP3/MP4 "
+              "take a Hartree–Fock mean field (PySCF cc.ccsd.CCSD / "
+              "mcscf.CASCI / fci.FCI on scf.RHF). The explicit KS product is "
+              "MP2 on RKS (double hybrid), not this entry.");
+}
+
 void write_gradient(Frame& frame, const GradientResult& gr) {
     AccReal* __restrict fx = frame.span(kAtom_fx);
     AccReal* __restrict fy = frame.span(kAtom_fy);
@@ -67,6 +77,11 @@ MP2<Method>::MP2(Method& mf) : mf_(&mf) {}
 template <typename Method>
 MP2Result MP2<Method>::run(Frame& frame, const SCFInitialGuess* guess) {
     Method& mf = *mf_;
+    if (mf.method_ == MeanFieldType::KS && mf.spin_ != SpinType::Restricted)
+        throw std::invalid_argument(
+            "MP2::run: Kohn–Sham MP2 is only the restricted double-hybrid path "
+            "(RKS). UKS and ROKS are not that product — use RKS or an HF "
+            "reference.");
     if (mf.spin_ == SpinType::Generalized)
         throw std::invalid_argument(
             "MP2::run: a GHF (spinor) reference is not supported — the MP2 "
@@ -103,6 +118,12 @@ MP2Result MP2<Method>::run(Frame& frame, const SCFInitialGuess* guess) {
 template <typename Method>
 GradientResult MP2<Method>::forces(Frame& frame, const SCFInitialGuess* guess) {
     Method& mf = *mf_;
+    if (mf.method_ == MeanFieldType::KS && mf.spin_ != SpinType::Restricted)
+        throw std::invalid_argument(
+            "MP2::forces: Kohn–Sham MP2 is only the restricted double-hybrid "
+            "path "
+            "(RKS). UKS and ROKS are not that product — use RKS or an HF "
+            "reference.");
     if (mf.spin_ != SpinType::Restricted && mf.spin_ != SpinType::Unrestricted)
         throw std::invalid_argument(
             "MP2::forces: RMP2 (RHF) or UMP2 (UHF) analytic gradient only — "
@@ -150,6 +171,7 @@ MP3<Method>::MP3(Method& mf) : mf_(&mf) {}
 template <typename Method>
 MP3Result MP3<Method>::run(Frame& frame, const SCFInitialGuess* guess) {
     Method& mf = *mf_;
+    refuse_ks(mf.method_, "MP3::run");
     if (mf.spin_ != SpinType::Restricted)
         throw std::invalid_argument(
             "MP3::run: closed-shell RMP3 only — use RHF (open-shell MP3 is a "
@@ -168,6 +190,7 @@ MP4<Method>::MP4(Method& mf) : mf_(&mf) {}
 template <typename Method>
 MP4Result MP4<Method>::run(Frame& frame, const SCFInitialGuess* guess) {
     Method& mf = *mf_;
+    refuse_ks(mf.method_, "MP4::run");
     if (mf.spin_ != SpinType::Restricted)
         throw std::invalid_argument(
             "MP4::run: closed-shell RMP4 only — use RHF (open-shell MP4 is a "
@@ -186,6 +209,7 @@ FCI<Method>::FCI(Method& mf) : mf_(&mf) {}
 template <typename Method>
 FCIResult FCI<Method>::run(Frame& frame) {
     Method& mf = *mf_;
+    refuse_ks(mf.method_, "FCI::run");
     if (mf.spin_ == SpinType::RestrictedOpen)
         throw std::invalid_argument(
             "FCI::run: an ROHF reference is not supported — the FCI pack "
@@ -204,6 +228,7 @@ CASCI<Method>::CASCI(Method& mf) : mf_(&mf) {}
 template <typename Method>
 CASCIResult CASCI<Method>::run(Frame& frame, int ncas, int nelecas) {
     Method& mf = *mf_;
+    refuse_ks(mf.method_, "CASCI::run");
     if (mf.spin_ == SpinType::RestrictedOpen)
         throw std::invalid_argument(
             "CASCI::run: an ROHF reference is not supported — closed-shell "
@@ -227,6 +252,7 @@ CASSCF<Method>::CASSCF(Method& mf) : mf_(&mf) {}
 template <typename Method>
 CASSCFResult CASSCF<Method>::run(Frame& frame, int ncas, int nelecas) {
     Method& mf = *mf_;
+    refuse_ks(mf.method_, "CASSCF::run");
     if (mf.spin_ == SpinType::RestrictedOpen)
         throw std::invalid_argument(
             "CASSCF::run: an ROHF reference is not supported — closed-shell "
@@ -252,6 +278,7 @@ NEVPT2<Method>::NEVPT2(Method& mf) : mf_(&mf) {}
 template <typename Method>
 NEVPT2Result NEVPT2<Method>::run(Frame& frame, int ncas, int nelecas) {
     Method& mf = *mf_;
+    refuse_ks(mf.method_, "NEVPT2::run");
     if (mf.spin_ == SpinType::RestrictedOpen)
         throw std::invalid_argument(
             "NEVPT2::run: an ROHF reference is not supported — closed-shell "
@@ -277,6 +304,7 @@ CCSD<Method>::CCSD(Method& mf) : mf_(&mf) {}
 template <typename Method>
 CCSDResult CCSD<Method>::run(Frame& frame) {
     Method& mf = *mf_;
+    refuse_ks(mf.method_, "CCSD::run");
     if (mf.spin_ != SpinType::Restricted)
         throw std::invalid_argument(
             "CCSD::run: closed-shell RHF reference only — UHF / ROHF / GHF "
@@ -290,6 +318,7 @@ template <typename Method>
 GradientResult CCSD<Method>::forces(Frame& frame,
                                     const SCFInitialGuess* guess) {
     Method& mf = *mf_;
+    refuse_ks(mf.method_, "CCSD::forces");
     if (mf.spin_ != SpinType::Restricted)
         throw std::invalid_argument(
             "CCSD::forces: closed-shell RHF reference only — UCCSD gradients "
@@ -316,6 +345,7 @@ GradientResult CCSD<Method>::forces(Frame& frame,
 template <typename Method>
 EOMEECCSDResult CCSD<Method>::eom_ee_ccsd(Frame& frame, int n_states) {
     Method& mf = *mf_;
+    refuse_ks(mf.method_, "CCSD::eom_ee_ccsd");
     if (mf.spin_ != SpinType::Restricted)
         throw std::invalid_argument(
             "CCSD::eom_ee_ccsd: closed-shell RHF reference only — EOM-EE "
@@ -330,6 +360,7 @@ EOMEECCSDResult CCSD<Method>::eom_ee_ccsd(Frame& frame, int n_states) {
 template <typename Method>
 CCSDTResult CCSD<Method>::ccsd_t(Frame& frame) {
     Method& mf = *mf_;
+    refuse_ks(mf.method_, "CCSD::ccsd_t");
     if (mf.spin_ != SpinType::Restricted)
         throw std::invalid_argument(
             "CCSD::ccsd_t: closed-shell RHF reference only — UHF / ROHF / GHF "
@@ -345,6 +376,7 @@ CC2<Method>::CC2(Method& mf) : mf_(&mf) {}
 template <typename Method>
 CC2Result CC2<Method>::run(Frame& frame) {
     Method& mf = *mf_;
+    refuse_ks(mf.method_, "CC2::run");
     if (mf.spin_ != SpinType::Restricted)
         throw std::invalid_argument(
             "CC2::run: closed-shell RHF reference only — UHF / ROHF / GHF CC2 "

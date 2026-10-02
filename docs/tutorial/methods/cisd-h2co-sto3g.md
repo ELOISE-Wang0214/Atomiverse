@@ -15,10 +15,9 @@ state. CIS(D) adds a second-order doubles correction on each CIS root
 ## Practice
 
 ```cpp
-cpu::scf::RHF rhf;
-rhf.basis = cpu::scf::BasisSet::STO3G;
+cpu::scf::RHF rhf{cpu::scf::BasisSet::STO3G};
 rhf.run(frame);                    // H2CO geometry as in REFERENCE.md
-auto cisd = rhf.cisd(/*n_states=*/3);
+auto cisd = cpu::scf::CISD<cpu::scf::RHF>{rhf}.run(/*n_states=*/3);
 // cisd roots: excitation energies [eV] including doubles correction
 ```
 

@@ -16,7 +16,7 @@ converged **Γ-point periodic GPW PBE** reference for artificial sc-Si₂
 Screening is **direct RPA** (dRPA) on the same product **RI-GPW** \((ia|jb)\)
 path as `periodic-rpa-si` / `periodic-ri-mp2-si`; the correlation self-energy
 is the frequency-exact spectral sum over RPA poles (same form as molecular
-`RHF::g0w0` / PySCF `GWExact`). Exact-exchange diagonals use **truncated (MT)
+`G0W0<RHF>::run` / PySCF `GWExact`). Exact-exchange diagonals use **truncated (MT)
 Coulomb** so the Γ-only foothold is G=0-safe without a periodic-HF product path.
 Primary product observable is the **HOMO–LUMO QP gap [eV]**. Public path:
 construct `GpwDft`, set members, `build(frame)` → `run(frame)` → `g0w0()` — no public `*Config`,

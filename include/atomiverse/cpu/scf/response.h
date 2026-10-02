@@ -26,13 +26,17 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-/// @brief Analytic nuclear Hessian on a closed-shell RHF reference.
+struct SCFInitialGuess;
+
+/// @brief Nuclear Hessian beside a mean-field method. Not a member of it.
 ///
-/// Mirrors `pyscf.hessian.rhf.Hessian(mf)`: `run` is `kernel`. It drives a
-/// fresh SCF, solves nuclear CPHF, and returns the Cartesian Hessian plus
-/// the atomic polar tensor. Restricted Hartree–Fock only — UHF stays
-/// `UHF::hessian`; RKS / UKS / ROHF stay finite differences of forces.
-/// @tparam Method Concrete mean-field type. Instantiated for `RHF`.
+/// Mirrors `pyscf.hessian.rhf.Hessian(mf).kernel` and
+/// `pyscf.hessian.uhf.Hessian(mf).kernel`: `run` drives a fresh SCF.
+/// RHF and UHF solve nuclear CPHF (`pyscf.scf.cphf.solve` is not an SCF
+/// method). RKS, UKS, and ROHF differentiate analytic `forces` with
+/// `central_difference_nuclear_hessian` — PySCF has no `hessian.ROHF`, and
+/// the KS closed form is not this path.
+/// @tparam Method `RHF`, `UHF`, `RKS`, `UKS`, or `ROHF`.
 template <typename Method>
 class Hessian {
   public:
@@ -40,10 +44,13 @@ class Hessian {
     /// @param mf Mean-field method (not copied).
     explicit Hessian(Method& mf);
 
-    /// @brief CPHF nuclear Hessian [eV/Å²] and dipole derivatives [a.u.].
+    /// @brief Nuclear Hessian [eV/Å²]. RHF also fills the atomic polar tensor.
     /// @param frame Geometry [Å]. Energy [eV] written to `kEnergy`.
+    /// @param guess Optional density guess for the reference SCF (UHF/UKS
+    ///        multi-minima). Ignored by callers that pass nullptr.
     /// @return Symmetric `[3N, 3N]` Hessian. Frequency fields stay empty.
-    vib::HessianResult run(Frame& frame);
+    vib::HessianResult run(Frame& frame,
+                           const SCFInitialGuess* guess = nullptr);
 
   private:
     Method* mf_ = nullptr;

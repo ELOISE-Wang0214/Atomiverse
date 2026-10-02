@@ -23,7 +23,7 @@ int main() {
     rks.basis = cpu::scf::BasisSet::STO3G;
     rks.tol = 1e-8;
     rks.run(f);
-    auto es = rks.tda(1);
+    auto es = cpu::scf::TDA<cpu::scf::RKS>{rks}.run(1);
     std::printf("CIS-RHF=%.4f ALDA-RKS=%.4f alda=%d\n", e_cis, es.energy_ev[0],
                 (int)es.alda);
     if (!es.alda || !std::isfinite(es.energy_ev[0])) {

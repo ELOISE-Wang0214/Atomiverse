@@ -51,7 +51,7 @@ when needed). Full inter-\(k\) / finite-\(q\) \(W(\mathbf q)\) is a follow-on
 
 **Self-energy.** Spectral (frequency-exact) diagonal correlation
 \(\Sigma_{c,pp}(\omega)\) as a sum over those same-\(k\) RPA poles (molecular
-`RHF::g0w0` / PySCF `GWExact` form, adapted to Bloch). Exact exchange
+`G0W0<RHF>::run` / PySCF `GWExact` form, adapted to Bloch). Exact exchange
 \(\Sigma_{x,p}\) uses **MT-truncated** Coulomb (Γ-safe foothold). Local
 \(v_{\mathrm{xc},p}\) is PBE on the BZ-weighted density.
 

@@ -55,7 +55,7 @@ B_{ia,jb} &= 2(ia|jb) - W_{ib,aj}.
 Full BSE solves the Casida RPA problem on \((A,B)\); BSE-TDA diagonalizes \(A\)
 only (\(B=0\)).
 
-**Underlying G0W0.** Spectral / frequency-exact poles (`RHF::g0w0` twin of
+**Underlying G0W0.** Spectral / frequency-exact poles (`G0W0<RHF>::run` twin of
 `gw.gw_exact.GWExact` + dRPA) — same as `reg_g0w0-h2-sto3g`.
 
 **Observables.**

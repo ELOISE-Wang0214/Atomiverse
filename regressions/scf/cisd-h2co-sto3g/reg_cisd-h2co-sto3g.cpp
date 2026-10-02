@@ -66,7 +66,8 @@ int main() {
     if (!check("E_RHF [Ha]", rhf.energy(), kERhf, kTolE))
         return 1;
 
-    const cpu::scf::CISDResult cisd = rhf.cisd(/*n_states=*/1);
+    const cpu::scf::CISDResult cisd =
+        cpu::scf::CISD<cpu::scf::RHF>{rhf}.run(/*n_states=*/1);
     if (cisd.energy_ev.size() != 1 || cisd.cis_energy_ev.size() != 1) {
         std::fprintf(stderr, "FAIL: cisd returned unexpected root count\n");
         return 1;

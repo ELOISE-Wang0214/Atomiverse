@@ -497,7 +497,7 @@ def main() -> int:
 
     if m == "g0w0":
         # Spectral (frequency-exact) G0W0 with dRPA screening — PySCF
-        # gw.gw_exact.GWExact twin of Atomiverse RHF::g0w0(). HF density via
+        # gw.gw_exact.GWExact twin of Atomiverse G0W0<RHF>::run(). HF density via
         # RKS(xc='hf') (gw_exact asserts a DFT mean-field object).
         # Local import keeps `np` bound even though later branches also
         # `import numpy as np` (which makes np function-local in Python).
