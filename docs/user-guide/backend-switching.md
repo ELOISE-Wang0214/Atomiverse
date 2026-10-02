@@ -54,7 +54,7 @@ its kernels cover, no scientific data returns to the host mid-SCF.
     backend actually does.
 
 Either method also binds as an evaluator inside an outer driver, again with the
-same shape on both devices:
+same call on both devices:
 
 ```cpp
 cuda::Evaluate eval;
@@ -62,6 +62,12 @@ eval.set_evaluator(cuda::scf::RHF{cpu::scf::BasisSet::STO3G});
 eval.build();
 eval.run(frame);
 ```
+
+`cuda::scf::RHF` is `cuda::Driver<scf::Phase>` with the stages
+`fock → mix → diagonalize → density → check`. It is not itself a Component.
+`set_evaluator` wraps that driver in `cuda::NestedLoopAdapter`, so the outer
+Evaluate or MD plan still sees one component. The SCF iteration stays inside
+the adapter.
 
 That is the main backend switch in Atomiverse. The physical problem is
 described once; only the device that executes it changes.

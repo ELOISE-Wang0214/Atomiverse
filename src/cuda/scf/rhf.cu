@@ -3,8 +3,9 @@
 ///
 /// **Energy path (primary):** STO-3G with l ≤ 1 (H…O, mixed Z, e.g. H₂O):
 /// integrals + SCF stay on device (`RHFFockDevice` / `launch_*_sp`) —
-/// **CUDA-only HF**, no host ERI tensor. Other bases temporarily fill S /
-/// Hcore / ERI on host then upload.
+/// **CUDA-only HF**, no host ERI tensor. The iteration is the Driver plan
+/// (PySCF `scf.hf.kernel` / `scf.diis.CDIIS.update`). Other bases fill
+/// S / Hcore / ERI once in `assemble_` (setup), never inside a stage.
 ///
 /// **Forces path (Wave 6):** STO-3G s/p (l ≤ 1, H…O, e.g. H₂O) analytic on
 /// device (`launch_rhf_forces_sp`). Out-of-coverage (`compute_force` on a
@@ -36,7 +37,6 @@
 #include "atomiverse/cpu/scf/scf_enums.h"
 #include "atomiverse/cpu/scf/slater_determinant.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
-#include "atomiverse/cuda/evaluate/evaluate.cuh"
 #include "atomiverse/cuda/frame/transfer.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/scf/device_integrals.cuh"
@@ -104,42 +104,6 @@ cpu::Frame host_frame_from_device(const cuda::Frame& dframe) {
     // Isolated-molecule box placeholder (integrals do not use the cell).
     host.box = cpu::Box::cubic(100.0);
     return host;
-}
-
-/// @brief D2H MO coefficients (col-major n×n) and orbital energies [Ha].
-void download_mo(const SCFWorkspace& ws, cpu::scf::RealMatrix& C,
-                 cpu::scf::RealVector& epsilon) {
-    const int n = ws.n;
-    if (n <= 0 || !ws.C || !ws.eig) {
-        throw std::runtime_error(
-            "cuda::scf::RHF: empty SCF workspace after device SCF");
-    }
-    std::vector<prec_t> C_dev(static_cast<size_t>(n) * static_cast<size_t>(n));
-    std::vector<prec_t> e_dev(static_cast<size_t>(n));
-    cudaMemcpy(C_dev.data(), ws.C, sizeof(prec_t) * C_dev.size(),
-               cudaMemcpyDeviceToHost);
-    cudaMemcpy(e_dev.data(), ws.eig, sizeof(prec_t) * e_dev.size(),
-               cudaMemcpyDeviceToHost);
-
-    // RealMatrix is column-major (cuBLAS / LAPACK layout) — matches device C.
-    C = xt::zeros<double>({n, n});
-    epsilon = xt::zeros<double>({n});
-    for (int j = 0; j < n; ++j) {
-        epsilon(j) = static_cast<double>(e_dev[static_cast<size_t>(j)]);
-        for (int i = 0; i < n; ++i) {
-            C(i, j) = static_cast<double>(
-                C_dev[static_cast<size_t>(i)
-                      + static_cast<size_t>(j) * static_cast<size_t>(n)]);
-        }
-    }
-}
-
-/// @brief Restricted Aufbau occupations: f_i = 1 for i < n_occ, else 0.
-cpu::scf::RealVector restricted_occupation(int n_mo, int n_occ) {
-    cpu::scf::RealVector f = xt::zeros<double>({n_mo});
-    for (int i = 0; i < n_occ && i < n_mo; ++i)
-        f(i) = 1.0;
-    return f;
 }
 
 /// @brief Transitional host fill of S/Hcore/ERI → device SCF (p shells).
@@ -223,26 +187,115 @@ make_device_sp_sto3g_solver(const int* h_Z, int natm, int charge, double tol,
 
 } // namespace
 
+struct EngineSlot {
+    std::unique_ptr<internal::RhfScfCycle> cycle;
+    cuda::Context* ctx = nullptr;
+    cuda::Frame* frame = nullptr;
+};
+
+class RhfStage : public cuda::Component {
+  public:
+    using Step = void (internal::RhfScfCycle::*)(void*, cuda::Frame&, int);
+
+    RhfStage(EngineSlot* slot, ATV::scf::Phase phase, const char* stage_name,
+             Step step)
+        : slot_(slot), phase_(phase), name_(stage_name), step_(step) {}
+
+    std::string name() const override { return name_; }
+
+    void launch(const cuda::LaunchContext& ctx) override {
+        if (!ctx.at(phase_) || !slot_ || !slot_->cycle)
+            return;
+        (slot_->cycle.get()->*step_)(ctx.runtime.stream, ctx.frame, ctx.step);
+    }
+
+  private:
+    EngineSlot* slot_ = nullptr;
+    ATV::scf::Phase phase_ = ATV::scf::Phase::fock;
+    const char* name_ = "";
+    Step step_ = nullptr;
+};
+
+class RhfConverged : public cuda::Criterion {
+  public:
+    explicit RhfConverged(EngineSlot* slot) : slot_(slot) {}
+    const char* name() const override { return "scf_converged"; }
+    ATV::Verdict after_iteration(const cuda::LoopState& state) override {
+        if (!slot_ || !slot_->cycle)
+            return ATV::Verdict::Continue;
+        // PySCF kernel: stop when |ΔE| and the orbital gradient are inside
+        // tolerance. This path judges the density residual the check stage
+        // wrote (device flag or host `workspace.converged`).
+        if (slot_->cycle->poll_converged(state.runtime.stream, state.iteration))
+            return ATV::Verdict::Converged;
+        return ATV::Verdict::Continue;
+    }
+
+  private:
+    EngineSlot* slot_ = nullptr;
+};
+
+struct RhfLoopState {
+    EngineSlot slot;
+    RhfStage fock;
+    RhfStage mix;
+    RhfStage diag;
+    RhfStage density;
+    RhfStage check;
+
+    RhfLoopState()
+        : fock(&slot, ATV::scf::Phase::fock, "scf_fock_stage",
+               &internal::RhfScfCycle::step_fock),
+          mix(&slot, ATV::scf::Phase::mix, "scf_mix_stage",
+              &internal::RhfScfCycle::step_mix),
+          diag(&slot, ATV::scf::Phase::diagonalize, "scf_diagonalize_stage",
+               &internal::RhfScfCycle::step_diagonalize),
+          density(&slot, ATV::scf::Phase::density, "scf_density_stage",
+                  &internal::RhfScfCycle::step_density),
+          check(&slot, ATV::scf::Phase::check, "scf_check_stage",
+                &internal::RhfScfCycle::step_check) {}
+};
+
 RHF::RHF(cpu::scf::BasisSet basis_in, int charge_in, double tol_in,
          int max_iter_in, double level_shift_in, bool compute_force_in)
     : basis(basis_in), charge(charge_in), tol(tol_in), max_iter(max_iter_in),
-      level_shift(level_shift_in), compute_force(compute_force_in) {}
-RHF::~RHF() = default;
+      level_shift(level_shift_in), compute_force(compute_force_in),
+      loop_(std::make_unique<RhfLoopState>()) {
+    wire_stages_();
+}
+
+RHF::~RHF() { release_engine_(); }
+
 RHF::RHF(RHF&& other) noexcept
-    : basis(other.basis), charge(other.charge), tol(other.tol),
-      max_iter(other.max_iter), level_shift(other.level_shift),
-      compute_force(other.compute_force), cycle_(std::move(other.cycle_)),
-      energy_ha_(other.energy_ha_), converged_(other.converged_),
-      iterations_(other.iterations_), built_(other.built_),
+    : cuda::Driver<ATV::scf::Phase>(std::move(other)), basis(other.basis),
+      charge(other.charge), tol(other.tol), max_iter(other.max_iter),
+      level_shift(other.level_shift), compute_force(other.compute_force),
+      loop_(std::move(other.loop_)), energy_ha_(other.energy_ha_),
+      iterations_(other.iterations_),
       last_force_device_(other.last_force_device_),
       last_device_sp_(other.last_device_sp_),
       host_Z_(std::move(other.host_Z_)) {
     other.energy_ha_ = 0.0;
-    other.converged_ = false;
     other.iterations_ = 0;
-    other.built_ = false;
+    other.compute_force = false;
     other.last_force_device_ = false;
     other.last_device_sp_ = false;
+}
+
+void RHF::wire_stages_() {
+    static_assert(static_cast<int>(ATV::scf::Phase::fock) == 0);
+    static_assert(static_cast<int>(ATV::scf::Phase::mix) == 1);
+    static_assert(static_cast<int>(ATV::scf::Phase::diagonalize) == 2);
+    static_assert(static_cast<int>(ATV::scf::Phase::density) == 3);
+    static_assert(static_cast<int>(ATV::scf::Phase::check) == 4);
+
+    this->on(ATV::scf::Phase::fock).add_ref(loop_->fock);
+    this->on(ATV::scf::Phase::mix).add_ref(loop_->mix);
+    this->on(ATV::scf::Phase::diagonalize).add_ref(loop_->diag);
+    this->on(ATV::scf::Phase::density).add_ref(loop_->density);
+    this->on(ATV::scf::Phase::check).add_ref(loop_->check);
+    this->add_criterion(RhfConverged{&loop_->slot});
+    this->build();
 }
 
 void RHF::cache_host_types(const cpu::Frame& frame) {
@@ -257,24 +310,186 @@ void RHF::cache_host_types(const cpu::Frame& frame) {
         host_Z_[static_cast<std::size_t>(i)] = type[i];
 }
 
+void RHF::release_engine_() {
+    if (!loop_ || !loop_->slot.cycle)
+        return;
+    cuda::Context* ctx = loop_->slot.ctx;
+    cuda::Frame* frame = loop_->slot.frame;
+    if (ctx && frame)
+        loop_->slot.cycle->destroy(ctx->stream, *frame);
+    loop_->slot.cycle.reset();
+    loop_->slot.ctx = nullptr;
+    loop_->slot.frame = nullptr;
+}
+
+void RHF::assemble_(cuda::Context& ctx, cuda::Frame& frame) {
+    const int natm = frame.n_atoms();
+    if (natm <= 0) {
+        throw std::invalid_argument(
+            "cuda::scf::RHF: device frame has no atoms");
+    }
+    if (static_cast<int>(host_Z_.size()) != natm) {
+        host_Z_.resize(static_cast<std::size_t>(natm));
+        auto* stream = static_cast<cudaStream_t>(ctx.stream);
+        cudaMemcpyAsync(host_Z_.data(), frame.atoms.type,
+                        sizeof(int) * static_cast<std::size_t>(natm),
+                        cudaMemcpyDeviceToHost, stream);
+        cudaStreamSynchronize(stream);
+    }
+    const int* h_Z = host_Z_.data();
+
+    last_force_device_ = false;
+    if (compute_force && !device_sp_sto3g_ok(basis, h_Z, natm)) {
+        throw std::invalid_argument(
+            "cuda::scf::RHF::forces: device analytic gradients cover "
+            "STO-3G l<=1 (H-O) only. Use cpu::scf::RHF{basis}.forces(frame) "
+            "for other bases or higher angular momentum.");
+    }
+
+    release_engine_();
+    loop_->slot.ctx = &ctx;
+    loop_->slot.frame = &frame;
+    if (device_sp_sto3g_ok(basis, h_Z, natm)) {
+        loop_->slot.cycle = make_device_sp_sto3g_solver(h_Z, natm, charge, tol,
+                                                        max_iter, level_shift);
+        last_device_sp_ = true;
+    } else {
+        cpu::Frame host = host_frame_from_device(frame);
+        loop_->slot.cycle = make_host_integral_solver(host, basis, charge, tol,
+                                                      max_iter, level_shift);
+        last_device_sp_ = false;
+    }
+    loop_->slot.cycle->build(ctx.stream, frame);
+}
+
+void RHF::assemble_forces_(cuda::Context& ctx, cuda::Frame& frame) {
+    const auto& ws = loop_->slot.cycle->workspace();
+    auto* stream = static_cast<cudaStream_t>(ctx.stream);
+    const bool device_forces = ws.device_sp_shells && ws.n > 0 && ws.P && ws.C
+                               && ws.eig && ws.d_shell_alpha && ws.d_shell_atom
+                               && ws.d_shell_L && ws.d_ao_shell && ws.d_ao_cart
+                               && ws.d_atom_pos && frame.atoms.fx
+                               && frame.atoms.fy && frame.atoms.fz;
+    if (!device_forces) {
+        throw std::runtime_error(
+            "cuda::scf::RHF: compute_force is set but the device "
+            "s/p force workspace is incomplete (P/C/eig/shell maps).");
+    }
+    prec_t* d_W = ws.d_W;
+    const bool own_W = (d_W == nullptr);
+    const int nn = ws.n * ws.n;
+    if (own_W)
+        cudaMalloc(&d_W, static_cast<std::size_t>(nn) * sizeof(prec_t));
+    launch_build_W_rhf(d_W, ws.C, ws.eig, ws.n, ws.n_occ, stream);
+    launch_rhf_forces_sp(frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, ws.P,
+                         d_W, ws.d_shell_alpha, ws.d_shell_coeff,
+                         ws.d_shell_center, ws.d_shell_atom, ws.d_shell_L,
+                         ws.d_ao_shell, ws.d_ao_cart, ws.d_atom_Z,
+                         ws.d_atom_pos, ws.n, ws.n_prim, ws.natm, stream);
+    last_force_device_ = true;
+    if (own_W) {
+        cudaStreamSynchronize(stream);
+        cudaFree(d_W);
+    }
+}
+
+void RHF::pull_energy_(cuda::Context& ctx, cuda::Frame& frame) {
+    prec_t e_ev = 0;
+    if (frame.scalars) {
+        auto* stream = static_cast<cudaStream_t>(ctx.stream);
+        cudaMemcpyAsync(&e_ev, &frame.scalars->energy, sizeof(prec_t),
+                        cudaMemcpyDeviceToHost, stream);
+        cudaStreamSynchronize(stream);
+    }
+    energy_ha_ = static_cast<double>(e_ev) / units::kHartreeInEv;
+}
+
+void RHF::step_stages_(cuda::Context& ctx, cuda::Frame& frame, int step) {
+    struct Guard {
+        bool& flag;
+        explicit Guard(bool& f) : flag(f) { flag = true; }
+        ~Guard() { flag = false; }
+    } guard(this->launching_);
+    for (const auto& plan_slot : this->plan().slots) {
+        if (plan_slot.ops.empty())
+            continue;
+        for (const auto& op : plan_slot.ops) {
+            if (!op.component)
+                continue;
+            cuda::LaunchContext lc{ctx, frame, plan_slot.phase, step};
+            op.component->launch(lc);
+        }
+    }
+}
+
+int RHF::drive_loop_(cuda::Context& ctx, cuda::Frame& frame, int budget) {
+    struct Guard {
+        RHF* self;
+        ~Guard() { self->release_engine_(); }
+    } guard{this};
+
+    assemble_(ctx, frame);
+    const bool device = loop_->slot.cycle->device_integrals();
+    loop_->slot.cycle->begin(ctx.stream);
+
+    const cuda::LoopServices saved = ctx.loop;
+    ctx.loop.status = &this->status_;
+    ctx.loop.metrics = &this->metrics_;
+    this->status_.reset();
+    this->metrics_ = LoopMetrics{};
+
+    const int cap = budget > 0 ? budget : max_iter;
+    int iters = 0;
+    for (int i = 0; i < cap; ++i) {
+        this->mutable_outer_status().reset();
+        step_stages_(ctx, frame, i);
+        ++iters;
+        if (this->poll_handlers_(i, frame, ctx) != ATV::Verdict::Continue)
+            break;
+    }
+    loop_->slot.cycle->finish(ctx.stream);
+    if (compute_force)
+        assemble_forces_(ctx, frame);
+    pull_energy_(ctx, frame);
+    this->iterations_ = iters;
+    last_device_sp_ = device;
+    ctx.loop = saved;
+    return iters;
+}
+
+void RHF::build_on(cuda::Context&, cuda::Frame&) {
+    if (this->plan().slots.empty())
+        this->build();
+}
+
+int RHF::run_nested_erased(cuda::Context& ctx, cuda::Frame& frame, int budget) {
+    return drive_loop_(ctx, frame, budget);
+}
+
+void RHF::destroy_on(cuda::Context&, cuda::Frame&) { release_engine_(); }
+
 void RHF::run(cpu::Frame& frame) {
-    // Path select + shell pack use host Z before H2D (no setup type[] D2H).
     cache_host_types(frame);
-    // Evaluate owns H2D / component lifecycle / D2H so Frame stays the sole
-    // public I/O token and streams stay inside the Component path.
-    cuda::Evaluate eval;
-    eval.on(ATV::evaluate::Phase::evaluate).add_ref(*this);
-    eval.build();
-    eval.run(frame);
+    this->setup_pass(frame);
+    try {
+        drive_loop_(this->backend_->context(), this->backend_->frame(),
+                    max_iter);
+    } catch (...) {
+        this->teardown_pass(frame);
+        throw;
+    }
+    this->teardown_pass(frame);
 }
 
 cpu::scf::GradientResult RHF::forces(cpu::Frame& frame) {
-    // Wave 6: s/p device path via run()+launch. Out-of-coverage throws
-    // inside launch() (no silent host fallback). Always enable force
-    // assembly for this call. host_Z_ seeded in run() via cache_host_types.
     const bool prev = compute_force;
     compute_force = true;
-    run(frame);
+    try {
+        run(frame);
+    } catch (...) {
+        compute_force = prev;
+        throw;
+    }
     compute_force = prev;
 
     const int natm = static_cast<int>(frame.nlocal());
@@ -293,144 +508,12 @@ cpu::scf::GradientResult RHF::forces(cpu::Frame& frame) {
 }
 
 const SCFWorkspace& RHF::workspace() const {
-    if (!cycle_) {
+    if (!loop_ || !loop_->slot.cycle) {
         throw std::runtime_error(
-            "cuda::scf::RHF::workspace: call launch()/run() first");
+            "cuda::scf::RHF::workspace: no live SCF workspace. Call run() or "
+            "forces(); the workspace is released when that call returns.");
     }
-    return cycle_->workspace();
-}
-
-void RHF::build(const BuildContext& ctx) {
-    // Readiness only — do not freeze build-time nuclei into RhfScfCycle/RHFFock.
-    // Multi-step cuda::md::MD moves positions between force launches; the
-    // private workspace + device Fock upload must track current geometry
-    // (CPU twin: rebuild_integrals_ each nested run). Tear down any leftover
-    // cycle from a prior teardown/rebuild cycle.
-    if (cycle_) {
-        cycle_->destroy(ctx.runtime.stream, ctx.frame);
-        cycle_.reset();
-    }
-    built_ = true;
-    converged_ = false;
-    energy_ha_ = 0.0;
-    iterations_ = 0;
-}
-
-void RHF::launch(const LaunchContext& ctx) {
-    if (!built_) {
-        throw std::runtime_error(
-            "cuda::scf::RHF::launch: build() must run before launch()");
-    }
-
-    // Per-launch geometry rebuild (AIMD nuclei move between force phases).
-    if (cycle_) {
-        cycle_->destroy(ctx.runtime.stream, ctx.frame);
-        cycle_.reset();
-    }
-
-    const int natm = ctx.frame.n_atoms();
-    if (natm <= 0) {
-        throw std::invalid_argument(
-            "cuda::scf::RHF::launch: device frame has no atoms");
-    }
-    auto* stream = static_cast<cudaStream_t>(ctx.runtime.stream);
-
-    // Path select + shell pack from host-side Z (seeded in run()/forces before
-    // H2D). Z is run-static; geometry stays on device. Covered s/p systems
-    // never D2H type[]. Component-only nested use (e.g. MD without prior
-    // cache_host_types) fills the cache once and reuses it.
-    if (static_cast<int>(host_Z_.size()) != natm) {
-        host_Z_.resize(static_cast<size_t>(natm));
-        cudaMemcpyAsync(host_Z_.data(), ctx.frame.atoms.type,
-                        sizeof(int) * static_cast<size_t>(natm),
-                        cudaMemcpyDeviceToHost, stream);
-        cudaStreamSynchronize(stream);
-    }
-    const int* h_Z = host_Z_.data();
-
-    // Forces: device s/p only. Throw before any host-fill SCF so an
-    // out-of-coverage `forces()` / AIMD evaluator cannot silently grade
-    // a CPU gradient as CUDA.
-    if (compute_force && !device_sp_sto3g_ok(basis, h_Z, natm)) {
-        throw std::invalid_argument(
-            "cuda::scf::RHF::forces: device analytic gradients cover "
-            "STO-3G l<=1 (H-O) only. Use cpu::scf::RHF{basis}.forces(frame) "
-            "for other bases or higher angular momentum.");
-    }
-
-    // ── Energy: CUDA-only HF when device s/p kernels cover the molecule ─
-    // STO-3G with l≤1 (H…O, mixed Z OK): device S/T/V + ERI + SCF (no host
-    // ERI), including virtual level shift λ on the orthonormal Fock.
-    // Higher L or other bases: host fill + upload (energy-only).
-    last_device_sp_ = false;
-    if (device_sp_sto3g_ok(basis, h_Z, natm)) {
-        cycle_ = make_device_sp_sto3g_solver(h_Z, natm, charge, tol, max_iter,
-                                             level_shift);
-        last_device_sp_ = true;
-    } else {
-        cpu::Frame host = host_frame_from_device(ctx.frame);
-        cycle_ = make_host_integral_solver(host, basis, charge, tol, max_iter,
-                                           level_shift);
-    }
-    cycle_->build(ctx.runtime.stream, ctx.frame);
-    cycle_->drive(ctx.runtime.stream, ctx.frame);
-    iterations_ = cycle_->iterations();
-    converged_ = cycle_->workspace().converged;
-
-    // ── Forces on device (s/p l≤1) before any energy D2H ────────────────
-    // Entire SCF + forces stay device-resident; host energy_ha_ is filled
-    // once at the end (post-calculation bookkeeping only).
-    last_force_device_ = false;
-    if (compute_force) {
-        const auto& ws = cycle_->workspace();
-        const bool device_forces =
-            ws.device_sp_shells && ws.n > 0 && ws.P && ws.C && ws.eig
-            && ws.d_shell_alpha && ws.d_shell_atom && ws.d_shell_L
-            && ws.d_ao_shell && ws.d_ao_cart && ws.d_atom_pos
-            && ctx.frame.atoms.fx && ctx.frame.atoms.fy && ctx.frame.atoms.fz;
-
-        if (device_forces) {
-            prec_t* d_W = ws.d_W;
-            const bool own_W = (d_W == nullptr);
-            const int nn = ws.n * ws.n;
-            if (own_W)
-                cudaMalloc(&d_W, static_cast<size_t>(nn) * sizeof(prec_t));
-            launch_build_W_rhf(d_W, ws.C, ws.eig, ws.n, ws.n_occ, stream);
-            launch_rhf_forces_sp(
-                ctx.frame.atoms.fx, ctx.frame.atoms.fy, ctx.frame.atoms.fz,
-                ws.P, d_W, ws.d_shell_alpha, ws.d_shell_coeff,
-                ws.d_shell_center, ws.d_shell_atom, ws.d_shell_L, ws.d_ao_shell,
-                ws.d_ao_cart, ws.d_atom_Z, ws.d_atom_pos, ws.n, ws.n_prim,
-                ws.natm, stream);
-            last_force_device_ = true;
-            if (own_W) {
-                // Free only after stream completes force kernels — no D2H.
-                cudaStreamSynchronize(stream);
-                cudaFree(d_W);
-            }
-        } else {
-            throw std::runtime_error(
-                "cuda::scf::RHF::launch: compute_force is set but the device "
-                "s/p force workspace is incomplete (P/C/eig/shell maps).");
-        }
-    }
-
-    // Post-calculation: one energy D2H for host `energy_ha_` (not mid-SCF).
-    prec_t e_ev = 0;
-    if (ctx.frame.scalars) {
-        cudaMemcpyAsync(&e_ev, &ctx.frame.scalars->energy, sizeof(prec_t),
-                        cudaMemcpyDeviceToHost, stream);
-        cudaStreamSynchronize(stream);
-    }
-    energy_ha_ = static_cast<double>(e_ev) / units::kHartreeInEv;
-}
-
-void RHF::destroy(const DestroyContext& ctx) {
-    if (cycle_) {
-        cycle_->destroy(ctx.runtime.stream, ctx.frame);
-        cycle_.reset();
-    }
-    built_ = false;
+    return loop_->slot.cycle->workspace();
 }
 
 } // namespace scf

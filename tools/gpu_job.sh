@@ -26,6 +26,8 @@
 #   ATV_CTEST_RE     ctest -R regex                  (default: all CUDA tests)
 #   ATV_BUILD_DIR    build tree name                 (default: build-gpu-job)
 #   ATV_KEEP_BUILD   set to 1 to keep the tree for follow-up runs
+#   ATV_RUN          shell command after ctest (GPU module env; ${BUILD}
+#                    expands in that shell). Regressions are not ctest.
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
@@ -73,6 +75,14 @@ fi
 RC=0
 echo "=== ctest -R '${ATV_CTEST_RE:-cuda}' ==="
 ctest --test-dir "${BUILD}" --output-on-failure -R "${ATV_CTEST_RE:-cuda}" || RC=$?
+
+if [[ -n "${ATV_RUN:-}" ]]; then
+    echo "=== ATV_RUN: ${ATV_RUN} ==="
+    # Stay in this shell's module env. A login shell would drop it.
+    # BUILD is a script local; export it so ${BUILD} inside ATV_RUN expands.
+    export BUILD
+    bash -c "${ATV_RUN}" || RC=$?
+fi
 
 if [[ "${ATV_KEEP_BUILD:-0}" != "1" ]]; then
     echo "=== wipe build ==="

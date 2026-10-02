@@ -21,6 +21,7 @@
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cuda/driver/driver.cuh"
+#include "atomiverse/cuda/driver/driver_node.h"
 #include "atomiverse/cuda/dynamics/md.cuh"
 #include "atomiverse/cuda/dynamics/velocity_verlet.cuh"
 #include "atomiverse/cuda/evaluate/evaluate.cuh"
@@ -625,20 +626,25 @@ TEST(RHF, CUDAHeHPlus) {
 
 // ── Structural / discipline tests ────────────────────────────────────
 
-TEST(RHF, PublicRHFIsHFComponent) {
-    // Concrete RHF is the public energy source (Component + HF).
-    static_assert(std::is_base_of_v<cuda::Component, cuda::scf::RHF>,
-                  "cuda::scf::RHF must inherit cuda::Component");
+TEST(RHF, PublicRHFIsScfDriver) {
+    // Concrete RHF is the SCF loop node (Driver + HF), not a Component.
+    // Outer Evaluate/MD nest it through cuda::NestedLoopAdapter.
+    static_assert(
+        std::is_base_of_v<cuda::Driver<ATV::scf::Phase>, cuda::scf::RHF>,
+        "cuda::scf::RHF must be cuda::Driver<scf::Phase>");
+    static_assert(std::is_base_of_v<cuda::DriverNode, cuda::scf::RHF>,
+                  "cuda::scf::RHF must be a nestable DriverNode");
     static_assert(std::is_base_of_v<cuda::HF, cuda::scf::RHF>,
                   "cuda::scf::RHF must inherit cuda::HF");
+    static_assert(!std::is_base_of_v<cuda::Component, cuda::scf::RHF>,
+                  "cuda::scf::RHF must not inherit cuda::Component");
     cuda::scf::RHF rhf{cpu::scf::BasisSet::STO3G};
-    EXPECT_EQ(rhf.role(), 0);
+    EXPECT_EQ(rhf.default_budget(), rhf.max_iter);
+    EXPECT_TRUE(rhf.provides_energy());
 }
 
 TEST(RHF, PrivateCycleIsNotADriver) {
-    // RhfScfCycle is private machinery under RHF, not a Driver node.
-    // Full cuda::Driver<scf::Phase> for RHF waits on nested CUDA DriverNode
-    // (RHF stays Component for Evaluate/MD).
+    // The workspace helper is not the loop. The loop is RHF.
     static_assert(
         !std::is_base_of_v<Driver<ATV::evaluate::Phase, cuda::device_tag>,
                            cuda::scf::internal::RhfScfCycle>,
@@ -646,8 +652,9 @@ TEST(RHF, PrivateCycleIsNotADriver) {
     static_assert(!std::is_base_of_v<cuda::Driver<ATV::scf::Phase>,
                                      cuda::scf::internal::RhfScfCycle>,
                   "RhfScfCycle must not be cuda::Driver<scf::Phase>");
-    static_assert(std::is_base_of_v<cuda::Component, cuda::scf::RHF>,
-                  "RHF remains Component for outer nesting");
+    static_assert(
+        !std::is_base_of_v<cuda::DriverNode, cuda::scf::internal::RhfScfCycle>,
+        "RhfScfCycle must not be a DriverNode");
     SUCCEED();
 }
 

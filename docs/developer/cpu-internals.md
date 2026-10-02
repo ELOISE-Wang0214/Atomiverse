@@ -343,8 +343,8 @@ none register into any foreign Plan, and the **core-public**
 production headers — `evaluate.h`, `single_point.h`, `md.h`, `lbfgs.h`
 — must not include from `cpu/scf/internal/` (tests may). Two surfaces
 elsewhere still use the old inner-solver shape as scheduled debt, not a
-pattern: CUDA RHF private RhfScfCycle (post arch-cuda-scf-solver-fold) and the CPU
-plane-wave SCF (`cpu::pw::PW` + `PWEvaluator`).
+pattern: the CPU plane-wave SCF (`cpu::pw::PW` + `PWEvaluator`). CUDA RHF is
+`cuda::Driver<scf::Phase>` (same stage order as `MeanFieldMethod`).
 
 ## Hot-Path Data Hygiene
 

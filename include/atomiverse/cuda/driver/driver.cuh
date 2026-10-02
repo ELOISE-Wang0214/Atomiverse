@@ -120,6 +120,15 @@ struct PhaseTraits<ATV::evaluate::Phase> {
     static constexpr auto end_phase = ATV::evaluate::Phase::finalize;
 };
 
+/// SCF (`cuda::scf::RHF : Driver<scf::Phase>`): the loop is the method.
+/// No neighbor list; end-of-iteration is `check`.
+template <>
+struct PhaseTraits<ATV::scf::Phase> {
+    static constexpr auto eval_phase = ATV::scf::Phase::fock;
+    static constexpr auto neighbor_phase = ATV::scf::Phase::fock;
+    static constexpr auto end_phase = ATV::scf::Phase::check;
+};
+
 /// @brief CUDA-backend loop node — shared by every CUDA preset.
 ///
 /// @tparam PhaseEnum Phase enum type for the workflow (must end with a `COUNT`
@@ -395,8 +404,16 @@ class Driver : public ATV::Driver<PhaseEnum, cuda::device_tag> {
     /// @param iteration Index of the iteration just completed.
     /// @return The reduced verdict.
     Verdict poll_handlers_(int iteration) {
-        const cuda::LoopState st{iteration, this->backend_->frame(),
-                                 this->backend_->context(), metrics_};
+        return poll_handlers_(iteration, this->backend_->frame(),
+                              this->backend_->context());
+    }
+
+    /// @brief Same composition as `poll_handlers_(int)`, on a borrowed
+    ///        frame and context. Nested SCF uses the parent's device frame
+    ///        instead of `this->backend_`.
+    Verdict poll_handlers_(int iteration, const cuda::Frame& frame,
+                           const cuda::Context& ctx) {
+        const cuda::LoopState st{iteration, frame, ctx, metrics_};
         Verdict v = status_.stop_requested ? Verdict::Stop : Verdict::Continue;
         for (auto& h : handlers_) {
             const Verdict hv = h->after_iteration(st);

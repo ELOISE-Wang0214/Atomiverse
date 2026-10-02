@@ -61,10 +61,9 @@ void ConvergenceCheck::step(const SolverContext& ctx, SCFWorkspace& ws) {
             scf.d_converged, scf.d_residual, static_cast<prec_t>(tol_),
             ctx.step);
         cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST);
-        // Host scf.converged / residual filled only after the full SCF
-        // (RhfScfCycle::drive post-pass). Mid-loop early exit uses device flag
-        // only when the host polls it — device path runs fixed max_iter
-        // without D2H (see RhfScfCycle::drive).
+        // Host scf.converged is filled by the RHF criterion (poll_converged)
+        // after this stage. The device path does not D2H the residual
+        // matrix; the mapped flag is what ends the Driver loop.
         if (compute_energy_ && ctx.frame.scalars) {
             // Toy path should not mix with d_residual device control usually;
             // keep host energy write for synthetic if requested.

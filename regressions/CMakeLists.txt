@@ -1475,6 +1475,26 @@ if(ATV_BUILD_HF)
     else()
         atv_add_regression(scf h2o_rhf_sto3g)
     endif()
+    # Staged cuda::scf::RHF driver vs PySCF: H2/STO-3G (device) and
+    # H2O/6-31G (CPU). CUDA leg refuses a host-ERI pass.
+    if(ATV_BUILD_CUDA)
+        set(_reg_rhf_drv reg_es-cuda-rhf-driver)
+        add_executable(${_reg_rhf_drv} scf/es-cuda-rhf-driver/${_reg_rhf_drv}.cu)
+        target_link_libraries(${_reg_rhf_drv} PRIVATE atomiverse)
+        set_target_properties(${_reg_rhf_drv} PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON CXX_STANDARD 20)
+        target_compile_definitions(${_reg_rhf_drv} PRIVATE
+            ATV_REG_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data")
+        add_custom_target(run_${_reg_rhf_drv}
+            COMMAND ${CMAKE_COMMAND} -E env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+                    $<TARGET_FILE:${_reg_rhf_drv}> --device=both
+            DEPENDS ${_reg_rhf_drv}
+            COMMENT "regression [scf/es-cuda-rhf-driver] devices=both (1t)")
+        add_dependencies(regressions run_${_reg_rhf_drv})
+        unset(_reg_rhf_drv)
+    else()
+        atv_add_regression(scf es-cuda-rhf-driver)
+    endif()
     atv_add_regression(scf h2o_rhf_def2svp_sph)
     if(ATV_BUILD_CUDA)
         set(_reg_h2o_g reg_h2o_rhf_def2svp_grad)

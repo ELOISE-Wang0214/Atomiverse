@@ -137,10 +137,9 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 /// is a staged loop with a termination criterion — exactly a Driver — so the
 /// gaussian-basis SCF iteration becomes a `cpu::Driver<scf::Phase>`, and the
 /// concrete methods (`RHF`/`UHF`/`RKS`/`UKS`) supply the components that fill its
-/// stages. CUDA SCF free-loop bag folded under RHF (RhfScfCycle); full
-/// `cuda::Driver` nesting residual. GPW uses `gpw::Phase` below; plane-wave
-/// `cpu::pw::PW` uses `pw::Phase` (restricted fixed-occ path). This enum is
-/// CPU-only.
+/// stages. `cuda::scf::RHF` is `cuda::Driver<scf::Phase>` on the same enum
+/// (device stages; nested under Evaluate/MD). GPW uses `gpw::Phase` below;
+/// plane-wave `cpu::pw::PW` uses `pw::Phase` (restricted fixed-occ path).
 ///
 /// The phase order reflects what runs within one self-consistent iteration:
 /// build the Fock/Hamiltonian matrix (`fock`), extrapolate it in **Fock space**
