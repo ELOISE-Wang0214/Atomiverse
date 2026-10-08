@@ -54,7 +54,7 @@ E_c=\sum_q w_q\,\tfrac12\Bigl(\sum_s\Omega_{q,s}-\mathrm{Tr}\,A_q\Bigr).
 \]
 
 At Γ (\(N_k=1\)) this collapses to the real plasmon formula used by
-`periodic-rpa-si` and molecular `RHF::direct_rpa`. Unit tests pin
+`periodic-rpa-si` and molecular `DirectRPA<RHF>::run`. Unit tests pin
 \(N_k=1\) multi-\(k\) complex MOs ≡ real `direct_rpa_rhf_energy`.
 
 **Spectrum size.** With \(q\)-mesh \(=\) \(k\)-mesh,

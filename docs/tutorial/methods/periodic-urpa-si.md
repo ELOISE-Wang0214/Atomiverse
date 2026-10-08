@@ -27,7 +27,7 @@ algorithm; no fair twin required on the pin host).
 ## Method
 
 **Level.** Direct random-phase approximation as a **post-KS correlation energy**
-on GPW orbitals (periodic analogue of molecular `RHF::direct_rpa`, open-shell
+on GPW orbitals (periodic analogue of molecular `DirectRPA<RHF>::run`, open-shell
 channel). Not TDHF/TDDFT Casida excitation spectra, not RPAX/SOSEX, not
 frequency-integrated ACFDT product paths.
 

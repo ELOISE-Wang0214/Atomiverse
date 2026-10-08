@@ -59,8 +59,8 @@ scGW; BSE; RPA total energies; open-shell G0W0; CUDA.
 
 ## Implementation
 
-Frame in → RHF members → `run` → post-SCF `G0W0<RHF>::run`. Headers:
-`rhf.h`, `g0w0.h`; impl `src/cpu/scf/g0w0.cpp`.
+Frame in → `RHF::run` → `G0W0<RHF>::run`. Headers:
+`g0w0.h`; impl `src/cpu/scf/g0w0.cpp`.
 
 ```cpp
 #include "atomiverse/cpu/frame/frame.h"

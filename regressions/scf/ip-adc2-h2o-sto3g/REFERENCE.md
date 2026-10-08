@@ -2,7 +2,7 @@
 
 Closed-shell **strict ADC(2)** ionization potential (IP manifold, 1h / 2h1p
 ISR) for the lowest root of water / STO-3G. Product API:
-`RHF::ip_adc2(n_states)` after `run(frame)`.
+`ADC<RHF>::ip_adc2(n_states)` after `run(frame)`.
 
 Literature / theory:
 

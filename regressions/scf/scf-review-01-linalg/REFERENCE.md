@@ -15,7 +15,7 @@ literature values through the refactored code path.
 
 ## Part 1 — H₂/STO-3G direct-RPA correlation energy
 
-Path: `RHF::direct_rpa()` (`sym_power` → `OrbitalHessian::direct_rpa`). The
+Path: `DirectRPA<RHF>::run()` (`sym_power` → `OrbitalHessian::direct_rpa`). The
 correlation energy is the Furche plasmon formula on the Coulomb-only Casida
 spectrum, E_c = ½(Σ Ω_s − Tr A) with Ω_s the positive eigenvalues of the
 Hermitian reduction (A−B)^{1/2}(A+B)(A−B)^{1/2}.

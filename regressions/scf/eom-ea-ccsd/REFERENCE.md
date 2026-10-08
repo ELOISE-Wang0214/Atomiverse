@@ -1,7 +1,7 @@
 # H2 EOM-EA-CCSD/STO-3G — lowest electron-attachment energy pin
 
 Closed-shell **EOM-EA-CCSD** on H₂ / STO-3G. Product API:
-`RHF::eom_ea_ccsd(frame, n_states)` (drives RHF + spin-orbital CCSD + EOM-EA;
+`CCSD<RHF>::eom_ea_ccsd(frame, n_states)` (drives RHF + spin-orbital CCSD + EOM-EA;
 unique attachment roots from the spin-orbital Jacobian, spin degeneracy
 de-duplicated).
 

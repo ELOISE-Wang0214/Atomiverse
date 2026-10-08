@@ -4,7 +4,7 @@
 /// Public-API consumer only. Geometry, basis, and oracle numbers are pinned
 /// in REFERENCE.md (PySCF 2.14.0 offline; no live import in ctest).
 ///
-/// Observable: lowest singlet BSE excitation [eV] from `RHF::bse()` —
+/// Observable: lowest singlet BSE excitation [eV] from `BSE<RHF>::run()` —
 /// spectral G0W0 poles + static dRPA-screened W (exact 4-centre ERIs).
 #include <cmath>
 #include <cstdio>
@@ -64,7 +64,8 @@ int main() {
     if (!check("E_RHF [Ha]", rhf.energy(), kERhfHa, kTolEHa))
         return 1;
 
-    const cpu::scf::BSEResult bse = rhf.bse(/*n_states=*/1, /*tda=*/false);
+    const cpu::scf::BSEResult bse =
+        cpu::scf::BSE<cpu::scf::RHF>{rhf}.run(/*n_states=*/1, /*tda=*/false);
     if (bse.energy_ev.empty()) {
         std::fprintf(stderr, "FAIL: BSE returned no roots\n");
         return 1;
@@ -83,7 +84,8 @@ int main() {
         return 1;
 
     // TDA-BSE companion (not the primary gate).
-    const cpu::scf::BSEResult tda = rhf.bse(/*n_states=*/1, /*tda=*/true);
+    const cpu::scf::BSEResult tda =
+        cpu::scf::BSE<cpu::scf::RHF>{rhf}.run(/*n_states=*/1, /*tda=*/true);
     if (!check("BSE-TDA S1 [eV]", tda.energy_ev[0], kTdaEv, kTolEv))
         return 1;
 

@@ -5,13 +5,13 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `eom-ip-ccsd` |
-| Public API | `cpu::scf::RHF::eom_ip_ccsd(Frame&, n_states)` → `EOMIPCCSDResult` |
+| Public API | `cpu::scf::CCSD<RHF>::eom_ip_ccsd(Frame&, n_states)` → `EOMIPCCSDResult` |
 | Roadmap | [Excited states §3 EOM-CC](../../roadmap/excited-states.md) |
 
 ## Summary
 
 Closed-shell **EOM-IP-CCSD** ionization potentials on a converged RHF → CCSD
-reference. Product surface is `RHF::eom_ip_ccsd(frame, n_states)`: the call
+reference. Product surface is `CCSD<RHF>::eom_ip_ccsd(frame, n_states)`: the call
 drives RHF (with ERI), spin-orbital Gauss–Stanton CCSD, then a dense
 non-symmetric eigen-solve of the EOM-IP Jacobian, returning unique ionization
 roots \(\omega = E_{\mathrm{CCSD}}(N) - E(N-1)\) [eV] (spin degeneracy
@@ -89,7 +89,7 @@ rhf.basis = cpu::scf::BasisSet::STO3G;
 rhf.tol = 1e-12;
 rhf.max_iter = 100;
 
-const cpu::scf::EOMIPCCSDResult eom = rhf.eom_ip_ccsd(frame, /*n_states=*/1);
+const cpu::scf::EOMIPCCSDResult eom = cpu::scf::CCSD<cpu::scf::RHF>{rhf}.eom_ip_ccsd(frame, /*n_states=*/1);
 // eom.energy_ev[0] [eV]; eom.e_ccsd_ha, eom.e_corr_ha [Ha];
 // eom.ccsd_iterations; eom.converged
 ```
@@ -98,7 +98,7 @@ const cpu::scf::EOMIPCCSDResult eom = rhf.eom_ip_ccsd(frame, /*n_states=*/1);
 (ascending unique ionization roots [eV]), `e_corr_ha`, `e_ccsd_ha` [Hartree],
 `ccsd_iterations`, `converged`. Pack-level
 `eom_ip_ccsd_energies` is private engine code.
-(`internal/eom_ip_ccsd_pack.h`). `RHF::eom_ip_ccsd` forces `compute_eri`, runs
+(`internal/eom_ip_ccsd_pack.h`). `CCSD<RHF>::eom_ip_ccsd` forces `compute_eri`, runs
 SCF, then refuses a non-converged reference (no silent fallback).
 
 **Build / run regression** (CPU login; modules as in AGENTS.md):
@@ -120,7 +120,7 @@ bash -lc '
 | Path | Role |
 | ---- | ---- |
 | `eom_ip_ccsd.h` | Public `EOMIPCCSDResult` |
-| `rhf.h` | `RHF::eom_ip_ccsd(Frame&, n_states)` |
+| `post_hf.h` | `CCSD<RHF>::eom_ip_ccsd(Frame&, n_states)` |
 | `eom_ip_ccsd_pack.h` | Private pack entry |
 | `src/cpu/scf/eom_ip_ccsd.cpp` | Intermediates, Jacobian, root de-dup |
 | `reg_eom-ip-ccsd.cpp` | E2E consumer |
@@ -208,7 +208,7 @@ required on this case.
 - Roadmap: `docs/roadmap/excited-states.md` (§3 Equation-of-Motion Coupled Cluster);
   ground-state CC: `docs/roadmap/post-hf.md` (§3)
 - Public API: `eom_ip_ccsd.h`,
-  `rhf.h`
+  `post_hf.h` (`CCSD<RHF>::eom_ip_ccsd`)
 - J. F. Stanton & R. J. Bartlett, *The equation of motion coupled-cluster
   method…*, *J. Chem. Phys.* **98**, 7029 (1993).
   DOI [10.1063/1.464746](https://doi.org/10.1063/1.464746)

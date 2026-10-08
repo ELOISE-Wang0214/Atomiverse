@@ -52,7 +52,8 @@ int main() {
     rhf.tol = 1e-12;
     rhf.max_iter = 100;
 
-    const cpu::scf::EOMCC2Result eom = rhf.eom_cc2(frame, /*n_states=*/1);
+    const cpu::scf::EOMCC2Result eom =
+        cpu::scf::CC2<cpu::scf::RHF>{rhf}.eom_cc2(frame, /*n_states=*/1);
     if (!rhf.converged()) {
         std::fprintf(stderr, "FAIL: RHF/STO-3G (H2) did not converge\n");
         return 1;

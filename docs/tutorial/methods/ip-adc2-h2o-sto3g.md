@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ip-adc2-h2o-sto3g` |
-| Public API | `cpu::scf::RHF::ip_adc2(n_states)` → `IPADC2Result` |
+| Public API | `cpu::scf::ADC<RHF>::ip_adc2(n_states)` → `IPADC2Result` |
 | Twin | PySCF `adc.ADC`, `method='adc(2)'`, `method_type='ip'` |
 
 ## Summary
@@ -64,7 +64,7 @@ rhf.tol = 1e-12;
 rhf.max_iter = 200;
 rhf.run(frame);
 
-const cpu::scf::IPADC2Result adc = rhf.ip_adc2(/*n_states=*/1);
+const cpu::scf::IPADC2Result adc = cpu::scf::ADC<cpu::scf::RHF>{rhf}.ip_adc2(/*n_states=*/1);
 // adc.energy_ev[0]  — IP1 [eV]
 // adc.e_corr_mp2_ha — MP2 E_corr [Ha] (diagnostic)
 ```
@@ -88,7 +88,7 @@ bash -lc '
 | Path | Role |
 | ---- | ---- |
 | `adc.h` | `IPADC2Result` public result type |
-| `rhf.h` | `RHF::ip_adc2` declaration |
+| `adc.h` | `ADC<RHF>::ip_adc2` |
 | `src/cpu/scf/adc.cpp` | IP ISR intermediates, eigen-solve, MP2 \(t_2\) |
 | `reg_ip-adc2-h2o-sto3g.cpp` | product gate |
 
@@ -181,7 +181,7 @@ invalid for the 10× gate.
 - Regression consumer:
   `reg_ip-adc2-h2o-sto3g.cpp`
 - Public API: `adc.h`,
-  `rhf.h` (`RHF::ip_adc2`)
+  `adc.h` (`ADC<RHF>::ip_adc2`)
 - Implementation: `src/cpu/scf/adc.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - J. Schirmer, *Phys. Rev. A* **26**, 2395 (1982).

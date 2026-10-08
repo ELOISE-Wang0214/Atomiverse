@@ -4,7 +4,7 @@
 /// Public-API consumer only. Geometry, basis, and oracle numbers are pinned
 /// in REFERENCE.md (PySCF 2.14.0 offline; no live import in ctest).
 ///
-/// Observable: \(E_{\mathrm{c}}^{\mathrm{dRPA}}\) [Ha] from `RHF::direct_rpa()`
+/// Observable: \(E_{\mathrm{c}}^{\mathrm{dRPA}}\) [Ha] from `DirectRPA<RHF>::run()`
 /// — Furche plasmon formula on the Coulomb-only Casida spectrum (exact MO
 /// ERIs; non-DF twin of PySCF `gw.rpa.RPA` / `DirectRPA`).
 #include <cmath>
@@ -64,7 +64,8 @@ int main() {
     if (!check("E_RHF [Ha]", rhf.energy(), kERhfHa, kTolEHa))
         return 1;
 
-    const cpu::scf::DirectRPAResult rpa = rhf.direct_rpa();
+    const cpu::scf::DirectRPAResult rpa =
+        cpu::scf::DirectRPA<cpu::scf::RHF>{rhf}.run();
     if (rpa.omega_ha.size() != 1) {
         std::fprintf(stderr, "FAIL: expected 1 dRPA pole, got %zu\n",
                      rpa.omega_ha.size());

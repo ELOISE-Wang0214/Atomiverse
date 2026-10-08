@@ -30,9 +30,14 @@ PW free-loop / GPW OT — those are rows in this ledger, not the whole story.
 
 Gaussian post-HF, continuum solvent, the shared nuclear FD Hessian, and
 CPHF response are **not** members of `MeanFieldMethod`. `Stability<RHF>`,
-`TDA<RHF>`, `TDHF<RHF>`, `CISD<RHF>`, `G0W0<RHF>`, and `CCSD<RHF>::eom_ee_ccsd` are not members of
-`RHF` (`pyscf.scf.stability.rhf_stability`, `pyscf.tdscf.rhf.TDA` /
-`TDHF`, `gw.gw_exact.GWExact`, `cc.CCSD.eomee_ccsd_singlet`). CIS(D) is `CISD<RHF>` (PySCF has no CIS(D) class). Nuclear Hessians are
+`TDA<RHF>`, `TDHF<RHF>`, `CISD<RHF>`, `G0W0<RHF>`, `ADC<RHF>`,
+`DirectRPA<RHF>`, `BSE<RHF>`, `GF2<RHF>`, `CCSD<RHF>::eom_ee_ccsd` /
+`eom_ip_ccsd` / `eom_ea_ccsd`, `CC2<RHF>::eom_cc2`, and
+`CCSD<UHF>::eom_sf_ccsd` are not members of `RHF` or `UHF`
+(`pyscf.scf.stability.rhf_stability`, `pyscf.tdscf.rhf.TDA` /
+`TDHF`, `pyscf.adc.ADC`, `gw.rpa.RPA`, `gw.bse.BSE`, `agf2.RAGF2`,
+`gw.gw_exact.GWExact`, `cc.CCSD.eomee_ccsd_singlet` / `ipccsd` / `eaccsd`,
+`cc.UCCSD.eomsf_ccsd`). CIS(D) is `CISD<RHF>` (PySCF has no CIS(D) class). Nuclear Hessians are
 `Hessian<RHF|UHF|RKS|UKS|ROHF>` (`pyscf.hessian.rhf.Hessian` /
 `hessian.uhf.Hessian`; KS and ROHF differentiate `forces`). KS linear
 response is `TDA<RKS|UKS>` / `TDDFT<RKS|UKS>` (`pyscf.tdscf.rks` /

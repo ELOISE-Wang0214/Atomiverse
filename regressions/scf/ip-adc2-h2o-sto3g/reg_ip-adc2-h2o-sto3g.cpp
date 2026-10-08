@@ -66,7 +66,8 @@ int main() {
     if (!check("E_RHF [Ha]", rhf.energy(), kERhf, kTolE))
         return 1;
 
-    const cpu::scf::IPADC2Result adc = rhf.ip_adc2(/*n_states=*/1);
+    const cpu::scf::IPADC2Result adc =
+        cpu::scf::ADC<cpu::scf::RHF>{rhf}.ip_adc2(/*n_states=*/1);
     if (adc.energy_ev.size() != 1) {
         std::fprintf(stderr, "FAIL: ip_adc2 returned unexpected root count\n");
         return 1;

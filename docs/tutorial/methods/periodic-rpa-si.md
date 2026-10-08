@@ -17,7 +17,7 @@ assembly used by `GpwDft::mp2` / `periodic-ri-mp2-si` (Del Ben, Hutter,
 VandeVondele, *J. Chem. Theory Comput.* **8**, 4177 (2012)); the Poisson-per-pair
 foothold remains available with `mp2_ri = false`. Correlation is the **Furche
 plasmon formula** on the full Coulomb-only Casida spectrum — the GPW analogue
-of molecular `RHF::direct_rpa()` (`direct-rpa-h2-sto3g`). Total energy is the
+of molecular `DirectRPA<RHF>::run()` (`direct-rpa-h2-sto3g`). Total energy is the
 **dRPA@KS** sum \(E_{\mathrm{SCF}}+E_c\) (no EXX replacement; periodic HF
 remains blocked). Product deck: artificial sc-Si₂, \(a=5.43\) Å, DZVP-MOLOPT-GTH
 + GTH-PBE-q4, 30 Ry. Offline CP2K twin input ships at

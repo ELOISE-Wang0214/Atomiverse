@@ -10,8 +10,8 @@ Shares one SCF solver with [Kohn–Sham DFT](dft.md): the 2×2 product
 
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
-| RHF | ✓ | ✓ | `cpu::scf::RHF::run(Frame&)` / `run(const Frame&)` / `forces(Frame&)`. Also on `RHF`: `adc2`, `adc2x`, `ip_adc2`, `ea_adc2`, `direct_rpa`, `bse`, `gf2`, `eom_ea_ccsd(Frame&)`, `eom_ip_ccsd(Frame&)`, `eom_cc2(Frame&)`. Not members: `TDHF<RHF>::run`, `CISD<RHF>::run`, `G0W0<RHF>::run`. CUDA `cuda::scf::RHF` : `cuda::Driver<scf::Phase>` (fock, mix, diagonalize, density, check); device Fock/density/CDIIS; STO-3G s/p (l ≤ 1) native ERI+forces. PySCF energy: H₂/STO-3G on device; H₂O/6-31G on CPU (6-31G is not a device ERI kernel) |
-| UHF | ✓ | ○ | `UHF::run` / `forces`. `UHF::eom_sf_ccsd(Frame&, n_states)` stays on `UHF`. `SfTDA<UHF>::run` / `SfTDHF<UHF>::run` are not members |
+| RHF | ✓ | ✓ | `cpu::scf::RHF::run(Frame&)` / `run(const Frame&)` / `forces(Frame&)`. ADC, direct RPA, BSE, GF2, and EOM are not members. CUDA `cuda::scf::RHF` : `cuda::Driver<scf::Phase>` (fock, mix, diagonalize, density, check); device Fock/density/CDIIS; STO-3G s/p (l ≤ 1) native ERI+forces. PySCF energy: H₂/STO-3G on device; H₂O/6-31G on CPU (6-31G is not a device ERI kernel) |
+| UHF | ✓ | ○ | `UHF::run` / `forces`. `CCSD<UHF>::eom_sf_ccsd`, `SfTDA<UHF>::run`, and `SfTDHF<UHF>::run` are not members |
 | ROHF | ✓ | ○ | Guest–Saunders. `ROHF::run` / `forces`. Correlation is `MP2<ROHF>::run`, not a member |
 | GHF | ✓ | ○ | Real two-component. `GHF::run` / `forces` |
 | Complex / spinor HF | ○ | ○ | |
@@ -28,7 +28,7 @@ Shares one SCF solver with [Kohn–Sham DFT](dft.md): the 2×2 product
 - CUDA is a **restricted-HF engine**: no UHF/KS; forces outside l ≤ 1 throw —
   use `cpu::scf::RHF`.
 - ROHF: SOSCF / level shift still throw. GHF: `MP2` / `FCI` / soscf throw.
-- Post-HF, continuum solvent, and CPHF response are not `MeanFieldMethod` members. `MeanFieldMethod` SCF entries are `run(Frame&)` / `run(const Frame&)` / `forces(Frame&)`. Orbital stability, CIS/TDA, and EOM-EE-CCSD are not members of `RHF`: `Stability<RHF>::run()`, `TDA<RHF>::run(n_states)`, `CCSD<RHF>::eom_ee_ccsd(Frame&, n_states)`. Other entries: `MP2<Method>::run(Frame&)` / `forces(Frame&)`, `CCSD<Method>::run(Frame&)` / `ccsd_t(Frame&)` / `forces(Frame&)`, `WithSolvent<Method>::run(Frame&)` / `forces(Frame&)`, `Hessian<RHF>::run(Frame&)` / `Hessian<UHF>::run(Frame&)` / `Hessian<ROHF>::run(Frame&)`, `Polarizability<RHF>::run()`. `TDHF<RHF>::run` (`pyscf.tdscf.rhf.TDHF`), `CISD<RHF>::run` (CIS(D); not `pyscf.ci.cisd.CISD`), `G0W0<RHF>::run` (`pyscf.gw.gw_exact.GWExact`), `SfTDA<UHF>::run`, and `SfTDHF<UHF>::run` are not SCF members.
+- Post-HF, continuum solvent, and CPHF response are not `MeanFieldMethod` members. SCF entries are `run(Frame&)` / `run(const Frame&)` / `forces(Frame&)`. Beside that: `ADC<RHF>::adc2` / `adc2x` / `ip_adc2` / `ea_adc2`, `DirectRPA<RHF>::run`, `BSE<RHF>::run`, `GF2<RHF>::run`, `G0W0<RHF>::run`, `Stability<RHF>::run`, `TDA<RHF>::run`, `TDHF<RHF>::run`, `CISD<RHF>::run`, `CCSD<RHF>::eom_ee_ccsd` / `eom_ip_ccsd` / `eom_ea_ccsd`, `CC2<RHF>::eom_cc2`, `CCSD<UHF>::eom_sf_ccsd`, `SfTDA<UHF>::run`, `SfTDHF<UHF>::run`, `MP2<Method>::run`, `WithSolvent<Method>::run`, `Hessian<RHF|UHF|ROHF>::run`, `Polarizability<RHF>::run`.
 
 ## 2. Periodic Hartree–Fock
 

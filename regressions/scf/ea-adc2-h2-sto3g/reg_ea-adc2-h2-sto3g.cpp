@@ -64,7 +64,8 @@ int main() {
     if (!check("E_RHF [Ha]", rhf.energy(), kERhf, kTolE))
         return 1;
 
-    const cpu::scf::EAADC2Result ea = rhf.ea_adc2(/*n_states=*/1);
+    const cpu::scf::EAADC2Result ea =
+        cpu::scf::ADC<cpu::scf::RHF>{rhf}.ea_adc2(/*n_states=*/1);
     if (ea.energy_ev.size() != 1) {
         std::fprintf(stderr, "FAIL: ea_adc2 returned unexpected root count\n");
         return 1;

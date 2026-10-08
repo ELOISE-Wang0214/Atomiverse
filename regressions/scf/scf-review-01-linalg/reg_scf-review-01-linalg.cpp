@@ -7,7 +7,7 @@
 /// exercises the two physical paths that touch the hoisted primitives on
 /// H₂/STO-3G and H₂O/STO-3G and pins them to the cited offline oracle values:
 ///
-///   (1) direct-RPA correlation energy via `RHF::direct_rpa()`
+///   (1) direct-RPA correlation energy via `DirectRPA<RHF>::run()`
 ///       — (A−B)^{1/2}(A+B)(A−B)^{1/2} Casida reduction (`sym_power` +
 ///       `OrbitalHessian::direct_rpa`). Same literature value as the sibling
 ///       case regressions/scf/direct-rpa-h2-sto3g. Gate E_c ≤ 1e-12 Ha (the
@@ -85,7 +85,8 @@ bool run_drpa() {
     if (!check("E_RHF [Ha]", rhf.energy(), kERhfHa, kTolAux))
         return false;
 
-    const cpu::scf::DirectRPAResult rpa = rhf.direct_rpa();
+    const cpu::scf::DirectRPAResult rpa =
+        cpu::scf::DirectRPA<cpu::scf::RHF>{rhf}.run();
     if (rpa.omega_ha.size() != 1) {
         std::fprintf(stderr, "FAIL: expected 1 dRPA pole, got %zu\n",
                      rpa.omega_ha.size());

@@ -68,6 +68,7 @@ law += "Do not re-derive the algorithm from memory. Pin numbers come from tools/
 law += "DEBT FIRST: a wave closes one architecture-debt slug before any new capability. ";
 law += "Do not add a method, basis, or CUDA kernel on top of an open red row in es-architecture-debt.md that this slug touches. ";
 law += "SPLIT: one type, one job. MeanFieldMethod keeps SCF run/forces only. Post-HF, solvent, and response stay out of new methods on that class. ";
+law += "CLOSED, do not re-open: es-cuda-rhf-driver (cuda::scf::RHF is cuda::Driver<scf::Phase>); the mean-field split (ADC, DirectRPA, BSE, GF2, G0W0, CISD, TDA/TDHF, Stability, CCSD EOM-EE/IP/EA, CC2 EOM, CCSD EOM-SF, SfTDA/SfTDHF, Hessian, Polarizability, WithSolvent, MP2 are separate types). ghost_atoms stays a method member. ";
 law += "CUDA-ONLY: after setup/build, the production step (Fock, density, DIIS, diagonalize, forces) runs on device. ";
 law += "Host code may pack geometry, basis, and sizes once at setup. It must not compute ERIs, the Fock matrix, the density, or the nuclear forces for a path the device claims. ";
 law += "No host-fill-then-upload fallback for a covered angular momentum. If the kernel does not exist, throw and name the missing kernel. Do not call cpu:: native integrals from the step loop. ";
@@ -100,7 +101,7 @@ while wave < max_waves {
     census_prompt += "You are GapCensus for Gaussian HF, wave " + wave.to_string() + ". ";
     census_prompt += "Use grep and read_file. Read docs/roadmap/hartree-fock.md, .claude/notes/es-architecture-debt.md, include/atomiverse/cpu/scf/rhf.h, include/atomiverse/cuda/scf/rhf.cuh. ";
     census_prompt += "Find PySCF sources with a filesystem search under " + pyscf_root + " (pyscf/scf, pyscf/df, pyscf/hessian). Name the files you actually opened in pyscf_files. ";
-    census_prompt += "Pick ONE slug. Prefer kind=debt (es-cuda-rhf-driver, MeanFieldMethod split, HF dynamic_cast, ghost_atoms) over kind=capability (missing PySCF feature: k-point HF, CUDA l>1, UHF on device, incremental Fock, x2c forces, ROHF CPHF). ";
+    census_prompt += "Pick ONE open slug. Do not rename or re-run a closed slug (es-cuda-rhf-driver, es-mean-field-split, mean-field-method-split). Prefer a remaining open HF row in es-architecture-debt.md over kind=capability (k-point HF, CUDA l>1, UHF on device, incremental Fock, x2c forces, ROHF CPHF). ghost_atoms is a named method member; do not move it. ";
     census_prompt += "A foothold kernel is not a closed capability. gaps_remaining is the count of open HF debt rows plus roadmap ○ cells you saw. ";
     if slug_arg != "" {
         census_prompt += "The operator forced slug " + slug_arg + ". Use that slug. ";

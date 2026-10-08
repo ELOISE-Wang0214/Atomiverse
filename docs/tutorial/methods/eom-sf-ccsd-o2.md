@@ -5,13 +5,13 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `eom-sf-ccsd-o2` |
-| Public API | `cpu::scf::UHF::eom_sf_ccsd(Frame&, n_states, guess*)` → `EOMSFCCSDResult` |
+| Public API | `cpu::scf::CCSD<UHF>::eom_sf_ccsd(Frame&, n_states, guess*)` → `EOMSFCCSDResult` |
 | Roadmap | [Excited states §3 EOM-CC / SF](../../roadmap/excited-states.md) |
 
 ## Summary
 
 Open-shell **EOM-SF-CCSD** spin-flip excitation energies on a high-spin UHF →
-UCCSD reference. Product surface is `UHF::eom_sf_ccsd(frame, n_states, guess)`:
+UCCSD reference. Product surface is `CCSD<UHF>::eom_sf_ccsd(frame, n_states, guess)`:
 the call drives unrestricted SCF (optional density guess), unrestricted
 spin-orbital CCSD, then equation-of-motion spin-flip on the
 similarity-transformed Hamiltonian, returning majority-channel SF roots
@@ -102,7 +102,7 @@ uhf.tol = 1e-12;
 uhf.max_iter = 200;
 
 const cpu::scf::EOMSFCCSDResult eom =
-    uhf.eom_sf_ccsd(frame, /*n_states=*/5, &guess);
+    cpu::scf::CCSD<cpu::scf::UHF>{uhf}.eom_sf_ccsd(frame, /*n_states=*/5, &guess);
 // eom.energy_ev[k] [eV]; eom.e_ccsd_ha, eom.e_corr_ha [Ha];
 // eom.ccsd_iterations; eom.converged
 ```
@@ -110,7 +110,7 @@ const cpu::scf::EOMSFCCSDResult eom =
 `EOMSFCCSDResult` (`eom_sf_ccsd.h`): `energy_ev`
 (ascending SF roots [eV]), `e_corr_ha`, `e_ccsd_ha` [Hartree],
 `ccsd_iterations`, `converged`. `eom_sf_ccsd_energies` is private.
-is private (`internal/eom_sf_ccsd_pack.h`). `UHF::eom_sf_ccsd` forces ERI/SCF as
+is private (`internal/eom_sf_ccsd_pack.h`). `CCSD<UHF>::eom_sf_ccsd` forces ERI/SCF as
 needed and refuses a non-converged reference (no silent fallback).
 
 **Build / run regression** (CPU login; modules as in AGENTS.md):
@@ -132,7 +132,7 @@ bash -lc '
 | Path | Role |
 | ---- | ---- |
 | `eom_sf_ccsd.h` | Public `EOMSFCCSDResult` |
-| `uhf.h` | `UHF::eom_sf_ccsd(Frame&, n_states, guess*)` |
+| `post_hf.h` | `CCSD<UHF>::eom_sf_ccsd(Frame&, n_states, guess*)` |
 | `eom_sf_ccsd_pack.h` | Private pack entry |
 | `src/cpu/scf/eom_ee_ccsd.cpp` | Shared EOM infrastructure; SF selection + pack |
 | `reg_eom-sf-ccsd-o2.cpp` | E2E consumer |
@@ -223,8 +223,7 @@ required on this case (\(r=3.12\)).
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Roadmap: `docs/roadmap/excited-states.md` (§3 Equation-of-Motion Coupled Cluster);
   ground-state CC: `docs/roadmap/post-hf.md` (§3)
-- Public API: `eom_sf_ccsd.h`,
-  `uhf.h`
+- Public API: `eom_sf_ccsd.h`, `post_hf.h` (`CCSD<UHF>::eom_sf_ccsd`)
 - Related: SF-TDA foothold [`spin-flip-tda-o2.md`](spin-flip-tda-o2.md);
   closed-shell EOM-EE [`eom-ee-ccsd.md`](eom-ee-ccsd.md)
 - A. I. Krylov, *Chem. Phys. Lett.* **338**, 375 (2001).

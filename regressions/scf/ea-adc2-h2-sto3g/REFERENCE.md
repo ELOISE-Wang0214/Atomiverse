@@ -1,7 +1,7 @@
 # H2 EA-ADC(2)/STO-3G — electron-attachment energy pin
 
 Closed-shell **strict EA-ADC(2)** electron attachment (1p / 2p–1h manifold) for
-the lowest root of H₂ / STO-3G. Product API: `RHF::ea_adc2(n_states)` after
+the lowest root of H₂ / STO-3G. Product API: `ADC<RHF>::ea_adc2(n_states)` after
 `run(frame)`.
 
 Literature / theory:

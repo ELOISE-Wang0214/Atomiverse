@@ -27,7 +27,7 @@ cpu::scf::RHF rhf;
 rhf.basis = cpu::scf::BasisSet::STO3G;
 rhf.tol = 1e-12;
 rhf.run(frame);
-cpu::scf::DirectRPAResult rpa = rhf.direct_rpa();
+cpu::scf::DirectRPAResult rpa = cpu::scf::DirectRPA<cpu::scf::RHF>{rhf}.run();
 // rpa.e_corr, rpa.e_tot [Hartree]; rpa.omega_ha
 ```
 

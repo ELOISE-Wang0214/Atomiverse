@@ -1,7 +1,7 @@
 # H2CO ADC(2)/STO-3G — S1 excitation energy pin
 
 Closed-shell **strict ADC(2)** electronic excitation (singlet EE manifold) for
-the lowest root of formaldehyde / STO-3G. Product API: `RHF::adc2(n_states)`
+the lowest root of formaldehyde / STO-3G. Product API: `ADC<RHF>::adc2(n_states)`
 after `run(frame)`.
 
 Literature / theory:

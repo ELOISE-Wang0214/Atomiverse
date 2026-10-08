@@ -28,7 +28,7 @@ k-diagonal plasmon on PW-RI \((ia|jb)\)).
 
 **Level.** Closed-shell **direct RPA** correlation energy on Kohn–Sham (PBE)
 orbitals under periodic boundary conditions — the periodic GPW analogue of
-molecular `RHF::direct_rpa` / Γ `GpwDft::direct_rpa`. Not TDHF excitation RPA,
+molecular `DirectRPA<RHF>::run` / Γ `GpwDft::direct_rpa`. Not TDHF excitation RPA,
 not frequency-integrated stock CP2K RI-RPA with EXX total-energy assembly, not
 RPAX/SOSEX/ACFDT product paths.
 

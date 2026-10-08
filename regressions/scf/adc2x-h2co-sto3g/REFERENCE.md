@@ -2,7 +2,7 @@
 
 Closed-shell **extended ADC(2)-x** electronic excitation (singlet EE manifold)
 for the lowest root of formaldehyde / STO-3G. Product API:
-`RHF::adc2x(n_states)` after `run(frame)`.
+`ADC<RHF>::adc2x(n_states)` after `run(frame)`.
 
 Literature / theory:
 

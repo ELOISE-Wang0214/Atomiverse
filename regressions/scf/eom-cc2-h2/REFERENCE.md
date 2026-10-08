@@ -1,7 +1,7 @@
 # H2 EOM-CC2/STO-3G — singlet S1 excitation energy pin
 
 Closed-shell **EOM-CC2** on H₂ / STO-3G. Product API:
-`RHF::eom_cc2(frame, n_states)` (drives RHF + spin-orbital CC2 + EOM-EE
+`CC2<RHF>::eom_cc2(frame, n_states)` (drives RHF + spin-orbital CC2 + EOM-EE
 Jacobian at the CC2 amplitudes; singlet roots selected from the spin-orbital
 Jacobian).
 

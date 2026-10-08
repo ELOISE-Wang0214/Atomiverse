@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `ea-adc2-h2-sto3g` |
-| Public API | `cpu::scf::RHF::ea_adc2(n_states)` → `EAADC2Result` |
+| Public API | `cpu::scf::ADC<RHF>::ea_adc2(n_states)` → `EAADC2Result` |
 | Twin | PySCF `adc.ADC`, `method='adc(2)'`, `method_type='ea'` |
 | Roadmap | `docs/roadmap/excited-states.md` (EA-ADC(2) energy ✓) |
 
@@ -76,7 +76,7 @@ rhf.tol = 1e-12;
 rhf.max_iter = 200;
 rhf.run(frame);
 
-const cpu::scf::EAADC2Result ea = rhf.ea_adc2(/*n_states=*/1);
+const cpu::scf::EAADC2Result ea = cpu::scf::ADC<cpu::scf::RHF>{rhf}.ea_adc2(/*n_states=*/1);
 // ea.energy_ev[0]  — EA0 [eV]
 // ea.e_corr_mp2_ha — MP2 E_corr [Ha] (diagnostic)
 ```
@@ -100,7 +100,7 @@ bash -lc '
 | Path | Role |
 | ---- | ---- |
 | `adc.h` | `EAADC2Result` public result type |
-| `rhf.h` | `RHF::ea_adc2` declaration |
+| `adc.h` | `ADC<RHF>::ea_adc2` |
 | `src/cpu/scf/adc.cpp` | EA ISR \(M_{ab}\), 2p–1h matvec Davidson, MP2 \(t_2\) |
 | `reg_ea-adc2-h2-sto3g.cpp` | product gate |
 
@@ -194,7 +194,7 @@ EOM-EA-CCSD twins is invalid for the 10× gate.
 - Regression consumer:
   `reg_ea-adc2-h2-sto3g.cpp`
 - Public API: `adc.h`,
-  `rhf.h` (`RHF::ea_adc2`)
+  `adc.h` (`ADC<RHF>::ea_adc2`)
 - Implementation: `src/cpu/scf/adc.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Related EE pin: `docs/tutorial/methods/adc2-h2co-sto3g.md`

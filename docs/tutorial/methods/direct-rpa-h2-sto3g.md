@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `direct-rpa-h2-sto3g` |
-| Public API | `cpu::scf::RHF::direct_rpa()` → `DirectRPAResult` |
+| Public API | `cpu::scf::DirectRPA<RHF>::run()` → `DirectRPAResult` |
 | Roadmap | [excited-states.md](../../roadmap/excited-states.md) § Direct RPA |
 
 ## Summary
@@ -14,7 +14,7 @@ Closed-shell **direct RPA (dRPA)** correlation energy on a converged **RHF**
 reference: Coulomb-only Casida \(A,B\) (\(\alpha_{\mathrm{hf}}=0\)) and the
 **Furche plasmon formula** on the full dRPA spectrum. Primary observable is
 \(E_{\mathrm{c}}^{\mathrm{dRPA}}\) [Ha]; total energy and poles are reported
-for gates. Public path is `RHF::run(frame)` then `RHF::direct_rpa()` — no
+for gates. Public path is `RHF::run(frame)` then `DirectRPA<RHF>::run()` — no
 `*Config` bag, no factory. Regression binary: `reg_direct-rpa-h2-sto3g` under
 `direct-rpa-h2-sto3g`. Twin is the exact MO-ERI plasmon rebuild
 on PySCF 2.14.0 RHF orbitals (not stock DF + Legendre `gw.rpa.RPA`). Same dRPA
@@ -70,8 +70,8 @@ CUDA.
 
 ## Implementation
 
-Frame in → RHF members → `run` → post-SCF `direct_rpa()`. Headers:
-`rhf.h`, `rpa.h`; impl `src/cpu/scf/rpa.cpp`.
+Frame in → `RHF::run` → `DirectRPA<RHF>::run`. Headers:
+`rpa.h`; impl `src/cpu/scf/rpa.cpp`.
 
 ```cpp
 #include "atomiverse/cpu/frame/frame.h"
@@ -89,7 +89,7 @@ rhf.tol = 1e-12;
 rhf.max_iter = 100;
 rhf.run(f);
 
-cpu::scf::DirectRPAResult rpa = rhf.direct_rpa();
+cpu::scf::DirectRPAResult rpa = cpu::scf::DirectRPA<cpu::scf::RHF>{rhf}.run();
 // rpa.e_corr, rpa.e_tot [Hartree]; rpa.omega_ha; rpa.tr_A
 ```
 

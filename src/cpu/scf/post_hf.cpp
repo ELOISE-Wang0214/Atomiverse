@@ -16,7 +16,11 @@
 #include "atomiverse/cpu/scf/internal/ccsd_gradient.h"
 #include "atomiverse/cpu/scf/internal/ccsd_pack.h"
 #include "atomiverse/cpu/scf/internal/dispersion.h"
+#include "atomiverse/cpu/scf/internal/eom_cc2_pack.h"
+#include "atomiverse/cpu/scf/internal/eom_ea_ccsd_pack.h"
 #include "atomiverse/cpu/scf/internal/eom_ee_ccsd_pack.h"
+#include "atomiverse/cpu/scf/internal/eom_ip_ccsd_pack.h"
+#include "atomiverse/cpu/scf/internal/eom_sf_ccsd_pack.h"
 #include "atomiverse/cpu/scf/internal/fci_pack.h"
 #include "atomiverse/cpu/scf/internal/mp2_gradient.h"
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
@@ -358,6 +362,52 @@ EOMEECCSDResult CCSD<Method>::eom_ee_ccsd(Frame& frame, int n_states) {
 }
 
 template <typename Method>
+EOMIPCCSDResult CCSD<Method>::eom_ip_ccsd(Frame& frame, int n_states) {
+    Method& mf = *mf_;
+    refuse_ks(mf.method_, "CCSD::eom_ip_ccsd");
+    if (mf.spin_ != SpinType::Restricted)
+        throw std::invalid_argument(
+            "CCSD::eom_ip_ccsd: closed-shell RHF reference only — EOM-IP "
+            "is CCSD.ipccsd (PySCF), not a UHF / ROHF / GHF entry "
+            "(no fallback). Use RHF.");
+    drive_converged(mf, frame, nullptr, /*materialize_eri=*/true,
+                    "CCSD::eom_ip_ccsd");
+    return eom_ip_ccsd_energies(mf.integral_view_(), mf.determinant(),
+                                mf.energy(), n_states);
+}
+
+template <typename Method>
+EOMEACCSDResult CCSD<Method>::eom_ea_ccsd(Frame& frame, int n_states) {
+    Method& mf = *mf_;
+    refuse_ks(mf.method_, "CCSD::eom_ea_ccsd");
+    if (mf.spin_ != SpinType::Restricted)
+        throw std::invalid_argument(
+            "CCSD::eom_ea_ccsd: closed-shell RHF reference only — EOM-EA "
+            "is CCSD.eaccsd (PySCF), not a UHF / ROHF / GHF entry "
+            "(no fallback). Use RHF.");
+    drive_converged(mf, frame, nullptr, /*materialize_eri=*/true,
+                    "CCSD::eom_ea_ccsd");
+    return eom_ea_ccsd_energies(mf.integral_view_(), mf.determinant(),
+                                mf.energy(), n_states);
+}
+
+template <typename Method>
+EOMSFCCSDResult CCSD<Method>::eom_sf_ccsd(Frame& frame, int n_states,
+                                          const SCFInitialGuess* guess) {
+    Method& mf = *mf_;
+    refuse_ks(mf.method_, "CCSD::eom_sf_ccsd");
+    if (mf.spin_ == SpinType::Restricted)
+        throw std::invalid_argument(
+            "CCSD::eom_sf_ccsd: unrestricted UHF reference required "
+            "(PySCF cc.UCCSD.eomsf_ccsd). Closed-shell EE is "
+            "CCSD::eom_ee_ccsd.");
+    drive_converged(mf, frame, guess, /*materialize_eri=*/true,
+                    "CCSD::eom_sf_ccsd");
+    return eom_sf_ccsd_energies(mf.integral_view_(), mf.determinant(),
+                                mf.energy(), n_states);
+}
+
+template <typename Method>
 CCSDTResult CCSD<Method>::ccsd_t(Frame& frame) {
     Method& mf = *mf_;
     refuse_ks(mf.method_, "CCSD::ccsd_t");
@@ -383,6 +433,21 @@ CC2Result CC2<Method>::run(Frame& frame) {
             "is not implemented (no fallback). Use RHF.");
     drive_converged(mf, frame, nullptr, /*materialize_eri=*/true, "CC2::run");
     return cc2_energy(mf.integral_view_(), mf.determinant(), mf.energy());
+}
+
+template <typename Method>
+EOMCC2Result CC2<Method>::eom_cc2(Frame& frame, int n_states) {
+    Method& mf = *mf_;
+    refuse_ks(mf.method_, "CC2::eom_cc2");
+    if (mf.spin_ != SpinType::Restricted)
+        throw std::invalid_argument(
+            "CC2::eom_cc2: closed-shell RHF reference only — EOM-CC2 is "
+            "the cc2=True EOM-EE singlet (PySCF), not a UHF / ROHF / GHF "
+            "entry (no fallback). Use RHF.");
+    drive_converged(mf, frame, nullptr, /*materialize_eri=*/true,
+                    "CC2::eom_cc2");
+    return eom_cc2_energies(mf.integral_view_(), mf.determinant(), mf.energy(),
+                            n_states);
 }
 
 #define ATV_INST_POSTHF(T)                                                     \

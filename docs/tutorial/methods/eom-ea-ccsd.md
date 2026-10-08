@@ -5,14 +5,14 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `eom-ea-ccsd` |
-| Public API | `cpu::scf::RHF::eom_ea_ccsd(Frame&, n_states)` → `EOMEACCSDResult` |
+| Public API | `cpu::scf::CCSD<RHF>::eom_ea_ccsd(Frame&, n_states)` → `EOMEACCSDResult` |
 | Roadmap | [Excited states §3 EOM-CC](../../roadmap/excited-states.md) |
 
 ## Summary
 
 Closed-shell **EOM-EA-CCSD** electron-attachment energies on a converged
 RHF → CCSD reference. Product surface is
-`RHF::eom_ea_ccsd(frame, n_states)`: the call drives RHF (with ERI), spin-orbital
+`CCSD<RHF>::eom_ea_ccsd(frame, n_states)`: the call drives RHF (with ERI), spin-orbital
 Gauss–Stanton CCSD, then a dense non-symmetric eigen-solve of the EOM-EA
 Jacobian, returning unique attachment roots \(\omega = E(N+1) - E_{\mathrm{CCSD}}(N)\)
 [eV] (spin degeneracy de-duplicated) plus CCSD energetics [Ha]. Foothold case
@@ -85,7 +85,7 @@ rhf.basis = cpu::scf::BasisSet::STO3G;
 rhf.tol = 1e-12;
 rhf.max_iter = 100;
 
-const cpu::scf::EOMEACCSDResult eom = rhf.eom_ea_ccsd(frame, /*n_states=*/1);
+const cpu::scf::EOMEACCSDResult eom = cpu::scf::CCSD<cpu::scf::RHF>{rhf}.eom_ea_ccsd(frame, /*n_states=*/1);
 // eom.energy_ev[0] [eV]; eom.e_ccsd_ha, eom.e_corr_ha [Ha];
 // eom.ccsd_iterations; eom.converged
 ```
@@ -94,7 +94,7 @@ const cpu::scf::EOMEACCSDResult eom = rhf.eom_ea_ccsd(frame, /*n_states=*/1);
 (ascending unique attachment roots [eV]), `e_corr_ha`, `e_ccsd_ha` [Hartree],
 `ccsd_iterations`, `converged`. Pack-level
 `eom_ea_ccsd_energies` is private engine code.
-(`internal/eom_ea_ccsd_pack.h`). `RHF::eom_ea_ccsd` forces `compute_eri`, runs
+(`internal/eom_ea_ccsd_pack.h`). `CCSD<RHF>::eom_ea_ccsd` forces `compute_eri`, runs
 SCF, then refuses a non-converged reference (no silent fallback).
 
 **Build / run regression** (CPU login; modules as in AGENTS.md):
@@ -116,7 +116,7 @@ bash -lc '
 | Path | Role |
 | ---- | ---- |
 | `eom_ea_ccsd.h` | Public `EOMEACCSDResult` |
-| `rhf.h` | `RHF::eom_ea_ccsd(Frame&, n_states)` |
+| `post_hf.h` | `CCSD<RHF>::eom_ea_ccsd(Frame&, n_states)` |
 | `eom_ea_ccsd_pack.h` | Private pack entry |
 | `src/cpu/scf/eom_ea_ccsd.cpp` | Intermediates, Jacobian, root de-dup |
 | `reg_eom-ea-ccsd.cpp` | E2E consumer |
@@ -201,7 +201,7 @@ required on this case.
 - Roadmap: `docs/roadmap/excited-states.md` (§3 Equation-of-Motion Coupled Cluster);
   ground-state CC: `docs/roadmap/post-hf.md` (§3)
 - Public API: `eom_ea_ccsd.h`,
-  `rhf.h`
+  `post_hf.h` (`CCSD<RHF>::eom_ea_ccsd`)
 - M. Nooijen & R. J. Bartlett, *Equation of motion coupled cluster method for
   electron attachment*, *J. Chem. Phys.* **102**, 3629 (1995).
   DOI [10.1063/1.468591](https://doi.org/10.1063/1.468591)

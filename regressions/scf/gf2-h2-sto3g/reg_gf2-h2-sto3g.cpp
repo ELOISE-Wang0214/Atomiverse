@@ -4,7 +4,7 @@
 /// Public-API consumer only. Geometry, basis, and oracle numbers are pinned
 /// in REFERENCE.md (PySCF 2.14.0 offline; no live import in ctest).
 ///
-/// Observable: HOMO–LUMO QP gap [eV] (and IP / EA) from `RHF::gf2()` —
+/// Observable: HOMO–LUMO QP gap [eV] (and IP / EA) from `GF2<RHF>::run()` —
 /// one-shot second-order Green's function (PySCF `agf2.RAGF2` one-shot twin).
 #include <cmath>
 #include <cstdio>
@@ -68,7 +68,7 @@ int main() {
     if (!check("E_RHF [Ha]", rhf.energy(), kERhfHa, kTolEHa))
         return 1;
 
-    const cpu::scf::GF2Result gf = rhf.gf2();
+    const cpu::scf::GF2Result gf = cpu::scf::GF2<cpu::scf::RHF>{rhf}.run();
     if (!gf.converged) {
         std::fprintf(stderr,
                      "FAIL: GF2 Dyson spectrum did not yield HOMO/LUMO\n");

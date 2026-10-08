@@ -5,13 +5,13 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `eom-cc2-h2` |
-| Public API | `cpu::scf::RHF::eom_cc2(Frame&, n_states)` → `EOMCC2Result` |
+| Public API | `cpu::scf::CC2<RHF>::eom_cc2(Frame&, n_states)` → `EOMCC2Result` |
 | Roadmap | [Excited states §3 EOM-CC](../../roadmap/excited-states.md) |
 
 ## Summary
 
 Closed-shell **EOM-CC2** singlet electronic excitation energies on a converged
-RHF → CC2 reference. Product surface is `RHF::eom_cc2(frame, n_states)`: the
+RHF → CC2 reference. Product surface is `CC2<RHF>::eom_cc2(frame, n_states)`: the
 call drives RHF (with ERI), spin-orbital Christiansen–Koch–Jørgensen CC2
 amplitudes, then a dense non-symmetric eigen-solve of the EOM-EE Jacobian
 **evaluated at those CC2 \(T_1/T_2\)** (same right-hand \(\sigma\) as
@@ -87,7 +87,7 @@ rhf.basis = cpu::scf::BasisSet::STO3G;
 rhf.tol = 1e-12;
 rhf.max_iter = 100;
 
-const cpu::scf::EOMCC2Result eom = rhf.eom_cc2(frame, /*n_states=*/1);
+const cpu::scf::EOMCC2Result eom = cpu::scf::CC2<cpu::scf::RHF>{rhf}.eom_cc2(frame, /*n_states=*/1);
 // eom.energy_ev[0] [eV]; eom.e_cc2_ha, eom.e_corr_ha [Ha];
 // eom.cc2_iterations; eom.converged
 ```
@@ -96,7 +96,7 @@ const cpu::scf::EOMCC2Result eom = rhf.eom_cc2(frame, /*n_states=*/1);
 (ascending singlets [eV]), `e_corr_ha`, `e_cc2_ha` [Hartree],
 `cc2_iterations`, `converged`. Pack-level
 `eom_cc2_energies` is private engine code.
-(`internal/eom_cc2_pack.h`). `RHF::eom_cc2` forces ERI, runs SCF + CC2, then
+(`internal/eom_cc2_pack.h`). `CC2<RHF>::eom_cc2` forces ERI, runs SCF + CC2, then
 refuses a non-converged reference (no silent fallback). Implementation reuses
 the EOM-EE Jacobian path in `src/cpu/scf/eom_ee_ccsd.cpp` with CC2 amplitudes
 from `ccsd_solve(..., cc2=true)`.
@@ -120,7 +120,7 @@ bash -lc '
 | Path | Role |
 | ---- | ---- |
 | `eom_cc2.h` | Public `EOMCC2Result` |
-| `rhf.h` | `RHF::eom_cc2(Frame&, n_states)` |
+| `post_hf.h` | `CC2<RHF>::eom_cc2(Frame&, n_states)` |
 | `eom_cc2_pack.h` | Private pack entry |
 | `src/cpu/scf/eom_ee_ccsd.cpp` | CC2 amplitudes + EE Jacobian / singlet select |
 | `reg_eom-cc2-h2.cpp` | E2E consumer |
@@ -208,8 +208,7 @@ required on this case.
   ground-state CC2: `docs/roadmap/post-hf.md` (§3), handbook
   [cc2-h2-sto3g](cc2-h2-sto3g.md)
 - Related handbook: [eom-ee-ccsd](eom-ee-ccsd.md)
-- Public API: `eom_cc2.h`,
-  `rhf.h`
+- Public API: `eom_cc2.h`, `post_hf.h` (`CC2<RHF>::eom_cc2`)
 - O. Christiansen, H. Koch, P. Jørgensen, *The second-order approximate
   coupled cluster singles and doubles model CC2*, *Chem. Phys. Lett.*
   **243**, 409 (1995). DOI

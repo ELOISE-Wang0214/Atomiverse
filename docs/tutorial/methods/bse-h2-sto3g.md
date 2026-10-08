@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `bse-h2-sto3g` |
-| Public API | `cpu::scf::RHF::bse(n_states, tda)` → `BSEResult` |
+| Public API | `cpu::scf::BSE<RHF>::run(n_states, tda)` → `BSEResult` |
 | Roadmap | [excited-states.md](../../roadmap/excited-states.md) § BSE@G0W0 |
 
 ## Summary
@@ -14,7 +14,7 @@ Closed-shell **Bethe–Salpeter equation (BSE)** on **spectral G0W0**
 quasiparticle poles of a converged **RHF** reference. Static **direct-RPA**
 screened Coulomb \(W\) is built from exact 4-centre MO ERIs (no density
 fitting). Primary observable: lowest singlet excitation **S1 [eV]**. Public
-path is `RHF::run(frame)` then `RHF::bse(n_states, tda)` — no `*Config` bag, no
+path is `RHF::run(frame)` then `BSE<RHF>::run(n_states, tda)` — no `*Config` bag, no
 factory. Regression binary: `reg_bse-h2-sto3g` under
 `bse-h2-sto3g`. Twin is PySCF 2.14.0 exact-ERI + spectral
 G0W0 BSE (not the DF-only stock `pyscf.gw.bse.BSE(gw.GW(...))` path). This is
@@ -71,8 +71,8 @@ triplet / SF-BSE; TDDFT/TDHF (different kernels); CUDA.
 
 ## Implementation
 
-Frame in → RHF members → `run` → post-SCF `bse()`. Headers:
-`rhf.h`, `bse.h`, `g0w0.h`; consumer includes
+Frame in → `RHF::run` → `BSE<RHF>::run`. Headers:
+`bse.h`, `g0w0.h`; consumer includes
 `methods.h`.
 
 ```cpp
@@ -91,7 +91,7 @@ rhf.tol = 1e-12;
 rhf.max_iter = 100;
 rhf.run(f);
 
-cpu::scf::BSEResult bse = rhf.bse(/*n_states=*/1, /*tda=*/false);
+cpu::scf::BSEResult bse = cpu::scf::BSE<cpu::scf::RHF>{rhf}.run(/*n_states=*/1, /*tda=*/false);
 // bse.energy_ev[0]  // S1 [eV]
 // bse.gw.gap_ev     // underlying G0W0 QP gap [eV]
 // bse.tda, bse.channel, bse.gw.converged

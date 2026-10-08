@@ -1,7 +1,7 @@
 # O₂ EOM-SF-CCSD/STO-3G — spin-flip excitation energies
 
 Open-shell **EOM-SF-CCSD** on triplet O₂ / STO-3G. Product API:
-`UHF::eom_sf_ccsd(frame, n_states, guess)` (drives high-spin UHF + UCCSD +
+`CCSD<UHF>::eom_sf_ccsd(frame, n_states, guess)` (drives high-spin UHF + UCCSD +
 spin-flip EOM; ROHF density warm-start for the multi-minima UHF surface).
 
 Literature / theory:

@@ -1,7 +1,7 @@
 # H2O EOM-IP-CCSD/STO-3G — lowest ionization potential pin
 
 Closed-shell **EOM-IP-CCSD** on H₂O / STO-3G. Product API:
-`RHF::eom_ip_ccsd(frame, n_states)` (drives RHF + spin-orbital CCSD + EOM-IP;
+`CCSD<RHF>::eom_ip_ccsd(frame, n_states)` (drives RHF + spin-orbital CCSD + EOM-IP;
 unique ionization roots from the spin-orbital Jacobian, spin degeneracy
 de-duplicated).
 

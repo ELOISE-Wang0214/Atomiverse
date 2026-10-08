@@ -194,8 +194,7 @@ required on this case.
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - Roadmap: `docs/roadmap/excited-states.md` (§3 Equation-of-Motion Coupled Cluster);
   ground-state CC: `docs/roadmap/post-hf.md` (§3)
-- Public API: `eom_ee_ccsd.h`,
-  `rhf.h`
+- Public API: `eom_ee_ccsd.h`, `post_hf.h` (`CCSD<RHF>::eom_ee_ccsd`)
 - J. F. Stanton & R. J. Bartlett, *J. Chem. Phys.* **98**, 7029 (1993).
   DOI [10.1063/1.464746](https://doi.org/10.1063/1.464746)
 - Z. Wang, Z. Tu & F. Wang, *J. Chem. Theory Comput.* **10**, 5567 (2014)

@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `adc2x-h2co-sto3g` |
-| Public API | `cpu::scf::RHF::adc2x(n_states)` → `ADC2Result` |
+| Public API | `cpu::scf::ADC<RHF>::adc2x(n_states)` → `ADC2Result` |
 | Twin | PySCF `adc.ADC`, `method='adc(2)-x'`, `method_type='ee'` |
 
 ## Summary
@@ -71,7 +71,7 @@ rhf.tol = 1e-12;
 rhf.max_iter = 200;
 rhf.run(frame);
 
-const cpu::scf::ADC2Result adc = rhf.adc2x(/*n_states=*/1);
+const cpu::scf::ADC2Result adc = cpu::scf::ADC<cpu::scf::RHF>{rhf}.adc2x(/*n_states=*/1);
 // adc.energy_ev[0]  — S1 [eV]
 // adc.e_corr_mp2_ha — MP2 E_corr [Ha] (diagnostic)
 ```
@@ -95,7 +95,7 @@ bash -lc '
 | Path | Role |
 | ---- | ---- |
 | `adc.h` | `ADC2Result` public result type |
-| `rhf.h` | `RHF::adc2x` declaration |
+| `adc.h` | `ADC<RHF>::adc2x` |
 | `src/cpu/scf/adc.cpp` | ISR intermediates (extended doubles), matvec Davidson, MP2 \(t_2\) |
 | `reg_adc2x-h2co-sto3g.cpp` | product gate |
 
@@ -185,7 +185,7 @@ CIS(D) twins is invalid for the 10× gate.
 - Regression consumer:
   `reg_adc2x-h2co-sto3g.cpp`
 - Public API: `adc.h`,
-  `rhf.h` (`RHF::adc2x`)
+  `adc.h` (`ADC<RHF>::adc2x`)
 - Implementation: `src/cpu/scf/adc.cpp`
 - Strict ADC(2) sibling page: [adc2-h2co-sto3g](adc2-h2co-sto3g.md)
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`

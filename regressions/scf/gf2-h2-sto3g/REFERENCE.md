@@ -25,7 +25,7 @@ cpu::scf::RHF rhf;
 rhf.basis = cpu::scf::BasisSet::STO3G;
 rhf.tol = 1e-12;
 rhf.run(frame);
-cpu::scf::GF2Result gf = rhf.gf2();
+cpu::scf::GF2Result gf = cpu::scf::GF2<cpu::scf::RHF>{rhf}.run();
 // gf.gap_ev, gf.ip_ev, gf.ea_ev, gf.qp_energy_ha, gf.e_corr
 ```
 

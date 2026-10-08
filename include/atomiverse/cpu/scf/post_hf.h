@@ -4,8 +4,9 @@
 /// Boundary transplanted from PySCF (not re-derived):
 /// - `pyscf.mp.mp2.MP2(mf)` / `kernel` — correlation on a mean-field reference
 /// - `pyscf.cc.ccsd.CCSD` / `ccsd_t` — CCSD and the (T) correction live on the
-///   CC object, not on the SCF class. `eomee_ccsd_singlet` is
-///   `CCSD.eomee_ccsd_singlet`, which constructs `EOMEESinglet` — not `RHF`.
+///   CC object, not on the SCF class. `eomee_ccsd_singlet`, `ipccsd`,
+///   `eaccsd`, and `eomsf_ccsd` are methods of that CC object — not of
+///   `RHF` / `UHF`. EOM-CC2 is `CC2::eom_cc2`.
 /// - `pyscf.mcscf.CASCI` / `CASSCF(mf, ncas, nelecas)` and `mrpt.NEVPT(mc)`
 ///
 /// Each type holds a reference to a concrete mean-field method (`RHF`, `UHF`,
@@ -18,7 +19,11 @@
 #include "atomiverse/cpu/scf/casscf.h"
 #include "atomiverse/cpu/scf/cc2.h"
 #include "atomiverse/cpu/scf/ccsd.h"
+#include "atomiverse/cpu/scf/eom_cc2.h"
+#include "atomiverse/cpu/scf/eom_ea_ccsd.h"
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
+#include "atomiverse/cpu/scf/eom_ip_ccsd.h"
+#include "atomiverse/cpu/scf/eom_sf_ccsd.h"
 #include "atomiverse/cpu/scf/fci.h"
 #include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/mp2.h"
@@ -205,6 +210,37 @@ class CCSD {
     ///         virtuals, a non-converged SCF or CCSD, or n_states out of range.
     EOMEECCSDResult eom_ee_ccsd(Frame& frame, int n_states = 1);
 
+    /// @brief EOM-IP-CCSD ionization potentials. Mirrors
+    ///        `pyscf.cc.ccsd.CCSD.ipccsd` (`eom_gccsd.EOMIP`). Not a member
+    ///        of `RHF`.
+    /// @param frame Geometry [Å]. Drives a fresh SCF, then CCSD, then EOM.
+    /// @param n_states Number of lowest unique ionization roots (≥ 1).
+    /// @return Ionization ω [eV] plus CCSD energetics [Hartree].
+    /// @throws std::invalid_argument on a non-restricted reference, a
+    ///         non-converged SCF or CCSD, or n_states out of range.
+    EOMIPCCSDResult eom_ip_ccsd(Frame& frame, int n_states = 1);
+
+    /// @brief EOM-EA-CCSD electron-attachment energies. Mirrors
+    ///        `pyscf.cc.ccsd.CCSD.eaccsd` (`eom_gccsd.EOMEA`). Not a member
+    ///        of `RHF`.
+    /// @param frame Geometry [Å]. Drives a fresh SCF, then CCSD, then EOM.
+    /// @param n_states Number of lowest unique attachment roots (≥ 1).
+    /// @return Attachment ω [eV] plus CCSD energetics [Hartree].
+    /// @throws std::invalid_argument on a non-restricted reference, a
+    ///         non-converged SCF or CCSD, or n_states out of range.
+    EOMEACCSDResult eom_ea_ccsd(Frame& frame, int n_states = 1);
+
+    /// @brief EOM-SF-CCSD spin-flip excitations. Mirrors
+    ///        `pyscf.cc.uccsd.UCCSD.eomsf_ccsd`. Not a member of `UHF`.
+    /// @param frame Geometry [Å]. Drives a fresh UHF, then UCCSD, then SF-EOM.
+    /// @param n_states Number of lowest SF roots (≥ 1).
+    /// @param guess Optional density guess for the reference UHF.
+    /// @return SF excitation energies [eV] plus UCCSD energetics [Hartree].
+    /// @throws std::invalid_argument on a restricted reference, a
+    ///         non-converged SCF, or an empty SF manifold.
+    EOMSFCCSDResult eom_sf_ccsd(Frame& frame, int n_states = 1,
+                                const SCFInitialGuess* guess = nullptr);
+
   private:
     Method* mf_ = nullptr;
 };
@@ -217,6 +253,15 @@ class CC2 {
     /// @param frame Geometry [Å].
     /// @return CC2 correlation and total energy [Hartree].
     CC2Result run(Frame& frame);
+
+    /// @brief Singlet EOM-CC2. Mirrors PySCF `cc.RCCSD` with `cc2=True`
+    ///        followed by `eomee_ccsd_singlet`. Not a member of `RHF`.
+    /// @param frame Geometry [Å]. Drives a fresh SCF, then CC2, then EOM.
+    /// @param n_states Number of lowest singlet roots (≥ 1).
+    /// @return Singlet ω [eV] plus CC2 energetics [Hartree].
+    /// @throws std::invalid_argument on a non-restricted reference, a
+    ///         non-converged SCF or CC2, or n_states out of range.
+    EOMCC2Result eom_cc2(Frame& frame, int n_states = 1);
 
   private:
     Method* mf_ = nullptr;

@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `sf-tddft-o2` |
-| Public API | `cpu::scf::UHF::sf_tddft(n_states)` after `UHF::run` |
+| Public API | `cpu::scf::SfTDHF<UHF>::run(n_states)` after `UHF::run` |
 | Roadmap | [Excited states](../../roadmap/excited-states.md) — Spin-flip TDDFT ✓ |
 
 ## Summary
@@ -114,7 +114,7 @@ uhf.tol = 1e-12;
 uhf.max_iter = 200;
 uhf.run(frame, &guess);
 
-cpu::scf::ExcitedStatesResult es = uhf.sf_tddft(/*n_states=*/5);
+cpu::scf::ExcitedStatesResult es = cpu::scf::SfTDHF<cpu::scf::UHF>{uhf}.run(/*n_states=*/5);
 // es.energy_ev[i]  [eV];  es.tda == false;  es.alda == false
 ```
 
@@ -138,9 +138,9 @@ bash -lc '
 
 | Role | Path |
 | ---- | ---- |
-| Public API | `uhf.h` (`UHF::sf_tddft`) |
+| Public API | `tdhf.h` (`SfTDHF<UHF>::run`) |
 | Result type | `tdhf.h` (`ExcitedStatesResult`) |
-| Implementation | `src/cpu/scf/tdhf.cpp` (`UHF::sf_tddft`) |
+| Implementation | `src/cpu/scf/tdhf.cpp` (`SfTDHF<UHF>::run`) |
 | Offline pin | case `sf-tddft-o2` pin |
 | Oracle | PySCF oracle (never in ctest) |
 
@@ -212,7 +212,7 @@ Gate: \(r\le 10\) unless exempted — **within_10x = true**.
 - **Properties:** energies only on this API; no SF oscillator strengths
   (spin-forbidden), gradients, or NAC.
 - **Spectrum shift vs SF-TDA:** full \(B\) coupling reorders poles relative to
-  `UHF::sf_tda` on the same reference; do not mix pins across the two methods.
+  `SfTDA<UHF>::run` on the same reference; do not mix pins across the two methods.
 - **Speed debt:** \(r\approx 9.51\) passes the 10× gate but is near the ceiling
   on this micro-case; SCF/ERI cost dominates the twin comparison.
 - **Roadmap (open):** SF XC kernels, iterative solvers / larger bases, CUDA —

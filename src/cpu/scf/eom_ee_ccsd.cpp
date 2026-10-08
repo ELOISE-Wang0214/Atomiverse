@@ -28,8 +28,6 @@
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/scf/internal/ccsd_pack.h"
 #include "atomiverse/cpu/scf/internal/eom_ccsd_common.h"
-#include "atomiverse/cpu/scf/rhf.h"
-#include "atomiverse/cpu/scf/uhf.h"
 
 namespace ATV {
 namespace cpu {
@@ -610,19 +608,6 @@ EOMCC2Result eom_cc2_energies(const internal::IntegralView& ints,
     return out;
 }
 
-EOMCC2Result RHF::eom_cc2(Frame& frame, int n_states) {
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "RHF::eom_cc2: SCF reference did not converge — refusing to "
-            "compute EOM-CC2 on a non-stationary determinant (no fallback).");
-    return eom_cc2_energies(integral_view_(), determinant(), energy(),
-                            n_states);
-}
-
 EOMSFCCSDResult eom_sf_ccsd_energies(const internal::IntegralView& ints,
                                      const SlaterDeterminant& det,
                                      double e_scf_ha, int n_states, double tol,
@@ -744,21 +729,6 @@ EOMSFCCSDResult eom_sf_ccsd_energies(const internal::IntegralView& ints,
                                 * units::kHartreeInEv);
     out.converged = true;
     return out;
-}
-
-EOMSFCCSDResult UHF::eom_sf_ccsd(Frame& frame, int n_states,
-                                 const SCFInitialGuess* guess) {
-    const bool prev = compute_eri;
-    compute_eri = true;
-    run(frame, guess);
-    compute_eri = prev;
-    if (!this->converged())
-        throw std::invalid_argument(
-            "UHF::eom_sf_ccsd: SCF reference did not converge — refusing to "
-            "compute EOM-SF-CCSD on a non-stationary determinant (no "
-            "fallback).");
-    return eom_sf_ccsd_energies(integral_view_(), determinant(), energy(),
-                                n_states);
 }
 
 } // namespace scf

@@ -10,7 +10,7 @@ lowest singlet excitation **S1 [eV]**.
 This is the Green's-function excited-state foothold after
 `reg_g0w0-h2-sto3g`. It is **not** TDDFT/TDHF and **not** the DF-only stock
 `pyscf.gw.bse.BSE(gw.GW(...))` path (DF numbers are recorded as a near twin;
-the regression pins the exact-ERI + spectral-G0W0 twin of `RHF::bse()`).
+the regression pins the exact-ERI + spectral-G0W0 twin of `BSE<RHF>::run()`).
 
 Public API:
 
@@ -19,7 +19,7 @@ cpu::scf::RHF rhf;
 rhf.basis = cpu::scf::BasisSet::STO3G;
 rhf.tol = 1e-12;
 rhf.run(frame);
-cpu::scf::BSEResult bse = rhf.bse(/*n_states=*/1); // full BSE
+cpu::scf::BSEResult bse = cpu::scf::BSE<cpu::scf::RHF>{rhf}.run(/*n_states=*/1); // full BSE
 // bse.energy_ev[0]  // S1 [eV]
 // bse.gw.gap_ev     // underlying G0W0 QP gap [eV]
 ```
@@ -75,7 +75,7 @@ Interpreter: `~/work/.x86_64/bin/python` (pyscf **2.14.0**).
 ```
 
 (`bse` builds spectral G0W0 poles then the exact-ERI static-RPA BSE twin of
-`RHF::bse()`. Stock DF `pyscf.gw.bse.BSE` is also reported under
+`BSE<RHF>::run()`. Stock DF `pyscf.gw.bse.BSE` is also reported under
 `s1_df_ev` for comparison only.)
 
 ### Verbatim twin (exact-ERI BSE@spectral-G0W0)

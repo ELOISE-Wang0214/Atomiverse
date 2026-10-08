@@ -26,9 +26,9 @@ Response and many-body methods on HF/KS references. Legend:
 
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
-| ADC(2) | ✓ | ○ | EE on RHF |
-| ADC(2)-x | ✓ | ○ | |
-| IP-ADC(2) / EA-ADC(2) | ✓ | ○ | |
+| ADC(2) | ✓ | ○ | `ADC<RHF>::adc2` after `RHF::run` |
+| ADC(2)-x | ✓ | ○ | `ADC<RHF>::adc2x` |
+| IP-ADC(2) / EA-ADC(2) | ✓ | ○ | `ADC<RHF>::ip_adc2` / `ea_adc2` |
 | ADC(3) / CVS-ADC / ADC gradient | ○ | ○ | |
 
 ## 3. EOM coupled cluster
@@ -36,9 +36,9 @@ Response and many-body methods on HF/KS references. Legend:
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
 | EOM-EE-CCSD | ✓ | ○ | `CCSD<RHF>::eom_ee_ccsd` (singlet). Not an `RHF` member |
-| EOM-IP / EA-CCSD | ✓ | ○ | |
-| EOM-SF-CCSD | ✓ | ○ | On UHF+UCCSD |
-| EOM-CC2 | ✓ | ○ | |
+| EOM-IP / EA-CCSD | ✓ | ○ | `CCSD<RHF>::eom_ip_ccsd` / `eom_ea_ccsd` |
+| EOM-SF-CCSD | ✓ | ○ | `CCSD<UHF>::eom_sf_ccsd` |
+| EOM-CC2 | ✓ | ○ | `CC2<RHF>::eom_cc2` |
 | EOM-DIP / DEA / CVS / STEOM / gradients | ○ | ○ | |
 
 ## 4. Simplified / tight-binding response
@@ -54,9 +54,9 @@ Response and many-body methods on HF/KS references. Legend:
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
 | G0W0 (spectral) | ✓ | ○ | `G0W0<RHF>::run` (`pyscf.gw.gw_exact.GWExact`). Not an `RHF` member. Periodic GPW is `GpwDft::g0w0` |
-| Direct RPA | ✓ | ○ | `RHF::direct_rpa`; periodic on GPW |
-| BSE@G0W0 | ✓ | ○ | |
-| One-shot GF2 | ✓ | ○ | |
+| Direct RPA | ✓ | ○ | `DirectRPA<RHF>::run`; periodic on GPW |
+| BSE@G0W0 | ✓ | ○ | `BSE<RHF>::run` |
+| One-shot GF2 | ✓ | ○ | `GF2<RHF>::run` |
 | Self-consistent GW / RPAX / SOSEX | ○ | ○ | |
 
 Periodic MP2 / RPA / GW depth is tabulated under

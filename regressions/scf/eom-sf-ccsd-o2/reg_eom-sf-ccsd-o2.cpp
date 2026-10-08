@@ -78,7 +78,8 @@ int main() {
     uhf.max_iter = 200;
 
     const cpu::scf::EOMSFCCSDResult eom =
-        uhf.eom_sf_ccsd(frame, /*n_states=*/5, &guess);
+        cpu::scf::CCSD<cpu::scf::UHF>{uhf}.eom_sf_ccsd(frame, /*n_states=*/5,
+                                                       &guess);
     if (!uhf.converged()) {
         std::fprintf(stderr, "FAIL: UHF/STO-3G (O2) did not converge\n");
         return 1;

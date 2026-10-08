@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `adc2-h2co-sto3g` |
-| Public API | `cpu::scf::RHF::adc2(n_states)` → `ADC2Result` |
+| Public API | `cpu::scf::ADC<RHF>::adc2(n_states)` → `ADC2Result` |
 | Twin | PySCF `adc.ADC`, `method='adc(2)'`, `method_type='ee'` |
 
 ## Summary
@@ -14,7 +14,7 @@ Strict ADC(2) (algebraic diagrammatic construction through second order)
 computes electronic excitation energies on a closed-shell RHF reference via the
 intermediate-state representation of the polarization propagator. This page
 covers the formaldehyde / STO-3G product gate: the lowest singlet EE root
-(\(n\to\pi^*\)). Call path is Frame → `RHF` members → `run` → `adc2`; no public
+(\(n\to\pi^*\)). Call path is Frame → `RHF::run` → `ADC<RHF>::adc2`; no public
 `*Config` bag. Offline pin and fair-bench numbers live in
 case `adc2-h2co-sto3g` pin; the regression binary is
 `reg_adc2-h2co-sto3g`.
@@ -65,7 +65,7 @@ rhf.tol = 1e-12;
 rhf.max_iter = 200;
 rhf.run(frame);
 
-const cpu::scf::ADC2Result adc = rhf.adc2(/*n_states=*/1);
+const cpu::scf::ADC2Result adc = cpu::scf::ADC<cpu::scf::RHF>{rhf}.adc2(/*n_states=*/1);
 // adc.energy_ev[0]  — S1 [eV]
 // adc.e_corr_mp2_ha — MP2 E_corr [Ha] (diagnostic)
 ```
@@ -89,7 +89,7 @@ bash -lc '
 | Path | Role |
 | ---- | ---- |
 | `adc.h` | `ADC2Result` public result type |
-| `rhf.h` | `RHF::adc2` declaration |
+| `adc.h` | `ADC<RHF>::adc2` |
 | `src/cpu/scf/adc.cpp` | ISR intermediates, matvec Davidson, MP2 \(t_2\) |
 | `reg_adc2-h2co-sto3g.cpp` | product gate |
 
@@ -176,7 +176,7 @@ invalid for the 10× gate.
 - Regression consumer:
   `reg_adc2-h2co-sto3g.cpp`
 - Public API: `adc.h`,
-  `rhf.h` (`RHF::adc2`)
+  `adc.h` (`ADC<RHF>::adc2`)
 - Implementation: `src/cpu/scf/adc.cpp`
 - Oracle protocol: `docs/tutorial/appendix-pyscf-oracle.md`
 - J. Schirmer, *Phys. Rev. A* **26**, 2395 (1982).

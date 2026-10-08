@@ -7,7 +7,7 @@ GPW PBE** SCF, with the occupied–virtual MO repulsion integrals \((ia|jb)\)
 from the same product **RI-GPW** path as `periodic-ri-mp2-si` (Del Ben,
 Hutter, VandeVondele, *J. Chem. Theory Comput.* **8**, 4177 (2012)).
 
-Science matches molecular `RHF::direct_rpa` (Furche plasmon formula):
+Science matches molecular `DirectRPA<RHF>::run` (Furche plasmon formula):
 
 1. pair density \(\rho_{ia}=\psi_i\psi_a\) on the SCF density grid;
 2. plane-wave Coulomb intermediate → \((ia|jb)\);

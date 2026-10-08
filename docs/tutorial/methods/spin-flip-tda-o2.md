@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `spin-flip-tda-o2` |
-| Public API | `cpu::scf::UHF::sf_tda(n_states)` after `UHF::run` |
+| Public API | `cpu::scf::SfTDA<UHF>::run(n_states)` after `UHF::run` |
 | Roadmap | [Excited states](../../roadmap/excited-states.md) — Spin-flip TDA ✓ |
 
 ## Summary
@@ -92,7 +92,7 @@ uhf.tol = 1e-12;
 uhf.max_iter = 200;
 uhf.run(frame, &guess);
 
-cpu::scf::ExcitedStatesResult es = uhf.sf_tda(/*n_states=*/5);
+cpu::scf::ExcitedStatesResult es = cpu::scf::SfTDA<cpu::scf::UHF>{uhf}.run(/*n_states=*/5);
 // es.energy_ev[i]  [eV];  es.tda == true;  es.alda == false
 ```
 
@@ -116,9 +116,9 @@ bash -lc '
 
 | Role | Path |
 | ---- | ---- |
-| Public API | `uhf.h` (`UHF::sf_tda`) |
+| Public API | `tdhf.h` (`SfTDA<UHF>::run`) |
 | Result type | `tdhf.h` (`ExcitedStatesResult`) |
-| Implementation | `src/cpu/scf/tdhf.cpp` (`UHF::sf_tda`) |
+| Implementation | `src/cpu/scf/tdhf.cpp` (`SfTDA<UHF>::run`) |
 | Offline pin | case `spin-flip-tda-o2` pin |
 | Oracle | PySCF oracle (never in ctest) |
 

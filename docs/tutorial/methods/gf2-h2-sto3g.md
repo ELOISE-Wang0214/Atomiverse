@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gf2-h2-sto3g` |
-| Public API | `cpu::scf::RHF::gf2()` → `GF2Result` |
+| Public API | `cpu::scf::GF2<RHF>::run()` → `GF2Result` |
 | Roadmap | [excited-states.md](../../roadmap/excited-states.md) § many-body / GF2 |
 
 ## Summary
@@ -17,7 +17,7 @@ then the Dyson equation is solved **once** with the HF Fock matrix
 \(F = \mathrm{diag}(\varepsilon_{\mathrm{HF}})\). Primary observable is the
 **HOMO–LUMO QP gap [eV]** (also IP / EA); Galitskii–Migdal correlation energy is
 reported and equals canonical MP2 on a pure HF reference. Public path:
-`RHF::run(frame)` then `RHF::gf2()` — no `*Config` bag, no factory. Regression
+`RHF::run(frame)` then `GF2<RHF>::run()` — no `*Config` bag, no factory. Regression
 binary: `reg_gf2-h2-sto3g` under `gf2-h2-sto3g`. Twin is PySCF
 2.14.0 `agf2.RAGF2` **one-shot** path (SE from `init_gf()` →
 `se.get_greens_function(F_HF)`), not full self-consistent AGF2.
@@ -63,8 +63,8 @@ AGF2 (outer density/Fock loop — separate roadmap row); open-shell GF2; CUDA.
 
 ## Implementation
 
-Frame in → RHF members → `run` → post-SCF `gf2()`. Headers:
-`rhf.h`, `gf2.h`; impl `src/cpu/scf/gf2.cpp`.
+Frame in → `RHF::run` → `GF2<RHF>::run`. Headers:
+`gf2.h`; impl `src/cpu/scf/gf2.cpp`.
 
 ```cpp
 #include "atomiverse/cpu/frame/frame.h"
@@ -82,7 +82,7 @@ rhf.tol = 1e-12;
 rhf.max_iter = 100;
 rhf.run(f);
 
-cpu::scf::GF2Result gf = rhf.gf2();
+cpu::scf::GF2Result gf = cpu::scf::GF2<cpu::scf::RHF>{rhf}.run();
 // gf.gap_ev, gf.ip_ev, gf.ea_ev, gf.qp_energy_ha, gf.e_corr, gf.converged
 ```
 
