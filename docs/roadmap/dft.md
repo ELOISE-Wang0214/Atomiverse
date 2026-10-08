@@ -116,7 +116,7 @@ via **DIIS or OT**, unless noted.
 | Periodic correlated | ✓ | RI-MP2, RPA, GW (§4 table) |
 
 **Public shape:** `GpwDft` owns kinds and parameters as members and is Frame
-in / Frame out (`run(frame)` / `forces(frame)`); `GPWEvaluator(std::move(dft))`
+in / Frame out (`run(frame)` / `forces(frame)` / `stress(frame)`); `GPWEvaluator(std::move(dft))`
 binds it into an outer driver. Keep `local_pp_on_grid` consistent between energy and gradient
 calls.
 

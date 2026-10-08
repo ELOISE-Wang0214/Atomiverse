@@ -10,8 +10,8 @@
 ///   C. Product wiring: \(F(\mathrm{ts}+\mathrm{hirsh})-F(\mathrm{plain})\)
 ///      equals standalone `ts_pbe(…, volume_ratios)` from the SCF payload.
 ///   D. Free-atom forces differ from Hirshfeld-scaled (ratios move F).
-///   E. Stress fold: fixed-\(P\) Lagrangian at the SCF state rebuilds
-///      \(E_{\mathrm{disp}}\) with the same volume ratios (Hirshfeld σ shift).
+///   E. Stress fold: fixed-\(P\) Lagrangian (`GpwDft::stress`) rebuilds
+///      \(E_{\mathrm{disp}}\) with the SCF volume ratios (Hirshfeld σ shift).
 ///
 /// CP2K 2026.1 has no stock TS/MBD pair potential — oracle is libMBD /
 /// literature dual (same policy as `gpw-mbd-hirshfeld` / `gpw-ts-forces`).
@@ -36,7 +36,6 @@ int main() {
     using namespace ATV;
     using clock = std::chrono::steady_clock;
     using cpu::gpw::GaussianBasis;
-    using cpu::gpw::gpw_stress;
     using cpu::gpw::GpwDft;
     using cpu::gpw::GthPotential;
     using cpu::gpw::Kind;
@@ -187,7 +186,8 @@ int main() {
     }
 
     // ── C/D: product GPW SCF (ts+hirshfeld) force wiring ──────────────────
-    // One SCF only: stress gate reuses the same payload via at-state overload.
+    // The stress gate runs `GpwDft::stress` (its own SCF per method); TS is
+    // folded after the SCF, so every run lands on the same density.
     // CUTOFF 120 Ry (sibling TS-stress class) keeps wall under 60 s.
     cpu::Frame frame(6);
     for (int i = 0; i < 6; ++i) {
@@ -293,16 +293,27 @@ int main() {
                         res.volume_ratios[0]);
         }
 
-        // ── E: stress fold at fixed SCF state (no second full SCF) ────────
-        // σ(ts+hirsh) vs σ(ts free-atom) on the same P — electronic cancels;
-        // only E_disp rebuild under strain differs via volume ratios.
+        // ── E: stress fold on the same converged density ──────────────────
+        // σ(ts+hirsh) vs σ(ts free-atom): TS is folded post-SCF, so both
+        // stress SCFs converge to `res`'s P — electronic cancels; only the
+        // E_disp rebuild under strain differs via volume ratios.
         GpwDft cfg_h = make_cfg(true, true);
         GpwDft cfg_free = make_cfg(true, false);
         // One diagonal axis is enough to prove the fold moves σ.
         const std::array<bool, 3> axes = {true, false, false};
-        const auto sig_h = gpw_stress(frame, cfg_h, res, /*h=*/2e-3, axes);
-        const auto sig_free =
-            gpw_stress(frame, cfg_free, res, /*h=*/2e-3, axes);
+        cfg_h.stress_strain_h = 2e-3;
+        cfg_h.stress_axes = axes;
+        cfg_free.stress_strain_h = 2e-3;
+        cfg_free.stress_axes = axes;
+        // stress() writes kStress / kEnergy and returns eV/Å³; gates are in
+        // Ha/Bohr³.
+        cpu::Frame stress_frame = frame;
+        std::array<double, 6> sig_h = cfg_h.stress(stress_frame);
+        std::array<double, 6> sig_free = cfg_free.stress(stress_frame);
+        for (std::size_t k = 0; k < 6; ++k) {
+            sig_h[k] /= units::kHartreePerBohr3InEvPerAngstrom3;
+            sig_free[k] /= units::kHartreePerBohr3InEvPerAngstrom3;
+        }
         const double dsig = std::abs(sig_h[0] - sig_free[0]);
         if (!(dsig > 1e-12)) {
             std::fprintf(stderr,
@@ -318,7 +329,7 @@ int main() {
                 break;
             }
         }
-        std::printf("  stress fold (at-state): |σ_xx(h)-σ_xx(free)|=%.3e "
+        std::printf("  stress fold: |σ_xx(h)-σ_xx(free)|=%.3e "
                     "Ha/Bohr³  σ_xx(h)=%.6e\n",
                     dsig, sig_h[0]);
     }

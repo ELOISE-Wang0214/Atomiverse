@@ -72,7 +72,7 @@ int main() {
     method.max_iter = 50;
     method.xc = cpu::scf::XCType::LSDA;
 
-    const auto san = pw_stress(frame, method);
+    const auto san = method.stress(frame); // σ [eV/Å³]
     for (int v = 0; v < 6; ++v) {
         if (!std::isfinite(san[static_cast<std::size_t>(v)])) {
             std::printf("FAIL: non-finite analytic stress[%d]=%g\n", v,

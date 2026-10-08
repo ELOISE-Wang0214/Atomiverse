@@ -419,8 +419,8 @@ class TestPwForces:
     ) -> None:
         """HARD-CODED GOLDEN: the force path's SCF total energy is
         -13.85556302 Ry (same REFERENCE.md:46 line), read back in eV from
-        the frame metadata because ``last_result()`` is not published by the
-        analytic force path (``pw_forces_analytic`` leaves it untouched)."""
+        the frame metadata, which ``PW.forces`` writes from the same SCF its
+        forces are the gradient of."""
         frame, _ = lsda_forces
         assert frame.meta["energy"] == pytest.approx(
             _PIN_FORCE_PATH_ENERGY_EV, abs=_TOL_PIN_ENERGY_EV

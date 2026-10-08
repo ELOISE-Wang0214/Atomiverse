@@ -5,7 +5,7 @@
 /// backend's execution frame. The materializer belongs to the CPU `frame/`
 /// pillar and runs once per `run()` -- never inside a step loop.
 ///
-/// `from_molrs()` accepts only the schema-v2
+/// `from_molrs()` accepts only the canonical
 /// atoms/bonds/angles/dihedrals/impropers blocks and their declared columns.
 /// Unknown blocks/columns, wrong dtypes, and inconsistent row counts fail
 /// immediately. Required fields (positions, `atomic_number`) fail with a

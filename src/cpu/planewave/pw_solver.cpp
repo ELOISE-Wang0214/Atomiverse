@@ -50,6 +50,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ATV {
@@ -1029,15 +1030,48 @@ PWResult& PW::run(const cpu::Frame& frame) {
     return result_;
 }
 
-std::vector<std::array<double, 3>> pw_forces_analytic(const cpu::Frame& frame,
-                                                      const PW& method,
-                                                      double* energy_ry_out) {
-    return internal::pw_forces_analytic_impl(frame, method, energy_ry_out);
+PWResult& PW::run(Frame& frame) {
+    PWResult& res = run(std::as_const(frame));
+    frame.meta.get(kEnergy) = res.energy * qe_units::rydberg_to_ev;
+    return res;
 }
 
-std::array<double, 6> pw_stress(const cpu::Frame& frame, const PW& method,
-                                double* energy_ry_out) {
-    return internal::pw_stress_analytic_impl(frame, method, energy_ry_out);
+PWResult& PW::forces(Frame& frame) {
+    if (!built_)
+        build(frame);
+    PWResult scf{};
+    const std::vector<std::array<double, 3>> F =
+        internal::pw_forces_analytic_impl(frame, *this, &scf);
+    result_ = std::move(scf);
+    AccReal* __restrict fx = frame.span(kAtom_fx);
+    AccReal* __restrict fy = frame.span(kAtom_fy);
+    AccReal* __restrict fz = frame.span(kAtom_fz);
+    const int n = frame.nlocal();
+    for (int i = 0; i < n; ++i) {
+        const auto& f = F[static_cast<std::size_t>(i)];
+        fx[i] = static_cast<AccReal>(f[0]);
+        fy[i] = static_cast<AccReal>(f[1]);
+        fz[i] = static_cast<AccReal>(f[2]);
+    }
+    frame.meta.get(kEnergy) = result_.energy * qe_units::rydberg_to_ev;
+    return result_;
+}
+
+std::array<double, 6> PW::stress(Frame& frame) {
+    if (!built_)
+        build(frame);
+    PWResult scf{};
+    const std::array<double, 6> sigma =
+        internal::pw_stress_analytic_impl(frame, *this, &scf);
+    result_ = std::move(scf);
+    // kStress is the extensive virial W = σΩ [eV] (core/frame_schema.h).
+    const double vol = frame.box.volume();
+    auto& st = frame.meta.get(kStress);
+    for (int k = 0; k < 6; ++k)
+        st[static_cast<std::size_t>(k)] =
+            sigma[static_cast<std::size_t>(k)] * vol;
+    frame.meta.get(kEnergy) = result_.energy * qe_units::rydberg_to_ev;
+    return sigma;
 }
 
 std::array<double, 6> pw_stress_fd(const cpu::Frame& frame, const PW& method,

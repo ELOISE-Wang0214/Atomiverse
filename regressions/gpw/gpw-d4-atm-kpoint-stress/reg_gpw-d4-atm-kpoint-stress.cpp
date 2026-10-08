@@ -231,7 +231,7 @@ int main() {
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
-    eval.stress_strain_h = kStrainH;
+    eval.method().stress_strain_h = kStrainH;
 
     const auto t0 = clock::now();
     cpu::Evaluate driver;
@@ -300,8 +300,12 @@ int main() {
     };
 
     const auto t2 = clock::now();
-    const auto sfd = cpu::gpw::gpw_stress_fd(frame, make_cfg(true), kStrainH,
-                                             /*axes*/ {true, false, false});
+    // gpw_stress_fd returns eV/Å³; this twin compares in Ha/Bohr³.
+    const auto sfd_ev_a3 = cpu::gpw::gpw_stress_fd(
+        frame, make_cfg(true), kStrainH, /*axes*/ {true, false, false});
+    std::array<double, 6> sfd{};
+    for (std::size_t k = 0; k < 6; ++k)
+        sfd[k] = sfd_ev_a3[k] / units::kHartreePerBohr3InEvPerAngstrom3;
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -317,8 +321,14 @@ int main() {
     check(anfd_err <= kAnFdTol, "D multi-k analytic vs multi-SCF FD (xx)");
 
     // ── (4) Wiring: product σ(ATM) − σ(2b) vs standalone σ_ATM ───────────
-    const auto s_2b = cpu::gpw::gpw_stress(frame, make_cfg(false), kStrainH,
-                                           /*axes*/ {true, false, false});
+    cpu::gpw::GpwDft method_2b = make_cfg(false);
+    method_2b.stress_strain_h = kStrainH;
+    method_2b.stress_axes = {true, false, false};
+    cpu::Frame frame_2b = frame; // stress() writes kStress / kEnergy
+    method_2b.build(frame_2b);
+    std::array<double, 6> s_2b = method_2b.stress(frame_2b);
+    for (auto& v : s_2b)
+        v /= units::kHartreePerBohr3InEvPerAngstrom3; // eV/Å³ → Ha/Bohr³
     const double wire_xx = san[0] - s_2b[0];
     const double wire_err = std::abs(wire_xx - sig_atm_atv[0]);
     std::printf("  wiring σ_xx(ATM)-σ_xx(2b)=% .6e  standalone_ATM=% .6e  "

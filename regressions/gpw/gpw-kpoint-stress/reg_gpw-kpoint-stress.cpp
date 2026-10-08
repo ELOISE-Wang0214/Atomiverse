@@ -9,6 +9,7 @@
 #include <cstdio>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
@@ -85,8 +86,20 @@ int main() {
     // Gate A4 uses a soft absolute band once set.
 
     const double h = 2e-3;
-    const auto san = gpw_stress(frame, make_cfg(), h);
-    const auto sfd = gpw_stress_fd(frame, make_cfg(), h);
+    // GpwDft::stress returns eV/Å³ and writes kStress / kEnergy; run it on a
+    // Frame copy and compare in Ha/Bohr³ (the pins' unit).
+    GpwDft stress_method = make_cfg();
+    stress_method.stress_strain_h = h;
+    cpu::Frame stress_frame = frame;
+    stress_method.build(stress_frame);
+    std::array<double, 6> san = stress_method.stress(stress_frame);
+    for (auto& v : san)
+        v /= units::kHartreePerBohr3InEvPerAngstrom3;
+    // gpw_stress_fd returns eV/Å³; this twin compares in Ha/Bohr³.
+    const auto sfd_ev_a3 = gpw_stress_fd(frame, make_cfg(), h);
+    std::array<double, 6> sfd{};
+    for (std::size_t k = 0; k < 6; ++k)
+        sfd[k] = sfd_ev_a3[k] / units::kHartreePerBohr3InEvPerAngstrom3;
 
     double max_diag_err = 0.0;
     const char* names[3] = {"xx", "yy", "zz"};

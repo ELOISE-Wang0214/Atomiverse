@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d4-stress` |
-| Public API | `cpu::gpw::GpwDft` (`d4`) bound by `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd` with `GpwDft::d4` |
+| Public API | `cpu::gpw::GpwDft` (`d4`) bound by `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); `GpwDft::stress` / free oracle `gpw_stress_fd` with `GpwDft::d4` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -27,7 +27,7 @@ CP2K oracle (+ `inputs/gpw-d4-stress/` notes).
 
 Public surface: bool / stress members on `cpu::gpw::GPWEvaluator` and
 `cpu::gpw::GpwDft` (no `*Config` bag, no `make_*` / `build_*`). Frame
-`kStress` is eV/Å³; pin channel `last_stress_ha_bohr3()` [Ha/Bohr³].
+`kStress` is eV (virial σ·Ω); pin channel `last_stress_ha_bohr3()` [Ha/Bohr³].
 Product gate: `gpw-d4-stress` (`reg_gpw-d4-stress`). Wall
 ratio is **perf_exempt** (no fair CP2K DFTD4 QS stress wall).
 
@@ -139,7 +139,7 @@ dft.d4 = true;               // exclusive vs d3 / d3bj / ts / xdm / mbd
 cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 eval.compute_stress = true;  // product analytic fixed-P (default path)
 eval.stress_use_fd = false;  // multi-SCF FD is oracle only
-eval.stress_strain_h = 2e-3;
+eval.method().stress_strain_h = 2e-3;
 
 cpu::Evaluate driver;
 driver.on(evaluate::Phase::evaluate).add_ref(eval);
@@ -148,10 +148,10 @@ driver.run(frame);
 
 const double e_disp = eval.last_result().e_disp;          // [Ha]
 const auto& san = eval.last_stress_ha_bohr3();            // [Ha/Bohr³] Voigt
-// frame.meta.get(kStress)  // [eV/Å³]
+// frame.meta.get(kStress)  // [eV] (σ·Ω)
 
 // Dual-gate oracle (same geometry + d4) — product tests only:
-// auto sfd = cpu::gpw::gpw_stress_fd(frame, eval.method(), /*h=*/2e-3, …);
+// auto sfd = cpu::gpw::gpw_stress_fd(frame, eval.method(), /*h=*/2e-3, …);  // [eV/Å³]
 ```
 
 Build and run the regression:
@@ -176,7 +176,7 @@ bash -lc '
 | Path | Role |
 | ---- | ---- |
 | `gpw_evaluator.h` | `compute_stress`, `stress_use_fd`, `last_stress_ha_bohr3` |
-| `gpw_solver.h` | `GpwDft::d4`, `gpw_stress` / `gpw_stress_fd` |
+| `gpw_solver.h` | `GpwDft::d4`, `GpwDft::stress` / `gpw_stress_fd` |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Fixed-\(P\)+Pulay + D4 rebuild; multi-SCF FD |
 | `dftd4.h` / tables | Shared D4 parameter tables / energy |
 | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` | Unit dual-gate (stress family) |

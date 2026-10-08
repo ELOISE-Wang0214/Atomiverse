@@ -35,9 +35,9 @@
 /// `MD.set_evaluator` and the run becomes plane-wave Born-Oppenheimer
 /// dynamics — the electrons are re-converged at every geometry the nuclei
 /// reach. Budget **two** SCF solves per force-producing step, not one: the
-/// evaluator first runs the energy SCF (`PW::run`) and then calls
-/// `pw_forces_analytic`, which converges its own density before assembling
-/// the forces (`cpu::pw::PWEvaluator::launch`).
+/// evaluator first runs the energy SCF (`PW::run`) and then the force path,
+/// which converges its own density before assembling the forces
+/// (`cpu::pw::PWEvaluator::launch`).
 
 #include "force_array.h"
 #include "molrs_frame_bridge.h"
@@ -150,34 +150,12 @@ ATV::cpu::Frame periodic_frame(const molrs::FrameRef& src) {
     return work;
 }
 
-/// @brief Copy per-atom force triples into one flat row-major buffer.
-///
-/// `to_force_array` copies from a contiguous `(fx0, fy0, fz0, fx1, …)` span;
-/// the solver hands back a vector of triples. Flattening explicitly rather
-/// than reinterpreting the triples' storage keeps the conversion typed.
-///
-/// @param forces Per-atom forces [eV/Å].
-/// @return 3·n_atoms values in row-major order [eV/Å].
-std::vector<double>
-flatten_forces(const std::vector<std::array<double, 3>>& forces) {
-    std::vector<double> flat;
-    flat.reserve(forces.size() * 3u);
-    for (const auto& f : forces) {
-        flat.push_back(f[0]);
-        flat.push_back(f[1]);
-        flat.push_back(f[2]);
-    }
-    return flat;
-}
-
 /// @brief Run one plane-wave SCF, take the analytic ionic forces, and write
 ///        both back to the borrowed molpy.Frame.
 ///
-/// The energy published on the frame is the one belonging to *this* SCF —
-/// `pw_forces_analytic` reports it through its out-parameter — so the number
-/// and the forces describe the same converged density and no second solve is
-/// paid for. `PW::last_result()` is deliberately untouched: the analytic
-/// force path runs its own SCF and never claims the method's result slot.
+/// `PW::forces` runs one SCF and writes both the forces and the energy of
+/// that same SCF onto the frame, so the number and the forces describe the
+/// same converged density; `PW::last_result()` holds that SCF afterwards.
 ///
 /// @param solver    Configured plane-wave method (already built, or built
 ///                  lazily inside the force path).
@@ -188,7 +166,7 @@ flatten_forces(const std::vector<std::array<double, 3>>& forces) {
 ///         cell, and if the solver returns a force count that disagrees with
 ///         the atom count.
 /// @throws std::invalid_argument (Python `ValueError`) from
-///         `pw_forces_analytic`: odd valence-electron count on the
+///         `PW::forces`: odd valence-electron count on the
 ///         restricted fixed-occupation path, incompatible multiplicity
 ///         parity, empty frame.
 ForceArray pw_forces(PW& solver, nb::object frame_obj) {
@@ -197,26 +175,16 @@ ForceArray pw_forces(PW& solver, nb::object frame_obj) {
     std::vector<double> flat;
     {
         nb::gil_scoped_release release;
-        double energy_ry = 0.0;
-        const auto forces =
-            ATV::cpu::pw::pw_forces_analytic(work, solver, &energy_ry);
-        if (forces.size() != static_cast<std::size_t>(work.nlocal()))
-            throw std::runtime_error(
-                "cpu::pw::pw_forces_analytic returned "
-                + std::to_string(forces.size()) + " force triples for "
-                + std::to_string(work.nlocal()) + " atoms");
-        auto fx = work.span(ATV::kAtom_fx);
-        auto fy = work.span(ATV::kAtom_fy);
-        auto fz = work.span(ATV::kAtom_fz);
+        solver.forces(work);
+        const auto fx = work.span(ATV::kAtom_fx);
+        const auto fy = work.span(ATV::kAtom_fy);
+        const auto fz = work.span(ATV::kAtom_fz);
+        flat.reserve(static_cast<std::size_t>(3 * work.nlocal()));
         for (int i = 0; i < work.nlocal(); ++i) {
-            const auto& f = forces[static_cast<std::size_t>(i)];
-            fx[i] = static_cast<ATV::AccReal>(f[0]);
-            fy[i] = static_cast<ATV::AccReal>(f[1]);
-            fz[i] = static_cast<ATV::AccReal>(f[2]);
+            flat.push_back(static_cast<double>(fx[i]));
+            flat.push_back(static_cast<double>(fy[i]));
+            flat.push_back(static_cast<double>(fz[i]));
         }
-        work.meta.get(ATV::kEnergy) =
-            energy_ry * ATV::cpu::pw::qe_units::rydberg_to_ev;
-        flat = flatten_forces(forces);
     }
     ATV::cpu::to_molrs(work, *fref);
     return to_force_array(std::span<const double>(flat.data(), flat.size()));
@@ -235,7 +203,7 @@ ForceArray pw_forces(PW& solver, nb::object frame_obj) {
 /// @return Voigt stress (xx, yy, zz, xy, xz, yz) [eV/Å³].
 /// @throws std::runtime_error (Python `RuntimeError`) on a frame with no
 ///         cell.
-/// @throws std::invalid_argument (Python `ValueError`) from `pw_stress`:
+/// @throws std::invalid_argument (Python `ValueError`) from `PW::stress`:
 ///         odd valence-electron count on the restricted fixed-occupation
 ///         path, `spin_polarized` with metallic smearing (no analytic stress
 ///         path), incompatible multiplicity parity, empty frame.
@@ -245,7 +213,7 @@ VectorArray pw_cell_stress(PW& solver, nb::object frame_obj) {
     std::array<double, 6> stress{};
     {
         nb::gil_scoped_release release;
-        stress = ATV::cpu::pw::pw_stress(work, solver);
+        stress = solver.stress(work);
     }
     return to_vector_array(
         std::span<const double>(stress.data(), stress.size()));

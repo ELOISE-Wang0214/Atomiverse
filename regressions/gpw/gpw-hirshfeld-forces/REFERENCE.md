@@ -75,11 +75,12 @@ Cell (product SCF): **ABC 12.0 12.0 12.0 Å**, **PERIODIC XYZ**.
 Isolated dual-gates use the same nuclear coordinates without lattice images.
 
 Basis / PP: `DZVP-MOLOPT-SR-GTH` + `GTH-PBE-q1` (H) / `GTH-PBE-q6` (O).  
-CUTOFF **120 Ry** (product wiring + at-state stress), n_occ 8, tol 1e-6, mix 0.4, PBE.
+CUTOFF **120 Ry** (product wiring + `GpwDft::stress` fold), n_occ 8, tol 1e-6, mix 0.4, PBE.
 
 ## Perf gate
 
 **perf_exempt = true** — primary deliverable is fixed-\(v\) force dual-gate +
 product wiring parity. CP2K has no matched TS/MBD ENERGY_FORCE twin for a fair
-wall ratio. Product path wall budget ≤ 60 s on the regression host (one SCF +
-at-state stress, not multi-SCF strain-FD).
+wall ratio. Product path wall budget ≤ 60 s on the regression host (four
+single SCFs — ts+hirsh forces, plain forces, two `GpwDft::stress` — not
+multi-SCF strain-FD).

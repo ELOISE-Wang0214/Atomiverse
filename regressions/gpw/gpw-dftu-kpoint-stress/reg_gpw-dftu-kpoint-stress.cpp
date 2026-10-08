@@ -21,6 +21,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -66,6 +67,19 @@ std::vector<ATV::cpu::gpw::Kind> h_kinds() {
     return {Kind{molrs::Element::H,
                  GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
                  GthPotential(molrs::Element::H, "GTH-PADE-q1")}};
+}
+
+/// Analytic `GpwDft::stress` in Ha/Bohr³ (the pins' unit) on a Frame copy —
+/// the method returns eV/Å³ and writes kStress / kEnergy onto its Frame.
+std::array<double, 6> stress_ha_bohr3(const ATV::cpu::Frame& frame,
+                                      ATV::cpu::gpw::GpwDft method, double h) {
+    ATV::cpu::Frame work = frame;
+    method.stress_strain_h = h;
+    method.build(work);
+    std::array<double, 6> s = method.stress(work);
+    for (auto& v : s)
+        v /= ATV::units::kHartreePerBohr3InEvPerAngstrom3;
+    return s;
 }
 
 } // namespace
@@ -115,8 +129,12 @@ int main() {
 
     // A2/A3: dual-gate analytic vs multi-SCF FD
     const double h = 2e-3;
-    const auto san = gpw_stress(frame, make_k(), h);
-    const auto sfd = gpw_stress_fd(frame, make_k(), h);
+    const auto san = stress_ha_bohr3(frame, make_k(), h);
+    // gpw_stress_fd returns eV/Å³; this twin compares in Ha/Bohr³.
+    const auto sfd_ev_a3 = gpw_stress_fd(frame, make_k(), h);
+    std::array<double, 6> sfd{};
+    for (std::size_t k = 0; k < 6; ++k)
+        sfd[k] = sfd_ev_a3[k] / units::kHartreePerBohr3InEvPerAngstrom3;
 
     double max_diag_err = 0.0;
     const char* names[3] = {"xx", "yy", "zz"};
@@ -187,8 +205,8 @@ int main() {
         GpwDft kg = make_g();
         kg.k_points = {{0.0, 0.0, 0.0}};
         kg.k_point_weights = {1.0};
-        const auto s_kG = gpw_stress(frame, kg, h);
-        const auto s_G = gpw_stress(frame, make_g(), h);
+        const auto s_kG = stress_ha_bohr3(frame, std::move(kg), h);
+        const auto s_G = stress_ha_bohr3(frame, make_g(), h);
         double max_id = 0.0;
         for (int a = 0; a < 3; ++a) {
             const double d = std::abs(s_kG[static_cast<std::size_t>(a)]

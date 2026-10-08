@@ -177,7 +177,7 @@ int main() {
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
-    eval.stress_strain_h = 2e-3;
+    eval.method().stress_strain_h = 2e-3;
 
     const auto t0 = clock::now();
     cpu::Evaluate driver;
@@ -265,8 +265,13 @@ int main() {
 
     // Product path already ran with d3bj; use san as σ(d3bj). Plain analytic
     // for the wiring difference (same k-mesh).
-    const auto s_plain =
-        cpu::gpw::gpw_stress(frame, make_cfg(false), /*h=*/2e-3);
+    cpu::gpw::GpwDft plain = make_cfg(false);
+    plain.stress_strain_h = 2e-3;
+    cpu::Frame plain_frame = frame; // stress() writes kStress / kEnergy
+    plain.build(plain_frame);
+    std::array<double, 6> s_plain = plain.stress(plain_frame);
+    for (auto& v : s_plain)
+        v /= units::kHartreePerBohr3InEvPerAngstrom3; // eV/Å³ → Ha/Bohr³
     double max_wire = 0.0;
     for (int a = 0; a < 3; ++a) {
         const double shift = san[static_cast<std::size_t>(a)]
@@ -290,8 +295,12 @@ int main() {
     method.build(frame);
 
     const auto t2 = clock::now();
-    const auto sfd = cpu::gpw::gpw_stress_fd(frame, method, /*h=*/2e-3,
-                                             /*axes*/ {true, false, false});
+    // gpw_stress_fd returns eV/Å³; this twin compares in Ha/Bohr³.
+    const auto sfd_ev_a3 = cpu::gpw::gpw_stress_fd(
+        frame, method, /*h=*/2e-3, /*axes*/ {true, false, false});
+    std::array<double, 6> sfd{};
+    for (std::size_t k = 0; k < 6; ++k)
+        sfd[k] = sfd_ev_a3[k] / units::kHartreePerBohr3InEvPerAngstrom3;
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 

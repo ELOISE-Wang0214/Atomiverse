@@ -8,7 +8,7 @@ a periodic water dimer — the stress companion of `gpw-d4-atm-forces` and the
 ATM extension of `gpw-d4-stress`.
 
 **Product cell stress** is the Hellmann–Feynman fixed-density-matrix path
-(`gpw_stress`): one SCF → \(P, W\); central FD of the non-self-consistent
+(`GpwDft::stress`): one SCF → \(P, W\); central FD of the non-self-consistent
 Lagrangian under orthorhombic diagonal strain at fixed fractional
 coordinates, with geometry-only
 \(E_{\mathrm{disp}}^{\mathrm{D4+ATM}}(\{\mathbf{R}\},\mathbf{h})\)
@@ -144,4 +144,4 @@ measured 3.8×10⁻¹²).
    method (σ_xx, warm-started).
 5. Wiring: σ_xx(d4_atm) − σ_xx(d4-only) equals the standalone σ^ATM_xx —
    the `s9` fold inside the strained-cell dispersion rebuild of
-   `gpw_stress` is exercised, not just the energy path.
+   `GpwDft::stress` is exercised, not just the energy path.

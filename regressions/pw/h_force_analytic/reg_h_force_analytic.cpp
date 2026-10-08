@@ -43,19 +43,17 @@ int main() {
     cfg.max_iter = 8;
     cfg.mix_beta = 0.5;
     // One valence electron is open-shell: the restricted force path rejects an
-    // odd electron count (src/cpu/planewave/internal/pw_forces.cpp:266). A lone
+    // odd electron count (`PW::forces` throws). A lone
     // H is a doublet (S = 1/2), so N↑−N↓ = 1 ⇒ multiplicity 2; the default 1
     // would fail the parity check in the same guard.
     cfg.spin_polarized = true;
     cfg.multiplicity = 2;
 
-    const auto F = pw_forces_analytic(frame, cfg);
-    if (F.size() != 1u) {
-        std::printf("FAIL: expected 1 force, got %zu\n", F.size());
-        return 1;
-    }
-    const double mag =
-        std::sqrt(F[0][0] * F[0][0] + F[0][1] * F[0][1] + F[0][2] * F[0][2]);
+    cfg.forces(frame); // writes kAtom_fx/fy/fz [eV/Å] + kEnergy
+    const double F0[3] = {static_cast<double>(frame.span(kAtom_fx)[0]),
+                          static_cast<double>(frame.span(kAtom_fy)[0]),
+                          static_cast<double>(frame.span(kAtom_fz)[0])};
+    const double mag = std::sqrt(F0[0] * F0[0] + F0[1] * F0[1] + F0[2] * F0[2]);
     if (!(mag < tol)) {
         std::printf("FAIL: |F|=%.6g eV/Å  tol=%g (symmetry)\n", mag, tol);
         return 1;

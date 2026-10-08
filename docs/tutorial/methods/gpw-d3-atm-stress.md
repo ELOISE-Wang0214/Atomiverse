@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d3-atm-stress` |
-| Public API | `cpu::gpw::GpwDft` (`d3`, `d3_atm`, `d3_rcut_bohr`) bound by `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd` with `GpwDft::{d3, d3_atm, d3_rcut_bohr}` |
+| Public API | `cpu::gpw::GpwDft` (`d3`, `d3_atm`, `d3_rcut_bohr`) bound by `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); `GpwDft::stress` / free oracle `gpw_stress_fd` with `GpwDft::{d3, d3_atm, d3_rcut_bohr}` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -72,7 +72,7 @@ driver.on(evaluate::Phase::evaluate).add_ref(eval);
 driver.build();
 driver.run(frame);
 const auto& san = eval.last_stress_ha_bohr3();  // [Ha/Bohr³] Voigt
-// frame.meta.get(kStress)                      // [eV/Å³]
+// frame.meta.get(kStress)                      // [eV] (σ·Ω)
 ```
 
 | Path | Role |

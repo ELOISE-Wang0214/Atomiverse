@@ -123,7 +123,13 @@ int run_on_device(Device dev, std::array<double, 6>& stress, double* e_ry) {
         method.mix_beta = 0.5;
         method.xc = cpu::scf::XCType::PBE;
         method.build(frame);
-        stress = cpu::pw::pw_stress(frame, method, e_ry);
+        {
+            // `stress()` writes kStress/kEnergy on the Frame; run it on a copy.
+            cpu::Frame frame_copy = frame;
+            stress = method.stress(frame_copy); // σ [eV/Å³]
+            if (e_ry)
+                *e_ry = method.last_result().energy; // reference SCF [Ry]
+        }
     } else {
         cuda::pw::PW method;
         method.gth_name = "GTH-PBE-q4";

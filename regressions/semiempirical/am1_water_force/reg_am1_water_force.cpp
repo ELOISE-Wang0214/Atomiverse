@@ -133,8 +133,8 @@ int main() {
         auto f0 = make_water();
         cpu::semiempirical::AM1Solver solver;
         solver.build(f0);
-        solver.run(f0);
-        solver.compute_forces(f0, 1.0e-4);
+        solver.force_step = 1.0e-4;
+        solver.forces(f0); // one SCF + fixed-density FD forces [eV/Å]
         const auto& forces = solver.last_result().forces_ev_a;
 
         constexpr double h = 5.0e-4;

@@ -67,18 +67,12 @@ class GPWEvaluator : public cpu::GPW, public cpu::TimestepConsumer {
     ///        shadow-density stress (no reference SCF); cold seed stays classic.
     bool compute_stress = false;
     /// @brief When true, use multi-SCF strain-FD (`gpw_stress_fd`) instead of
-    ///        the product analytic path (`gpw_stress`). Default false.
+    ///        the product analytic path (`GpwDft::stress`). Default false.
+    ///        Strain step / axis mask are the method's `stress_strain_h` /
+    ///        `stress_axes`.
     ///        Refused with `xl_bomd_linearized` at `build()` (BO stress, not
     ///        the zero-SCF shadow functional).
     bool stress_use_fd = false;
-    /// @brief Dimensionless strain step for analytic fixed-\(P\) FD and for
-    ///        multi-SCF FD when `stress_use_fd` (default 2e-3).
-    double stress_strain_h = 2e-3;
-    /// @brief Per-axis stress mask (x,y,z): a masked axis skips samples and
-    ///        reports σ exactly 0 — pair with the matching
-    ///        `AnisotropicCellRelax` `relax_*` mask in variable-cell runs.
-    std::array<bool, 3> stress_axes = {true, true, true};
-
     /// @brief Bind one GPW method to a Driver slot.
     /// @param method Configured `GpwDft` (kinds + parameters; not yet built —
     ///        the evaluator builds it against the Frame at `build()`).
@@ -160,7 +154,7 @@ class GPWEvaluator : public cpu::GPW, public cpu::TimestepConsumer {
     ///        +E_{\mathrm{KS}}[n]\) — `build()` throws for `use_ot`,
     ///        `cpmd`, or `second_gen_cp`. `compute_stress` is product:
     ///        each warm branch evaluates the analytic fixed-\(P\)
-    ///        **shadow-density stress** (`gpw_stress` at the warm payload
+    ///        **shadow-density stress** (fixed-P stress at the warm payload
     ///        \(P = D = q[n]\), \(W\) from the \(H[n]\) eigenpairs) with
     ///        no reference SCF; `stress_use_fd` is refused (the multi-SCF
     ///        strain-FD oracle re-converges the SCF — Born–Oppenheimer

@@ -69,8 +69,8 @@ Add `-DATV_BUILD_PW=ON` for plane-wave, `-DATV_BUILD_TESTS=ON` for tests.
 > trajectory writer (`cpu::MrecRecorder`) that no submodule pointer can pin,
 > and the gitlink only tracks the newest committed `dev` commit. In a git
 > worktree or other layout pass an absolute path:
-> `-DATV_MOLRS_PATH=/abs/path/to/molrs`. The CXX API version gate applies to
-> every source; optional bridge surfaces (WHAM, TrajectoryWriter) are
+> `-DATV_MOLRS_PATH=/abs/path/to/molrs`. molrs has no API version before 1.0.0, so
+> no version gate applies; optional bridge surfaces (WHAM, TrajectoryWriter) are
 > detected per pin and reported at configure time.
 
 ## 4. Run a first example

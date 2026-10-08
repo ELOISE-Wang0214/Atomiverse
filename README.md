@@ -153,8 +153,8 @@ excludes its sources, headers, tests and regressions rather than merely hiding
 a symbol — so working on one method never means compiling the whole engine.
 
 **molrs** is a hard dependency, vendored as a git submodule at `./molrs`; the
-gitlink pins the commit this tree was verified against, and a CXX API version
-gate (`cmake/MolrsContract.cmake`) rejects a mismatched one. Developers working
+gitlink pins the commit this tree was verified against (molrs has no API
+version before 1.0.0, so there is no version gate). Developers working
 on both repositories at once can point `ATV_MOLRS_PATH` at a sibling checkout
 instead — that is what the presets in `CMakePresets.json` do, and optional
 bridge surfaces present only in that tree are detected per pin and compiled out

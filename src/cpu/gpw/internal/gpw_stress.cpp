@@ -34,6 +34,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/internal/dft_plus_u.h"
@@ -1375,23 +1376,34 @@ method_at_frame(const Frame& frame, const GpwDft& method) {
 }
 } // namespace
 
-std::array<double, 6> gpw_stress(const Frame& frame, const GpwDft& method,
-                                 double h, const std::array<bool, 3>& axes) {
-    auto [m, atoms] = method_at_frame(frame, method);
-    return internal::gpw_stress_analytic_impl(atoms, m, h, axes);
-}
-
-std::array<double, 6> gpw_stress(const Frame& frame, const GpwDft& method,
-                                 const GpwResult& state, double h,
-                                 const std::array<bool, 3>& axes) {
-    auto [m, atoms] = method_at_frame(frame, method);
-    return internal::gpw_stress_at_state_impl(atoms, m, state, h, axes);
-}
-
 std::array<double, 6> gpw_stress_fd(const Frame& frame, const GpwDft& method,
                                     double h, const std::array<bool, 3>& axes) {
     auto [m, atoms] = method_at_frame(frame, method);
-    return internal::gpw_stress_fd_impl(atoms, m, h, axes);
+    std::array<double, 6> sigma =
+        internal::gpw_stress_fd_impl(atoms, m, h, axes);
+    for (double& v : sigma)
+        v *= units::kHartreePerBohr3InEvPerAngstrom3;
+    return sigma;
+}
+
+std::array<double, 6> GpwDft::stress(Frame& frame) {
+    const GpwResult& scf = run(frame);
+    if (!scf.converged)
+        throw std::runtime_error(
+            "GpwDft::stress: SCF did not converge — raise max_iter or loosen "
+            "tol; a stress at an unconverged density is not a derivative of "
+            "anything");
+    std::array<double, 6> sigma = internal::gpw_stress_at_state_impl(
+        internal::GpwDftAccess::last_atoms(*this), *this, scf, stress_strain_h,
+        stress_axes);
+    // kStress is the extensive virial W = σΩ [eV] (core/frame_schema.h).
+    const double vol = frame.box.volume();
+    auto& st = frame.meta.get(kStress);
+    for (std::size_t k = 0; k < 6; ++k) {
+        sigma[k] *= units::kHartreePerBohr3InEvPerAngstrom3;
+        st[k] = sigma[k] * vol;
+    }
+    return sigma;
 }
 
 } // namespace gpw

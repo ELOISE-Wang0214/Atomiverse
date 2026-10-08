@@ -8,8 +8,8 @@
 /// `scf.hf.kernel` is that loop (`get_fock` / `eig` / `make_rdm1` /
 /// `energy_tot` / convergence); `scf.diis.CDIIS.update` is the mix stage.
 ///
-/// Not a Component. Outer `cuda::Evaluate` / `cuda::md::MD` nest it through
-/// `cuda::NestedLoopAdapter` (`set_evaluator` / `on(phase).add`).
+/// Not a Component. Outer `cuda::Evaluate` / `cuda::md::MD` nest it with
+/// `set_evaluator` / `on(phase).add`, which mounts a private slot.
 ///
 /// **Energy (CUDA-only HF for STO-3G s/p):** device integral kernels + SCF
 /// (`launch_*_sp`) — no host ERI. **Forces:** s/p device analytic

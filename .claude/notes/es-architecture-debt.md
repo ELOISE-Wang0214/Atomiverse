@@ -22,7 +22,7 @@ PW free-loop / GPW OT — those are rows in this ledger, not the whole story.
 | --- | --- |
 | Ownership | Concrete method owns Hamiltonian + parameters |
 | Loop | Self-consistency is a typed-stage `Driver` |
-| I/O | Public currency is `Frame` (`run` / `forces`) |
+| I/O | Public currency is `Frame` (`run` / `forces` / `stress`, CLAUDE.md table) |
 | Kind | `HF` / `Semiempirical` / `PlaneWave` / `GPW` are energy-source tags only |
 | Depth | Inheritance ≤ 2 |
 
@@ -61,40 +61,41 @@ Priority: 🔴 bind/forces/Driver alignment before any new ES public API;
 | Sev | ID | Where | Debt |
 | --- | --- | --- | --- |
 | 🔴 | `es-cuda-gpw-frame-io` | `cuda/gpw/gpw_solver.cuh` | CUDA product still `build/run(vector<internal::GpwAtom>)` + public `cell[3]`; CPU twin is Frame-in (`build/run/forces(Frame&)`, `Kind` ctor arg). Mirror it ([cuda-gpw-public-shape.md](cuda-gpw-public-shape.md)); until then CUDA regs/tests reach the CPU oracle via `cpu::gpw::internal::GpwDftAccess`. |
-| 🔴 | `es-bind-dialects` | `*Evaluator` vs direct nest vs DFTB-as-Component | GPW done: `GPWEvaluator(GpwDft, compute_forces)` owns the method, no parameter copy. PW / AM1 / RM1 evaluators still duplicate method params. Pick one outer bind story; document matrix; delete redundant shells. |
-| 🔴 | `es-forces-api` | PW free functions; AM1 `compute_forces`; GPW stress | GPW has `forces(Frame&)` (eV/Å). PW forces are free functions, AM1 `compute_forces`; GPW stress is free-fn `gpw_stress(frame, …)` returning Ha/Bohr³ (not public units). Unify on Frame-writing members; keep FD oracles (`gpw_forces_fd`, `gpw_stress_fd`) as free functions. |
+| 🔴 | `es-bind-dialects` | `*Evaluator` vs direct nest vs DFTB-as-Component | `GPWEvaluator` / `PWEvaluator` / `RM1Evaluator` own one method, no parameter copy. `AM1Evaluator(int charge, …)` still re-exposes the method ctor; AM1 binds through `QmEngine::publish` while RM1/PW accumulate in the evaluator; AM1/RM1 evaluators carry byte-identical PBC unwrap helpers; DFTB family is Component-only. Pick one outer bind story; document matrix; delete redundant shells. |
+| 🟡 | `es-pw-evaluator-scf` | `cpu/planewave/pw_evaluator.cpp` | Forces + stress launch = 3 SCFs (`run`, force path, stress path each converge their own density). Assemble forces/stress from the `run` density instead; needs the force/stress impls to take the converged workspace. |
 | 🔴 | `es-kind-model` | `cpu/component/hf.h` vs SE/PW/GPW Kinds | `HF` is pure tag; others are Component kinds. One model for energy sources. |
 | 🔴 | `es-se-driver` | `am1_solver.h`, `rm1_solver.h`, NDDO SCC | Self-consistency not a typed Driver; RM1 lacks `QmEngine` / Kind / Frame write-back. |
 | 🔴 | `es-aimd-depth` | `cpu/electronic/aimd_method.h` | `CarParrinelloMethod` inheritance depth ≥ 3. Compose, do not publicly derive. |
-| 🔴 | `es-cuda-pw-driver` | `cuda/planewave/pw_solver.cuh` | No Driver; CPU/CUDA mirror broken (new vs CLAUDE). |
+| 🔴 | `es-cuda-pw-driver` | `cuda/planewave/pw_solver.cuh` | No Driver; CPU/CUDA mirror broken: CUDA still exposes free `pw_forces_analytic` / `pw_stress` and a const-only `run`, CPU has `run`/`forces`/`stress(Frame&)` members. |
 | 🟡 | `es-gpw-ot-freeloop` | `GpwDft` `use_ot` | OT still free-loop; DIIS paths are Driver stages — do not add a third topology. |
-| 🟡 | `es-hf-cast` | `cpu/driver/driver.h` | `dynamic_cast<const HF*>` for energy sources vs protocol-probe law. |
 | 🟡 | `es-ghost-atoms` | `MeanFieldMethod::ghost_atoms` | Selection on method, not Frame (named exception or move to Frame). |
 | 🟡 | `es-dftb-qmengine` | DFTB0/3 / GFN0 vs DFTB2 / GFN1/2 | Uneven `QmEngine` coverage for QM/MM `set_engine`. |
 | 🟡 | `es-kind-name-hf` | `hf.h` | Kind name `HF` covers pure KS; rename or document as Gaussian mean-field. |
 | 🟡 | `es-docs-drift` | tutorials / `*Evaluator` comments | “mirrors Gaussian” without Evaluator caveat; ch09 `role()/capabilities()` prose (no Capability set exists); stale UKS / multi-k “throws” guard lists in `periodic-{mp2,ri-mp2,rpa,gw}-si.md`, `periodic-gw-kpoints.md`, `ot-smearing.md`; `second-gen-cpmd-uks.md` presents private `second_gen_cp*` flags as members. |
 | 🟡 | `es-reg-internal` | `regressions/gpw/*` standalone dispersion pins | ~25 GPW cases still include `internal/{dftd3,dftd3_params,ts_dispersion,mbd_dispersion,xdm_dispersion}.h` to pin the standalone kernel — out-of-library consumer law. Pin through the public method (E_disp on `GpwResult`, F(disp)−F(plain)) or move the kernel pin to `tests/`. |
-| 🟡 | `es-cuda-gpw-tests-e2e` | `tests/cuda/gpw/test_gpw_full_product.cu`, `test_gpw_kpoints.cu`, `test_gpw_stress.cu` | Run full SCFs (and CPU-oracle SCFs) under ctest — iron law 1. Move to `regressions/gpw/cuda-*`. |
+| 🔴 | `es-red-regressions` | `regressions/{gpw,semiempirical,architecture}` | Red on `dev` independent of the shape work (reproduce on `a3bc83ec`): Γ-Si periodic post-SCF family (`periodic-{gw,mp2,ri-mp2,rpa,scs-mp2,scs-ump2,ugw,ump2,urpa}-si`, `ugw-uks-rpbe` — Γ SCF does not converge in 80 iters), `periodic-{gw,ugw}-kpoints`, `periodic-gw-finite-q` (QP gap), `gpw-kpoints-si` (>600 s), `gpw-fd-phonon-si` (soft modes), `gpw-dftu-kpoints`, `second-gen-cpmd-ot`, GFN2 family (`gfn2-{aes-fock,camm-r,quadrupole-aes,xtb-forces,xtb-water}`, `gfn-xtb-analytic-hessian`), `component-plugin-05-live` (mounted 6 ≠ 5). |
+| 🟡 | `es-gpw-thread-determinism` | GPW Γ-UKS+U SCF, Γ-UKS OT | Differ run to run at 8 threads (identical at 1): `gpw-dftu-forces`, `gpw-dftu-kpoints`, `second-gen-cpmd-uks-ot` flip gates. Fix the remaining unordered reductions; `test_cpu_gpw_thread_reproducibility` does not cover these paths. |
+| 🟡 | `es-cuda-es-tests-e2e` | `tests/cuda/gpw/test_gpw_full_product.cu`, `test_gpw_kpoints.cu`, `test_gpw_stress.cu`, `tests/cuda/planewave/test_pw_cell_stress.cu` (`*CpuTwin`) | Run full CUDA and CPU-oracle SCFs under ctest — iron law 1. Move to `regressions/{gpw,pw}/cuda-*`. |
 
 ### Conformance snapshot (at note date)
 
 | Method family | Driver? | Frame `run`/`forces`? | Conforms? |
 | --- | --- | --- | --- |
-| CPU RHF/UHF/RKS/UKS/ROHF/ROKS/GHF | Yes | Yes | Pass (ghost_atoms / HF cast aside) |
+| CPU RHF/UHF/RKS/UKS/ROHF/ROKS/GHF | Yes | Yes | Pass (ghost_atoms aside) |
 | CUDA RHF | Yes | Yes | Pass |
-| AM1 / RM1 | No | Partial / no | Fail (`es-se-driver`, `es-forces-api`) |
-| CPU PW | Yes | `run` yes; forces free-fn | Partial |
+| AM1 / RM1 | No | Yes (`run`/`forces(Frame&)`) | Fail (`es-se-driver`) |
+| CPU PW | Yes | Yes (`run`/`forces`/`stress(Frame&)`) | Pass (evaluator 3-SCF aside) |
 | CUDA PW | No | `run` yes | Fail (`es-cuda-pw-driver`) |
-| CPU GpwDft | Yes (OT residual) | Yes (`run`/`forces`; stress free-fn) | Pass (OT / stress units aside) |
+| CPU GpwDft | Yes (OT residual) | Yes (`run`/`forces`/`stress(Frame&)`) | Pass (OT aside) |
 | CUDA GpwDft | No | No (`internal::GpwAtom`) | Fail (`es-cuda-gpw-frame-io`) |
 | `*Evaluator` wrappers | Component | launch → Frame | Pass as bind shell only |
 | `CarParrinelloMethod` | via base | via base | Fail (`es-aimd-depth`) |
 
 ### Close order (recommended)
 
-1. `es-forces-api` + `es-bind-dialects` (PW / AM1 / RM1 onto the GPW shape)
+1. `es-bind-dialects` (one outer bind story)
 2. `es-se-driver` / `es-cuda-pw-driver` / `es-cuda-gpw-frame-io`
    (Driver + Frame shape on CUDA; CUDA RHF is already `cuda::Driver<scf::Phase>`)
 3. `es-kind-model` + QmEngine coverage
 4. Hygiene: `es-posthf-ks-gate`, docs, ghost_atoms, OT residual,
-   `es-reg-internal`, `es-cuda-gpw-tests-e2e`
+   `es-reg-internal`, `es-cuda-es-tests-e2e`

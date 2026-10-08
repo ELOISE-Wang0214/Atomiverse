@@ -442,7 +442,6 @@ atv_add_cpp_test(test_cpu_driver_nesting  cpu/driver/test_driver_nesting.cpp)
 # no consumer yet.
 atv_add_cpp_test(test_cpu_scf_phase_plumbing cpu/driver/test_scf_phase_plumbing.cpp)
 atv_add_cpp_test(test_cpu_component_ownership cpu/driver/test_component_ownership.cpp)
-atv_add_cpp_test(test_cpu_nested_loop_adapter cpu/driver/test_nested_loop_adapter.cpp)
 atv_add_cpp_test(test_cpu_require_match cpu/driver/test_require_match.cpp)
 atv_add_cpp_test(test_driver_live_table cpu/driver/test_driver_live_table.cpp)
 atv_add_cpp_test(test_cpu_driver_unfix cpu/driver/test_unfix.cpp)
@@ -513,9 +512,7 @@ if(ATV_BUILD_IO) # from_molrs/to_molrs boundary lives in the IO block
     atv_add_cpp_test(test_cpu_materialize                 cpu/test_materialize.cpp)
 endif()
 if(ATV_BUILD_MOLRS)
-    atv_add_cpp_test(test_cpu_molrs_contract              cpu/test_molrs_contract.cpp)
     # Drift fence: every molrs:: call pattern ATV production code uses.
-    atv_add_cpp_test(test_molrs_contract                  test_molrs/test_contract.cpp)
     atv_add_cpp_test(test_molrs_element                   test_molrs/test_element.cpp)
     atv_add_cpp_test(test_molrs_frame_columns             test_molrs/test_frame_columns.cpp)
 endif()

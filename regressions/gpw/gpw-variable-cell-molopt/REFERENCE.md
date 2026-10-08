@@ -9,7 +9,7 @@ relaxes), productized as:
 `cpu::minimizer::Minimize` + `AnisotropicCellRelax` (`relax_x` only;
 extensive `kStress` [eV]) + `StressConverged` + `cpu::gpw::GPWEvaluator`
 (`compute_stress = true`, product **analytic fixed-\(P\)** stress,
-`stress_axes = {x}`).
+method `stress_axes = {x}` via `eval.method()`).
 
 The ice slug pivoted to compact SZV/DZV-GTH-PADE because multi-SCF strain-FD
 with **DZVP-MOLOPT-GTH** exceeded the ≤ 60 s budget. Analytic fixed-\(P\)

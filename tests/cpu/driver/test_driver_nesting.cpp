@@ -14,9 +14,9 @@
 
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/hf.h"
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/driver/driver.h"
-#include "atomiverse/cpu/driver/nested_loop_adapter.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 #include "cpu/driver_test_helpers.h"
@@ -317,7 +317,7 @@ TEST(DriverNesting, DefaultBudgetWhenUnspecified) {
     EXPECT_EQ(inner_comp.calls, 20);
 }
 
-TEST(DriverNesting, AddRefInnerOccupiesAdapterSlot) {
+TEST(DriverNesting, AddRefInnerOccupiesComponentSlot) {
     InnerLoop inner;
     OuterLoop outer;
     outer.on(ATV::md::Phase::end_of_step).add_ref(inner);
@@ -325,13 +325,13 @@ TEST(DriverNesting, AddRefInnerOccupiesAdapterSlot) {
     const auto& ops =
         outer.plan().slots[ATV::slot_of(ATV::md::Phase::end_of_step)].ops;
     ASSERT_EQ(ops.size(), 1u);
-    auto* adapter =
-        dynamic_cast<cpu::NestedLoopAdapter*>(ops.front().component);
-    ASSERT_NE(adapter, nullptr);
-    EXPECT_EQ(adapter->inner(), static_cast<cpu::DriverNode*>(&inner));
+    ASSERT_NE(ops.front().component, nullptr);
+    EXPECT_EQ(dynamic_cast<cpu::DriverNode*>(ops.front().component), nullptr);
+    EXPECT_FALSE(ops.front().component->provides_energy());
+    EXPECT_FALSE(ops.front().component->provides_force());
 }
 
-TEST(DriverNesting, AddRvalueInnerOccupiesAdapterSlot) {
+TEST(DriverNesting, AddRvalueInnerOccupiesComponentSlot) {
     OuterLoop outer;
     outer.on(ATV::md::Phase::end_of_step)
         .add(InnerLoop{}, /*order=*/0,
@@ -340,8 +340,24 @@ TEST(DriverNesting, AddRvalueInnerOccupiesAdapterSlot) {
     const auto& ops =
         outer.plan().slots[ATV::slot_of(ATV::md::Phase::end_of_step)].ops;
     ASSERT_EQ(ops.size(), 1u);
-    auto* adapter =
-        dynamic_cast<cpu::NestedLoopAdapter*>(ops.front().component);
-    ASSERT_NE(adapter, nullptr);
-    EXPECT_NE(adapter->inner(), nullptr);
+    ASSERT_NE(ops.front().component, nullptr);
+    EXPECT_EQ(dynamic_cast<cpu::DriverNode*>(ops.front().component), nullptr);
+}
+
+class HfInner : public cpu::Driver<ATV::scf::Phase>, public cpu::HF {
+  protected:
+    void validate_components() const override {}
+    bool provides_force() const override { return false; }
+};
+
+TEST(DriverNesting, NestedHfCopiesEnergyAndForce) {
+    HfInner inner;
+    OuterLoop outer;
+    outer.on(ATV::md::Phase::force).add_ref(inner);
+    outer.build();
+    const auto& ops =
+        outer.plan().slots[ATV::slot_of(ATV::md::Phase::force)].ops;
+    ASSERT_EQ(ops.size(), 1u);
+    EXPECT_TRUE(ops.front().component->provides_energy());
+    EXPECT_FALSE(ops.front().component->provides_force());
 }

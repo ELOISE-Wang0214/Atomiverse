@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -95,8 +96,20 @@ int main() {
 
     // A2/A3: dual-gate analytic vs multi-SCF FD
     const double h = 2e-3;
-    const auto san = gpw_stress(frame, make_uks(), h);
-    const auto sfd = gpw_stress_fd(frame, make_uks(), h);
+    // Public paths return eV/Å³; gates and prints stay in Ha/Bohr³.
+    constexpr double kToHaBohr3 = 1.0 / units::kHartreePerBohr3InEvPerAngstrom3;
+    auto stress_ha_bohr3 = [&](GpwDft m) {
+        m.stress_strain_h = h;
+        m.build(frame);
+        auto s = m.stress(frame);
+        for (auto& v : s)
+            v *= kToHaBohr3;
+        return s;
+    };
+    const auto san = stress_ha_bohr3(make_uks());
+    auto sfd = gpw_stress_fd(frame, make_uks(), h);
+    for (auto& v : sfd)
+        v *= kToHaBohr3;
 
     double max_diag_err = 0.0;
     const char* names[3] = {"xx", "yy", "zz"};
@@ -142,8 +155,8 @@ int main() {
         uks_cs.k_mesh[1] = 1;
         uks_cs.k_mesh[2] = 2;
 
-        const auto sr = gpw_stress(frame, rks, h);
-        const auto su = gpw_stress(frame, uks_cs, h);
+        const auto sr = stress_ha_bohr3(std::move(rks));
+        const auto su = stress_ha_bohr3(std::move(uks_cs));
         double max_d = 0.0;
         for (int a = 0; a < 3; ++a) {
             const double d = std::abs(sr[static_cast<std::size_t>(a)]

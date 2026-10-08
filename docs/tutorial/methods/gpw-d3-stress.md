@@ -3,7 +3,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-d3-stress` |
-| Public API | `cpu::gpw::GpwDft` (`d3`) bound by `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd` with `GpwDft::d3` |
+| Public API | `cpu::gpw::GpwDft` (`d3`) bound by `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); `GpwDft::stress` / free oracle `gpw_stress_fd` with `GpwDft::d3` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion |
 
 ## Summary
@@ -29,7 +29,7 @@ Decisive internal residual: product analytic vs multi-SCF strain-FD
 
 Public surface: bool / stress members on `cpu::gpw::GPWEvaluator` and
 `cpu::gpw::GpwDft` (no `*Config` bag, no `make_*` / `build_*`). Frame
-`kStress` is eV/Å³; pin channel `last_stress_ha_bohr3()` [Ha/Bohr³].
+`kStress` is eV (virial σ·Ω); pin channel `last_stress_ha_bohr3()` [Ha/Bohr³].
 Product gate: `gpw-d3-stress` (`reg_gpw-d3-stress`).
 
 ## Method
@@ -109,7 +109,7 @@ driver.run(frame);
 
 const double e_disp = eval.last_result().e_disp;   // [Ha]
 const auto& san = eval.last_stress_ha_bohr3();     // [Ha/Bohr³]
-// frame.meta.get(kStress)                          // [eV/Å³]
+// frame.meta.get(kStress)                          // [eV] (σ·Ω)
 ```
 
 The regression isolates ATV's dispersion stress the same way the pin does:
@@ -118,7 +118,7 @@ a second warm-started analytic product with `d3=false`, subtracted.
 | Path | Role |
 | ---- | ---- |
 | `gpw_evaluator.h` | `compute_stress`, `last_stress_ha_bohr3` |
-| `gpw_solver.h` | `GpwDft::d3`, `gpw_stress` / `gpw_stress_fd` |
+| `gpw_solver.h` | `GpwDft::d3`, `GpwDft::stress` / `gpw_stress_fd` |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Fixed-\(P\)+Pulay Lagrangian; D3 rebuilt under strain (Γ + multi-k) |
 | `dftd3.h` | `dftd3_pbe`, `kD3Cp2kPairCutoffBohr` |
 | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` | `AnalyticMatchesFdWithD3`, `D3ChangesGammaDiagonal` |

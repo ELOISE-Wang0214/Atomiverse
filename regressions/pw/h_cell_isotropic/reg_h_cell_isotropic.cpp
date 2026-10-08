@@ -39,16 +39,16 @@ int main() {
     cfg.max_iter = 10;
     cfg.mix_beta = 0.5;
     // One valence electron is open-shell: the restricted stress path rejects an
-    // odd electron count (src/cpu/planewave/internal/pw_stress.cpp:625). A lone
+    // odd electron count (`PW::stress` throws). A lone
     // H is a doublet (S = 1/2), so N↑−N↓ = 1 ⇒ multiplicity 2; the default 1
     // would fail the parity check in the same guard.
     cfg.spin_polarized = true;
     cfg.multiplicity = 2;
 
-    // Direct stress at L0
-    const auto s0 = cpu::pw::pw_stress(frame, cfg);
-    frame.meta.get(kStress) = s0;
-    const double P0 = (s0[0] + s0[1] + s0[2]) / (3.0 * frame.box.volume());
+    // Direct stress at L0: σ [eV/Å³] returned, extensive σ·V [eV] on kStress,
+    // so P0 is in the same units as pressure() below.
+    const auto s0 = cfg.stress(frame);
+    const double P0 = (s0[0] + s0[1] + s0[2]) / 3.0;
 
     cpu::minimizer::Minimize opt;
     cpu::minimizer::IsotropicCellRelax cell(0.0, 0.05);

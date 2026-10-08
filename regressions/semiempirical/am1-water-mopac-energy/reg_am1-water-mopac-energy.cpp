@@ -128,7 +128,10 @@ int main() {
         auto f = water(kOptOhAngstrom, kOptHohDegrees);
         cpu::semiempirical::AM1 am1;
         am1.build(f);
-        const auto& r = am1.run(f);
+        am1.force_step = 1.0e-4;
+        // One SCF: `forces()` fills energies, charges and `forces_ev_a` (the
+        // latter gated in step 3).
+        const auto& r = am1.forces(f);
 
         if (!r.converged) {
             std::fprintf(stderr, "FAIL: AM1 SCF did not converge\n");
@@ -164,9 +167,8 @@ int main() {
         // the energy pin — and it is what licenses pinning an optimized-
         // geometry ΔHf at fixed coordinates: E is quadratic here, so the
         // transcript's coordinate truncation cannot masquerade as an error.
-        am1.compute_forces(f, 1.0e-4);
         double max_f = 0.0;
-        for (double v : am1.last_result().forces_ev_a) {
+        for (double v : r.forces_ev_a) {
             max_f = std::max(max_f, std::abs(v));
         }
         if (!(max_f <= kStationaryTolEvA)) {
@@ -189,7 +191,9 @@ int main() {
         auto f = water(kInputOhAngstrom, kInputHohDegrees);
         cpu::semiempirical::AM1 am1;
         am1.build(f);
-        const double hof = am1.run(f).heat_of_formation_kcal_mol;
+        am1.force_step = 1.0e-4;
+        // One SCF: `forces()` fills ΔHf and `forces_ev_a` (gated below).
+        const double hof = am1.forces(f).heat_of_formation_kcal_mol;
         if (!std::isfinite(hof)
             || std::abs(hof - kMopacInputHofKcalMol) > kHofTolKcalMol) {
             ok = fail("ΔHf(MOPAC input geometry)", hof, kMopacInputHofKcalMol,
@@ -201,7 +205,6 @@ int main() {
                         hof - kMopacInputHofKcalMol);
         }
 
-        am1.compute_forces(f, 1.0e-4);
         double max_f = 0.0;
         for (double v : am1.last_result().forces_ev_a) {
             max_f = std::max(max_f, std::abs(v));

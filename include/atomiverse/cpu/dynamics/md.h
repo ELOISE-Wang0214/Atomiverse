@@ -494,19 +494,9 @@ class MD : public Driver<ATV::md::Phase> {
                 return;
             consumers.push_back({tc, who});
         };
-        for_each_pending_kind_mut(
-            [&](cpu::Component& c) {
-                collect_dt(c.as_timestep_consumer(), c.name());
-            },
-            [&](cpu::DriverNode* d) {
-                // A nested method driver (MeanFieldMethod) is a DriverNode, not
-                // a Component, so it is reached by cross-cast — the same route
-                // validate_components() uses for the `HF` force source.
-                const auto* as_comp = dynamic_cast<const cpu::Component*>(d);
-                collect_dt(dynamic_cast<cpu::TimestepConsumer*>(d),
-                           as_comp ? as_comp->name()
-                                   : std::string("nested method driver"));
-            });
+        for_each_pending_mut([&](cpu::Component& c) {
+            collect_dt(c.as_timestep_consumer(), c.name());
+        });
 
         if (!consumers.empty()) {
             // Validity is checked once, before the FIRST push: no consumer may

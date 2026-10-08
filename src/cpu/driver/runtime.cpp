@@ -5,7 +5,6 @@
 #include "atomiverse/cpu/driver/runtime.h"
 
 #include "atomiverse/core/log.h"
-#include "atomiverse/core/molrs_contract.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/communication/comm.h"
 #include "atomiverse/cpu/communication/domain.h"
@@ -79,13 +78,6 @@ Runtime::Runtime(Runtime&&) noexcept = default;
 Runtime& Runtime::operator=(Runtime&&) noexcept = default;
 
 void Runtime::init() {
-    // A local ATV_MOLRS_PATH is an alternate source location, not permission to
-    // run against a different interface. Fail before any execution service is
-    // initialized or any component sees a Frame.
-#ifdef ATV_HAS_MOLRS
-    ATV::molrs_contract::require_compatible();
-#endif
-
     // Device: OpenMP thread configuration (+ NUMA-bind warning).
     device_.configure_threads(context_);
 

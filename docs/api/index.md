@@ -90,7 +90,7 @@ Start with these CPU headers:
 CUDA SCF presents the same public shape as CPU —
 `cuda::scf::RHF{basis}.run(frame)` / `.forces(frame)`, `Frame` in and out.
 The iteration is `cuda::Driver<scf::Phase>` (`fock`, `mix`, `diagonalize`,
-`density`, `check`). `set_evaluator` wraps it in `cuda::NestedLoopAdapter`.
+`density`, `check`). `set_evaluator` mounts that driver in one Plan slot.
 Coverage is narrower: restricted HF only (no UHF/KS), device-native integrals
 and analytic forces over STO-3G s/p shells (l ≤ 1, H…O), and `forces()` throws
 outside that envelope rather than falling back. See

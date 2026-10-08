@@ -145,7 +145,13 @@ int run_on_device(Device dev, const char* upf, std::array<double, 6>& stress,
         cpu::pw::PW method;
         configure_smear(method, upf);
         method.build(frame);
-        stress = cpu::pw::pw_stress(frame, method, e_ry);
+        {
+            // `stress()` writes kStress/kEnergy on the Frame; run it on a copy.
+            cpu::Frame frame_copy = frame;
+            stress = method.stress(frame_copy); // σ [eV/Å³]
+            if (e_ry)
+                *e_ry = method.last_result().energy; // reference SCF [Ry]
+        }
     } else {
         cuda::pw::PW method;
         configure_smear(method, upf);

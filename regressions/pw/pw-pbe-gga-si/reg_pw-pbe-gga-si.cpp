@@ -74,18 +74,21 @@ int main() {
     pbe.xc = cpu::scf::XCType::PBE;
 
     pbe.build(frame);
-    const auto& r_pbe = pbe.run(frame);
+    // Copy: `forces()` below overwrites `last_result()` with its own SCF.
+    const PWResult r_pbe = pbe.run(frame);
     if (!std::isfinite(r_pbe.energy)) {
         std::printf("FAIL: non-finite PBE energy\n");
         return 1;
     }
 
-    const auto F = pw_forces_analytic(frame, pbe);
-    if (F.size() != 2u) {
-        std::printf("FAIL: expected 2 forces, got %zu\n", F.size());
-        return 1;
+    pbe.forces(frame); // kAtom_fx/fy/fz [eV/Å]
+    double F[2][3];
+    for (std::size_t i = 0; i < 2; ++i) {
+        F[i][0] = static_cast<double>(frame.span(kAtom_fx)[i]);
+        F[i][1] = static_cast<double>(frame.span(kAtom_fy)[i]);
+        F[i][2] = static_cast<double>(frame.span(kAtom_fz)[i]);
     }
-    for (std::size_t i = 0; i < F.size(); ++i) {
+    for (std::size_t i = 0; i < 2; ++i) {
         const double mag = std::sqrt(F[i][0] * F[i][0] + F[i][1] * F[i][1]
                                      + F[i][2] * F[i][2]);
         if (!(mag < force_tol)) {

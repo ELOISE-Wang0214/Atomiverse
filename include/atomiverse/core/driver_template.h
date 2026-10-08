@@ -5,9 +5,10 @@
 /// All method bodies are defined inline (template class). Explicit
 /// instantiations live in src/cpu/driver/driver.cpp and src/cuda/driver/driver.cu.
 ///
-/// Plan slots hold a Component*. A nested CPU loop is wrapped as
-/// `cpu::NestedLoopAdapter` and a nested CUDA loop as
-/// `cuda::NestedLoopAdapter`, both at `on(phase).add` / `add_ref`.
+/// Plan slots hold a Component*. A nested loop that is not already a
+/// Component is mounted by `on(phase).add` / `add_ref` as a registration-
+/// private slot. That slot is not a named public type. `Driver` does not
+/// inherit `Component`.
 #pragma once
 
 #include <memory>
@@ -22,12 +23,14 @@
 #include "atomiverse/core/device.h"
 #include "atomiverse/core/plan.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/timestep_protocol.h"
 #include "atomiverse/cpu/driver/driver_node.h"
-#include "atomiverse/cpu/driver/nested_loop_adapter.h"
+#include "atomiverse/cpu/driver/runtime.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/device/timer.h"
 #include "atomiverse/cuda/driver/driver_node.h"
-#include "atomiverse/cuda/driver/nested_loop_adapter.h"
 
 namespace ATV {
 
@@ -43,6 +46,23 @@ struct PluginIdentity {
 };
 
 namespace detail {
+
+template <typename Node>
+bool driver_provides_energy(const Node& node) {
+    if constexpr (requires { node.provides_energy(); })
+        return node.provides_energy();
+    else
+        return false;
+}
+
+template <typename Node>
+bool driver_provides_force(const Node& node) {
+    if constexpr (requires { node.provides_force(); })
+        return node.provides_force();
+    else
+        return false;
+}
+
 /// @brief Unresolved binding collected before `Driver::build()`.
 template <typename Component>
 struct PendingBinding {
@@ -99,13 +119,12 @@ class PhaseBuilder {
         return *this;
     }
 
-    /// @brief Own a nested driver on this phase (CPU only).
+    /// @brief Own a nested CPU driver on this phase.
     ///
-    /// Wraps `child` in `cpu::NestedLoopAdapter` (owned by this driver).
     /// `@param order` Binding order within the phase (lower runs earlier).
     /// `@param budget` Dimensionless inner-loop iterations; `< 0` uses
-    /// `child.default_budget()`. Dual-identity Component+DriverNode types
-    /// keep the Component overload.
+    /// `child.default_budget()`. A type that is both Component and
+    /// DriverNode keeps the Component overload.
     template <typename Nested,
               std::enable_if_t<
                   std::is_same_v<DeviceTag, cpu::device_tag>
@@ -118,17 +137,13 @@ class PhaseBuilder {
     PhaseBuilder& add(Nested&& child, int order = 0, int budget = -1) {
         using N = std::remove_reference_t<Nested>;
         auto node = std::make_unique<N>(std::forward<Nested>(child));
-        auto adapter =
-            std::make_unique<cpu::NestedLoopAdapter>(std::move(node), budget);
-        Component* raw = adapter.get();
-        owned_->push_back(std::move(adapter));
-        bindings_->push_back({ATV::slot_of(phase_), order, raw});
-        return *this;
+        N* raw = node.get();
+        return mount_nested_cpu(std::move(node), raw, order, budget);
     }
 
-    /// @brief Borrow a nested driver on this phase (CPU only).
+    /// @brief Borrow a nested CPU driver on this phase.
     ///
-    /// The adapter is owned by this driver; `child` stays with the caller
+    /// The slot is owned by this driver; `child` stays with the caller
     /// so `child.converged()` remains readable after `run`.
     /// `@param order` Binding order within the phase (lower runs earlier).
     /// `@param budget` Dimensionless inner-loop iterations; `< 0` uses
@@ -139,20 +154,16 @@ class PhaseBuilder {
                                    && !std::is_base_of_v<Component, Nested>,
                                int> = 0>
     PhaseBuilder& add_ref(Nested& child, int order = 0, int budget = -1) {
-        auto adapter = std::make_unique<cpu::NestedLoopAdapter>(child, budget);
-        Component* raw = adapter.get();
-        owned_->push_back(std::move(adapter));
-        bindings_->push_back({ATV::slot_of(phase_), order, raw});
-        return *this;
+        return mount_nested_cpu(std::unique_ptr<Nested>{}, &child, order,
+                                budget);
     }
 
     /// @brief Own a nested CUDA driver on this phase.
     ///
-    /// Wraps `child` in `cuda::NestedLoopAdapter`. Dual-identity
-    /// Component+DriverNode types keep the Component overload.
     /// `@param order` Binding order within the phase (lower runs earlier).
     /// `@param budget` Dimensionless inner-loop iterations; `< 0` uses
-    /// `child.default_budget()`.
+    /// `child.default_budget()`. A type that is both Component and
+    /// DriverNode keeps the Component overload.
     template <typename Nested,
               std::enable_if_t<
                   std::is_same_v<DeviceTag, cuda::device_tag>
@@ -165,17 +176,13 @@ class PhaseBuilder {
     PhaseBuilder& add(Nested&& child, int order = 0, int budget = -1) {
         using N = std::remove_reference_t<Nested>;
         auto node = std::make_unique<N>(std::forward<Nested>(child));
-        auto adapter =
-            std::make_unique<cuda::NestedLoopAdapter>(std::move(node), budget);
-        Component* raw = adapter.get();
-        owned_->push_back(std::move(adapter));
-        bindings_->push_back({ATV::slot_of(phase_), order, raw});
-        return *this;
+        N* raw = node.get();
+        return mount_nested_cuda(std::move(node), raw, order, budget);
     }
 
     /// @brief Borrow a nested CUDA driver on this phase.
     ///
-    /// The adapter is owned by this driver; `child` stays with the caller.
+    /// The slot is owned by this driver; `child` stays with the caller.
     /// `@param order` Binding order within the phase (lower runs earlier).
     /// `@param budget` Dimensionless inner-loop iterations; `< 0` uses
     /// `child.default_budget()`.
@@ -186,11 +193,8 @@ class PhaseBuilder {
                              && !std::is_base_of_v<Component, Nested>,
                          int> = 0>
     PhaseBuilder& add_ref(Nested& child, int order = 0, int budget = -1) {
-        auto adapter = std::make_unique<cuda::NestedLoopAdapter>(child, budget);
-        Component* raw = adapter.get();
-        owned_->push_back(std::move(adapter));
-        bindings_->push_back({ATV::slot_of(phase_), order, raw});
-        return *this;
+        return mount_nested_cuda(std::unique_ptr<Nested>{}, &child, order,
+                                 budget);
     }
 
     /// Implicit lvalue borrowing is forbidden. Use `add_ref(comp)`.
@@ -208,6 +212,117 @@ class PhaseBuilder {
     std::vector<std::unique_ptr<Component>>* owned_;
     std::vector<std::unique_ptr<cpu::DriverNode>>* owned_drivers_;
     PhaseEnum phase_;
+
+    template <typename Node>
+    PhaseBuilder& mount_nested_cpu(std::unique_ptr<Node> owned, Node* live,
+                                   int order, int budget) {
+        Node* node = owned ? owned.get() : live;
+        const int cap = budget < 0 ? node->default_budget() : budget;
+        const bool energy = detail::driver_provides_energy(*node);
+        const bool force = detail::driver_provides_force(*node);
+        cpu::TimestepConsumer* step = nullptr;
+        if constexpr (std::is_base_of_v<cpu::TimestepConsumer, Node>)
+            step = static_cast<cpu::TimestepConsumer*>(node);
+
+        struct Slot : Component {
+            std::unique_ptr<cpu::DriverNode> owned_node;
+            cpu::DriverNode* node = nullptr;
+            cpu::TimestepConsumer* step = nullptr;
+            int budget = 0;
+            bool energy = false;
+            bool force = false;
+
+            std::string name() const override { return "nested_driver"; }
+            bool provides_energy() const override { return energy; }
+            bool provides_force() const override { return force; }
+            bool requires_tag_index() const override {
+                return node && node->requires_tag_index();
+            }
+            cpu::TimestepConsumer* as_timestep_consumer() override {
+                return step;
+            }
+            void build(const cpu::BuildContext& ctx) override {
+                node->build_on(require_runtime(ctx.runtime, "build"));
+            }
+            void launch(const cpu::LaunchContext& ctx) override {
+                const auto saved_window = ctx.frame.resolution_window();
+                const bool saved_forces = ctx.runtime.exec.forces_requested;
+                ctx.frame.restore_resolution_window(cpu::ResolutionWindow{});
+                ctx.runtime.exec.forces_requested =
+                    saved_forces && ctx.forces_requested;
+                node->run_nested_erased(ctx.runtime, ctx.frame, budget);
+                ctx.runtime.exec.forces_requested = saved_forces;
+                ctx.frame.restore_resolution_window(saved_window);
+            }
+            void destroy(const cpu::DestroyContext& ctx) override {
+                node->destroy_on(require_runtime(ctx.runtime, "destroy"));
+            }
+
+            static cpu::Runtime& require_runtime(cpu::Context& ctx,
+                                                 const char* where) {
+                if (!ctx.exec.runtime) {
+                    throw std::runtime_error(
+                        std::string("nested driver ") + where
+                        + ": no Runtime on the Context. Bind the driver under "
+                          "a parent Driver that has completed setup_pass.");
+                }
+                return *ctx.exec.runtime;
+            }
+        };
+
+        auto slot = std::make_unique<Slot>();
+        slot->owned_node = std::move(owned);
+        slot->node = node;
+        slot->step = step;
+        slot->budget = cap;
+        slot->energy = energy;
+        slot->force = force;
+        Component* raw = slot.get();
+        owned_->push_back(std::move(slot));
+        bindings_->push_back({ATV::slot_of(phase_), order, raw});
+        return *this;
+    }
+
+    template <typename Node>
+    PhaseBuilder& mount_nested_cuda(std::unique_ptr<Node> owned, Node* live,
+                                    int order, int budget) {
+        Node* node = owned ? owned.get() : live;
+        const int cap = budget < 0 ? node->default_budget() : budget;
+        const bool energy = detail::driver_provides_energy(*node);
+        const bool force = detail::driver_provides_force(*node);
+
+        struct Slot : Component {
+            std::unique_ptr<cuda::DriverNode> owned_node;
+            cuda::DriverNode* node = nullptr;
+            int budget = 0;
+            bool energy = false;
+            bool force = false;
+
+            std::string name() const override { return "nested_driver"; }
+            bool provides_energy() const override { return energy; }
+            bool provides_force() const override { return force; }
+            void build(const cuda::BuildContext& ctx) override {
+                node->build_on(ctx.runtime, ctx.frame);
+            }
+            void launch(const cuda::LaunchContext& ctx) override {
+                node->run_nested_erased(ctx.runtime, ctx.frame, budget);
+            }
+            void destroy(const cuda::DestroyContext& ctx) override {
+                node->destroy_on(ctx.runtime, ctx.frame);
+            }
+        };
+
+        auto slot = std::make_unique<Slot>();
+        slot->owned_node = std::move(owned);
+        slot->node = node;
+        slot->budget = cap;
+        slot->energy = energy;
+        slot->force = force;
+        Component* raw = slot.get();
+        owned_->push_back(std::move(slot));
+        bindings_->push_back({ATV::slot_of(phase_), order, raw});
+        return *this;
+    }
 };
 
 /// @brief Simulation driver -- user-facing facade.

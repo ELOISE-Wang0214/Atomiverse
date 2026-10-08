@@ -578,7 +578,7 @@ std::array<double, 6> pw_stress_fd_impl(const cpu::Frame& frame,
 
 std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
                                               const PW& method,
-                                              double* energy_ry_out) {
+                                              PWResult* scf_out) {
     if (frame.nlocal() <= 0)
         throw std::invalid_argument("pw_stress: frame has no atoms");
     if (frame.box.volume() <= 0)
@@ -648,8 +648,8 @@ std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
         res = run_scf_fixed_occ(frame, method, scf_prob, poisson, xc, veff,
                                 density, davidson, "stress");
     }
-    if (energy_ry_out)
-        *energy_ry_out = res.energy;
+    if (scf_out)
+        *scf_out = res;
     if (!res.converged) {
         ATV_WARN("[pw] pw_stress_analytic: SCF not converged after {} iters; "
                  "using last density for HF stress",
@@ -667,12 +667,13 @@ std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
     if (method.spin_polarized) {
         rho_a0 = rho_channel_g_to_real(ws, ws.rho_spin_G[0]);
         rho_b0 = rho_channel_g_to_real(ws, ws.rho_spin_G[1]);
-        // Recompute SCF energy with e_xc_int_spin (run_collinear_scf leaves a
-        // diagnostic restricted formula in res.energy).
-        if (energy_ry_out) {
-            *energy_ry_out = nscf_energy_spin_ry(
+        // Report the NSCF energy of the frozen spin densities — the energy
+        // whose strain derivative this stress is.
+        if (scf_out) {
+            scf_out->energy = nscf_energy_spin_ry(
                 frame, method, rho_a0, rho_b0, omega0, poisson, xc, veff,
                 davidson, n_bands, n_alpha, n_beta);
+            scf_out->energy_ha = scf_out->energy * qe_units::rydberg_to_hartree;
         }
     } else {
         rho_r0 = rho_g_to_real(ws);

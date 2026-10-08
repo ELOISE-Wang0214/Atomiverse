@@ -129,8 +129,8 @@ double max_force(Frame& geom) {
     rm1.density_tol = 1.0e-10;
     rm1.max_iter = 400;
     rm1.build(geom);
-    rm1.run(geom);
-    const auto& fr = rm1.compute_forces(geom);
+    // One SCF + fixed-density FD forces at the default `force_step` 1e-4 Å.
+    const auto& fr = rm1.forces(geom);
     double mx = 0.0;
     const std::size_t n = fr.forces_ev_a.size() / 3;
     for (std::size_t a = 0; a < n; ++a) {

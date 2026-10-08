@@ -36,9 +36,9 @@ density is identical with and without it. Therefore
 isolates exactly the quantity this capability adds, with the (much larger,
 grid-noise-limited) electronic stress cancelling — the stress analogue of the
 `gpw-d3-forces` force pin. Atomiverse isolates its own dispersion stress the
-same way: analytic product with `d3=true` minus analytic product with
-`d3=false` evaluated at the `d3=true` run's converged state
-(`gpw_stress(frame, method, state)` overload — same density).
+same way: analytic product with `d3=true` minus `GpwDft::stress` with
+`d3=false` (its own SCF; dispersion is folded after the SCF, so the
+converged density is the `d3=true` run's density).
 
 ## System
 
@@ -142,7 +142,7 @@ the fixed-\(P\) Lagrangian FD as δE/(2hΩ). The sibling `gpw-d3bj-stress`
 reaches 3.9e−14 because its Δσ side is a strain-FD of the standalone
 (no-SCF) dispersion sum; this case deliberately pays the noise to gate the
 **product path fold** end-to-end — σ_an(d3) − σ_an(plain) runs
-`GPWEvaluator`/`gpw_stress` twice. Signal separation stays decisive:
+`GPWEvaluator`/`GpwDft::stress` twice. Signal separation stays decisive:
 xx signal 1.71e−8 = 75× the measured residual, tolerance 2e−9 keeps
 8.8× headroom.
 

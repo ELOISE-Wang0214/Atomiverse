@@ -171,7 +171,6 @@ void write_f64(molrs::FrameRef& dst, const char* key, const T* source, int n) {
 } // namespace
 
 Frame from_molrs(const molrs::FrameRef& src) {
-    internal::require_molrs_frame_schema_v2();
     validate_exchange_schema(src);
     auto x = require_f64(src, "atoms", "x");
     auto y = require_f64(src, "atoms", "y");
@@ -283,7 +282,6 @@ Frame from_molrs(const molrs::FrameRef& src) {
 }
 
 void to_molrs(const Frame& src, molrs::FrameRef& dst) {
-    internal::require_molrs_frame_schema_v2();
     const int n = src.nlocal();
     for (const auto& col : src.block("atoms").resolve_columns(kColWriteBack)) {
         if (col.cols != 1)

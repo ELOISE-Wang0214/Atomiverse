@@ -69,7 +69,6 @@ int main() {
     using namespace ATV;
     using clock = std::chrono::steady_clock;
     using cpu::gpw::GaussianBasis;
-    using cpu::gpw::gpw_stress;
     using cpu::gpw::GpwDft;
     using cpu::gpw::GthPotential;
     using cpu::gpw::Kind;
@@ -230,8 +229,12 @@ int main() {
     // C: multi-k TS + hirshfeld stress
     {
         GpwDft cfg = make_cfg(/*ts=*/true, /*mbd=*/false, /*hirsh=*/true);
+        cfg.stress_strain_h = kStrainH;
         cfg.build(frame);
-        const auto& scf = cfg.run(frame);
+        // One SCF: GpwDft::stress runs it and the fixed-P stress on it
+        // (σ in eV/Å³; converted to Ha/Bohr³ below).
+        std::array<double, 6> sig_h = cfg.stress(frame);
+        const auto& scf = cfg.last_result();
         if (!scf.converged) {
             fail("multi-k TS+hirsh SCF did not converge");
         } else if (scf.n_kpts < 1 || scf.C_occ_k.empty()) {
@@ -241,9 +244,16 @@ int main() {
         } else if (!std::isfinite(scf.e_disp) || !(scf.e_disp < 0.0)) {
             fail("multi-k TS+hirsh e_disp non-finite or non-attractive");
         } else {
+            // Plain runs its own SCF; TS/MBD with hirshfeld is folded
+            // post-SCF, so it converges to the same density as `scf`.
             GpwDft plain = make_cfg(false, false, false);
-            const auto sig_h = gpw_stress(frame, cfg, scf, kStrainH);
-            const auto sig_plain = gpw_stress(frame, plain, scf, kStrainH);
+            plain.stress_strain_h = kStrainH;
+            plain.build(frame);
+            std::array<double, 6> sig_plain = plain.stress(frame);
+            for (std::size_t k = 0; k < 6; ++k) {
+                sig_h[k] /= units::kHartreePerBohr3InEvPerAngstrom3;
+                sig_plain[k] /= units::kHartreePerBohr3InEvPerAngstrom3;
+            }
 
             auto ts_h = [&](const std::vector<std::array<double, 3>>& p,
                             const double c[3]) {
@@ -307,8 +317,12 @@ int main() {
     // D: multi-k MBD + hirshfeld stress (isolated MBD when mbd_k_mesh = 0)
     {
         GpwDft cfg = make_cfg(/*ts=*/false, /*mbd=*/true, /*hirsh=*/true);
+        cfg.stress_strain_h = kStrainH;
         cfg.build(frame);
-        const auto& scf = cfg.run(frame);
+        // One SCF: GpwDft::stress runs it and the fixed-P stress on it
+        // (σ in eV/Å³; converted to Ha/Bohr³ below).
+        std::array<double, 6> sig_h = cfg.stress(frame);
+        const auto& scf = cfg.last_result();
         if (!scf.converged) {
             fail("multi-k MBD+hirsh SCF did not converge");
         } else if (scf.n_kpts < 1 || scf.C_occ_k.empty()) {
@@ -318,9 +332,16 @@ int main() {
         } else if (!std::isfinite(scf.e_disp) || !(scf.e_disp < 0.0)) {
             fail("multi-k MBD+hirsh e_disp non-finite or non-attractive");
         } else {
+            // Plain runs its own SCF; TS/MBD with hirshfeld is folded
+            // post-SCF, so it converges to the same density as `scf`.
             GpwDft plain = make_cfg(false, false, false);
-            const auto sig_h = gpw_stress(frame, cfg, scf, kStrainH);
-            const auto sig_plain = gpw_stress(frame, plain, scf, kStrainH);
+            plain.stress_strain_h = kStrainH;
+            plain.build(frame);
+            std::array<double, 6> sig_plain = plain.stress(frame);
+            for (std::size_t k = 0; k < 6; ++k) {
+                sig_h[k] /= units::kHartreePerBohr3InEvPerAngstrom3;
+                sig_plain[k] /= units::kHartreePerBohr3InEvPerAngstrom3;
+            }
 
             auto mbd_h = [&](const std::vector<std::array<double, 3>>& p,
                              const double c[3]) {

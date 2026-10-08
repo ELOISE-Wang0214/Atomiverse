@@ -22,7 +22,7 @@
 /// electrostatics via the GTH Gaussian core charge. Analytic forces cover
 /// Γ RKS/UKS and multi-k RKS/UKS (`gpw_forces_analytic`); analytic cell
 /// stress covers Γ RKS/UKS, multi-k RKS/UKS, and Dudarev DFT+U on Γ and
-/// multi-k (`gpw_stress` via fixed-\(P_k^\sigma\) + BZ-averaged \(E_U\)).
+/// multi-k (`GpwDft::stress` via fixed-\(P_k^\sigma\) + BZ-averaged \(E_U\)).
 #pragma once
 
 #include <array>
@@ -177,7 +177,7 @@ struct GpwResult {
     /// @brief Occupied MO coefficients per k (k-path only): each entry is a
     ///        row-major complex matrix of shape `nb × n_occ` (RKS) or
     ///        `nb × n_alpha` (UKS α). Empty for pure Γ. Used by
-    ///        `gpw_forces_analytic` / `gpw_stress` to rebuild \(P_k\) / \(W_k\)
+    ///        `GpwDft::forces` / `GpwDft::stress` to rebuild \(P_k\) / \(W_k\)
     ///        on the **fixed-integer** path. Under metallic smearing the free-
     ///        energy force/stress path uses full `C_k` + `f_k` instead.
     std::vector<std::vector<std::complex<double>>> C_occ_k;
@@ -461,6 +461,13 @@ class GpwDft : public cpu::Driver<ATV::gpw::Phase> {
     ///        (UKS) — CP2K `ADDED_MOS` / PW `extra_bands`. GPW diagonalizes the
     ///        full AO spectrum; this is API parity.
     int extra_bands = 0;
+    /// @brief Dimensionless strain step of the fixed-\(P\) energy central FD
+    ///        inside `stress()` (default 2e-3).
+    double stress_strain_h = 2e-3;
+    /// @brief Per-axis stress mask (x,y,z): a masked axis skips its strain
+    ///        samples and reports σ exactly 0 — pair with the matching
+    ///        `AnisotropicCellRelax` `relax_*` mask in variable-cell runs.
+    std::array<bool, 3> stress_axes = {true, true, true};
 
     /// @brief Empty method; fill `kinds` before `build()`.
     GpwDft() = default;
@@ -501,6 +508,13 @@ class GpwDft : public cpu::Driver<ATV::gpw::Phase> {
     ///         sheared.
     GpwResult& run(Frame& frame);
 
+    /// @brief Const-geometry SCF: as `run(Frame&)` but writes nothing to the
+    ///        Frame (results on the returned `GpwResult` / `last_result()`).
+    /// @param frame Positions [Å], Z in `kAtom_type`, orthorhombic box [Å].
+    /// @return The owned result of this run [Hartree].
+    /// @throws as `run(Frame&)`.
+    GpwResult& run(const Frame& frame);
+
     /// @brief SCF + analytic ionic forces at the Frame's geometry.
     ///
     /// One SCF (as `run`), then Hellmann–Feynman + Pulay forces at the
@@ -513,6 +527,24 @@ class GpwDft : public cpu::Driver<ATV::gpw::Phase> {
     /// @throws std::runtime_error when the SCF did not converge (forces at an
     ///         unconverged density are not a gradient of anything).
     GpwResult& forces(Frame& frame);
+
+    /// @brief SCF + analytic cell stress at the Frame's geometry.
+    ///
+    /// One SCF, then Hellmann–Feynman central FD of the non-self-consistent
+    /// energy at fixed \(P\) under orthorhombic diagonal strain (step
+    /// `stress_strain_h`, axes `stress_axes`) at fixed fractional
+    /// coordinates. Covers Γ RKS/UKS, multi-k RKS/UKS, metallic free-energy
+    /// smearing, Dudarev DFT+U, and geometry-only dispersion rebuilt under
+    /// strain. Off-diagonal shear is 0 (orthorhombic only). Sign:
+    /// \(\sigma=-(1/\Omega)\partial E/\partial\varepsilon\). Writes the
+    /// extensive virial \(W=\sigma\Omega\) [eV] to `frame.meta[kStress]`
+    /// (overwritten) and the energy [eV] to `kEnergy`. Multi-SCF oracle:
+    /// `gpw_stress_fd`.
+    /// @param frame Positions [Å], Z in `kAtom_type`, orthorhombic box [Å].
+    /// @return Voigt σ \((xx,yy,zz,xy,xz,yz)\) [eV/Å³].
+    /// @throws std::logic_error when called before `build()`.
+    /// @throws std::runtime_error when the SCF did not converge.
+    std::array<double, 6> stress(Frame& frame);
 
     /// @brief Result of the most recent `run()` (default-constructed —
     ///        `converged == false` — before the first run).
@@ -788,64 +820,18 @@ std::vector<std::array<double, 3>>
 gpw_forces_fd(const Frame& frame, const GpwDft& method,
               double h = 1e-3 * units::kBohrInAngstrom);
 
-/// @brief Analytic cell stress σ [Hartree/Bohr³], Voigt order xx,yy,zz,xy,xz,yz.
-///
-/// Product path: one SCF, then Hellmann–Feynman fixed-\(P\) central FD of the
-/// non-self-consistent total energy under orthorhombic diagonal strain at fixed
-/// fractional coordinates (GPW analogue of `cpu::pw::pw_stress`). Supports
-/// Gamma RKS, Gamma UKS (spin-resolved fixed-\(P_\sigma\)), Dudarev DFT+U
-/// on Γ and multi-k (`plus_u`, \(E_U\) / BZ-averaged \(E_U\) on the fixed-\(P\)
-/// Lagrangian), closed-shell multi-k RKS (k-summed fixed-\(P_k\)), multi-k
-/// collinear UKS (fixed \(\{P_k^\sigma,W_k^\sigma\}\) + spin XC), multi-k
-/// free-energy stress under FD/MP metallic smearing (fractional \(P_k/W_k\)
-/// from `C_k`+`f_k`), and geometry-only dispersion (`d3` / `d3bj` / `d4` /
-/// `ts` / `xdm` / `mbd`) rebuilt under strain. Off-diagonal shear is 0
-/// (orthorhombic cell only). Multi-SCF oracle: `gpw_stress_fd`.
-///
-/// @param frame Geometry (positions [Å], Z, orthorhombic box [Å]); unchanged.
-/// @param method Configured method (parameters + kinds; need not be built).
-/// @param h Dimensionless strain step for the fixed-\(P\) energy FD (default 2e-3).
-/// @param axes Per-axis mask (x,y,z); a masked axis skips samples and reports
-///        exactly 0 — for variable-cell relaxation of constrained box edges.
-/// @return Voigt stress [Hartree/Bohr³].
-std::array<double, 6>
-gpw_stress(const Frame& frame, const GpwDft& method, double h = 2e-3,
-           const std::array<bool, 3>& axes = {true, true, true});
-
-/// @brief Analytic cell stress σ [Hartree/Bohr³] at a **supplied** state —
-///        no reference SCF.
-///
-/// Same fixed-\(P\) Hellmann–Feynman central FD as `gpw_stress`, but the
-/// density payload is handed in instead of re-converged: Γ needs
-/// `state.P` / `state.C` / `state.eps` (+ β fields for UKS); multi-k fixed
-/// occupations need `state.C_occ_k` / `state.eps_k` (+ β for UKS); multi-k
-/// metallic smear needs `state.C_k` / `state.eps_k` (+ `f_k` or
-/// `e_fermi`+method smear knobs). `state.converged` must be true — typically
-/// `method.last_result()` after `method.run(frame)`.
-///
-/// @param frame Geometry the state was converged at (positions [Å], Z, box).
-/// @param method Method that produced `state`.
-/// @param state Stationary payload (see above); `converged` must be true.
-/// @param h Dimensionless strain step for the fixed-\(P\) energy FD (default 2e-3).
-/// @param axes Per-axis mask (x,y,z); a masked axis skips samples and reports
-///        exactly 0.
-/// @return Voigt stress [Hartree/Bohr³], order xx,yy,zz,xy,xz,yz.
-std::array<double, 6> gpw_stress(const Frame& frame, const GpwDft& method,
-                                 const GpwResult& state, double h = 2e-3,
-                                 const std::array<bool, 3>& axes = {true, true,
-                                                                    true});
-
-/// @brief Multi-SCF strain-FD cell stress σ [Hartree/Bohr³] (oracle / twin).
+/// @brief Multi-SCF strain-FD cell stress σ [eV/Å³] (oracle / twin of
+///        `GpwDft::stress`).
 ///
 /// Fully re-converges the SCF at each strained cell (±h per diagonal axis).
-/// Same sign convention and orthorhombic scope as `gpw_stress`. Use only for
-/// dual-gate tests and finite-difference twins — not the product hot path.
+/// Same sign convention and orthorhombic scope as `GpwDft::stress`. Use only
+/// for dual-gate tests and finite-difference twins — not the product hot path.
 ///
 /// @param frame Geometry (positions [Å], Z, orthorhombic box [Å]); unchanged.
 /// @param method Configured method (parameters + kinds; need not be built).
 /// @param h Dimensionless strain step (default 2e-3).
 /// @param axes Per-axis mask (x,y,z); masked axes report exactly 0.
-/// @return Voigt stress [Hartree/Bohr³].
+/// @return Voigt stress [eV/Å³].
 std::array<double, 6>
 gpw_stress_fd(const Frame& frame, const GpwDft& method, double h = 2e-3,
               const std::array<bool, 3>& axes = {true, true, true});

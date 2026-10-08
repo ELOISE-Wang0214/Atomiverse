@@ -5,9 +5,12 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/planewave/internal/pw_forces.h"
+#include "atomiverse/cpu/planewave/internal/pw_stress.h"
 #include "atomiverse/cpu/planewave/qe_units.h"
 
 #include <stdexcept>
+#include <utility>
 
 namespace ATV {
 namespace cpu {
@@ -23,21 +26,23 @@ void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // mean_field_method) so the outer Evaluate budget stays component-sized.
     //
     // Variable-cell productization: stress-only launches use the production
-    // SCF inside `pw_stress` for both energy and stress (one SCF class, not
+    // SCF inside the stress path for both energy and stress (one SCF class, not
     // energy-SCF + stress-SCF). Force paths still run energy then forces.
     const bool want_forces = compute_forces_ && ctx.forces_requested;
     const bool stress_only = compute_stress_ && !want_forces;
 
     if (stress_only) {
         const auto saved = ctx.frame.resolution_window();
-        double energy_ry = 0.0;
-        const auto s = pw_stress(ctx.frame, method_, &energy_ry);
+        PWResult scf{};
+        const auto s =
+            internal::pw_stress_analytic_impl(ctx.frame, method_, &scf);
+        const double energy_ry = scf.energy;
         ctx.frame.restore_resolution_window(saved);
         ctx.frame.meta.get(kEnergy) += energy_ry * qe_units::rydberg_to_ev;
         ctx.frame.meta.get(kEnergyElectronic) +=
             energy_ry * qe_units::rydberg_to_ev;
         // kStress is the EXTENSIVE Voigt virial [eV] (see core/frame_schema.h):
-        // pw_stress returns the intensive sigma [eV/A^3], so it is multiplied by
+        // the stress path returns the intensive sigma [eV/A^3], so it is multiplied by
         // the cell volume on the way onto the shared, `+=`-accumulated key.
         const double vol = ctx.frame.box.volume();
         auto& st = ctx.frame.meta.get(kStress);
@@ -47,14 +52,15 @@ void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
         return;
     }
 
-    const auto& result = method_.run(ctx.frame);
+    const auto& result = method_.run(std::as_const(ctx.frame));
     ctx.frame.meta.get(kEnergy) += result.energy * qe_units::rydberg_to_ev;
     ctx.frame.meta.get(kEnergyElectronic) +=
         result.energy * qe_units::rydberg_to_ev;
 
     if (want_forces) {
         const auto saved = ctx.frame.resolution_window();
-        const auto forces = pw_forces_analytic(ctx.frame, method_); // eV/Å
+        const auto forces =
+            internal::pw_forces_analytic_impl(ctx.frame, method_); // eV/Å
         ctx.frame.restore_resolution_window(saved);
         const int n = ctx.frame.nlocal();
         if (static_cast<int>(forces.size()) != n)
@@ -75,7 +81,8 @@ void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
 
     if (compute_stress_) {
         const auto saved = ctx.frame.resolution_window();
-        const auto s = pw_stress(ctx.frame, method_); // eV/Å³ Voigt
+        const auto s =
+            internal::pw_stress_analytic_impl(ctx.frame, method_); // eV/Å³
         ctx.frame.restore_resolution_window(saved);
         // Intensive σ → extensive virial for the shared kStress key [eV].
         const double vol = ctx.frame.box.volume();

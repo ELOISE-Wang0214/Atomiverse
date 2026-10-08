@@ -80,7 +80,6 @@
 #include "atomiverse/core/verdict.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/component/component.cuh"
-#include "atomiverse/cuda/component/hf.cuh"
 #include "atomiverse/cuda/component/integrator.cuh"
 #include "atomiverse/cuda/component/long_range_protocol.cuh"
 #include "atomiverse/cuda/component/optimizer.cuh"
@@ -458,9 +457,9 @@ class Driver : public ATV::Driver<PhaseEnum, cuda::device_tag> {
 
     /// @brief Const scan: provide/require facts plus protocol probes.
     ///
-    /// Energy/force come from `provides_*`. HF methods that also inherit
-    /// `Component` contribute via a single `HF` cross-cast. No family type
-    /// list, no `name()==langevin`.
+    /// Energy/force come from `provides_*`. A nested driver reports them
+    /// through the slot built at `on(phase).add`. No family type list,
+    /// no `name()==langevin`.
     InfraScan scan_pending_infra_() const {
         InfraScan s;
         for_each_pending([&](const cuda::Component& c) {
@@ -470,12 +469,6 @@ class Driver : public ATV::Driver<PhaseEnum, cuda::device_tag> {
                 s.has_force = true;
             if (c.provides_hessian())
                 s.has_hessian = true;
-            if (const auto* hf = dynamic_cast<const cuda::HF*>(&c)) {
-                if (hf->provides_energy())
-                    s.has_energy = true;
-                if (hf->provides_force())
-                    s.has_force = true;
-            }
             if (dynamic_cast<const cuda::Integrator*>(&c))
                 s.has_integrator = true;
             if (dynamic_cast<const cuda::Optimizer*>(&c))

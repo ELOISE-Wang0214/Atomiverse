@@ -80,13 +80,13 @@ History is git's job — superseded designs are deleted, not archived here.
   specific molrs pin (WHAM ⇒ `ATV_MOLRS_HAS_WHAM`, streaming mrec ⇒
   `ATV_MOLRS_HAS_TRAJECTORY_WRITER`) gate their sources **and** their tests /
   regressions on the same condition.
-- **Two molrs sources, one contract.** `./molrs` submodule = CI pin (the
+- **Two molrs sources.** `./molrs` submodule = CI pin (the
   unit gate configures without `ATV_MOLRS_PATH`); every developer preset sets
   `ATV_MOLRS_PATH=${sourceDir}/../molrs` because molrs `dev` is consumed with
   uncommitted working-tree changes. molrs ≥ 0.14 makes `molrs-cxxapi` a
   standalone workspace root, so corrosion imports
   `${ATV_MOLRS_PATH}/molrs-cxxapi/Cargo.toml` (also valid for the 0.13
-  layout). Bump `ATV_MOLRS_GIT_REF` when advancing the gitlink.
+  layout). There is no CXX API version gate (molrs has none before 1.0.0).
 - **Toolchain gotchas** (login node): `OPENBLAS_ROOT="$OPENBLASDIR"`,
   `RUSTUP_TOOLCHAIN=stable-x86_64-unknown-linux-gnu`, mirror `LIBRARY_PATH`
   into `LD_LIBRARY_PATH` before running anything. GPU node: default aarch64

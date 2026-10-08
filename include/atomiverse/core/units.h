@@ -51,6 +51,9 @@ inline constexpr double kAuDipoleInDebye = 2.541746473;
 inline constexpr double kHartreeInEv = 1.0 / kEvInHartree;
 inline constexpr double kHartreePerBohrInEvPerAngstrom =
     1.0 / kEvPerAngstromInHartreePerBohr;
+/// Pressure / stress: 1 Hartree/Bohr³ in eV/Å³.
+inline constexpr double kHartreePerBohr3InEvPerAngstrom3 =
+    kHartreeInEv / (kBohrInAngstrom * kBohrInAngstrom * kBohrInAngstrom);
 
 // ── Dimension enums ──────────────────────────────────────────────────
 

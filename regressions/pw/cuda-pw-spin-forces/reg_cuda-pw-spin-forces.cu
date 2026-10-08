@@ -92,7 +92,20 @@ int run_on_device(Device dev, const char* upf,
         method.multiplicity = 3;
         method.xc = cpu::scf::XCType::LSDA;
         method.build(frame);
-        forces = cpu::pw::pw_forces_analytic(frame, method);
+        {
+            // `forces()` overwrites the Frame's force columns + kEnergy;
+            // run it on a copy and read the triples back [eV/Å].
+            cpu::Frame frame_copy = frame;
+            method.forces(frame_copy);
+            const auto fx = frame_copy.span(kAtom_fx);
+            const auto fy = frame_copy.span(kAtom_fy);
+            const auto fz = frame_copy.span(kAtom_fz);
+            forces.resize(static_cast<std::size_t>(frame_copy.nlocal()));
+            for (std::size_t i = 0; i < forces.size(); ++i)
+                forces[i] = {static_cast<double>(fx[i]),
+                             static_cast<double>(fy[i]),
+                             static_cast<double>(fz[i])};
+        }
     } else {
         cuda::pw::PW method;
         method.upf_path = upf;

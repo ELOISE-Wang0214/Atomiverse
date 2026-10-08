@@ -5839,14 +5839,17 @@ void GpwDft::build(const Frame& reference) {
     build_atoms_(atoms);
 }
 
-GpwResult& GpwDft::run(Frame& frame) {
+GpwResult& GpwDft::run(const Frame& frame) {
     if (!built_)
         throw std::logic_error(
             "GpwDft::run called before build(frame) — validate the "
             "configuration first (no silent auto-build)");
     cell_ = internal::cell_from_box(frame.box);
-    GpwResult& res =
-        run_atoms_(internal::GpwDftAccess::atoms_from_frame(*this, frame));
+    return run_atoms_(internal::GpwDftAccess::atoms_from_frame(*this, frame));
+}
+
+GpwResult& GpwDft::run(Frame& frame) {
+    GpwResult& res = run(std::as_const(frame));
     frame.meta.get(kEnergy) = res.e_total * units::kHartreeInEv;
     return res;
 }
@@ -5984,6 +5987,8 @@ GpwDft GpwDftAccess::clone(const GpwDft& m) {
     p.degauss = m.degauss;
     p.mp_order = m.mp_order;
     p.extra_bands = m.extra_bands;
+    p.stress_strain_h = m.stress_strain_h;
+    p.stress_axes = m.stress_axes;
     return p;
 }
 

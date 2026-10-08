@@ -221,7 +221,7 @@ void accumulate_nl_forces_k(const PWWorkspace& ws, AccReal weight, int n_bands,
 
 std::vector<std::array<double, 3>>
 pw_forces_analytic_impl(const cpu::Frame& frame, const PW& method,
-                        double* energy_ry_out) {
+                        PWResult* scf_out) {
     const int n = frame.nlocal();
     if (n <= 0)
         throw std::invalid_argument("pw_forces_analytic: frame has no atoms");
@@ -306,8 +306,8 @@ pw_forces_analytic_impl(const cpu::Frame& frame, const PW& method,
     // Published before the force assembly so the number a caller reads is the
     // energy of exactly the density these forces are the gradient of — not of
     // a second, separately converged SCF.
-    if (energy_ry_out != nullptr)
-        *energy_ry_out = res.energy;
+    if (scf_out != nullptr)
+        *scf_out = res;
 
     PWWorkspace& ws = scf_prob.ws;
     ws.gvec = &scf_prob.gv0;

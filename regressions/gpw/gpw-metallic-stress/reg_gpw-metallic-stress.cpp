@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
@@ -57,7 +58,6 @@ std::vector<ATV::cpu::gpw::Kind> na_kinds() {
 
 int main() {
     using namespace ATV;
-    using cpu::gpw::gpw_stress;
     using cpu::gpw::gpw_stress_fd;
     using cpu::gpw::GpwDft;
     using cpu::gpw::Smearing;
@@ -117,10 +117,22 @@ int main() {
 
     const double h = 2e-3;
     const auto t2 = std::chrono::steady_clock::now();
-    const auto san = gpw_stress(frame, make_cfg(), h);
+    std::array<double, 6> san{};
+    {
+        GpwDft m = make_cfg();
+        m.stress_strain_h = h;
+        m.build(frame);
+        san = m.stress(frame);
+    }
     const auto t3 = std::chrono::steady_clock::now();
-    const auto sfd = gpw_stress_fd(frame, make_cfg(), h);
+    auto sfd = gpw_stress_fd(frame, make_cfg(), h);
     const auto t4 = std::chrono::steady_clock::now();
+    // Public paths return eV/Å³; gates, pins and prints stay in Ha/Bohr³.
+    constexpr double kToHaBohr3 = 1.0 / units::kHartreePerBohr3InEvPerAngstrom3;
+    for (int k = 0; k < 6; ++k) {
+        san[static_cast<std::size_t>(k)] *= kToHaBohr3;
+        sfd[static_cast<std::size_t>(k)] *= kToHaBohr3;
+    }
     const double wall_an = std::chrono::duration<double>(t3 - t2).count();
     const double wall_fd = std::chrono::duration<double>(t4 - t3).count();
 

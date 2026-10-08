@@ -283,7 +283,7 @@ TEST(Materialize, RoundTrip) {
     EXPECT_DOUBLE_EQ(cf.box.length(2), 20.0);
 
     // System results cross the boundary only as exact typed metadata. No
-    // synthetic result block exists in schema v2.
+    // synthetic result block exists in the molrs schema.
     const auto meta = molrs::frame_meta_entries(*fr);
     auto find_meta = [&](const char* key) -> const molrs::MetaEntry* {
         for (const auto& entry : meta)

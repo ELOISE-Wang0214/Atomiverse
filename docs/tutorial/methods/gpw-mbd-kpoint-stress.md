@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-mbd-kpoint-stress` |
-| Public API | `cpu::gpw::GpwDft` members `k_mesh`, `mbd`, `mbd_k_mesh` + `cpu::gpw::GPWEvaluator` members `compute_stress`, `stress_use_fd`; Frame `kStress` [eV/Å³]; `last_stress_ha_bohr3()` |
+| Public API | `cpu::gpw::GpwDft` members `k_mesh`, `mbd`, `mbd_k_mesh` + `cpu::gpw::GPWEvaluator` members `compute_stress`, `stress_use_fd`; Frame `kStress` [eV] (σ·Ω); `last_stress_ha_bohr3()` |
 | Roadmap | `docs/roadmap/dft.md` §8 Dispersion + §10 Periodic KS |
 
 ## Summary
@@ -29,7 +29,7 @@ every strained cell (`gpw-mbd-stress`) while the **k-summed** Lagrangian
    (CP2K `STRESS_TENSOR` sign; Hartree / Bohr³ internally).
 
 Public surface: existing members only — no `*Config` bag, no new symbols.
-Frame reports `kStress` in eV/Å³; internal comparison via
+Frame reports `kStress` in eV (virial σ·Ω); internal comparison via
 `last_stress_ha_bohr3()`.
 
 ## Method
@@ -116,7 +116,7 @@ cpu::Evaluate ev;
 ev.on(evaluate::Phase::evaluate).add_ref(eval);
 ev.build();
 ev.run(frame);
-// frame.meta.get(kEnergy) [eV]; frame kStress [eV/Å³]
+// frame.meta.get(kEnergy) [eV]; frame kStress [eV] (σ·Ω)
 // eval.last_stress_ha_bohr3() for Ha/Bohr³ comparison
 // eval.last_result().e_disp [Ha]
 ```
@@ -240,7 +240,7 @@ defined.
   pairs throw at run.
 - Absolute QS \(E_{\mathrm{tot}}\) vs CP2K not asserted.
 - Public energy/stress units: internal Ha, Ha/Bohr³ for pins; Frame reports
-  eV (`kEnergy`) and eV/Å³ (`kStress`).
+  eV (`kEnergy`) and eV (virial σ·Ω) (`kStress`).
 
 ## References
 

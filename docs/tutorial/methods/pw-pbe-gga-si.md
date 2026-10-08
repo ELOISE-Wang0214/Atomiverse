@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pw-pbe-gga-si` |
-| Public API | `cpu::pw::PW` (`xc = XCType::PBE`); `pw_forces_analytic` [eV/Å] |
+| Public API | `cpu::pw::PW` (`xc = XCType::PBE`); `PW::forces` → `kAtom_f*` [eV/Å] |
 | Roadmap | `docs/roadmap/dft.md` / CP2K queue `pw-pbe-gga-si` (wave 1 ✓) |
 
 ## Summary
@@ -16,7 +16,7 @@ functional on the FFT grid: density gradients enter both \(E_{\mathrm{xc}}\) and
 \(\sigma = 0\). The product system is bulk silicon (diamond FCC primitive cell, 2 atoms)
 at a modest cutoff and \(2\times2\times2\) k-mesh so the e2e gate finishes in seconds.
 Public surface: concrete `cpu::pw::PW` with members (`upf_path`, `ecut_ry`, `k_mesh`,
-`xc`, …); Frame in / Frame out; analytic ionic forces via `pw_forces_analytic`.
+`xc`, …); Frame in / Frame out; analytic ionic forces via `PW::forces`.
 Product gate: `pw-pbe-gga-si` (`reg_pw-pbe-gga-si`). Offline absolute
 CP2K/QE energy twin was **unavailable** on the pin host; correctness uses crystal-symmetry
 force zeros plus a PBE–LSDA energy-gap activation pin. Performance is **`perf_exempt`**.
@@ -61,7 +61,7 @@ Pure LDA is selected with `XCType::LSDA` (pointwise density-only path). Historic
 bug fixed by this slug: calling PBE with forced \(\sigma=0\) is **not** true GGA.
 
 **Forces.** Analytic Hellmann–Feynman (plus PP projectors) via
-`pw_forces_analytic(frame, pw)` in eV/Å. On ideal diamond sites, lattice symmetry
+`pw.forces(frame)`, written to `kAtom_fx/fy/fz` in eV/Å. On ideal diamond sites, lattice symmetry
 requires \(\mathbf{F}=\mathbf{0}\) for every atom (product residual bound below).
 
 **Key exclusions (this slug / regression).**
@@ -96,8 +96,10 @@ pbe.mix_beta = 0.5;
 pbe.xc       = ATV::cpu::scf::XCType::PBE;    // true GGA (spectral ∇ρ)
 
 pbe.build(frame);
-const auto& r = pbe.run(frame);               // r.energy [Ry]
-const auto F = ATV::cpu::pw::pw_forces_analytic(frame, pbe); // [eV/Å]
+const ATV::cpu::pw::PWResult r = pbe.run(frame);  // copy: forces() overwrites last_result()
+// r.energy [Ry]
+pbe.forces(frame);  // own SCF; kAtom_fx/fy/fz [eV/Å] (overwritten), kEnergy [eV]
+const auto fx = frame.span(ATV::kAtom_fx);    // likewise kAtom_fy / kAtom_fz
 ```
 
 Optional single-point via evaluator (writes `kEnergy` [eV]):
@@ -130,7 +132,7 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `pw_solver.h` | Public `PW`, `PWResult`, `pw_forces_analytic` |
+| `pw_solver.h` | Public `PW` (`run` / `forces` / `stress`), `PWResult` |
 | `pw_evaluator.h` | Driver-bound `PWEvaluator` |
 | `xc_builder.h` | Internal GGA XC (not public) |
 | `src/cpu/planewave/internal/xc_builder.cpp` | Spectral \(\nabla\rho\), divergence \(v_{\mathrm{xc}}\) |

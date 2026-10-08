@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Slug | `gpw-analytic-stress` |
-| Public API | `cpu::gpw::gpw_stress` (analytic); oracle `gpw_stress_fd`; `GPWEvaluator` (`compute_stress`, `stress_use_fd=false` default) |
+| Public API | `cpu::gpw::GpwDft::stress` (analytic); oracle `gpw_stress_fd` [eV/Å³]; `GPWEvaluator` (`compute_stress`, `stress_use_fd=false` default) |
 | Roadmap | [dft.md](../../roadmap/dft.md) § Periodic response; queue `gpw-analytic-stress` |
 
 ## What this is
@@ -24,7 +24,7 @@ under orthorhombic diagonal strain at fixed fractional coordinates. The
 `gpw_stress_fd` for dual-gate only.
 
 Sign: \(\sigma_{aa} = -\Omega^{-1}\partial E/\partial\varepsilon_{aa}\)
-(CP2K `STRESS_TENSOR`). Frame `kStress` is eV/Å³; pin compare via
+(CP2K `STRESS_TENSOR`). Frame `kStress` is eV (virial σ·Ω); pin compare via
 `last_stress_ha_bohr3()` [Ha/Bohr³].
 
 Product gate: analytic vs multi-SCF FD diagonals within **1×10⁻⁵** Ha/Bohr³
@@ -50,7 +50,7 @@ dft.xc = cpu::gpw::XcKind::PBE;  dft.nonperiodic = true;
 cpu::gpw::GPWEvaluator eval(std::move(dft));
 eval.compute_stress = true;       // product analytic (default)
 // eval.stress_use_fd = true;     // multi-SCF oracle only
-eval.stress_strain_h = 2e-3;
+eval.method().stress_strain_h = 2e-3;
 
 cpu::Evaluate driver;
 driver.on(evaluate::Phase::evaluate).add_ref(eval);
@@ -58,14 +58,14 @@ driver.build();
 driver.run(frame);
 
 const auto& s = eval.last_stress_ha_bohr3(); // Ha/Bohr³ Voigt
-// frame.meta.get(kStress) is eV/Å³
+// frame.meta.get(kStress) is eV (virial σ·Ω)
 ```
 
 ## Files
 
 | Path | Role |
 | ---- | ---- |
-| `gpw_solver.h` | `gpw_stress` / `gpw_stress_fd` |
+| `gpw_solver.h` | `GpwDft::stress` (`stress_strain_h`, `stress_axes`) / `gpw_stress_fd` |
 | `gpw_evaluator.h` | `compute_stress`, `stress_use_fd` |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Fixed-\(P\)+Pulay + multi-SCF FD |
 | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` | Unit dual-gate |

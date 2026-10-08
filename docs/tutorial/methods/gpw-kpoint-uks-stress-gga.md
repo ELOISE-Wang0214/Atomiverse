@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-kpoint-uks-stress-gga` |
-| Public API | `cpu::gpw::GpwDft` + `cpu::gpw::gpw_stress` / `gpw_stress_fd`; members `n_alpha`/`n_beta`, `k_mesh`, `xc` (`RevPBE` \| `RPBE` \| `BLYP`) |
+| Public API | `cpu::gpw::GpwDft` + `cpu::gpw::GpwDft::stress` / free oracle `gpw_stress_fd`; members `n_alpha`/`n_beta`, `k_mesh`, `xc` (`RevPBE` \| `RPBE` \| `BLYP`) |
 | Roadmap | [dft.md](../../roadmap/dft.md) § Periodic DFT / GPW — multi-k UKS stress for pure GGA |
 | Queue | CP2K capability loop — harness wave 11 done (2026-07-26) |
 
@@ -25,8 +25,9 @@ compressed bond, cubic 12 Bohr cell, **1×1×2** MP mesh, **DZV-GTH-PADE** /
 **GTH-PADE-q1**, cutoff 100 Ry. Decisive gate is **analytic vs multi-SCF
 strain-FD** on the same method (not a live CP2K absolute stress pin). Soft
 energy pins and an **activation** check \(\lvert E_{\mathrm{RevPBE}}-E_{\mathrm{PBE}}\rvert\)
-ensure GGA is actually live. Public energy on Frame remains **eV**; pin
-channels and stress use **Ha / Ha·Bohr⁻³**.
+ensure GGA is actually live. Public energy on Frame remains **eV** and
+`GpwDft::stress` / `gpw_stress_fd` return **eV/Å³**; pin channels compare in
+**Ha / Ha·Bohr⁻³**.
 
 Product gate: `reg_gpw-kpoint-uks-stress-gga`. Fair wall vs same-basis CP2K
 NUMERICAL stress is **`perf_exempt`** (DZV-GTH-PADE not in `BASIS_MOLOPT`;
@@ -109,7 +110,7 @@ PBE-mislabelled path.
 ## Implementation
 
 Public surface only: a `Frame` (Å, Z in `kAtom_type`, box) + `Kind` built
-from lookup constructors (`GaussianBasis` / `GthPotential`), `GpwDft` members, free `gpw_stress` /
+from lookup constructors (`GaussianBasis` / `GthPotential`), `GpwDft` members, `GpwDft::stress` /
 `gpw_stress_fd`. **No** public `*Config`, **no** `make_*` / `build_*`
 factories. Match the regression:
 
@@ -163,14 +164,18 @@ const auto& er = energy.run(frame);  // er.e_total [Ha]
 
 // Analytic product stress vs multi-SCF FD dual-gate
 const double h = 2e-3;
-const auto san = gpw_stress(frame, make_uks(XcKind::RevPBE), h);   // Voigt Ha/Bohr³
-const auto sfd = gpw_stress_fd(frame, make_uks(XcKind::RevPBE), h);
+GpwDft m = make_uks(XcKind::RevPBE);
+m.stress_strain_h = h;
+m.build(frame);
+const auto san = m.stress(frame);                                    // Voigt eV/Å³
+const auto sfd = gpw_stress_fd(frame, make_uks(XcKind::RevPBE), h);  // Voigt eV/Å³
+// gates compare in Ha/Bohr³: divide by units::kHartreePerBohr3InEvPerAngstrom3
 ```
 
 `GPWEvaluator` can also request product stress on a Frame path
 (`compute_stress`, `stress_use_fd=false` default, `last_stress_ha_bohr3()`,
-Frame `kStress` in eV/Å³) — this regression exercises the free `gpw_stress`
-API on `GpwDft` with explicit multi-k UKS + GGA members.
+Frame `kStress` in eV (virial σ·Ω)) — this regression exercises `GpwDft::stress`
+directly on `GpwDft` with explicit multi-k UKS + GGA members.
 
 Build and run (scoped targets only):
 
@@ -192,7 +197,7 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `gpw_solver.h` | `GpwDft`, `gpw_stress`, `gpw_stress_fd` |
+| `gpw_solver.h` | `GpwDft`, `GpwDft::stress`, `gpw_stress_fd` |
 | `gpw_evaluator.h` | Frame-facing stress members (product path) |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Fixed-\(P_k^\sigma\)+Pulay + multi-SCF FD |
 | `gaussian_basis.h` | `GaussianBasis(Element, "DZV-GTH-PADE")` |

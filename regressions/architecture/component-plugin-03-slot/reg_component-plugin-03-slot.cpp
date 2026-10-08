@@ -10,7 +10,7 @@
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/driver/driver.h"
-#include "atomiverse/cpu/driver/nested_loop_adapter.h"
+#include "atomiverse/cpu/driver/driver_node.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -106,10 +106,10 @@ int main() {
 
     const auto& ops =
         outer.plan().slots[ATV::slot_of(ATV::md::Phase::end_of_step)].ops;
-    if (ops.empty()
-        || dynamic_cast<cpu::NestedLoopAdapter*>(ops.front().component)
-               == nullptr) {
-        std::printf("FAIL: nested slot is not a NestedLoopAdapter\n");
+    if (ops.empty() || ops.front().component == nullptr
+        || dynamic_cast<cpu::DriverNode*>(ops.front().component) != nullptr) {
+        std::printf(
+            "FAIL: nested slot must be a Component and not a DriverNode\n");
         return 1;
     }
 
@@ -120,6 +120,6 @@ int main() {
             outer_iters, outer.converged() ? 1 : 0, inner.converged() ? 1 : 0);
         return 1;
     }
-    std::printf("ok: slot=adapter outer_iters=5 inner_converged=1\n");
+    std::printf("ok: slot=component outer_iters=5 inner_converged=1\n");
     return 0;
 }

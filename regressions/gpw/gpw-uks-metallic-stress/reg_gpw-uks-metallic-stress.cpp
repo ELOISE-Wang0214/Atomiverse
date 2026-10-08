@@ -5,12 +5,14 @@
 /// FD of F; closed-shell UKS+smear ≡ RKS+smear stress identity; soft CP2K
 /// NUMERICAL class check. See REFERENCE.md.
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
@@ -55,7 +57,6 @@ std::vector<ATV::cpu::gpw::Kind> na_kinds() {
 
 int main() {
     using namespace ATV;
-    using cpu::gpw::gpw_stress;
     using cpu::gpw::gpw_stress_fd;
     using cpu::gpw::GpwDft;
     using cpu::gpw::Smearing;
@@ -120,9 +121,21 @@ int main() {
 
     const double h = 2e-3;
     const auto t2 = std::chrono::steady_clock::now();
-    const auto san = gpw_stress(frame, make_uks(), h);
+    // Public paths return eV/Å³; gates, pins and prints stay in Ha/Bohr³.
+    constexpr double kToHaBohr3 = 1.0 / units::kHartreePerBohr3InEvPerAngstrom3;
+    auto stress_ha_bohr3 = [&](GpwDft m) {
+        m.stress_strain_h = h;
+        m.build(frame);
+        auto s = m.stress(frame);
+        for (auto& v : s)
+            v *= kToHaBohr3;
+        return s;
+    };
+    const auto san = stress_ha_bohr3(make_uks());
     const auto t3 = std::chrono::steady_clock::now();
-    const auto sfd = gpw_stress_fd(frame, make_uks(), h);
+    auto sfd = gpw_stress_fd(frame, make_uks(), h);
+    for (auto& v : sfd)
+        v *= kToHaBohr3;
     const auto t4 = std::chrono::steady_clock::now();
     const double wall_an = std::chrono::duration<double>(t3 - t2).count();
     const double wall_fd = std::chrono::duration<double>(t4 - t3).count();
@@ -149,7 +162,7 @@ int main() {
     check(max_diag_err <= kAnFdTol, "A2 free-energy analytic vs FD max diag");
 
     // Closed-shell UKS+smear ≡ RKS+smear stress identity.
-    const auto s_rks = gpw_stress(frame, make_rks(), h);
+    const auto s_rks = stress_ha_bohr3(make_rks());
     double max_cs = 0.0;
     for (int ax = 0; ax < 3; ++ax)
         max_cs =

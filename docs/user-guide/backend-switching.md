@@ -65,9 +65,8 @@ eval.run(frame);
 
 `cuda::scf::RHF` is `cuda::Driver<scf::Phase>` with the stages
 `fock → mix → diagonalize → density → check`. It is not itself a Component.
-`set_evaluator` wraps that driver in `cuda::NestedLoopAdapter`, so the outer
-Evaluate or MD plan still sees one component. The SCF iteration stays inside
-the adapter.
+`set_evaluator` mounts it in one Plan slot. That slot's single call runs the
+SCF loop. The outer Evaluate or MD plan still sees one component.
 
 That is the main backend switch in Atomiverse. The physical problem is
 described once; only the device that executes it changes.

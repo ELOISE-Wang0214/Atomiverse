@@ -4,11 +4,12 @@
 /// Mirrors the Gaussian methods (`cpu::scf::RHF` / `RKS` / …): holds a `PW`
 /// inner solver built once;
 /// each `launch()` runs the plane-wave SCF and writes energy [eV]. With
-/// `with_gradient(true)` (default **false**), ionic forces are filled via
-/// `pw_forces_analytic` [eV/Å]. FD oracle remains `pw_forces_fd`.
+/// `with_gradient(true)` (default **false**), ionic forces are accumulated
+/// from the same analytic path as `PW::forces` [eV/Å]; with `with_stress`,
+/// the virial from the `PW::stress` path. FD oracles: `pw_forces_fd`,
+/// `pw_stress_fd`.
 #pragma once
 
-#include <stdexcept>
 #include <utility>
 
 #include "atomiverse/cpu/component/plane_wave.h"
@@ -22,7 +23,7 @@ namespace pw {
 ///
 /// Kind `PW`. Writes `frame.meta.get(kEnergy)` [eV]; Ry/Hartree stay
 /// on `last_result()`. Forces (when enabled) use analytic local HF + Ewald
-/// (`pw_forces_analytic`).
+/// + KB nonlocal (the `PW::forces` path), accumulated onto the Frame.
 class PWEvaluator : public cpu::PlaneWave {
   public:
     /// @brief Construct with a default-configured plane-wave method.
@@ -50,7 +51,7 @@ class PWEvaluator : public cpu::PlaneWave {
 
     /// @brief Enable/disable the cell stress write to `kStress`.
     ///
-    /// `pw_stress` returns the intensive stress σ [eV/Å³]; the launch path
+    /// The stress path returns the intensive σ [eV/Å³]; the launch path
     /// multiplies it by the cell volume before accumulating, because `kStress`
     /// is the **extensive** Voigt virial [eV] for every producer
     /// (`core/frame_schema.h`). Default **false**.
@@ -64,15 +65,6 @@ class PWEvaluator : public cpu::PlaneWave {
         return std::move(*this);
     }
     bool compute_stress() const noexcept { return compute_stress_; }
-
-    /// @brief Legacy FD step [Å] (only used if force path is switched to FD).
-    /// @deprecated Prefer `pw_forces_fd` for oracle tests; evaluator uses analytic.
-    PWEvaluator& set_fd_step(double h_ang) & {
-        if (h_ang <= 0.0)
-            throw std::invalid_argument("PWEvaluator: fd step must be > 0");
-        fd_step_ = h_ang;
-        return *this;
-    }
 
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
@@ -88,7 +80,6 @@ class PWEvaluator : public cpu::PlaneWave {
     PW method_;
     bool compute_forces_ = false;
     bool compute_stress_ = false;
-    double fd_step_ = 1e-3; // retained for API compatibility / future FD opt-in
 };
 
 } // namespace pw

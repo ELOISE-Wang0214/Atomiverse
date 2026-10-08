@@ -2,9 +2,9 @@
 /// @brief cuda::HF — pure polymorphic tag for Gaussian-basis mean-field methods.
 ///
 /// Mirrors cpu::HF: a non-Component energy/force-source tag. `cuda::scf::RHF`
-/// is a `cuda::Driver<scf::Phase>` plus this tag (nested via
-/// `NestedLoopAdapter`). Synthetic `SCF` still inherits `Component`. The
-/// driver matcher reads these probes via `dynamic_cast<const HF*>`.
+/// is a `cuda::Driver<scf::Phase>` plus this tag. `on(phase).add` copies
+/// `provides_energy` / `provides_force` onto the slot Component. Synthetic
+/// `SCF` still inherits `Component` and overrides those predicates itself.
 #pragma once
 
 namespace ATV {

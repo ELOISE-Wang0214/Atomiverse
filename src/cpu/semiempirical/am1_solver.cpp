@@ -2,6 +2,7 @@
 #include "atomiverse/cpu/semiempirical/am1_solver.h"
 
 #include <stdexcept>
+#include <utility>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
@@ -24,7 +25,7 @@ AM1& AM1::operator=(AM1&&) noexcept = default;
 AM1::AM1(const AM1& other)
     : charge(other.charge), multiplicity(other.multiplicity),
       max_iter(other.max_iter), density_tol(other.density_tol),
-      energy_tol(other.energy_tol) {}
+      energy_tol(other.energy_tol), force_step(other.force_step) {}
 
 AM1& AM1::operator=(const AM1& other) {
     if (this != &other) {
@@ -33,6 +34,7 @@ AM1& AM1::operator=(const AM1& other) {
         max_iter = other.max_iter;
         density_tol = other.density_tol;
         energy_tol = other.energy_tol;
+        force_step = other.force_step;
         engine_.reset();
     }
     return *this;
@@ -60,10 +62,27 @@ AM1Result& AM1::run(const cpu::Frame& frame) {
     return engine_->run(frame);
 }
 
-AM1Result& AM1::compute_forces(cpu::Frame& frame, double step_angstrom) {
-    if (!engine_)
-        throw std::runtime_error("AM1::compute_forces before build/run");
-    return engine_->compute_forces(frame, step_angstrom);
+AM1Result& AM1::run(cpu::Frame& frame) {
+    AM1Result& r = run(std::as_const(frame));
+    frame.meta.get(kEnergy) = r.total_energy_ev;
+    return r;
+}
+
+AM1Result& AM1::forces(cpu::Frame& frame) {
+    AM1Result& r = run(std::as_const(frame));
+    engine_->compute_forces(frame, force_step);
+    const int n = frame.nlocal();
+    AccReal* __restrict fx = frame.span(kAtom_fx);
+    AccReal* __restrict fy = frame.span(kAtom_fy);
+    AccReal* __restrict fz = frame.span(kAtom_fz);
+    for (int i = 0; i < n; ++i) {
+        const std::size_t base = static_cast<std::size_t>(3 * i);
+        fx[i] = static_cast<AccReal>(r.forces_ev_a[base + 0]);
+        fy[i] = static_cast<AccReal>(r.forces_ev_a[base + 1]);
+        fz[i] = static_cast<AccReal>(r.forces_ev_a[base + 2]);
+    }
+    frame.meta.get(kEnergy) = r.total_energy_ev;
+    return r;
 }
 
 const AM1Result& AM1::last_result() const {
@@ -83,7 +102,7 @@ bool AM1::has_density() const noexcept {
 void AM1::prepare(const cpu::BuildContext& qm_ctx) { build(qm_ctx.frame); }
 
 void AM1::publish(cpu::Frame& frame, bool forces_requested, bool accumulate) {
-    auto& result = run(frame);
+    auto& result = run(std::as_const(frame));
     if (accumulate) {
         frame.meta.get(kEnergy) += result.total_energy_ev;
         frame.meta.get(kEnergyElectronic) += result.total_energy_ev;
@@ -99,7 +118,7 @@ void AM1::publish(cpu::Frame& frame, bool forces_requested, bool accumulate) {
             result.mulliken_charges[static_cast<std::size_t>(i)]);
     }
     if (forces_requested) {
-        auto& fr = compute_forces(frame);
+        auto& fr = engine_->compute_forces(frame, force_step);
         AccReal* __restrict fx = frame.span(kAtom_fx);
         AccReal* __restrict fy = frame.span(kAtom_fy);
         AccReal* __restrict fz = frame.span(kAtom_fz);

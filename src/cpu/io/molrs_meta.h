@@ -13,15 +13,6 @@
 
 namespace ATV::cpu::internal {
 
-inline constexpr std::uint32_t kMolrsFrameSchemaVersion = 2;
-
-inline void require_molrs_frame_schema_v2() {
-    const std::uint32_t actual = molrs::frame_schema_version();
-    if (actual != kMolrsFrameSchemaVersion)
-        throw meta_error("Atomiverse requires molrs Frame schema v2; got v"
-                         + std::to_string(actual));
-}
-
 #define ATV_ASSERT_META_ID(name)                                               \
     static_assert(static_cast<std::uint8_t>(MetaDType::name)                   \
                   == static_cast<std::uint8_t>(molrs::MetaType::name))
@@ -30,7 +21,6 @@ ATV_ASSERT_META_ID(I32);
 ATV_ASSERT_META_ID(I64);
 ATV_ASSERT_META_ID(U32);
 ATV_ASSERT_META_ID(U64);
-ATV_ASSERT_META_ID(F32);
 ATV_ASSERT_META_ID(F64);
 ATV_ASSERT_META_ID(String);
 ATV_ASSERT_META_ID(Bool3);
@@ -38,11 +28,8 @@ ATV_ASSERT_META_ID(I32x3);
 ATV_ASSERT_META_ID(I64x3);
 ATV_ASSERT_META_ID(U32x3);
 ATV_ASSERT_META_ID(U64x3);
-ATV_ASSERT_META_ID(F32x3);
 ATV_ASSERT_META_ID(F64x3);
-ATV_ASSERT_META_ID(F32x6);
 ATV_ASSERT_META_ID(F64x6);
-ATV_ASSERT_META_ID(F32x9);
 ATV_ASSERT_META_ID(F64x9);
 #undef ATV_ASSERT_META_ID
 
@@ -53,7 +40,6 @@ void append_values(rust::Vec<T>& destination, const std::array<T, N>& source) {
 }
 
 inline rust::Vec<molrs::MetaEntry> encode_molrs_meta(const MetaMap& meta) {
-    require_molrs_frame_schema_v2();
     rust::Vec<molrs::MetaEntry> out;
     for (const SerializableMetaRef& source : meta.serializable_entries()) {
         molrs::MetaEntry entry{};
@@ -78,10 +64,6 @@ inline rust::Vec<molrs::MetaEntry> encode_molrs_meta(const MetaMap& meta) {
         case MetaDType::U64:
             entry.dtype = molrs::MetaType::U64;
             entry.u64_value = std::get<std::uint64_t>(*source.value);
-            break;
-        case MetaDType::F32:
-            entry.dtype = molrs::MetaType::F32;
-            entry.f32_value = std::get<float>(*source.value);
             break;
         case MetaDType::F64:
             entry.dtype = molrs::MetaType::F64;
@@ -114,25 +96,13 @@ inline rust::Vec<molrs::MetaEntry> encode_molrs_meta(const MetaMap& meta) {
             entry.dtype = molrs::MetaType::U64x3;
             append_values(entry.u64_values, std::get<MetaU64x3>(*source.value));
             break;
-        case MetaDType::F32x3:
-            entry.dtype = molrs::MetaType::F32x3;
-            append_values(entry.f32_values, std::get<MetaF32x3>(*source.value));
-            break;
         case MetaDType::F64x3:
             entry.dtype = molrs::MetaType::F64x3;
             append_values(entry.f64_values, std::get<MetaF64x3>(*source.value));
             break;
-        case MetaDType::F32x6:
-            entry.dtype = molrs::MetaType::F32x6;
-            append_values(entry.f32_values, std::get<MetaF32x6>(*source.value));
-            break;
         case MetaDType::F64x6:
             entry.dtype = molrs::MetaType::F64x6;
             append_values(entry.f64_values, std::get<MetaF64x6>(*source.value));
-            break;
-        case MetaDType::F32x9:
-            entry.dtype = molrs::MetaType::F32x9;
-            append_values(entry.f32_values, std::get<MetaF32x9>(*source.value));
             break;
         case MetaDType::F64x9:
             entry.dtype = molrs::MetaType::F64x9;
@@ -159,7 +129,6 @@ Array exact_array(const RustVec& values, const std::string& key) {
 
 inline void decode_molrs_meta(const rust::Vec<molrs::MetaEntry>& source,
                               MetaMap& destination) {
-    require_molrs_frame_schema_v2();
     for (const molrs::MetaEntry& entry : source) {
         const std::string key(entry.key.data(), entry.key.size());
         switch (entry.dtype) {
@@ -177,9 +146,6 @@ inline void decode_molrs_meta(const rust::Vec<molrs::MetaEntry>& source,
             break;
         case molrs::MetaType::U64:
             destination.upsert_serializable(key, entry.u64_value);
-            break;
-        case molrs::MetaType::F32:
-            destination.upsert_serializable(key, entry.f32_value);
             break;
         case molrs::MetaType::F64:
             destination.upsert_serializable(key, entry.f64_value);
@@ -209,25 +175,13 @@ inline void decode_molrs_meta(const rust::Vec<molrs::MetaEntry>& source,
             destination.upsert_serializable(
                 key, exact_array<MetaU64x3>(entry.u64_values, key));
             break;
-        case molrs::MetaType::F32x3:
-            destination.upsert_serializable(
-                key, exact_array<MetaF32x3>(entry.f32_values, key));
-            break;
         case molrs::MetaType::F64x3:
             destination.upsert_serializable(
                 key, exact_array<MetaF64x3>(entry.f64_values, key));
             break;
-        case molrs::MetaType::F32x6:
-            destination.upsert_serializable(
-                key, exact_array<MetaF32x6>(entry.f32_values, key));
-            break;
         case molrs::MetaType::F64x6:
             destination.upsert_serializable(
                 key, exact_array<MetaF64x6>(entry.f64_values, key));
-            break;
-        case molrs::MetaType::F32x9:
-            destination.upsert_serializable(
-                key, exact_array<MetaF32x9>(entry.f32_values, key));
             break;
         case molrs::MetaType::F64x9:
             destination.upsert_serializable(

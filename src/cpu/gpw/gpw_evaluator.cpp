@@ -1233,7 +1233,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             // analogue of gpw_forces_at_density. No reference SCF (zero-SCF
             // preserved); stress_use_fd is refused at build().
             last_stress_ha_ = internal::gpw_stress_at_state_impl(
-                atoms, method_, last_, stress_strain_h, stress_axes);
+                atoms, method_, last_, method_.stress_strain_h,
+                method_.stress_axes);
             add_stress_to_frame(frame, last_stress_ha_);
         }
         return;
@@ -1407,7 +1408,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             // Lagrangian at the warm payload (C_occ_k / eps_k just built) —
             // no reference SCF, zero-SCF preserved.
             last_stress_ha_ = internal::gpw_stress_at_state_impl(
-                atoms, method_, last_, stress_strain_h, stress_axes);
+                atoms, method_, last_, method_.stress_strain_h,
+                method_.stress_axes);
             add_stress_to_frame(frame, last_stress_ha_);
         }
         return;
@@ -1740,13 +1742,13 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         // masked axes (variable-cell relax of constrained boxes).
         const ATV::cpu::linalg::RealMatrix* stress_guess =
             last_.C.size() > 0 ? &last_.C : nullptr;
-        last_stress_ha_ =
-            stress_use_fd
-                ? internal::gpw_stress_fd_impl(atoms, method_, stress_strain_h,
-                                               stress_axes, stress_guess)
-                : internal::gpw_stress_analytic_impl(atoms, method_,
-                                                     stress_strain_h,
-                                                     stress_axes, stress_guess);
+        last_stress_ha_ = stress_use_fd
+                              ? internal::gpw_stress_fd_impl(
+                                    atoms, method_, method_.stress_strain_h,
+                                    method_.stress_axes, stress_guess)
+                              : internal::gpw_stress_analytic_impl(
+                                    atoms, method_, method_.stress_strain_h,
+                                    method_.stress_axes, stress_guess);
         add_stress_to_frame(frame, last_stress_ha_);
     }
 }

@@ -85,7 +85,7 @@ class StepStamp final : public cpu::Component {
 /// @brief Four argon atoms on a line in a 20 Å cubic box, at rest.
 ///
 /// Built through the molrs C++ API the way `tests/cpu/test_materialize.cpp`
-/// builds its fixtures: the schema-v2 required columns (x/y/z/atomic_number)
+/// builds its fixtures: the required columns (x/y/z/atomic_number)
 /// plus mass (optional at the boundary, but a zero mass makes velocity-Verlet
 /// divide by zero) and tags.
 ::rust::Box<molrs::FrameRef> make_argon_frame() {

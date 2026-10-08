@@ -79,8 +79,9 @@ int main() {
     dft.nonperiodic = false;
     cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces*/ false);
     eval.compute_stress = true;
-    eval.stress_strain_h = 2e-3;
-    eval.stress_axes = {true, false, false}; // only the chain axis relaxes
+    eval.method().stress_strain_h = 2e-3;
+    eval.method().stress_axes = {true, false,
+                                 false}; // only the chain axis relaxes
 
     cpu::minimizer::Minimize opt;
     cpu::minimizer::AnisotropicCellRelax cell(/*P_target*/ 0.0, /*alpha*/ 1.0);

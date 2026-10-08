@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-dftu-stress` |
-| Public API | `cpu::gpw::GpwDft` (`plus_u`, `n_alpha`/`n_beta`) bound by `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd`; Frame `kStress` |
+| Public API | `cpu::gpw::GpwDft` (`plus_u`, `n_alpha`/`n_beta`) bound by `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); `GpwDft::stress` / free oracle `gpw_stress_fd`; Frame `kStress` |
 | Roadmap | [`docs/roadmap/dft.md`](../../roadmap/dft.md) — DFT+U analytic stress (`reg_gpw-dftu-stress`) ✓ |
 
 ## Summary
@@ -96,7 +96,7 @@ product hot path. Absolute offline CP2K twin uses `STRESS_TENSOR NUMERICAL`
 
 **Key exclusions**
 
-- Multi-k DFT+U stress (explicitly unimplemented on `gpw_stress`).
+- Multi-k DFT+U stress — covered by [gpw-dftu-kpoint-stress](gpw-dftu-kpoint-stress.md).
 - Liechtenstein full \(U,J\); GAPW/PAW projectors.
 - Shear / triclinic strain; CP2K `STRESS_TENSOR ANALYTICAL` absolute pin on MT.
 - Solid AFM rocksalt NiO product pin (molecule foothold only).
@@ -159,7 +159,7 @@ dft.plus_u.push_back({molrs::Element::Ni, /*l=*/2, /*u_minus_j_ev=*/6.0});
 cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 eval.compute_stress = true;
 eval.stress_use_fd = false;   // product analytic fixed-P
-eval.stress_strain_h = 2e-3;
+eval.method().stress_strain_h = 2e-3;
 
 cpu::Evaluate driver;
 driver.on(evaluate::Phase::evaluate).add_ref(eval);
@@ -170,7 +170,7 @@ const double e_ha = eval.last_energy_hartree();          // [Ha]
 const double e_ev = frame.meta.get(kEnergy);             // [eV]
 const double e_u  = eval.last_result().e_dftu;           // [Ha]
 const auto& s_ha  = eval.last_stress_ha_bohr3();         // Voigt [Ha/Bohr³]
-// frame.meta.get(kStress) is Voigt [eV/Å³]
+// frame.meta.get(kStress) is Voigt virial σ·Ω [eV]
 ```
 
 Dual-gate oracle (regression only; multi-SCF, not product hot path):
@@ -178,8 +178,9 @@ Dual-gate oracle (regression only; multi-SCF, not product hot path):
 ```cpp
 // Same geometry, same configured method (plus_u / UKS members):
 const auto sfd = cpu::gpw::gpw_stress_fd(
-    frame, eval.method(), /*h=*/2e-3, /*axes*/ {true, true, true});
-// Assert max |s_ha[a] - sfd[a]| for a = xx,yy,zz
+    frame, eval.method(), /*h=*/2e-3, /*axes*/ {true, true, true});  // [eV/Å³]
+// Assert max |s_ha[a] - sfd[a] / units::kHartreePerBohr3InEvPerAngstrom3|
+// for a = xx,yy,zz
 ```
 
 Build (GPW needs FFTW3) and run:
@@ -202,7 +203,7 @@ bash -lc '
 
 | Piece | Path |
 | ----- | ---- |
-| Public `PlusU` / `gpw_stress` / `gpw_stress_fd` | `gpw_solver.h` |
+| Public `PlusU` / `GpwDft::stress` / `gpw_stress_fd` | `gpw_solver.h` |
 | `GpwDft::plus_u`; evaluator `compute_stress`, `stress_use_fd` | `gpw_solver.h`, `gpw_evaluator.h` |
 | Dudarev E/V + fixed-\(P\) \(E_U\) (internal) | `dft_plus_u.h` |
 | Fixed-\(P\)+Pulay stress implementation | `src/cpu/gpw/internal/gpw_stress.cpp` |
@@ -296,8 +297,8 @@ fair ENERGY_FORCE / NUMERICAL twin on the same host and replace this section
   periodic rocksalt AFM needs k-points / larger basis before a production pin.
 - **Absolute CP2K NUMERICAL stress digits deferred** — dual-gate is binding;
   replace when oracle host re-runs `nio_mol_pade_u_stress_num.inp`.
-- **Γ only** — multi-k DFT+U stress is not implemented (`gpw_stress` throws /
-  excludes multi-k U).
+- **Γ only** — multi-k DFT+U stress is the separate
+  [gpw-dftu-kpoint-stress](gpw-dftu-kpoint-stress.md) case.
 - **Orthorhombic diagonals only** — shear Voigt components hard-zero in v1.
 - **Grid / SCF twin, not bit-identical** — ATV single density grid + DIIS mix
   vs CP2K multigrid + OT; energy soft tol **5×10⁻²** Ha (same class as

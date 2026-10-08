@@ -80,7 +80,6 @@
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/constraint_protocol.h"
 #include "atomiverse/cpu/component/criterion.h"
-#include "atomiverse/cpu/component/hf.h"
 #include "atomiverse/cpu/component/integrator.h"
 #include "atomiverse/cpu/component/long_range_protocol.h"
 #include "atomiverse/cpu/component/mover.h"
@@ -413,32 +412,6 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     void for_each_pending_mut(Fn&& fn) {
         for (auto& pb : this->pending_)
             fn(*pb.component);
-    }
-
-    /// @brief Node-aware pending walk: components and wrapped nested drivers.
-    ///
-    /// A `NestedLoopAdapter` is unwrapped so a method-driver (pure `HF` tag)
-    /// is still recognised via `dynamic_cast<const HF*>(driver_ptr)`.
-    template <typename CompFn, typename DrvFn>
-    void for_each_pending_kind(CompFn&& cfn, DrvFn&& dfn) const {
-        for (const auto& pb : this->pending_) {
-            if (const auto* ad =
-                    dynamic_cast<const cpu::NestedLoopAdapter*>(pb.component))
-                dfn(ad->inner());
-            else
-                cfn(*pb.component);
-        }
-    }
-
-    /// @brief Mutable node-aware pending walk: components and wrapped drivers.
-    template <typename CompFn, typename DrvFn>
-    void for_each_pending_kind_mut(CompFn&& cfn, DrvFn&& dfn) {
-        for (auto& pb : this->pending_) {
-            if (auto* ad = dynamic_cast<cpu::NestedLoopAdapter*>(pb.component))
-                dfn(ad->inner());
-            else
-                cfn(*pb.component);
-        }
     }
 
     /// @brief Fail closed on incomplete split long-range electrostatics.
@@ -810,13 +783,9 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     /// would silently drop the index for a `FixSettle` inside a `SubDriver`.
     bool requires_tag_index() const override {
         bool needed = false;
-        this->for_each_pending_kind(
-            [&](const cpu::Component& c) {
-                needed = needed || c.requires_tag_index();
-            },
-            [&](const cpu::DriverNode* d) {
-                needed = needed || (d && d->requires_tag_index());
-            });
+        this->for_each_pending([&](const cpu::Component& c) {
+            needed = needed || c.requires_tag_index();
+        });
         for (const auto& slot : this->plan().slots)
             for (const auto& op : slot.ops)
                 if (op.component)
@@ -1188,62 +1157,50 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
 
     /// @brief Const scan: provide/require facts plus const protocol probes.
     ///
-    /// Energy/force come from `provides_*` (adapters forward HF). Integrator /
-    /// Optimizer / Mover stay kind probes. Nested DriverNodes contribute only
-    /// via a single `HF` cross-cast. No family type list, no `name()==langevin`.
+    /// Energy/force come from `provides_*`. A nested driver reports them
+    /// through the slot built at `on(phase).add`. Integrator / Optimizer /
+    /// Mover stay kind probes. No family type list, no `name()==langevin`.
     InfraScan scan_pending_infra_() const {
         InfraScan s;
-        for_each_pending_kind(
-            [&](const cpu::Component& c) {
-                if (c.provides_energy())
-                    s.has_energy = true;
-                if (c.provides_force())
-                    s.has_force = true;
-                if (c.provides_hessian())
-                    s.has_hessian = true;
-                if (dynamic_cast<const cpu::Integrator*>(&c))
-                    s.has_integrator = true;
-                if (dynamic_cast<const cpu::Optimizer*>(&c))
-                    s.has_optimizer = true;
-                if (dynamic_cast<const cpu::Mover*>(&c))
-                    s.has_mover = true;
-                if (c.requires_system_stress())
-                    s.needs_stress = true;
-                if (c.provides_system_stress())
-                    s.has_virial_stress = true;
-                if (const cpu::NeighborProvider* np =
-                        c.as_neighbor_provider()) {
-                    s.has_neighbor_list = true;
-                    const AccReal reach = np->neighbor_reach();
-                    if (reach > AccReal(0)
-                        && (!s.neighbor_provider_reach
-                            || reach > *s.neighbor_provider_reach))
-                        s.neighbor_provider_reach = reach;
-                }
-                if (c.as_constraint())
-                    s.has_constraint = true;
-                if (c.updates_owned_charges())
-                    s.has_charge_updater = true;
-                if (const cpu::NeighborConsumer* nc =
-                        c.as_neighbor_consumer()) {
-                    if (s.neighbor_consumer_name.empty())
-                        s.neighbor_consumer_name = c.name();
-                    const AccReal hc = nc->halo_cutoff();
-                    if (hc > AccReal(0)
-                        && (!s.neighbor_consumer_cutoff
-                            || hc > *s.neighbor_consumer_cutoff))
-                        s.neighbor_consumer_cutoff = hc;
-                }
-            },
-            [&](const cpu::DriverNode* d) {
-                const auto* hf = dynamic_cast<const cpu::HF*>(d);
-                if (!hf)
-                    return;
-                if (hf->provides_energy())
-                    s.has_energy = true;
-                if (hf->provides_force())
-                    s.has_force = true;
-            });
+        for_each_pending([&](const cpu::Component& c) {
+            if (c.provides_energy())
+                s.has_energy = true;
+            if (c.provides_force())
+                s.has_force = true;
+            if (c.provides_hessian())
+                s.has_hessian = true;
+            if (dynamic_cast<const cpu::Integrator*>(&c))
+                s.has_integrator = true;
+            if (dynamic_cast<const cpu::Optimizer*>(&c))
+                s.has_optimizer = true;
+            if (dynamic_cast<const cpu::Mover*>(&c))
+                s.has_mover = true;
+            if (c.requires_system_stress())
+                s.needs_stress = true;
+            if (c.provides_system_stress())
+                s.has_virial_stress = true;
+            if (const cpu::NeighborProvider* np = c.as_neighbor_provider()) {
+                s.has_neighbor_list = true;
+                const AccReal reach = np->neighbor_reach();
+                if (reach > AccReal(0)
+                    && (!s.neighbor_provider_reach
+                        || reach > *s.neighbor_provider_reach))
+                    s.neighbor_provider_reach = reach;
+            }
+            if (c.as_constraint())
+                s.has_constraint = true;
+            if (c.updates_owned_charges())
+                s.has_charge_updater = true;
+            if (const cpu::NeighborConsumer* nc = c.as_neighbor_consumer()) {
+                if (s.neighbor_consumer_name.empty())
+                    s.neighbor_consumer_name = c.name();
+                const AccReal hc = nc->halo_cutoff();
+                if (hc > AccReal(0)
+                    && (!s.neighbor_consumer_cutoff
+                        || hc > *s.neighbor_consumer_cutoff))
+                    s.neighbor_consumer_cutoff = hc;
+            }
+        });
         return s;
     }
 

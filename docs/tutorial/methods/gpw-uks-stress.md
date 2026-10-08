@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | slug | `gpw-uks-stress` |
-| Public API | `cpu::gpw::GpwDft` members (`n_alpha`/`n_beta`, `XcKind::PBE`) bound through `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); free `gpw_stress` / `gpw_stress_fd` |
+| Public API | `cpu::gpw::GpwDft` members (`n_alpha`/`n_beta`, `XcKind::PBE`) bound through `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd=false`); `GpwDft::stress` / free oracle `gpw_stress_fd` |
 | Related narrative | [Ch. 9 GPW](../ch09-gpw.md) |
 
 ## Summary
@@ -26,7 +26,7 @@ Public path: construct `cpu::gpw::GpwDft` with one `Kind` for O
 bind into `cpu::Evaluate`.
 Frame energy is **eV** on `kEnergy`; pin channel is
 `last_energy_hartree()` [Ha] and `last_stress_ha_bohr3()` [Ha/Bohr³]; public
-stress on Frame is `kStress` [eV/Å³] Voigt. Product gate:
+stress on Frame is `kStress` [eV] Voigt virial σ·Ω. Product gate:
 `reg_gpw-uks-stress`. Fair wall is **`perf_exempt`** (no CP2K NUMERICAL
 stress wall on the pin host; dual-gate multi-SCF FD dominates wall).
 
@@ -159,7 +159,7 @@ dft.n_beta = 5;
 cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 eval.compute_stress = true;
 eval.stress_use_fd = false;   // product analytic fixed-P (default)
-eval.stress_strain_h = 2e-3;
+eval.method().stress_strain_h = 2e-3;
 
 cpu::Evaluate driver;
 driver.on(evaluate::Phase::evaluate).add_ref(eval);
@@ -169,7 +169,7 @@ driver.run(frame);
 const double e_ha = eval.last_energy_hartree();       // [Ha]
 const double e_ev = frame.meta.get(kEnergy);          // [eV]
 const auto& s = eval.last_stress_ha_bohr3();          // Voigt [Ha/Bohr³]
-// frame.meta.get(kStress) is eV/Å³ Voigt
+// frame.meta.get(kStress) is the Voigt virial σ·Ω [eV]
 const double s2 = eval.last_s2();                     // Löwdin ⟨S²⟩
 ```
 
@@ -179,7 +179,8 @@ default):
 ```cpp
 // `method`: a GpwDft with the same kinds + UKS members, `frame` as above
 const auto sfd = cpu::gpw::gpw_stress_fd(
-    frame, method, /*h=*/2e-3, /*axes*/ {true, true, true});  // [Ha/Bohr³]
+    frame, method, /*h=*/2e-3, /*axes*/ {true, true, true});  // [eV/Å³]
+// compare to last_stress_ha_bohr3(): divide by units::kHartreePerBohr3InEvPerAngstrom3
 ```
 
 Build (GPW needs HF + PW + FFTW3) and run the regression:
@@ -205,7 +206,7 @@ Relevant sources:
 | Piece | Path |
 | ----- | ---- |
 | Evaluator | `gpw_evaluator.h` |
-| Free stress API | `gpw_solver.h` (`gpw_stress` / `gpw_stress_fd`) |
+| Stress API | `gpw_solver.h` (`GpwDft::stress` / free `gpw_stress_fd`) |
 | Stress implementation | `src/cpu/gpw/internal/gpw_stress.cpp` |
 | Unit tests (not e2e) | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` |
 | Offline pins | case `gpw-uks-stress` pin |

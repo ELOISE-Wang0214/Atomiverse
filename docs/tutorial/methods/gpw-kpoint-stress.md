@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-kpoint-stress` |
-| Public API | `cpu::gpw::gpw_stress` (analytic fixed-\(P_k\)); oracle `gpw_stress_fd`; `GpwDft` members `k_mesh`, `cutoff_ry`, … + Frame `box` (no `*Config`) |
+| Public API | `cpu::gpw::GpwDft::stress` (analytic fixed-\(P_k\)); oracle `gpw_stress_fd`; `GpwDft` members `k_mesh`, `cutoff_ry`, … + Frame `box` (no `*Config`) |
 | Roadmap | [dft.md](../../roadmap/dft.md) § Periodic DFT — GPW analytic cell stress at k-points |
 
 ## Summary
@@ -99,7 +99,7 @@ strained cell (±h per diagonal). Used only for dual-gate tests / REFERENCE.
 
 ## Implementation
 
-Public surface only (`cpu::Frame`, `GpwDft` members, free `gpw_stress` /
+Public surface only (`cpu::Frame`, `GpwDft` members, `GpwDft::stress` /
 `gpw_stress_fd`; no `*Config`, no `make_*` / `build_*`). Match the regression:
 
 ```cpp
@@ -145,14 +145,16 @@ m.build(frame);
 const auto& er = m.run(frame); // energy [Ha] on er.e_total
 
 const double h = 2e-3;
-const auto san = gpw_stress(frame, m, h);    // analytic fixed-P_k [Ha/Bohr³]
-const auto sfd = gpw_stress_fd(frame, m, h); // multi-SCF FD oracle
+m.stress_strain_h = h;
+const auto san = m.stress(frame);            // analytic fixed-P_k [eV/Å³]
+const auto sfd = gpw_stress_fd(frame, m, h); // multi-SCF FD oracle [eV/Å³]
+// pins compare in Ha/Bohr³: divide by units::kHartreePerBohr3InEvPerAngstrom3
 // Voigt: san[0..2] = xx,yy,zz; san[3..5] off-diag (0 for orthorhombic)
 ```
 
 `GPWEvaluator` product stress (`compute_stress`, default analytic) is the
 driver-facing path (`GPWEvaluator(std::move(m))` in `cpu::Evaluate`); this
-regression calls the free stress API on the method directly (same `gpw_stress` implementation that
+regression calls `GpwDft::stress` on the method directly (the same implementation that
 supports Gamma and closed-shell multi-k RKS).
 
 Build and run the regression (requires GPW + HF + PW + regressions):
@@ -174,7 +176,7 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `gpw_solver.h` | `GpwDft`, `gpw_stress`, `gpw_stress_fd` |
+| `gpw_solver.h` | `GpwDft`, `GpwDft::stress`, `gpw_stress_fd` |
 | `gpw_evaluator.h` | Product `compute_stress` / `stress_use_fd` (Evaluate) |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Fixed-\(P_k\)+Pulay + multi-SCF FD |
 | `tests/cpu/gpw/test_cpu_gpw_stress.cpp` | Unit dual-gate (Γ; not this e2e) |
@@ -199,7 +201,7 @@ dual-gate** analytic vs multi-SCF FD.
 | Engine class | CP2K Quickstep GPW (twin input ready) |
 | Twin input | CP2K oracle |
 | CP2K stress mode (when run) | `STRESS_TENSOR NUMERICAL` |
-| Atomiverse path | `GpwDft` + `gpw_stress` / `gpw_stress_fd`, mesh \(1\times1\times2\), \(h=2\times 10^{-3}\) |
+| Atomiverse path | `GpwDft` + `GpwDft::stress` / `gpw_stress_fd`, mesh \(1\times1\times2\), \(h=2\times 10^{-3}\) |
 | Deps | `gpw-kpoints-si` ✓, `gpw-analytic-stress` ✓ |
 
 **Hard-coded product pins (first green, 2026-07-25; REFERENCE + regression):**
@@ -253,7 +255,7 @@ convention for stress twins (`gpw-stress-water`).
 - **No absolute CP2K stress pin yet** — twin input is ready; digits await an
   offline CP2K host. Do not invent bar/Ha values.
 - **Orthorhombic diagonal only** — no triclinic shear; off-diagonal Voigt
-  components are hard zeros in product `gpw_stress`.
+  components are hard zeros in product `GpwDft::stress`.
 - **Closed-shell multi-k RKS** — UKS k-stress, hybrids, DFT+U, dispersion
   stress contributions not covered by this slug.
 - **Incomplete basis / sparse mesh** — 100 Ry, \(1\times1\times2\) is a
@@ -261,7 +263,7 @@ convention for stress twins (`gpw-stress-water`).
 - **Cost** — dual-gate regression ~minutes (OMP=8); product analytic path is
   one SCF + fixed-\(P_k\) samples; multi-SCF FD is oracle-only.
 - Public Frame energy remains eV when written via Evaluate; this regression
-  compares [Ha] / [Ha/Bohr³] on the free solver API.
+  compares [Ha] / [Ha/Bohr³] on the method API (stress converted from eV/Å³).
 - Unit tests under `tests/cpu/gpw/` only; e2e parity is exclusively
   `reg_gpw-kpoint-stress`.
 

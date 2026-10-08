@@ -72,7 +72,7 @@ int main() {
         frame.span(kAtom_fx)[0] = frame.span(kAtom_fy)[0] =
             frame.span(kAtom_fz)[0] = 0;
     PWEvaluator pwe{std::move(cfg)};
-    pwe.with_gradient(true).set_fd_step(5e-3);
+    pwe.with_gradient(true);
     cpu::Evaluate eval;
     eval.on(evaluate::Phase::evaluate).add_ref(pwe);
     eval.enable_timing(false);

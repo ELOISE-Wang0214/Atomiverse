@@ -19,7 +19,8 @@ Oracle twin: multi-SCF strain-FD (`gpw_stress_fd`) on the same method.
 Activation gate: \(|E_{\mathrm{RevPBE}}-E_{\mathrm{PBE}}|\) on the same
 geometry.
 
-Public path: `cpu::gpw::gpw_stress(frame, method, h)` with
+Public path: `GpwDft::stress(frame)` (`stress_strain_h = h`; σ in eV/Å³,
+converted to Ha/Bohr³ for the gates) with
 `n_alpha`/`n_beta` + `k_mesh` + `xc = RevPBE|RPBE|BLYP`. No public `*Config`,
 no factories.
 

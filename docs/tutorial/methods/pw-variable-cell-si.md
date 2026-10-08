@@ -11,7 +11,7 @@
 
 Productizes **Nielsen–Martin analytic stress** (`pw-analytic-stress-si`) into a
 **plane-wave isotropic CELL_OPT** path: `Minimize` drives
-`IsotropicCellRelax` on intensive Voigt `kStress` [eV/Å³] written by
+`IsotropicCellRelax` on Voigt `kStress` virial σ·Ω [eV] written by
 `PWEvaluator::with_stress(true)`, and **`StressConverged`** terminates on residual
 hydrostatic stress (mechanical / CP2K convention). Twin is diamond Si
 (2-atom fcc primitive), ONCVPSP-LDA NC-UPF, incomplete tutorial basis
@@ -161,7 +161,7 @@ opt.build();
 opt.run(frame, 3);  // seed force + up to 2 scale steps
 
 const double a1 = 2.0 * static_cast<double>(frame.box.cell()(0, 1));
-const auto& st = frame.meta.get(kStress);  // Voigt [eV/Å³]
+const auto& st = frame.meta.get(kStress);  // Voigt virial σ·Ω [eV]
 const double e_ev = frame.meta.get(kEnergy);  // eV
 // opt.converged(), cell.pressure_residual()
 ```

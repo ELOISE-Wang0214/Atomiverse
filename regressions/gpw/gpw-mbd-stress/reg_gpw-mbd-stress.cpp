@@ -102,7 +102,7 @@ int main() {
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
-    eval.stress_strain_h = 2e-3;
+    eval.method().stress_strain_h = 2e-3;
 
     const auto t0 = clock::now();
     cpu::Evaluate driver;
@@ -153,7 +153,11 @@ int main() {
     method.mbd_k_mesh[0] = method.mbd_k_mesh[1] = method.mbd_k_mesh[2] = 2;
 
     const auto t2 = clock::now();
-    const auto sfd = cpu::gpw::gpw_stress_fd(frame, method, 2e-3);
+    // Public paths return eV/Å³; gates and prints stay in Ha/Bohr³.
+    constexpr double kToHaBohr3 = 1.0 / units::kHartreePerBohr3InEvPerAngstrom3;
+    auto sfd = cpu::gpw::gpw_stress_fd(frame, method, 2e-3);
+    for (auto& v : sfd)
+        v *= kToHaBohr3;
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -193,7 +197,17 @@ int main() {
     plain.nonperiodic = false;
     plain.local_pp_on_grid = true;
     plain.mbd = false;
-    const auto s_plain = cpu::gpw::gpw_stress(frame, plain, 2e-3);
+    plain.stress_strain_h = 2e-3;
+    // stress() writes kStress/kEnergy: run it on a copy so gate (4) still
+    // reads the evaluator's published kStress.
+    std::array<double, 6> s_plain{};
+    {
+        cpu::Frame fp = frame;
+        plain.build(fp);
+        s_plain = plain.stress(fp);
+        for (auto& v : s_plain)
+            v *= kToHaBohr3;
+    }
 
     double max_shift = 0.0;
     for (int a = 0; a < 3; ++a)

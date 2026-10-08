@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-variable-cell-molopt` |
-| Public API | `cpu::minimizer::Minimize` + `AnisotropicCellRelax` + `StressConverged` + `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_axes`) |
+| Public API | `cpu::minimizer::Minimize` + `AnisotropicCellRelax` + `StressConverged` + `cpu::gpw::GPWEvaluator` (`compute_stress`) over `GpwDft::stress_axes` |
 | Roadmap | [dft.md](../../roadmap/dft.md) variable-cell / CELL_OPT |
 | Wave | CP2K capability harness wave 2 — **done** (2026-07-25) |
 | Dual gate | Correctness vs offline CP2K 2026.1 CELL_OPT; speed ratio **~7.5** (≤10×) |
@@ -27,7 +27,7 @@ This page is the **pin-quality MOLOPT re-twin** of
   `cpu::gpw::GPWEvaluator` with **PBE** /
   **DZVP-MOLOPT-SR-GTH** / **GTH-PBE**, product **analytic fixed-\(P\)**
   cell stress (`compute_stress = true`, `stress_use_fd = false`),
-  `stress_axes = {x}`;
+  method `stress_axes = {x}`;
 - outer loop: `cpu::minimizer::Minimize` +
   `cpu::minimizer::AnisotropicCellRelax` (`relax_x` only,
   (x-only).
@@ -71,9 +71,9 @@ Sign matches CP2K `STRESS_TENSOR`:
 \qquad a\in\{x,y,z\},
 \]
 
-with Frame `kStress` intensive **[eV/Å³]** Voigt and pin channel
+with Frame `kStress` extensive **[eV]** (σ·Ω) Voigt and pin channel
 `last_stress_ha_bohr3()` **[Ha/Bohr³]**. Axes mask
-`stress_axes = {true,false,false}` forces \(\sigma_{yy}=\sigma_{zz}=0\)
+`eval.method().stress_axes = {true,false,false}` forces \(\sigma_{yy}=\sigma_{zz}=0\)
 in the published tensor so constrained edges never drive residual /
 scale (CP2K `CONSTRAINT YZ` twin).
 
@@ -207,8 +207,8 @@ dft.nonperiodic = false;
 cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 eval.compute_stress = true;
 eval.stress_use_fd = false;               // product analytic fixed-P
-eval.stress_strain_h = 2e-3;
-eval.stress_axes = {true, false, false};  // chain axis only
+eval.method().stress_strain_h = 2e-3;
+eval.method().stress_axes = {true, false, false};  // chain axis only
 
 cpu::minimizer::Minimize opt;
 cpu::minimizer::AnisotropicCellRelax cell(/*P_target*/ 0.0, /*alpha*/ 1.0);
@@ -225,7 +225,7 @@ opt.build();
 opt.run(frame, 6);
 
 // a = frame.box.length(0); E_ha = eval.last_energy_hartree();
-// residual σ_xx = frame.meta.get(kStress)[0]; // eV/Å³
+// residual σ_xx = frame.meta.get(kStress)[0] / frame.box.volume(); // eV/Å³
 // opt.converged() / opt.stop_reason() — loop owns termination
 ```
 
@@ -259,7 +259,8 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `gpw_evaluator.h` | `compute_stress`, `stress_use_fd`, `stress_axes`, `last_stress_ha_bohr3()` |
+| `gpw_evaluator.h` | `compute_stress`, `stress_use_fd`, `method()`, `last_stress_ha_bohr3()` |
+| `gpw_solver.h` | `GpwDft::stress_strain_h`, `GpwDft::stress_axes` |
 | `anisotropic_cell_relax.h` | Diagonal cell optimizer + axis mask |
 | `criteria.h` | `StressConverged` |
 | `minimize.h` | Minimize preset |

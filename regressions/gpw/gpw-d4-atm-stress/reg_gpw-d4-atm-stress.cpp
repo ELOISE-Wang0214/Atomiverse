@@ -191,7 +191,7 @@ int main() {
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
-    eval.stress_strain_h = kStrainH;
+    eval.method().stress_strain_h = kStrainH;
 
     const auto t0 = clock::now();
     cpu::Evaluate driver;
@@ -254,8 +254,9 @@ int main() {
                     san[static_cast<std::size_t>(a)]);
 
     // ── 4+5. FD twin (dual gate) + two-body twin (ATM fold wiring), x-axis,
-    //          FD twin cold-starts each strained SCF; the two-body twin is
-    //          evaluated at the product run's converged state ────────────
+    //          FD twin cold-starts each strained SCF; the two-body twin runs
+    //          its own SCF, whose density is the product run's (dispersion
+    //          is folded after the SCF) ─────────────────────────────────
     cpu::gpw::GpwDft method{{O, H}};
     method.cutoff_ry = 200.0;
     method.n_occ = 8; // 2×O q6 + 4×H q1 = 16 e → 8 doubly occupied
@@ -270,8 +271,12 @@ int main() {
     method.build(frame);
 
     const auto t2 = clock::now();
-    const auto sfd =
+    // gpw_stress_fd returns eV/Å³; this twin compares in Ha/Bohr³.
+    const auto sfd_ev_a3 =
         cpu::gpw::gpw_stress_fd(frame, method, kStrainH, {true, false, false});
+    std::array<double, 6> sfd{};
+    for (std::size_t k = 0; k < 6; ++k)
+        sfd[k] = sfd_ev_a3[k] / units::kHartreePerBohr3InEvPerAngstrom3;
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -295,11 +300,15 @@ int main() {
     method2b.local_pp_on_grid = true;
     method2b.d4 = true;
     method2b.d4_atm = false; // two-body only
-    method2b.build(frame);
+    method2b.stress_strain_h = kStrainH;
+    method2b.stress_axes = {true, false, false};
+    cpu::Frame frame_2b = frame; // stress() writes kStress / kEnergy
+    method2b.build(frame_2b);
 
     const auto t4 = clock::now();
-    const auto s2b = cpu::gpw::gpw_stress(frame, method2b, eval.last_result(),
-                                          kStrainH, {true, false, false});
+    std::array<double, 6> s2b = method2b.stress(frame_2b);
+    for (auto& v : s2b)
+        v /= units::kHartreePerBohr3InEvPerAngstrom3; // eV/Å³ → Ha/Bohr³
     const auto t5 = clock::now();
     const double wall_2b_s = std::chrono::duration<double>(t5 - t4).count();
 

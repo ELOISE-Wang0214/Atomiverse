@@ -100,7 +100,7 @@ int main() {
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
-    eval.stress_strain_h = 2e-3;
+    eval.method().stress_strain_h = 2e-3;
 
     const auto t0 = clock::now();
     cpu::Evaluate driver;
@@ -160,12 +160,18 @@ int main() {
     // Gate 2 — D3 dispersion stress vs the CP2K difference pin. D3 does not
     // enter the Kohn–Sham potential, so σ_an(d3) − σ_an(plain) isolates the
     // dispersion stress exactly (same trick as the CP2K side of the pin).
-    // The plain fixed-P stress is evaluated at the product run's converged
-    // state (public state overload), so the density is identical.
+    // The plain fixed-P stress runs its own SCF with d3 = false; dispersion
+    // is folded after the SCF, so that density is the product run's density
+    // (bitwise at a fixed thread count).
     method.d3 = false;
+    method.stress_strain_h = 2e-3;
+    method.stress_axes = {true, true, true};
     const auto t2 = clock::now();
-    const auto s_plain = cpu::gpw::gpw_stress(frame, method, eval.last_result(),
-                                              /*h=*/2e-3, {true, true, true});
+    cpu::Frame plain_frame = frame; // stress() writes kStress / kEnergy
+    method.build(plain_frame);
+    std::array<double, 6> s_plain = method.stress(plain_frame);
+    for (auto& v : s_plain)
+        v /= units::kHartreePerBohr3InEvPerAngstrom3; // eV/Å³ → Ha/Bohr³
     const auto t3 = clock::now();
     const double wall_plain_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -206,8 +212,12 @@ int main() {
     // Gate 3 — internal dual gate: analytic vs multi-SCF strain-FD (d3=true).
     method.d3 = true;
     const auto t4 = clock::now();
-    const auto sfd =
+    // gpw_stress_fd returns eV/Å³; this twin compares in Ha/Bohr³.
+    const auto sfd_ev_a3 =
         cpu::gpw::gpw_stress_fd(frame, method, /*h=*/2e-3, {true, true, true});
+    std::array<double, 6> sfd{};
+    for (std::size_t k = 0; k < 6; ++k)
+        sfd[k] = sfd_ev_a3[k] / units::kHartreePerBohr3InEvPerAngstrom3;
     const auto t5 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t5 - t4).count();
 

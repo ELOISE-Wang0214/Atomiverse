@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `pw-analytic-stress-si` |
-| Public API | `cpu::pw::pw_stress` (analytic Voigt [eV/Å³]); oracle `cpu::pw::pw_stress_fd`; `PWEvaluator::with_stress(true)` → `frame.meta.get(kStress)` |
+| Public API | `cpu::pw::PW::stress` (analytic Voigt [eV/Å³]); oracle `cpu::pw::pw_stress_fd`; `PWEvaluator::with_stress(true)` → `frame.meta.get(kStress)` |
 | Roadmap | [dft.md](../../roadmap/dft.md) § Periodic response — analytic stress|
 
 ## Summary
@@ -13,7 +13,7 @@
 **Nielsen–Martin cell stress** for spin-unpolarized plane-wave LDA on bulk
 silicon (diamond, 2-atom fcc primitive), same incomplete-basis twin as
 `pw-lda-si` (ONCVPSP NC-UPF, \(E_\mathrm{cut}=15\) Ry, \(2\times2\times2\) MP).
-The product path is **`cpu::pw::pw_stress`**: one SCF class of cost, then
+The product path is **`cpu::pw::PW::stress`**: one SCF class of cost, then
 Hellmann–Feynman cell derivatives under symmetric strain at fixed fractional
 coordinates, returning Voigt \(\sigma\) in **eV/Å³**. Multi-SCF strain
 finite-difference remains **`pw_stress_fd`** (dual-gate oracle only, not the
@@ -53,7 +53,7 @@ restricted closed shell; no metallic smearing on this twin.
 
 | Symbol | Definition | Unit |
 | ------ | ---------- | ---- |
-| \(\sigma_v\) | Analytic Voigt stress from `pw_stress` | eV/Å³ |
+| \(\sigma_v\) | Analytic Voigt stress from `PW::stress` | eV/Å³ |
 | \(\sigma_v^\mathrm{FD}\) | Multi-SCF strain-FD from `pw_stress_fd` / offline pin | eV/Å³ |
 | `kStress` | Frame meta write when `PWEvaluator::with_stress(true)` | eV/Å³ |
 
@@ -73,7 +73,7 @@ restricted closed shell; no metallic smearing on this twin.
 
 Public surface only (`cpu::Frame` + concrete `cpu::pw::PW` members; no `*Config`,
 no `make_*` / `build_*`). Headers:
-`pw_solver.h` (`pw_stress`, `pw_stress_fd`,
+`pw_solver.h` (`PW::stress`, `pw_stress_fd`,
 `PW`), `pw_evaluator.h` (`with_stress`), Frame schema `kStress`.
 
 Minimal sequence (matches `reg_pw-analytic-stress-si.cpp`):
@@ -119,8 +119,10 @@ method.tol = 1e-6;
 method.max_iter = 50;
 method.xc = cpu::scf::XCType::LSDA;
 
-// Analytic Nielsen–Martin stress [eV/Å³], Voigt xx,yy,zz,xy,xz,yz
-const std::array<double, 6> san = pw_stress(frame, method);
+// Analytic Nielsen–Martin stress [eV/Å³], Voigt xx,yy,zz,xy,xz,yz.
+// Also writes W = σ·Ω [eV] to frame.meta.get(kStress) and E [eV] to kEnergy;
+// method.last_result().energy [Ry].
+const std::array<double, 6> san = method.stress(frame);
 
 // Dual-gate oracle only (12 SCFs) — not the product hot path:
 // const auto sfd = pw_stress_fd(frame, method, /*h=*/2e-3);
@@ -153,7 +155,7 @@ UPF path is injected at compile time as `ATV_PW_UPF_PATH` →
 
 | Path | Role |
 | ---- | ---- |
-| `pw_solver.h` | Public `pw_stress` / `pw_stress_fd` / `PW` |
+| `pw_solver.h` | Public `PW::stress` / `pw_stress_fd` / `PW` |
 | `pw_evaluator.h` | `with_stress` → `kStress` |
 | `pw_stress.h` | Private analytic + FD impl |
 | `reg_pw-analytic-stress-si.cpp` | Product gate |

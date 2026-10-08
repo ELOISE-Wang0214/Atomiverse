@@ -79,7 +79,7 @@ int main() {
     dft.nonperiodic = true;
     cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
     eval.compute_stress = true;
-    eval.stress_strain_h = 2e-3;
+    eval.method().stress_strain_h = 2e-3;
 
     cpu::Evaluate driver;
     driver.on(evaluate::Phase::evaluate).add_ref(eval);

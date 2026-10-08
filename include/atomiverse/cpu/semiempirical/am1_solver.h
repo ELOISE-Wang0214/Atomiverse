@@ -38,6 +38,9 @@ class AM1 : public cpu::QmEngine {
     double density_tol = 1.0e-8;
     /// @brief Energy residual tolerance [eV].
     double energy_tol = 1.0e-10;
+    /// @brief Finite-difference displacement \(h\) [Å] of `forces()`;
+    ///        truncation error \(O(h^{2})\).
+    double force_step = 1.0e-4;
 
     /// @brief Default parameters (charge 0, singlet, max_iter 200, …).
     AM1();
@@ -70,20 +73,27 @@ class AM1 : public cpu::QmEngine {
     /// @throws std::runtime_error if the SCF does not converge in `max_iter`.
     AM1Result& run(const cpu::Frame& frame);
 
-    /// @brief Nuclear forces \(F = -\partial E/\partial R\) [eV/Å] by central
-    ///        finite difference of the energy at the converged density.
+    /// @brief `run(const Frame&)`, then writes the total energy [eV] to
+    ///        `frame.meta[kEnergy]`.
+    /// @param frame Geometry [Å]; energy out.
+    /// @return `last_result()`.
+    /// @throws std::runtime_error if the SCF does not converge in `max_iter`.
+    AM1Result& run(cpu::Frame& frame);
+
+    /// @brief SCF + nuclear forces \(F = -\partial E/\partial R\) [eV/Å] by
+    ///        central finite difference of the energy at the converged
+    ///        density (step `force_step`).
     ///
     /// See `NDDOSolver::compute_forces` for why holding the density fixed is
-    /// exact here and what the difference step costs in accuracy.
-    /// @param frame Geometry [Å]; not modified (displacements happen on local
-    ///        copies of the coordinates).
-    /// @param step_angstrom Finite-difference displacement \(h\) [Å];
-    ///        truncation error \(O(h^{2})\).
+    /// exact here and what the difference step costs in accuracy. Writes
+    /// `kAtom_fx/fy/fz` [eV/Å] (overwritten, not accumulated) and
+    /// `frame.meta[kEnergy]` [eV].
+    /// @param frame Geometry [Å]; forces and energy out.
     /// @return `last_result()` with `forces_ev_a` filled (3 · nlocal).
-    /// @pre `run()` converged on this geometry.
-    AM1Result& compute_forces(cpu::Frame& frame, double step_angstrom = 1.0e-4);
+    /// @throws std::runtime_error if the SCF does not converge.
+    AM1Result& forces(cpu::Frame& frame);
 
-    /// @brief Results of the most recent `run()` / `compute_forces()`
+    /// @brief Results of the most recent `run()` / `forces()`
     ///        (all-zero if neither has run).
     const AM1Result& last_result() const;
     /// @brief Has `build()` sized the engine for an atom set?
@@ -114,7 +124,7 @@ class AM1 : public cpu::QmEngine {
     /// Shared by both callers so the write-back contract exists once: the
     /// `QmEngine::evaluate` path (multiscale) and `AM1Evaluator::launch`.
     /// @param frame Target frame; geometry in, results out.
-    /// @param forces_requested Also run `compute_forces()` and write the
+    /// @param forces_requested Also compute finite-difference forces and write the
     ///        gradient. False leaves the force columns untouched.
     /// @param accumulate true → `+=` energy/forces, the contract for a
     ///        component summed with other energy sources in a driver phase;

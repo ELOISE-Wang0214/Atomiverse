@@ -140,7 +140,6 @@ class TestMDRunOnMolrsFrame:
         full_lj_md.run(argon_frame, 5)
         assert "scalars" not in argon_frame.keys()
         assert "stress" not in argon_frame.keys()
-        assert molrs.FRAME_SCHEMA_VERSION == 2
         energy = argon_frame.meta["energy"]
         kinetic = argon_frame.meta["kinetic"]
         stress = argon_frame.meta["stress"]
@@ -1535,10 +1534,7 @@ class TestAm1Bomd:
             sim.set_evaluator(object())
 
 
-class TestMolrsFrameV2Boundary:
-    def test_exact_frame_schema_version(self):
-        assert molrs.FRAME_SCHEMA_VERSION == 2
-
+class TestMolrsFrameBoundary:
     def test_box_is_the_only_cell_property(self, argon_frame):
         assert argon_frame.box is not None
         assert not hasattr(argon_frame, "simbox")

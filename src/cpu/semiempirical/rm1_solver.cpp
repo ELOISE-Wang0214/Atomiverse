@@ -1,6 +1,9 @@
 /// @file src/cpu/semiempirical/rm1_solver.cpp
 #include "atomiverse/cpu/semiempirical/rm1_solver.h"
 #include <stdexcept>
+#include <utility>
+
+#include "atomiverse/core/frame_schema.h"
 namespace ATV {
 namespace cpu {
 namespace semiempirical {
@@ -33,10 +36,31 @@ RM1Result& RM1::run(const cpu::Frame& frame) {
         build(frame);
     return engine_->run(frame);
 }
-RM1Result& RM1::compute_forces(cpu::Frame& frame, double step_angstrom) {
+RM1Result& RM1::run(cpu::Frame& frame) {
+    RM1Result& r = run(std::as_const(frame));
+    frame.meta.get(kEnergy) = r.total_energy_ev;
+    return r;
+}
+RM1Result& RM1::forces(cpu::Frame& frame) {
+    RM1Result& r = run(std::as_const(frame));
+    fd_forces_(frame);
+    const int n = frame.nlocal();
+    AccReal* __restrict fx = frame.span(kAtom_fx);
+    AccReal* __restrict fy = frame.span(kAtom_fy);
+    AccReal* __restrict fz = frame.span(kAtom_fz);
+    for (int i = 0; i < n; ++i) {
+        const std::size_t base = static_cast<std::size_t>(3 * i);
+        fx[i] = static_cast<AccReal>(r.forces_ev_a[base + 0]);
+        fy[i] = static_cast<AccReal>(r.forces_ev_a[base + 1]);
+        fz[i] = static_cast<AccReal>(r.forces_ev_a[base + 2]);
+    }
+    frame.meta.get(kEnergy) = r.total_energy_ev;
+    return r;
+}
+RM1Result& RM1::fd_forces_(cpu::Frame& frame) {
     if (!engine_)
-        throw std::runtime_error("RM1::compute_forces before build/run");
-    return engine_->compute_forces(frame, step_angstrom);
+        throw std::runtime_error("RM1::forces before build/run");
+    return engine_->compute_forces(frame, force_step);
 }
 const RM1Result& RM1::last_result() const {
     if (!engine_) {

@@ -127,7 +127,8 @@ loses the env. On the GPU node the default aarch64 Rust toolchain is correct;
 do not override it there.
 
 **molrs** is a hard dependency, vendored as a git submodule at `./molrs`
-(pin in `.gitmodules`; CXX API version gate in `cmake/MolrsContract.cmake`).
+(pin = the submodule gitlink; molrs has no API version before 1.0.0, so there
+is no version gate — the pinned tree compiles against ATV or it does not).
 
 `-march=native` is required for the CPU SCF ERI kernels.
 
@@ -361,7 +362,7 @@ non-periodic brick path.
 `core/` holds the device-independent contracts: precision tiers, `Mat3`, units,
 Frame schema, device tags, backend traits, the `Driver<PhaseEnum, DeviceTag>`
 dispatch template, `Plan`, `Stage`, `role.h`, `verdict.h`,
-`iteration_status.h`, `molrs_contract.h`. `molrs.hpp` is the stable CXX FFI
+`iteration_status.h`. `molrs.hpp` is the stable CXX FFI
 header and the only include for CXX-generated code.
 
 ### Driver — a staged loop, not a category
@@ -414,11 +415,15 @@ stop; it cannot *declare* convergence — there is no field left for it to write
 re-points them at the child and restores the parent's on exit, so an inner loop
 physically cannot stop its enclosing loop.
 
-**A Driver is an executable node** — same lifecycle as a Component, so a Plan
-slot holds a component **or** a nested driver. The child runs its own Plan on
-the parent's Runtime: no second backend, no rebuilt decomposition, no split
-communicator. Type erasure happens at the **node** boundary, never at the stage
-boundary — stages stay typed enums all the way down.
+**A Driver is an executable node.** It does not inherit `Component`:
+`launch` is one step and does not allocate, while a nested driver runs its
+own loop. `on(phase).add` of a `DriverNode` that is not a Component builds a
+registration-private slot and stores that slot as the Plan's `Component*`.
+`provides_energy` / `provides_force` are copied from the concrete type there.
+The child runs its own Plan on the parent's Runtime: no second backend, no
+rebuilt decomposition, no split communicator. Type erasure happens at the
+**node** boundary, never at the stage boundary — stages stay typed enums all
+the way down.
 
 **Replica count is a nested loop, not an axis of a taxonomy.** REMD/PIMD need
 no new category: a replica loop + a budget criterion + a different `couple`
@@ -466,9 +471,25 @@ cpu::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-10};
 rhf.run(frame);        // Frame in / Frame out; workspace private
 ```
 
+Every concrete ES method speaks one call shape:
+
+| Member | Does | Frame writes (overwrite) |
+| --- | --- | --- |
+| `run(Frame&)` | SCF | `kEnergy` [eV] |
+| `run(const Frame&)` | SCF, geometry read-only | nothing |
+| `forces(Frame&)` | SCF + forces | `kAtom_f*` [eV/Å], `kEnergy` |
+| `stress(Frame&)` (periodic) | SCF + analytic stress; returns σ [eV/Å³] | `kStress` = σΩ [eV], `kEnergy` |
+
+Algorithm knobs of those members (FD step, strain step, axis mask) are
+members. Finite-difference oracles stay free functions (`*_forces_fd`,
+`*_stress_fd`) in the same public units; analytic force/stress assemblies are
+`internal`. Hartree/Ry live only on the returned result object.
+
 CUDA presents the same shape (`cuda::scf::RHF{basis}.run(frame)` /
 `.forces(frame)`). When an outer MD/Minimize/Evaluate needs forces it binds the
-concrete method (or a thin force-slot component owning it).
+concrete method (or a thin force-slot component owning it); that component
+accumulates (`+=`) onto the Frame and reaches the method through the
+non-writing entries, never by duplicating its parameters.
 
 *Properties* (charges, dipoles, Mulliken, AM1-BCC) are component **outputs
 written to Frame** — never Driver-level categories.
@@ -561,13 +582,13 @@ three regions: named typed **blocks**, exact-dtype **meta**, and **box**.
 
 | Frame | Representation | Topology |
 | --- | --- | --- |
-| `molrs.Frame` | flat typed Block columns + typed `MetaValue` map + box (schema v2) | flat bonds/angles/dihedrals |
+| `molrs.Frame` | flat typed Block columns + typed `MetaValue` map + box | flat bonds/angles/dihedrals |
 | `cpu::Frame` | exactly `BlockMap blocks; MetaMap meta; Box box;` | per-atom LAMMPS columns (`num_bond`/`bond_atom`, global-tag partners) |
 | `cuda::Frame` | raw device pointers + host-cached counts | dual: single-GPU flat lists; multi-GPU per-atom SoA |
 
 Conversion points, each owning exactly one boundary:
 
-- `from_molrs()` / `to_molrs()` — strict schema-v2 boundary, run once per
+- `from_molrs()` / `to_molrs()` — strict schema boundary, run once per
   `run()`, never in a step loop. Unknown blocks/columns, wrong dtypes and wrong
   row counts fail immediately. `to_molrs` writes back x/v/f, charge, image, tag
   (checked i32 narrowing — overflow throws), the box (the cell is an output

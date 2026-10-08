@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-kpoint-uks-stress` |
-| Public API | `cpu::gpw::gpw_stress` / `gpw_stress_fd` on `GpwDft` (`n_alpha`/`n_beta` + `k_mesh`); multi-k collinear UKS fixed-\(\{P_k^\sigma,W_k^\sigma\}\) |
+| Public API | `cpu::gpw::GpwDft::stress` / free oracle `gpw_stress_fd` on `GpwDft` (`n_alpha`/`n_beta` + `k_mesh`); multi-k collinear UKS fixed-\(\{P_k^\sigma,W_k^\sigma\}\) |
 | Related narrative | [Ch. 9 GPW](../ch09-gpw.md) |
 | Queue | CP2K capability loop — wave 4 done (2026-07-26) |
 | Roadmap | `docs/roadmap/dft.md` — multi-k UKS analytic cell stress |
@@ -29,10 +29,11 @@ mesh \(1\times1\times2\). Product gate:
 Fair wall **`perf_exempt`** (no same-basis CP2K NUMERICAL stress wall on pin
 host — BASIS_MOLOPT lacks DZV-GTH-PADE; no CP2K module at first green).
 
-Public surface: free `cpu::gpw::gpw_stress(frame, method, h)` with members on
-`GpwDft` — **no** public `*Config` bag, **no** `make_*` / `build_*` factories.
-Internal energy/stress in Ha / Ha·Bohr⁻³; Frame energy still eV when routed
-through Evaluate (this regression exercises the solver free path directly).
+Public surface: `method.stress(frame)` with members on `GpwDft`
+(`stress_strain_h`, `stress_axes`) — **no** public `*Config` bag, **no**
+`make_*` / `build_*` factories. `GpwDft::stress` and `gpw_stress_fd` return
+σ in eV/Å³; internal energy is Ha and the pins compare in Ha / Ha·Bohr⁻³
+(this regression exercises the method directly, not through Evaluate).
 
 Deps closed earlier: `gpw-kpoints-uks`, `gpw-kpoint-stress`, `gpw-uks-stress`,
 `gpw-kpoint-uks-forces`. Sibling force pin reuses the same geometry and soft
@@ -84,7 +85,7 @@ UKS SCF:
 with \(E_L\) in Hartree and \(\Omega\) in Bohr³ (CP2K `STRESS_TENSOR` sign).
 The \(-\mathrm{Tr}(W S)\) channel supplies the Pulay contribution (Nielsen &
 Martin, *Phys. Rev. B* **32**, 3780 (1985); GPW analogue of plane-wave
-`pw_stress`).
+`PW::stress`).
 
 **Oracle multi-SCF twin.** `gpw_stress_fd` fully re-converges UKS SCF at each
 strained cell. Dual-gate residual on this pin is
@@ -126,7 +127,7 @@ all-electron).
 
 ## Implementation
 
-Public surface only (`cpu::Frame` + `GpwDft` members, free `gpw_stress` /
+Public surface only (`cpu::Frame` + `GpwDft` members, `GpwDft::stress` /
 `gpw_stress_fd`; **no** `*Config`, **no** factories). Match the regression:
 
 ```cpp
@@ -171,9 +172,11 @@ const GpwResult& er = method.run(frame);
 // er.e_total [Ha]; er.C_occ_k / C_occ_k_beta for fixed-P rebuild
 
 const double h = 2e-3;
-const auto san = gpw_stress(frame, method, h);     // product analytic
+method.stress_strain_h = h;
+const auto san = method.stress(frame);             // product analytic
 const auto sfd = gpw_stress_fd(frame, method, h);  // multi-SCF oracle
-// Voigt: san[0..2] = σ_xx,yy,zz [Ha/Bohr³]; san[3..5] shear (0)
+// Voigt: san[0..2] = σ_xx,yy,zz [eV/Å³]; san[3..5] shear (0)
+// pins compare in Ha/Bohr³: divide by units::kHartreePerBohr3InEvPerAngstrom3
 ```
 
 Build and run the regression (GPW needs HF + PW + FFTW3):
@@ -195,7 +198,7 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `gpw_solver.h` | `GpwDft`, `gpw_stress`, `gpw_stress_fd`; multi-k UKS contract |
+| `gpw_solver.h` | `GpwDft`, `GpwDft::stress`, `gpw_stress_fd`; multi-k UKS contract |
 | `internal/gpw_stress.h` | Private fixed-\(P_k^\sigma\) + multi-SCF FD |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Orthorhombic analytic / FD implementation |
 | `gpw_evaluator.h` | Evaluate binding of `GpwDft` (`compute_stress`) |
@@ -221,7 +224,7 @@ identity** (k-UKS ≡ k-RKS). Soft energy pin matches sibling
 | Twin input | CP2K oracle |
 | Twin basis note | CP2K `BASIS_MOLOPT` → **SZV-MOLOPT-GTH**; ATV product → **DZV-GTH-PADE** |
 | Pin host (first green) | No CP2K module — absolute NUMERICAL stress digits **not invented** |
-| Atomiverse path | `gpw_stress` + `gpw_stress_fd`, \(h=2\times 10^{-3}\) |
+| Atomiverse path | `GpwDft::stress` + `gpw_stress_fd`, \(h=2\times 10^{-3}\) |
 
 ### Accuracy table (hard-coded pins)
 
@@ -284,7 +287,7 @@ shell identity — within the ≤ 60 s e2e budget.
   and production cutoffs are out of this regression budget.
 - **PADE LSD only on this pin** — multi-k UKS + PBE-GGA stress is a separate
   capability surface if requested later (Γ-UKS PBE stress: `gpw-uks-stress`).
-- **Multi-k DFT+U stress** not implemented (`gpw_stress` docs).
+- **Multi-k DFT+U stress** — see [gpw-dftu-kpoint-stress](gpw-dftu-kpoint-stress.md).
 - **Cost** — analytic path is one SCF + 6 fixed-\(P\) samples; FD oracle is
   6+ re-converged SCFs (regression only).
 - Unit tests under `tests/cpu/gpw/` only; e2e CP2K-class parity is exclusively

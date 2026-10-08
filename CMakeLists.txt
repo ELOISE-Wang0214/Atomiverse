@@ -168,7 +168,6 @@ if(NOT ATV_DOCS_ONLY)
                 "molrs source: ${ATV_MOLRS_PATH} (developer checkout; "
                 "the ./molrs submodule is bypassed)")
         endif()
-        atv_validate_molrs_source_contract("${ATV_MOLRS_PATH}")
         atv_detect_molrs_wham("${ATV_MOLRS_PATH}" ATV_MOLRS_HAS_WHAM)
         if(ATV_MOLRS_HAS_WHAM)
             message(STATUS "molrs WhamCompute: available")
@@ -260,7 +259,6 @@ if(NOT ATV_DOCS_ONLY)
         # Cross-cutting core (logging registry, metrics)
         src/core/log.cpp
         src/core/real_harmonics.cpp
-        # molrs_contract.cpp — only with ATV_BUILD_MOLRS (below)
         # Backend-agnostic longrange operator math (Ewald/PME headers are
         # header-only; FMM needs translation-operator / tree sources). Always
         # compiled — not gated by ATV_BUILD_*.
@@ -333,7 +331,6 @@ if(NOT ATV_DOCS_ONLY)
     # ── molrs surfaces (IO / ANALYSIS / exchange / Element tables) ─────────
     if(ATV_BUILD_MOLRS)
         list(APPEND ATOMIVERSE_SRCS
-            src/core/molrs_contract.cpp
             src/cpu/frame/molrs_exchange.cpp
         )
     endif()
@@ -642,11 +639,6 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     add_library(atomiverse ${ATOMIVERSE_SRCS})
-    if(ATV_BUILD_MOLRS)
-        target_compile_definitions(atomiverse PRIVATE
-            ATV_MOLRS_CXX_API_VERSION=${ATV_MOLRS_CXX_API_VERSION}
-            ATV_MOLRS_CXX_REQUIRED_CAPABILITIES=${ATV_MOLRS_CXX_REQUIRED_CAPABILITIES})
-    endif()
     atv_apply_product_module_defs(atomiverse)
 
     # Multi-window WHAM — needs ANALYSIS + molrs pin with WhamCompute.

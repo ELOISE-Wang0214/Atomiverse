@@ -215,14 +215,34 @@ int main(int argc, char** argv) {
         pw.xc = cpu::scf::XCType::PBE;
     };
 
+    // CPU oracle: `PW::forces` writes the Frame's force columns + kEnergy, so
+    // it runs on a copy (frame_f is reused by the CUDA leg) and the triples
+    // [eV/Å] are read back from that copy.
+    auto cpu_forces = [](const cpu::Frame& f, cpu::pw::PW& pw) {
+        cpu::Frame frame_copy = f;
+        pw.forces(frame_copy);
+        const auto fx = frame_copy.span(kAtom_fx);
+        const auto fy = frame_copy.span(kAtom_fy);
+        const auto fz = frame_copy.span(kAtom_fz);
+        std::vector<std::array<double, 3>> F(
+            static_cast<std::size_t>(frame_copy.nlocal()));
+        for (std::size_t i = 0; i < F.size(); ++i)
+            F[i] = {static_cast<double>(fx[i]), static_cast<double>(fy[i]),
+                    static_cast<double>(fz[i])};
+        return F;
+    };
+
     std::vector<std::array<double, 3>> F_cpu, F_cuda;
     std::array<double, 6> S_cpu{}, S_cuda{};
     if (want == "cpu" || want == "both") {
         cpu::pw::PW pw;
         fill_pbe(pw);
         pw.build(frame_f);
-        F_cpu = cpu::pw::pw_forces_analytic(frame_f, pw);
-        S_cpu = cpu::pw::pw_stress(frame_f, pw);
+        F_cpu = cpu_forces(frame_f, pw);
+        {
+            cpu::Frame frame_copy = frame_f; // stress() writes kStress/kEnergy
+            S_cpu = pw.stress(frame_copy);   // σ [eV/Å³]
+        }
     }
     if (want == "cuda" || want == "both") {
         cuda::pw::PW pw;
@@ -303,7 +323,7 @@ int main(int argc, char** argv) {
             std::printf("FAIL: spin×smear energy\n");
             return 1;
         }
-        auto Fc = cpu::pw::pw_forces_analytic(frame_f, cpu_s);
+        auto Fc = cpu_forces(frame_f, cpu_s);
         auto Fg = cuda::pw::pw_forces_analytic(frame_f, cuda_s);
         double max_df = 0.0;
         double max_f = 0.0;

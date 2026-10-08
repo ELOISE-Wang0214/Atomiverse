@@ -70,7 +70,7 @@ int main() {
     cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces*/ false);
     eval.compute_stress = true;
     eval.stress_use_fd = false;
-    eval.stress_strain_h = 2e-3;
+    eval.method().stress_strain_h = 2e-3;
 
     cpu::Evaluate driver;
     driver.on(evaluate::Phase::evaluate).add_ref(eval);
@@ -117,8 +117,12 @@ int main() {
     method.local_pp_on_grid = true;
     method.build(frame);
 
-    const auto sfd = cpu::gpw::gpw_stress_fd(frame, method, /*h=*/2e-3,
-                                             /*axes*/ {true, true, true});
+    // gpw_stress_fd returns eV/Å³; the twin compares in Ha/Bohr³.
+    const auto sfd_ev_a3 = cpu::gpw::gpw_stress_fd(frame, method, /*h=*/2e-3,
+                                                   /*axes*/ {true, true, true});
+    std::array<double, 6> sfd{};
+    for (std::size_t k = 0; k < 6; ++k)
+        sfd[k] = sfd_ev_a3[k] / units::kHartreePerBohr3InEvPerAngstrom3;
 
     double max_diag_err = 0.0;
     const char* names[3] = {"xx", "yy", "zz"};

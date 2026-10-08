@@ -208,11 +208,8 @@ using MetaI32x3 = std::array<std::int32_t, 3>;
 using MetaI64x3 = std::array<std::int64_t, 3>;
 using MetaU32x3 = std::array<std::uint32_t, 3>;
 using MetaU64x3 = std::array<std::uint64_t, 3>;
-using MetaF32x3 = std::array<float, 3>;
 using MetaF64x3 = std::array<double, 3>;
-using MetaF32x6 = std::array<float, 6>;
 using MetaF64x6 = std::array<double, 6>;
-using MetaF32x9 = std::array<float, 9>;
 using MetaF64x9 = std::array<double, 9>;
 using MetaReal6 = MetaF64x6;
 

@@ -5,8 +5,8 @@
 /// PlanBuilder resolves bindings into sorted StageSlots. Built once,
 /// executed many times.
 ///
-/// Every slot holds a Component*. Nested loops enter as a Component adapter
-/// at registration; this header never names a loop-node type.
+/// Every slot holds a Component*. A nested loop enters through the private
+/// slot built by `on(phase).add`; this header never names a loop-node type.
 ///
 /// @see Driver::build() for how Plans are created
 /// @see Backend::step() for how Plans are executed

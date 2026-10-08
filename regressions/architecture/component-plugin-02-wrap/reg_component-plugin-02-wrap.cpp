@@ -1,16 +1,14 @@
 /// @file reg_component-plugin-02-wrap.cpp
-/// @brief Public-API gate: NestedLoopAdapter hides a DriverNode as Component.
+/// @brief Public-API gate: on(phase).add_ref nests a driver as one Component.
 ///
 /// Hard-coded architecture literals (oracle: harness).
 
 #include <cstdio>
-#include <string>
-#include <type_traits>
 
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/driver/driver.h"
-#include "atomiverse/cpu/driver/nested_loop_adapter.h"
+#include "atomiverse/cpu/driver/driver_node.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -50,23 +48,19 @@ class Counter : public cpu::Component {
 } // namespace
 
 int main() {
-    if (std::is_base_of_v<cpu::DriverNode, cpu::NestedLoopAdapter>) {
-        std::printf("FAIL: adapter must not be a DriverNode\n");
-        return 1;
-    }
-
     InnerLoop inner;
     Counter counter;
     inner.on(ATV::minimizer::Phase::force).add_ref(counter);
-    cpu::NestedLoopAdapter adapter(inner, 3);
     OuterLoop outer;
-    outer.on(ATV::md::Phase::force).add_ref(adapter);
+    outer.on(ATV::md::Phase::force).add_ref(inner, /*order=*/0, /*budget=*/3);
     outer.build();
 
     const auto& ops =
         outer.plan().slots[ATV::slot_of(ATV::md::Phase::force)].ops;
-    if (ops.empty() || ops.front().component == nullptr) {
-        std::printf("FAIL: outer adapter op must be a Component\n");
+    if (ops.empty() || ops.front().component == nullptr
+        || dynamic_cast<cpu::DriverNode*>(ops.front().component) != nullptr) {
+        std::printf(
+            "FAIL: nested slot must be a Component and not a DriverNode\n");
         return 1;
     }
 
@@ -82,6 +76,6 @@ int main() {
         std::printf("FAIL: launches=%d want=3\n", counter.launches);
         return 1;
     }
-    std::printf("ok: wrap launches=3 adapter_is_driver=0\n");
+    std::printf("ok: wrap launches=3 slot_is_driver=0\n");
     return 0;
 }

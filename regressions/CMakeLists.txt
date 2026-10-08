@@ -50,7 +50,12 @@ add_custom_target(regressions
 #   threads — pinned by tests/cpu/gpw/test_cpu_gpw_thread_reproducibility.cpp.
 #   Measured 2026-07-29, 1-thread -> 8-thread: second-gen-cpmd-ot 107 s -> 30 s,
 #   second-gen-cpmd-uks-ot 277 s -> 75 s, periodic-ugw-kpoints 24 s -> 16 s.
-#   A thread count is once again a pure cost choice.
+#   That holds for the reductions the unit test pins, NOT for every GPW path:
+#   the Γ-UKS+U SCF (gpw-dftu-forces, gpw-dftu-kpoints) and the Γ-UKS OT
+#   corrector (second-gen-cpmd-uks-ot) still differ run to run at 8 threads
+#   (measured 2026-09-25; identical at 1 thread), which is enough to flip their
+#   tightest gates. Until those reductions are fixed, a thread count is a cost
+#   choice only for the other cases.
 function(atv_add_regression domain case)
     cmake_parse_arguments(REG "" "THREADS" "" ${ARGN})
     if(NOT DEFINED REG_THREADS)

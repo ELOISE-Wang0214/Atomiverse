@@ -1,8 +1,8 @@
-# Exact Atomiverse -> molrs CXX consumer contract.
+# molrs source pin and optional-surface detection.
 #
-# This is Atomiverse's single CMake-readable source of truth. The actual molrs
-# version lives in molrs-cxxapi/CXX_API_VERSION and is checked even when a
-# developer supplies ATV_MOLRS_PATH.
+# molrs has no API version before 1.0.0: every commit may break the previous
+# one, so there is no version/capability gate — the pinned tree either compiles
+# against Atomiverse or it does not.
 #
 # Pin policy:
 #   - molrs is a **git submodule** at ./molrs (.gitmodules → MolCrafts/molrs).
@@ -12,56 +12,13 @@
 #     molrs`.
 #   - ATV_MOLRS_PATH defaults to ${CMAKE_SOURCE_DIR}/molrs (the submodule).
 #     Every developer preset in CMakePresets.json sets it to the sibling
-#     MolCrafts checkout ${sourceDir}/../molrs instead: molrs' dev branch is
-#     consumed with UNCOMMITTED changes in its working tree (the streaming
-#     TrajectoryWriter, release-0-14-15+), which no gitlink can capture. The
-#     gitlink tracks the newest committed dev commit the preset build was
+#     MolCrafts checkout ${sourceDir}/../molrs instead: molrs is consumed with
+#     UNCOMMITTED changes in its working tree, which no gitlink can capture.
+#     The gitlink tracks the newest committed molrs commit the preset build was
 #     verified against.
-#   - ATV_MOLRS_CXX_API_VERSION must match molrs-cxxapi/CXX_API_VERSION exactly.
-#   - ATV_MOLRS_CXX_REQUIRED_CAPABILITIES is the mask Atomiverse cannot run
-#     without; bit 3 (CXX_CAP_TRAJECTORY_WRITER, 0x8) is optional and detected
-#     per pin (atv_detect_molrs_trajectory_writer) so the submodule pin still
-#     links.
-#   - ATV_MOLRS_GIT_REF documents the intended release / commit for that pin
-#     (informational; bump it when advancing the submodule gitlink).
-#   - -DATV_MOLRS_PATH overrides (preset or manual) never bypass the CXX API
-#     version check.
-set(ATV_MOLRS_CXX_API_VERSION 1)
-set(ATV_MOLRS_CXX_REQUIRED_CAPABILITIES 7) # Frame-block v2 | Element | AM1-BCC
-set(ATV_MOLRS_GIT_REF "86237f8942ca559c3de19b005759a8ce2d7a46c0" CACHE STRING
-    "Documented MolCrafts/molrs ref for the sibling checkout (0.15 / cgsmiles); "
-    "./molrs gitlink may lag — bump both together when advancing the pin")
-
-function(atv_validate_molrs_source_contract molrs_root)
-    set(version_file "${molrs_root}/molrs-cxxapi/CXX_API_VERSION")
-    if(NOT CMAKE_SCRIPT_MODE_FILE)
-        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-                     "${version_file}")
-    endif()
-    if(NOT EXISTS "${version_file}")
-        message(FATAL_ERROR
-            "Atomiverse requires molrs CXX API v${ATV_MOLRS_CXX_API_VERSION}, "
-            "but ${version_file} does not exist. ATV_MOLRS_PATH='${molrs_root}' "
-            "is not a compatible molrs source tree. "
-            "If using the default path, run: "
-            "git submodule update --init --recursive molrs")
-    endif()
-
-    file(READ "${version_file}" actual_version)
-    string(STRIP "${actual_version}" actual_version)
-    if(NOT actual_version MATCHES "^[0-9]+$")
-        message(FATAL_ERROR
-            "Invalid molrs CXX API version in ${version_file}: "
-            "expected one unsigned decimal integer, found '${actual_version}'.")
-    endif()
-    if(NOT actual_version STREQUAL "${ATV_MOLRS_CXX_API_VERSION}")
-        message(FATAL_ERROR
-            "molrs CXX API mismatch: Atomiverse requires v"
-            "${ATV_MOLRS_CXX_API_VERSION}; found v${actual_version} at "
-            "ATV_MOLRS_PATH='${molrs_root}'. Local path overrides do not "
-            "bypass the contract.")
-    endif()
-endfunction()
+#   - Surfaces that only some molrs trees carry (WHAM, the streaming
+#     TrajectoryWriter) are detected per tree below, so the submodule pin
+#     still links.
 
 # Optional molrs surface: multi-window WHAM (WhamCompute) is not yet on every
 # pin. Detect from the CXX bridge source so Atomiverse compiles against the

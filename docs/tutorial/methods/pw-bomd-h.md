@@ -37,7 +37,7 @@ Lagrangian).
 **Electronic structure.** Concrete method `cpu::pw::PW` (plane-wave DFT
 SCF: Poisson → XC → \(V_{\mathrm{eff}}\) → Davidson → density mix). Empty
 `upf_path` selects the **toy local** \(V_{\mathrm{loc}}\) (no UPF file, no
-Kleinman–Bylander nonlocal). Forces from `pw_forces_analytic`: local
+Kleinman–Bylander nonlocal). Forces from the `PW::forces` path: local
 Hellmann–Feynman + Ewald ionic contribution [eV/Å].
 
 **Nuclear dynamics (NVE).**

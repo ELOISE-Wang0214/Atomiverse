@@ -628,7 +628,7 @@ TEST(RHF, CUDAHeHPlus) {
 
 TEST(RHF, PublicRHFIsScfDriver) {
     // Concrete RHF is the SCF loop node (Driver + HF), not a Component.
-    // Outer Evaluate/MD nest it through cuda::NestedLoopAdapter.
+    // Outer Evaluate/MD nest it with set_evaluator / on(phase).add.
     static_assert(
         std::is_base_of_v<cuda::Driver<ATV::scf::Phase>, cuda::scf::RHF>,
         "cuda::scf::RHF must be cuda::Driver<scf::Phase>");

@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-dftu-kpoint-stress` |
-| Public API | `cpu::gpw::GpwDft` members `k_mesh` / `plus_u` / `n_alpha`/`n_beta`; free `gpw_stress` (product) + `gpw_stress_fd` (oracle); optional `GPWEvaluator(std::move(dft))` with `compute_stress` |
+| Public API | `cpu::gpw::GpwDft` members `k_mesh` / `plus_u` / `n_alpha`/`n_beta`; `GpwDft::stress` (product) + `gpw_stress_fd` (oracle); optional `GPWEvaluator(std::move(dft))` with `compute_stress` |
 | Roadmap | `docs/roadmap/dft.md` — multi-k DFT+U analytic stress (`reg_gpw-dftu-kpoint-stress`) ✓ |
 
 ## Summary
@@ -19,14 +19,15 @@ Lagrangian under orthorhombic diagonal strain at fixed fractional
 coordinates, with BZ-averaged \(E_U[n^\sigma(\{P_k^\sigma\},\{S_k\})]\)
 evaluated at the strained overlaps. Sign convention matches CP2K
 `STRESS_TENSOR`: \(\sigma_{aa}=-\Omega^{-1}\partial E_L/\partial\varepsilon_{aa}\)
-in Ha/Bohr³.
+(returned in eV/Å³; pins compare in Ha/Bohr³).
 
 This page is the product gate that closes the **k-point × DFT+U × stress**
 product of three prior footholds: multi-k DFT+U energy
 (`reg_gpw-dftu-kpoints`), Γ DFT+U stress (`reg_gpw-dftu-stress`), and multi-k
 UKS stress (`reg_gpw-kpoint-uks-stress`). Public surface: set `GpwDft`
 members (`k_mesh`, `plus_u`, spin occupations, cutoff), put the geometry and
-cell on the Frame, and call `gpw_stress(frame, method, h)` — **no** `*Config` bag, **no** `make_*` /
+cell on the Frame, and call `method.stress(frame)` (strain step
+`stress_strain_h`) — **no** `*Config` bag, **no** `make_*` /
 `build_*` factories. Product regression:
 `reg_gpw-dftu-kpoint-stress`. Oracle: offline **CP2K 2026.1** twin retained
 for provenance; **not** a fair absolute energy/stress pin on this H₂ toy
@@ -116,7 +117,7 @@ shipped Γ DFT+U stress path). Citations: Dudarev et al., *Phys. Rev. B*
 
 ## Implementation
 
-Public surface only (`cpu::Frame` / `GpwDft` members / free `gpw_stress`; no
+Public surface only (`cpu::Frame` / `GpwDft` members / `GpwDft::stress`; no
 `*Config`, no `make_*`). Match the regression
 (`reg_gpw-dftu-kpoint-stress.cpp` uses the method surface;
 `GPWEvaluator(std::move(m))` is the outer Evaluate path for the same method):
@@ -168,8 +169,10 @@ const GpwResult& er = m.run(frame);
 // er.e_total [Ha], er.e_dftu [Ha], er.converged, er.C_occ_k / C_occ_k_beta
 
 const double h = 2e-3;
-const auto san = gpw_stress(frame, m, h);     // product analytic [Ha/Bohr³]
-const auto sfd = gpw_stress_fd(frame, m, h);  // multi-SCF oracle only
+m.stress_strain_h = h;
+const auto san = m.stress(frame);             // product analytic [eV/Å³]
+const auto sfd = gpw_stress_fd(frame, m, h);  // multi-SCF oracle only [eV/Å³]
+// pins compare in Ha/Bohr³: divide by units::kHartreePerBohr3InEvPerAngstrom3
 // Voigt: xx,yy,zz,xy,xz,yz — off-diagonals 0 (orthorhombic)
 ```
 
@@ -194,7 +197,7 @@ bash -lc '
 
 | Piece | Path |
 | ----- | ---- |
-| Public `PlusU` / `GpwDft::{k_mesh,plus_u}` / `gpw_stress` | `gpw_solver.h` |
+| Public `PlusU` / `GpwDft::{k_mesh,plus_u}` / `GpwDft::stress` | `gpw_solver.h` |
 | Evaluator (`compute_stress`, driver binding) | `gpw_evaluator.h` |
 | Multi-k Dudarev \(E_U\)/\(V\) (internal) | `dft_plus_u.h` |
 | Fixed-\(P_k\)+Pulay stress (internal) | `gpw_stress.h`, `src/cpu/gpw/internal/gpw_stress.cpp` |

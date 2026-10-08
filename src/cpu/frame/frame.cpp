@@ -32,8 +32,6 @@ MetaDType meta_dtype(const MetaValue& value) noexcept {
         return MetaDType::U32;
     if (std::holds_alternative<std::uint64_t>(value))
         return MetaDType::U64;
-    if (std::holds_alternative<float>(value))
-        return MetaDType::F32;
     if (std::holds_alternative<double>(value))
         return MetaDType::F64;
     if (std::holds_alternative<std::string>(value))
@@ -48,16 +46,10 @@ MetaDType meta_dtype(const MetaValue& value) noexcept {
         return MetaDType::U32x3;
     if (std::holds_alternative<MetaU64x3>(value))
         return MetaDType::U64x3;
-    if (std::holds_alternative<MetaF32x3>(value))
-        return MetaDType::F32x3;
     if (std::holds_alternative<MetaF64x3>(value))
         return MetaDType::F64x3;
-    if (std::holds_alternative<MetaF32x6>(value))
-        return MetaDType::F32x6;
     if (std::holds_alternative<MetaF64x6>(value))
         return MetaDType::F64x6;
-    if (std::holds_alternative<MetaF32x9>(value))
-        return MetaDType::F32x9;
     if (std::holds_alternative<MetaF64x9>(value))
         return MetaDType::F64x9;
     return MetaDType::TagIndexLocal;

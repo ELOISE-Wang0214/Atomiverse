@@ -47,7 +47,7 @@ hard-coded from pin notes:
 1. **Energy-FD twin (sharp):** the diagonal force constant matches the
    offline central second difference of the SCF total energy at identical
    settings to **0.07 %** (17.2277 vs 17.2393 eV/Å²). This is the true
-   discrete Hessian: the v1 `pw_forces_analytic` gradient deviates from it
+   discrete Hessian: the analytic `PW::forces` gradient deviates from it
    by ≈ 2 % (egg-box/aliasing, documented in REFERENCE.md), so FD-of-forces
    is *not* the oracle.
 2. **Acoustic sum rule emerges** (never imposed): |ω_acoustic| ≤ 4.4 cm⁻¹,

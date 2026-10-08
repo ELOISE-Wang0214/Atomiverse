@@ -5,7 +5,7 @@
 | Field | Value |
 | ----- | ----- |
 | Slug | `gpw-stress-water` |
-| Public API | `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd`, `stress_strain_h`); product analytic default — see [gpw-analytic-stress](gpw-analytic-stress.md); free `gpw_stress` / `gpw_stress_fd` |
+| Public API | `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd`; strain step `GpwDft::stress_strain_h` via `eval.method()`); product analytic default — see [gpw-analytic-stress](gpw-analytic-stress.md); `GpwDft::stress` / free oracle `gpw_stress_fd` |
 | Related narrative | [Ch. 9 GPW](../ch09-gpw.md) |
 | Queue | CP2K capability loop — wave 2 done (2026-07-24) |
 
@@ -15,13 +15,13 @@ Closed-shell **Γ-point Gaussian-and-plane-waves (GPW)** **cell stress** on
 isolated water, product path matching CP2K Quickstep
 `STRESS_TENSOR NUMERICAL`. v1 is **central finite difference of the SCF
 energy under orthorhombic strain** at fixed fractional coordinates (same
-strategy as plane-wave `pw_stress`), not analytic Nielsen–Martin / Pulay
+strategy as plane-wave `pw_stress_fd`), not analytic Nielsen–Martin / Pulay
 stress. Wavefunction in contracted Gaussians (DZVP-MOLOPT-GTH); Hartree /
 XC / local short-range GTH PP on a uniform grid (cutoff 400 Ry);
 electrostatics Martyna–Tuckerman isolated Poisson (`nonperiodic = true`).
-Public surface: `cpu::gpw::GPWEvaluator` members `compute_stress` and
-`stress_strain_h` (no `*Config` bag) bound into `cpu::Evaluate`; stress on
-Frame as `kStress` [eV/Å³] Voigt, pin channel
+Public surface: `cpu::gpw::GPWEvaluator` member `compute_stress` and the
+method's `stress_strain_h` (no `*Config` bag) bound into `cpu::Evaluate`; stress on
+Frame as `kStress` [eV] Voigt virial σ·Ω, pin channel
 `last_stress_ha_bohr3()` [Ha/Bohr³]. Product gate:
 `gpw-stress-water` (`reg_gpw-stress-water`), offline CP2K
 **2026.1** NUMERICAL pin. Fair wall ratio
@@ -145,7 +145,7 @@ dft.cutoff_ry = 400.0;  dft.max_iter = 200;  dft.tol = 1e-7;  dft.mix = 0.3;
 dft.xc = cpu::gpw::XcKind::PBE;  dft.nonperiodic = true;
 cpu::gpw::GPWEvaluator eval(std::move(dft), /*compute_forces=*/false);
 eval.compute_stress = true;
-eval.stress_strain_h = 2e-3;
+eval.method().stress_strain_h = 2e-3;
 
 cpu::Evaluate driver;
 driver.on(evaluate::Phase::evaluate).add_ref(eval);
@@ -153,7 +153,7 @@ driver.build();
 driver.run(frame);
 
 // Energy: frame.meta.get(kEnergy) [eV]; eval.last_energy_hartree() [Ha]
-// Stress: frame.meta.get(kStress) [eV/Å³] Voigt;
+// Stress: frame.meta.get(kStress) [eV] Voigt virial σ·Ω;
 //         eval.last_stress_ha_bohr3() [Ha/Bohr³] for pin compare
 ```
 
@@ -176,8 +176,8 @@ bash -lc '
 
 | Path | Role |
 | ---- | ---- |
-| `gpw_evaluator.h` | Public `compute_stress`, `stress_strain_h`, `last_stress_ha_bohr3()` |
-| `gpw_solver.h` | Public free `gpw_stress` [Ha/Bohr³] |
+| `gpw_evaluator.h` | Public `compute_stress`, `method()`, `last_stress_ha_bohr3()` |
+| `gpw_solver.h` | Public `GpwDft::stress` / `gpw_stress_fd` [eV/Å³], `GpwDft::stress_strain_h` |
 | `gpw_stress.h` | Private strain-FD implementation |
 | `src/cpu/gpw/internal/gpw_stress.cpp` | Orthorhombic central FD of SCF energy |
 | `src/cpu/gpw/gpw_evaluator.cpp` | Wire stress into Evaluate launch + `kStress` |

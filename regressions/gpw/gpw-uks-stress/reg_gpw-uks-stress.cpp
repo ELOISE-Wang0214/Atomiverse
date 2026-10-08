@@ -79,7 +79,7 @@ int main() {
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
-    eval.stress_strain_h = 2e-3;
+    eval.method().stress_strain_h = 2e-3;
 
     const auto t0 = clock::now();
     cpu::Evaluate driver;
@@ -129,8 +129,11 @@ int main() {
     method.build(frame);
 
     const auto t2 = clock::now();
-    const auto sfd = cpu::gpw::gpw_stress_fd(frame, method, /*h=*/2e-3,
-                                             /*axes*/ {true, true, true});
+    auto sfd = cpu::gpw::gpw_stress_fd(frame, method, /*h=*/2e-3,
+                                       /*axes*/ {true, true, true});
+    // gpw_stress_fd returns eV/Å³; the gate compares in Ha/Bohr³.
+    for (auto& v : sfd)
+        v /= units::kHartreePerBohr3InEvPerAngstrom3;
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 

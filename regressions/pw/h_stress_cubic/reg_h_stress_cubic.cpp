@@ -26,13 +26,13 @@ int main() {
     cfg.max_iter = 8;
     cfg.mix_beta = 0.5;
     // One valence electron is open-shell: the restricted stress path rejects an
-    // odd electron count (src/cpu/planewave/internal/pw_stress.cpp:625). A lone
+    // odd electron count (`PW::stress` throws). A lone
     // H is a doublet (S = 1/2), so N↑−N↓ = 1 ⇒ multiplicity 2; the default 1
     // would fail the parity check in the same guard.
     cfg.spin_polarized = true;
     cfg.multiplicity = 2;
 
-    const auto s = pw_stress(frame, cfg);
+    const auto s = cfg.stress(frame); // σ [eV/Å³]
     // eV/Å³. Cubic cell + one atom at the origin: the off-diagonal stress
     // vanishes and the three diagonals are equal, both by symmetry rather than
     // by convergence. The two are NOT the same kind of bound, so they do not
@@ -40,7 +40,7 @@ int main() {
     //
     //   * tol_offdiag — the off-diagonals are structurally zero, so this is a
     //     machine-precision identity. Measured 2026-08-15: |s| <= 1.0e-14.
-    //   * tol_diag    — `pw_stress` takes central finite differences of the
+    //   * tol_diag    — `PW::stress` takes central finite differences of the
     //     SCF energy under strain, and each diagonal component comes from an
     //     independent FD evaluation. The floor is therefore set by the FD step
     //     and the 1e-4 / 8-iteration SCF, NOT by machine epsilon. Measured

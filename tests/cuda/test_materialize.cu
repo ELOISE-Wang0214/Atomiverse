@@ -140,7 +140,7 @@ TEST(CudaMaterialize, RoundTrip) {
     }
 
     // System scalars cross the boundary as exact typed meta, never a synthetic
-    // "scalars" block (schema v2) — mirrors tests/cpu/test_materialize.cpp.
+    // "scalars" block — mirrors tests/cpu/test_materialize.cpp.
     EXPECT_FALSE(molrs::frame_has_block(*fr, "scalars"));
 
     cuda::destroy(d);

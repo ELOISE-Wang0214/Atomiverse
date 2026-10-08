@@ -6,14 +6,16 @@
 ///        B = linearized multi-k (product under test; warm iters == 0 + σ),
 ///        C = converged BOMD Γ, D = linearized Γ.
 ///
-/// Dual gate at the seed geometry: state-overload vs classic gpw_stress
-/// (identity) vs gpw_stress_fd. See REFERENCE.md. Public API only.
+/// Dual gate at the seed geometry: `GpwDft::stress` on two independently
+/// built methods (identity) vs gpw_stress_fd. See REFERENCE.md. Public API
+/// only.
 /// Requires ATV_BUILD_GPW + MD. Exit non-zero on failure.
 
 #include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <exception>
 #include <utility>
 #include <vector>
 
@@ -244,8 +246,10 @@ double worst_rel_drift(const LegResult& leg) {
     return worst;
 }
 
-/// Seed dual gate: state overload vs classic analytic vs multi-SCF FD at the
-/// initial H₂ geometry (k mesh of leg A).
+/// Seed dual gate: `GpwDft::stress` (one SCF + fixed-P stress at that SCF's
+/// state) on two independently built methods vs multi-SCF FD at the initial
+/// H₂ geometry (k mesh of leg A). All three are eV/Å³ from the library and are
+/// converted to Ha/Bohr³ here, the unit of the gate bands.
 bool dual_gate_seed(double& id_err, double& an_fd_err) {
     // Seed geometry defined in Bohr, converted to Å with the library constant
     // so the method's Å→Bohr read-back is exact.
@@ -280,16 +284,29 @@ bool dual_gate_seed(double& id_err, double& an_fd_err) {
     };
 
     const double h = 2e-3;
-    cpu::gpw::GpwDft solver = make_cfg();
-    solver.build(frame);
-    const auto& state = solver.run(frame);
-    if (!state.converged) {
-        std::printf("FAIL[dual]: seed SCF did not converge\n");
+    constexpr double kEvA3PerHaB3 = units::kHartreePerBohr3InEvPerAngstrom3;
+    std::array<double, 6> s_state{}, s_classic{}, s_fd{};
+    try {
+        // `stress()` runs the seed SCF itself and throws when it does not
+        // converge; the state it differentiates is that SCF's.
+        cpu::gpw::GpwDft solver = make_cfg();
+        solver.stress_strain_h = h;
+        solver.build(frame);
+        s_state = solver.stress(frame);
+        cpu::gpw::GpwDft classic = make_cfg();
+        classic.stress_strain_h = h;
+        classic.build(frame);
+        s_classic = classic.stress(frame);
+        s_fd = cpu::gpw::gpw_stress_fd(frame, make_cfg(), h);
+    } catch (const std::exception& e) {
+        std::printf("FAIL[dual]: seed stress threw: %s\n", e.what());
         return false;
     }
-    const auto s_state = cpu::gpw::gpw_stress(frame, solver, state, h);
-    const auto s_classic = cpu::gpw::gpw_stress(frame, make_cfg(), h);
-    const auto s_fd = cpu::gpw::gpw_stress_fd(frame, make_cfg(), h);
+    for (std::size_t k = 0; k < 6; ++k) {
+        s_state[k] /= kEvA3PerHaB3;
+        s_classic[k] /= kEvA3PerHaB3;
+        s_fd[k] /= kEvA3PerHaB3;
+    }
     id_err = 0.0;
     an_fd_err = 0.0;
     for (int a = 0; a < 3; ++a) {
@@ -330,7 +347,7 @@ int main() {
     std::printf("  dual |state-classic|=%.3e  |state-fd|=%.3e Ha/Bohr3\n",
                 id_err, an_fd_err);
     if (!(id_err <= state_id_band)) {
-        std::printf("FAIL: state-overload identity vs classic out of band\n");
+        std::printf("FAIL: GpwDft::stress identity (two builds) out of band\n");
         return 1;
     }
     if (!(an_fd_err <= an_fd_band)) {

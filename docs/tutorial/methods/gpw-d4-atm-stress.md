@@ -14,7 +14,7 @@ The **Axilrod–Teller–Muto three-body** term of DFT-D4 (\(s_9 = 1\), dftd4
 `pbe-D4-ATM`) contributes to the GPW **analytic cell stress**. This page is
 the stress companion of `gpw-d4-atm-forces` and the ATM extension of
 `gpw-d4-stress`: the product stress is the Hellmann–Feynman fixed-density
-path (`gpw_stress`) — one SCF → \(P, W\); central FD of the
+path (`GpwDft::stress`) — one SCF → \(P, W\); central FD of the
 non-self-consistent Lagrangian under orthorhombic diagonal strain at fixed
 fractional coordinates — with the geometry-only dispersion energy
 \(E_{\mathrm{disp}}^{\mathrm{D4+ATM}}(\{\mathbf{R}\},\mathbf{h})\)
@@ -75,7 +75,7 @@ measured value on PASS. First-green measured values, 2026-07-31:
 
 Product analytic stress (Γ PBE-D4+ATM, 200 Ry; E = −34.331326946882 Ha):
 σ_xx = −2.17593330×10⁻⁵, σ_yy = +2.00729249×10⁻⁵,
-σ_zz = +5.82666928×10⁻⁵ Ha/Bohr³; `kStress` on Frame in eV/Å³.
+σ_zz = +5.82666928×10⁻⁵ Ha/Bohr³; `kStress` on Frame in eV (virial σ·Ω).
 
 Unit twin: `tests/cpu/gpw/test_cpu_gpw_dftd4.cpp`
 `WaterDimerPeriodicStrainedAtmMatchesDftd4` (strained x+h s9=1 pin at
@@ -111,11 +111,11 @@ dft.d4 = true;              // exclusive vs d3 / d3bj
 dft.d4_atm = true;          // s9 = 1 in energy AND strained stress rebuild
 cpu::gpw::GPWEvaluator eval(std::move(dft));
 eval.compute_stress = true; // analytic fixed-P path
-eval.stress_strain_h = 2e-3;
+eval.method().stress_strain_h = 2e-3;
 cpu::Evaluate driver;
 driver.on(evaluate::Phase::evaluate).add_ref(eval);
 driver.build();
-driver.run(frame);          // frame.meta.get(kStress) [eV/Å³];
+driver.run(frame);          // frame.meta.get(kStress) [eV] (σ·Ω);
                             // eval.last_stress_ha_bohr3() [Ha/Bohr³]
 ```
 

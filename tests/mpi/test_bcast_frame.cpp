@@ -383,20 +383,20 @@ TEST(MpiBcastFrame, TypedRuntimeMetadataPreservesExactDtypes) {
     constexpr MetaKey<bool> enabled{"runtime_enabled", true};
     constexpr MetaKey<std::uint64_t> epoch{"runtime_epoch", true};
     constexpr MetaKey<std::string> label{"runtime_label", true};
-    constexpr MetaKey<MetaF32x3> origin{"runtime_origin", true};
+    constexpr MetaKey<MetaF64x3> origin{"runtime_origin", true};
     constexpr MetaKey<MetaI64x3> counters{"runtime_counters", true};
 
     cpu::Frame frame(0);
     frame.meta.insert(enabled, false);
     frame.meta.insert(epoch, std::uint64_t{0});
     frame.meta.insert(label, std::string{});
-    frame.meta.insert(origin, MetaF32x3{});
+    frame.meta.insert(origin, MetaF64x3{});
     frame.meta.insert(counters, MetaI64x3{});
     if (world_rank() == 0) {
         frame.meta.set(enabled, true);
         frame.meta.set(epoch, std::uint64_t{9007199254740993ull});
         frame.meta.set(label, std::string{"native-meta"});
-        frame.meta.set(origin, MetaF32x3{1.25f, -2.5f, 3.75f});
+        frame.meta.set(origin, MetaF64x3{1.25, -2.5, 3.75});
         frame.meta.set(counters, MetaI64x3{-7, 0, 9007199254740993LL});
     }
 
@@ -405,7 +405,7 @@ TEST(MpiBcastFrame, TypedRuntimeMetadataPreservesExactDtypes) {
     EXPECT_TRUE(frame.meta.get(enabled));
     EXPECT_EQ(frame.meta.get(epoch), std::uint64_t{9007199254740993ull});
     EXPECT_EQ(frame.meta.get(label), "native-meta");
-    EXPECT_EQ(frame.meta.get(origin), (MetaF32x3{1.25f, -2.5f, 3.75f}));
+    EXPECT_EQ(frame.meta.get(origin), (MetaF64x3{1.25, -2.5, 3.75}));
     EXPECT_EQ(frame.meta.get(counters), (MetaI64x3{-7, 0, 9007199254740993LL}));
 }
 

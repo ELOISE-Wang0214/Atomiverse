@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/semiempirical/rm1_evaluator.h"
 
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
@@ -74,7 +75,7 @@ void RM1Evaluator::build(const cpu::BuildContext& ctx) {
 void RM1Evaluator::launch(const cpu::LaunchContext& ctx) {
     auto snap = unwrap_for_rm1(ctx.frame);
 
-    auto& result = solver_.run(ctx.frame);
+    auto& result = solver_.run(std::as_const(ctx.frame));
     ctx.frame.meta.get(kEnergy) += result.total_energy_ev;
     ctx.frame.meta.get(kEnergyElectronic) += result.total_energy_ev;
     const int n = ctx.frame.nlocal();
@@ -89,7 +90,7 @@ void RM1Evaluator::launch(const cpu::LaunchContext& ctx) {
     }
 
     if (compute_force_ && ctx.forces_requested) {
-        solver_.compute_forces(ctx.frame);
+        solver_.fd_forces_(ctx.frame);
         StorageReal* __restrict fx = ctx.frame.span(kAtom_fx);
         StorageReal* __restrict fy = ctx.frame.span(kAtom_fy);
         StorageReal* __restrict fz = ctx.frame.span(kAtom_fz);

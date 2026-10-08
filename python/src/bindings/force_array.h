@@ -5,8 +5,8 @@
 /// `AM1Evaluator.forces`, `PW.forces`) hands back the same thing: a freshly
 /// allocated, numpy-owned `(n_atoms, 3)` double array [eV/Å]. The engine's
 /// own force storage is not exposed — it is either reused by the next solve
-/// (`AM1Result::forces_ev_a`) or a temporary (`GradientResult::forces`,
-/// `pw_forces_analytic`'s returned vector), so the array Python keeps must
+/// (`AM1Result::forces_ev_a`, the Frame force columns) or a temporary
+/// (`GradientResult::forces`), so the array Python keeps must
 /// own its buffer.
 ///
 /// `to_force_array()` is that copy: it adds the force-specific size check and

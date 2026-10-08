@@ -130,8 +130,21 @@ int main() {
             check(dE >= kDeFloor, "activation |E_RevPBE-E_PBE| floor");
         }
 
-        const auto san = gpw_stress(frame, make_uks(c.xc, L), h);
-        const auto sfd = gpw_stress_fd(frame, make_uks(c.xc, L), h);
+        // Public paths return eV/Å³; gates and prints stay in Ha/Bohr³.
+        constexpr double kToHaBohr3 =
+            1.0 / units::kHartreePerBohr3InEvPerAngstrom3;
+        std::array<double, 6> san{};
+        {
+            GpwDft m = make_uks(c.xc, L);
+            m.stress_strain_h = h;
+            m.build(frame);
+            san = m.stress(frame);
+        }
+        auto sfd = gpw_stress_fd(frame, make_uks(c.xc, L), h);
+        for (int k = 0; k < 6; ++k) {
+            san[static_cast<std::size_t>(k)] *= kToHaBohr3;
+            sfd[static_cast<std::size_t>(k)] *= kToHaBohr3;
+        }
 
         double max_diag_err = 0.0;
         const char* names[3] = {"xx", "yy", "zz"};

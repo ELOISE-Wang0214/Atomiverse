@@ -113,9 +113,6 @@ void write_meta_value(ByteWriter& writer, MetaDType dtype,
     case MetaDType::U64:
         writer.pod(std::get<std::uint64_t>(value));
         break;
-    case MetaDType::F32:
-        writer.pod(std::get<float>(value));
-        break;
     case MetaDType::F64:
         writer.pod(std::get<double>(value));
         break;
@@ -143,20 +140,11 @@ void write_meta_value(ByteWriter& writer, MetaDType dtype,
     case MetaDType::U64x3:
         write_array(writer, std::get<MetaU64x3>(value));
         break;
-    case MetaDType::F32x3:
-        write_array(writer, std::get<MetaF32x3>(value));
-        break;
     case MetaDType::F64x3:
         write_array(writer, std::get<MetaF64x3>(value));
         break;
-    case MetaDType::F32x6:
-        write_array(writer, std::get<MetaF32x6>(value));
-        break;
     case MetaDType::F64x6:
         write_array(writer, std::get<MetaF64x6>(value));
-        break;
-    case MetaDType::F32x9:
-        write_array(writer, std::get<MetaF32x9>(value));
         break;
     case MetaDType::F64x9:
         write_array(writer, std::get<MetaF64x9>(value));
@@ -179,8 +167,6 @@ MetaValue read_meta_value(ByteReader& reader, MetaDType dtype) {
         return MetaValue{reader.pod<std::uint32_t>()};
     case MetaDType::U64:
         return MetaValue{reader.pod<std::uint64_t>()};
-    case MetaDType::F32:
-        return MetaValue{reader.pod<float>()};
     case MetaDType::F64:
         return MetaValue{reader.pod<double>()};
     case MetaDType::String: {
@@ -205,16 +191,10 @@ MetaValue read_meta_value(ByteReader& reader, MetaDType dtype) {
         return MetaValue{read_array<std::uint32_t, 3>(reader)};
     case MetaDType::U64x3:
         return MetaValue{read_array<std::uint64_t, 3>(reader)};
-    case MetaDType::F32x3:
-        return MetaValue{read_array<float, 3>(reader)};
     case MetaDType::F64x3:
         return MetaValue{read_array<double, 3>(reader)};
-    case MetaDType::F32x6:
-        return MetaValue{read_array<float, 6>(reader)};
     case MetaDType::F64x6:
         return MetaValue{read_array<double, 6>(reader)};
-    case MetaDType::F32x9:
-        return MetaValue{read_array<float, 9>(reader)};
     case MetaDType::F64x9:
         return MetaValue{read_array<double, 9>(reader)};
     case MetaDType::TagIndexLocal:

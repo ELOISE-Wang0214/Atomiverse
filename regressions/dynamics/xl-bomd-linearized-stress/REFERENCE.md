@@ -11,12 +11,13 @@ shadow payload:
   `compute_forces = true`, **`compute_stress = true`**,
   `stress_use_fd = false`, wrapped by
   `cpu::electronic::XlBomdForce{gpw, 5, XlBomdLinearized{}}`
-- Cold seed (step 0): full SCF → classic `gpw_stress` (reference SCF + fixed-\(P\)
-  FD) → seeds XL histories
+- Cold seed (step 0): full SCF → analytic fixed-\(P\) stress at that SCF's
+  state (same path as `GpwDft::stress`) → seeds XL histories
 - Warm steps: zero-SCF shadow forces (as in `xl-bomd-linearized-kpoints`) **plus**
-  the new state-overload stress path
-  `gpw_stress(frame, method, last_, h, axes)` — fixed-\(P\) Lagrangian at
-  \(P = D = q[n]\), \(W\) from the \(H[n]\) eigenpairs; **no reference SCF**
+  the evaluator's shadow-state stress (strain step / axes from
+  `method().stress_strain_h` / `.stress_axes`) — fixed-\(P\) Lagrangian at
+  \(P = D = q[n]\), \(W\) from the \(H[n]\) eigenpairs; **no reference SCF**;
+  read back through `last_stress_ha_bohr3()` and the Frame's `kStress`
 - `stress_use_fd` + linearized remains **refused** at `build()` (multi-SCF
   strain-FD re-converges the SCF under strain — Born–Oppenheimer stress, not
   the shadow functional)
@@ -104,7 +105,7 @@ component); yy/zz are near-zero noise on this orthorhombic stretch.
 | Gate | Pin / band | Measured |
 | ---- | ---------- | -------- |
 | B/D warm steps | `iters == 0`, `converged`, finite off-diag-0 \(\sigma\), `kStress` written | ✓ |
-| Dual gate (seed k mesh) | state ≡ classic ≤ **1e-10**; state vs FD ≤ **1e-6** Ha/Bohr³ | **0** / **9.86e-11** |
+| Dual gate (seed k mesh) | `GpwDft::stress` on two independent builds agree ≤ **1e-10**; vs `gpw_stress_fd` ≤ **1e-6** Ha/Bohr³ (library returns eV/Å³; divided by `units::kHartreePerBohr3InEvPerAngstrom3` before gating) | **0** / **9.86e-11** |
 | A \(\sigma_{xx}\) vs CP2K | ≤ **1e-4** Ha/Bohr³ | worst **6.026e-05** (seed residual ~3.4e-6; trajectory residual grows with engine-model force drift) |
 | A/B diag stress | ≤ **1e-5** Ha/Bohr³ | worst **1.970e-06** |
 | C/D diag stress | ≤ **1e-5** Ha/Bohr³ | worst **1.969e-06** |
@@ -146,7 +147,7 @@ B 5.12 s on this window).
 
 | Gate | Result |
 | ---- | ------ |
-| Correctness | unit `test_cpu_gpw_stress` (state overload identity + unconverged throw) + unit `test_cpu_gpw_xl_bomd` (build accepts stress; refuses `stress_use_fd`) + e2e this regression |
+| Correctness | unit `test_cpu_gpw_stress` (fixed-\(P\) stress + unconverged throw) + unit `test_cpu_gpw_xl_bomd` (build accepts stress; refuses `stress_use_fd`) + e2e this regression |
 | Speed | ratio 2.4 ≤ 10 (measured) |
 
 ## Provenance

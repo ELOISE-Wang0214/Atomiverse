@@ -7,7 +7,7 @@ relaxation**: `cpu::minimizer::Minimize` + `AnisotropicCellRelax`
 (per-axis mask `relax_x` only; `kStress` is the extensive Voigt virial
 intensive `kStress` [eV/Å³]) + `StressConverged` criterion, with
 `cpu::gpw::GPWEvaluator` (`compute_stress = true`,
-`stress_axes = {x only}`) bound at the `force` phase. `GPWEvaluator::launch`
+method `stress_axes = {x only}`) bound at the `force` phase. `GPWEvaluator::launch`
 re-targets the solver cell to the frame box each call (the old
 "GPW does not support a variable cell" throw is gone); `GpwDft::run` rebuilds
 grids / lattice images / S/T/Vpp per call, so the relax loop rescales

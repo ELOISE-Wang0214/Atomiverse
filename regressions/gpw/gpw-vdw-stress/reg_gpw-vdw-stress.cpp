@@ -5,12 +5,15 @@
 /// of E_tot; soft absolute class vs offline CP2K STRESS + NON_LOCAL twin.
 /// See REFERENCE.md.
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
@@ -108,9 +111,22 @@ int main() {
 
     const double h = 2e-3;
     const auto t2 = std::chrono::steady_clock::now();
-    const auto san = gpw_stress(frame, make_cfg(), h);
+    // Public paths return eV/Å³; gates and prints stay in Ha/Bohr³.
+    constexpr double kToHaBohr3 =
+        1.0 / ATV::units::kHartreePerBohr3InEvPerAngstrom3;
+    auto stress_ha_bohr3 = [&](GpwDft m) {
+        m.stress_strain_h = h;
+        m.build(frame);
+        auto s = m.stress(frame);
+        for (auto& v : s)
+            v *= kToHaBohr3;
+        return s;
+    };
+    const auto san = stress_ha_bohr3(make_cfg());
     const auto t3 = std::chrono::steady_clock::now();
-    const auto sfd = gpw_stress_fd(frame, make_cfg(), h);
+    auto sfd = gpw_stress_fd(frame, make_cfg(), h);
+    for (auto& v : sfd)
+        v *= kToHaBohr3;
     const auto t4 = std::chrono::steady_clock::now();
     const double wall_an = std::chrono::duration<double>(t3 - t2).count();
     const double wall_fd = std::chrono::duration<double>(t4 - t3).count();
@@ -141,7 +157,7 @@ int main() {
     {
         auto bare = make_cfg();
         bare.vdw_df = false;
-        const auto s_bare = gpw_stress(frame, bare, h);
+        const auto s_bare = stress_ha_bohr3(std::move(bare));
         double max_diff = 0.0;
         for (int ax = 0; ax < 3; ++ax)
             max_diff = std::max(

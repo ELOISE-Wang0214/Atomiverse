@@ -93,7 +93,8 @@ TEST(CudaPWCellStress, H2ClosedShellCpuTwin) {
     cpu::pw::PW cpu_m;
     fill_cpu_method(cpu_m);
     cpu_m.build(frame);
-    const auto s_cpu = cpu::pw::pw_stress(frame, cpu_m);
+    cpu::Frame frame_copy = frame; // stress() writes kStress/kEnergy
+    const auto s_cpu = cpu_m.stress(frame_copy); // σ [eV/Å³]
 
     cuda::pw::PW cuda_m;
     fill_cuda_method(cuda_m);
@@ -162,7 +163,8 @@ TEST(CudaPWCellStress, H2ClosedShellPbeCpuTwin) {
     fill_cpu_method(cpu_m);
     cpu_m.xc = cpu::scf::XCType::PBE;
     cpu_m.build(frame);
-    const auto s_cpu = cpu::pw::pw_stress(frame, cpu_m);
+    cpu::Frame frame_copy = frame; // stress() writes kStress/kEnergy
+    const auto s_cpu = cpu_m.stress(frame_copy); // σ [eV/Å³]
 
     cuda::pw::PW cuda_m;
     fill_cuda_method(cuda_m);

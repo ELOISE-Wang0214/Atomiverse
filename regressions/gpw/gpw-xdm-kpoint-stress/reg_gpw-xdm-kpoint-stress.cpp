@@ -177,7 +177,7 @@ int main() {
     eval.compute_forces = false;
     eval.compute_stress = true;
     eval.stress_use_fd = false;
-    eval.stress_strain_h = kStrainH;
+    eval.method().stress_strain_h = kStrainH;
 
     const auto t0 = clock::now();
     cpu::Evaluate driver;
@@ -224,7 +224,11 @@ int main() {
     };
 
     const auto t2 = clock::now();
-    const auto sfd = cpu::gpw::gpw_stress_fd(frame, make_cfg(true), kStrainH);
+    // Public paths return eV/Å³; gates and prints stay in Ha/Bohr³.
+    constexpr double kToHaBohr3 = 1.0 / units::kHartreePerBohr3InEvPerAngstrom3;
+    auto sfd = cpu::gpw::gpw_stress_fd(frame, make_cfg(true), kStrainH);
+    for (auto& v : sfd)
+        v *= kToHaBohr3;
     const auto t3 = clock::now();
     const double wall_fd_s = std::chrono::duration<double>(t3 - t2).count();
 
@@ -246,7 +250,18 @@ int main() {
     check(max_diag_err <= kAnFdTol, "C analytic vs multi-SCF FD diagonal");
 
     // ── D: XDM wiring — sigma(xdm) − sigma(plain) vs dual-python FD term ──
-    const auto s_plain = cpu::gpw::gpw_stress(frame, make_cfg(false), kStrainH);
+    // stress() writes kStress/kEnergy: run it on a copy so the kStress
+    // gate below still reads the evaluator's published value.
+    std::array<double, 6> s_plain{};
+    {
+        cpu::Frame fp = frame;
+        cpu::gpw::GpwDft plain = make_cfg(false);
+        plain.stress_strain_h = kStrainH;
+        plain.build(fp);
+        s_plain = plain.stress(fp);
+        for (auto& v : s_plain)
+            v *= kToHaBohr3;
+    }
     double max_shift_err = 0.0;
     for (int a = 0; a < 3; ++a) {
         const double shift = san[static_cast<std::size_t>(a)]
