@@ -26,6 +26,9 @@ list only when its gate is *actually* removed.
 | `noncollinear-spin-dftb` | Spinor Hamiltonian (2-component density), not a parameter on collinear | Spec + multi-wave after collinear solid |
 | `spin-orbit-dftb` | SOC/SK design | After noncollinear |
 
+Shell-resolved **collinear** spin (`ShellResolvedSpin = Yes`) and
+shell-resolved \(U_\ell\) are ordinary pending, not these rows.
+
 ## Phase C dependents (pending, not blocked)
 
 `stda-xtb` waits on AES-in-Fock / production GFN2 GS. Family Hessian
