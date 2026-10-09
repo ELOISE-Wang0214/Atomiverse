@@ -331,6 +331,8 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/communication/gather.cpp
         src/cpu/communication/gather_for_io.cpp
         src/cpu/communication/rebalance.cpp
+        # comm_brick calls md::sort_owned_atoms; the TU stays on when MD is off.
+        src/cpu/dynamics/atom_sort.cpp
         # Direct Ewald always (no external deps); PME gated by ATV_BUILD_KSPACE below
         src/cpu/longrange/ewald.cpp
     )

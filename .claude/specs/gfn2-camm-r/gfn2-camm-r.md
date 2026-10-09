@@ -55,6 +55,17 @@ every centre, \(v^Q\) in Fock on H, frozen-\(P\) \(\partial\Theta/\partial R\))
 still does not close \(F_{H1,y}\) (+0.12 vs xtb −0.80). Minus-RRS
 (opab4-signed \(Q\)) still breaks SCC. Not closed.
 
+**Wave-2 (2026-10-09):** tblite `qpat` scaling
+(\(\Theta=-\sum P\,\Theta_{\mathrm{op}}\), Fock \(-\tfrac12 v^Q\cdot\Theta_{\mathrm{op}}\),
+\(E=q(\Theta:\mathrm{rr})\,g_5\) with no \(1/3\)) still does not close
+\(F_{H1,y}\) (+0.050 vs −0.799) and moves the energy by **128 meV**.
+Restored baseline (energy 10.6 meV, \(F_{O,x}\) 0.26 eV/Å). Gradient
+split of that baseline: quadrupole chain and the AES kernel are
+\(\sim5\times10^{-4}\) Eh/a0 on \(g_{H1,y}\); the miss is the **H0/Pulay**
+pair term (−7.1×10⁻³ vs the +1.1×10⁻² the total needs). O is
+over-polarized (−0.68 e vs xtb −0.55). Not a second CAMM slug — the
+bend is not \(\partial\Theta/\partial R\).
+
 ## Design
 
 - Same public type `cpu::semiempirical::GFN2`. No `*Config`, no `make_*`.
