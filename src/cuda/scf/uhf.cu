@@ -29,6 +29,13 @@
 namespace ATV {
 namespace cuda {
 namespace scf {
+
+/// @brief Row-major 1/2 P_MINAO, or empty when MINAO does not cover Z.
+std::vector<double> uhf_minao_half(const int* Z, const double* x_A,
+                                   const double* y_A, const double* z_A,
+                                   int natm, cpu::scf::BasisSet basis,
+                                   int charge, int n_ao);
+
 namespace {
 
 bool device_sp_sto3g_ok(cpu::scf::BasisSet basis, const int* h_Z, int natm) {
@@ -111,6 +118,8 @@ __global__ void uhf_add_mat_kernel(prec_t* __restrict__ out,
                                      + static_cast<work_t>(b[i]));
 }
 
+} // namespace
+
 struct EngineSlot {
     std::unique_ptr<internal::UhfScfCycle> cycle;
     cuda::Context* ctx = nullptr;
@@ -172,8 +181,6 @@ struct UhfLoopState {
           check(&slot, ATV::scf::Phase::check, "scf_check_stage",
                 &internal::UhfScfCycle::step_check) {}
 };
-
-} // namespace
 
 UHF::UHF(cpu::scf::BasisSet basis_in, int n_alpha_in, int n_beta_in,
          int charge_in, double tol_in, int max_iter_in, double level_shift_in,
@@ -334,6 +341,43 @@ void UHF::step_stages_(cuda::Context& ctx, cuda::Frame& frame, int step) {
     }
 }
 
+void UHF::seed_minao_(cuda::Context& ctx, cuda::Frame& frame) {
+    const int natm = frame.n_atoms();
+    if (natm <= 0 || !loop_ || !loop_->slot.cycle)
+        return;
+    if (static_cast<int>(host_Z_.size()) != natm)
+        return;
+    auto* stream = static_cast<cudaStream_t>(ctx.stream);
+    std::vector<real_t> hx(static_cast<std::size_t>(natm));
+    std::vector<real_t> hy(hx.size());
+    std::vector<real_t> hz(hx.size());
+    const auto nbyte = sizeof(real_t) * hx.size();
+    cudaMemcpyAsync(hx.data(), frame.atoms.x, nbyte, cudaMemcpyDeviceToHost,
+                    stream);
+    cudaMemcpyAsync(hy.data(), frame.atoms.y, nbyte, cudaMemcpyDeviceToHost,
+                    stream);
+    cudaMemcpyAsync(hz.data(), frame.atoms.z, nbyte, cudaMemcpyDeviceToHost,
+                    stream);
+    cudaStreamSynchronize(stream);
+    std::vector<double> x(static_cast<std::size_t>(natm));
+    std::vector<double> y(x.size());
+    std::vector<double> z(x.size());
+    for (int i = 0; i < natm; ++i) {
+        x[static_cast<std::size_t>(i)] =
+            static_cast<double>(hx[static_cast<std::size_t>(i)]);
+        y[static_cast<std::size_t>(i)] =
+            static_cast<double>(hy[static_cast<std::size_t>(i)]);
+        z[static_cast<std::size_t>(i)] =
+            static_cast<double>(hz[static_cast<std::size_t>(i)]);
+    }
+    const int n = loop_->slot.cycle->workspace().n;
+    const std::vector<double> half = uhf_minao_half(
+        host_Z_.data(), x.data(), y.data(), z.data(), natm, basis, charge, n);
+    if (half.empty())
+        return;
+    loop_->slot.cycle->seed_density(ctx.stream, half.data(), half.data(), n);
+}
+
 int UHF::drive_loop_(cuda::Context& ctx, cuda::Frame& frame, int budget) {
     struct Guard {
         UHF* self;
@@ -342,6 +386,7 @@ int UHF::drive_loop_(cuda::Context& ctx, cuda::Frame& frame, int budget) {
 
     assemble_(ctx, frame);
     loop_->slot.cycle->begin(ctx.stream);
+    seed_minao_(ctx, frame);
     const cuda::LoopServices saved = ctx.loop;
     ctx.loop.status = &this->status_;
     ctx.loop.metrics = &this->metrics_;

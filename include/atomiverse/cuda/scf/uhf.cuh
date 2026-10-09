@@ -11,8 +11,12 @@
 /// `launch_uhf_forces_sp`). There is no host-ERI fill.
 ///
 /// PySCF sources read for this type: `scf/uhf.py` (`make_rdm1`, `get_veff`,
-/// `energy_elec`, `get_fock`, `get_occ`, `init_guess_by_1e`), `scf/hf.py`
-/// (`kernel`), `grad/uhf.py` (`grad_elec`, `get_veff`, `make_rdm1e`).
+/// `energy_elec`, `get_fock`, `get_occ`, `init_guess_by_minao`), `scf/hf.py`
+/// (`init_guess_by_minao`, `kernel`), `grad/uhf.py` (`grad_elec`, `get_veff`,
+/// `make_rdm1e`). The device loop starts from the spin-averaged MINAO density
+/// (open-shell `_break_dm_spin_symm` is a no-op). Overlap projection of that
+/// guess is packed once at setup; Fock, density, CDIIS, and forces stay on
+/// device. An element without a MINAO table keeps the core-Hamiltonian start.
 /// `scf/dhf.py`, `pbc/scf/khf.py`, `x2c/sfx2c1e_grad.py`, `df/df_jk.py`, and
 /// `hessian/rhf.py` are different products and are not members.
 ///
@@ -142,6 +146,7 @@ class UHF : public cuda::Driver<ATV::scf::Phase>,
     int drive_loop_(cuda::Context& ctx, cuda::Frame& frame, int budget);
     void step_stages_(cuda::Context& ctx, cuda::Frame& frame, int step);
     void assemble_(cuda::Context& ctx, cuda::Frame& frame);
+    void seed_minao_(cuda::Context& ctx, cuda::Frame& frame);
     void release_engine_();
     void assemble_forces_(cuda::Context& ctx, cuda::Frame& frame);
     void pull_energy_(cuda::Context& ctx, cuda::Frame& frame);

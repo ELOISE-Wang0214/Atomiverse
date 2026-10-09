@@ -784,6 +784,7 @@ if(NOT ATV_DOCS_ONLY)
                 src/cuda/scf/diis_mixer.cu
                 src/cuda/scf/device_integrals.cu
                 src/cuda/scf/uhf.cu
+                src/cuda/scf/uhf_minao.cpp
                 src/cuda/scf/uhf_scf_cycle.cu
                 src/cuda/scf/uhf_fock.cu
                 src/cuda/scf/uhf_density.cu

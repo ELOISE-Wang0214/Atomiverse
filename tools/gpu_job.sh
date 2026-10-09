@@ -39,6 +39,11 @@ module load GPU/buildenv-gcccuda/2026.03-cu13.0
 PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '/\.x86/' | paste -sd:)
 export PATH
 hash -r
+# rustup's user default is often the login-node x86 toolchain. On the
+# GH200 the installed toolchain is aarch64; do not keep the x86 one.
+if [[ "$(uname -m)" == aarch64 ]]; then
+    export RUSTUP_TOOLCHAIN=stable-aarch64-unknown-linux-gnu
+fi
 export LD_LIBRARY_PATH="${LIBRARY_PATH:-}:${LD_LIBRARY_PATH:-}"
 export OPENBLAS_ROOT="${OPENBLASDIR:-${OPENBLAS_ROOT:-}}"
 

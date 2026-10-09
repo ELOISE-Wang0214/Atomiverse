@@ -69,8 +69,8 @@ int main() {
     // constrained UHF (Tsuchimochi–Scuseria), so releasing the constraint
     // relaxes downhill into the contaminated global UHF solution — the one
     // PySCF's default guess also finds (-147.633946785450 Ha,
-    // ⟨S²⟩ = 2.003410857681). (The engine's cold Hcore/MINAO guesses land
-    // on a higher local UHF solution for O2.)
+    // ⟨S²⟩ = 2.003410857681). (A cold Hcore guess lands on a higher local
+    // UHF solution for O2; MINAO, PySCF's default, reaches this one.)
     using Spin = cpu::scf::SlaterDeterminant::Spin;
     cpu::scf::SCFInitialGuess guess;
     guess.P_alpha = rohf.determinant().density(Spin::alpha);

@@ -11,7 +11,7 @@ Shares one SCF solver with [Kohn–Sham DFT](dft.md): the 2×2 product
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
 | RHF | ✓ | ✓ | `cpu::scf::RHF::run(Frame&)` / `run(const Frame&)` / `forces(Frame&)`. ADC, direct RPA, BSE, GF2, and EOM are not members. CUDA `cuda::scf::RHF` : `cuda::Driver<scf::Phase>` (fock, mix, diagonalize, density, check); device Fock/density/CDIIS; STO-3G s/p (l ≤ 1) native ERI+forces. PySCF energy: H₂/STO-3G on device; H₂O/6-31G on CPU (6-31G is not a device ERI kernel) |
-| UHF | ✓ | ✓ | `cpu::scf::UHF{basis, n_alpha, n_beta, charge}` and `cuda::scf::UHF` : `cuda::Driver<scf::Phase>` (`run` / `forces`). Device Fock, density, CDIIS, and analytic forces for STO-3G l ≤ 1. Other bases throw (`launch_eri_sp`). `CCSD<UHF>::eom_sf_ccsd`, `SfTDA<UHF>::run`, and `SfTDHF<UHF>::run` are not members |
+| UHF | ✓ | ✓ | `cpu::scf::UHF{basis, n_alpha, n_beta, charge}` and `cuda::scf::UHF` : `cuda::Driver<scf::Phase>` (`run` / `forces`). Device Fock, density, CDIIS, and analytic forces for STO-3G l ≤ 1. The device start is the spin-averaged MINAO density (`UHF.init_guess_by_minao`), so triplet O₂ matches PySCF's default rather than the core-Hamiltonian local minimum; elements without a MINAO table keep that core start. Other bases throw (`launch_eri_sp`). `CCSD<UHF>::eom_sf_ccsd`, `SfTDA<UHF>::run`, and `SfTDHF<UHF>::run` are not members |
 | ROHF | ✓ | ○ | Guest–Saunders. `ROHF::run` / `forces`. Correlation is `MP2<ROHF>::run`, not a member |
 | GHF | ✓ | ○ | Real two-component. `GHF::run` / `forces` |
 | Complex / spinor HF | ○ | ○ | |

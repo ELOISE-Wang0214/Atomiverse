@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace ATV {
 namespace cuda {
@@ -176,6 +177,35 @@ void UhfScfCycle::begin(void* stream) {
         diis_alpha_->reset();
     if (diis_beta_)
         diis_beta_->reset();
+}
+
+void UhfScfCycle::seed_density(void* stream, const double* Pa_rm,
+                               const double* Pb_rm, int n) {
+    if (!built_ || Pa_rm == nullptr || Pb_rm == nullptr || n != workspace_.n
+        || workspace_.P == nullptr || beta_.P == nullptr) {
+        throw std::invalid_argument(
+            "cuda::scf::UHF: MINAO seed density does not match the device "
+            "AO count (n="
+            + std::to_string(n) + ", device n=" + std::to_string(workspace_.n)
+            + ").");
+    }
+    auto cu = static_cast<cudaStream_t>(stream);
+    const int nn = n * n;
+    std::vector<prec_t> col(static_cast<std::size_t>(nn));
+    auto upload = [&](const double* src, prec_t* dst) {
+        for (int j = 0; j < n; ++j) {
+            for (int i = 0; i < n; ++i) {
+                col[static_cast<std::size_t>(i + j * n)] =
+                    static_cast<prec_t>(src[i * n + j]);
+            }
+        }
+        cudaMemcpyAsync(dst, col.data(),
+                        static_cast<std::size_t>(nn) * sizeof(prec_t),
+                        cudaMemcpyHostToDevice, cu);
+        cudaStreamSynchronize(cu);
+    };
+    upload(Pa_rm, workspace_.P);
+    upload(Pb_rm, beta_.P);
 }
 
 void UhfScfCycle::step_fock(void* stream, cuda::Frame& frame, int step) {

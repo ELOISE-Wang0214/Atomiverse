@@ -13,7 +13,9 @@
 ///     e2 = ½ Tr(Vα Pα)+½ Tr(Vβ Pβ)
 ///   - `pyscf.scf.uhf.get_occ` — lowest n_α / n_β eigenvectors
 ///   - `pyscf.scf.uhf.get_fock` — per-spin level shift after DIIS
-///   - `pyscf.scf.uhf.UHF.init_guess_by_1e` — Hcore guess, no breaksym
+///   - `pyscf.scf.uhf.UHF.init_guess_by_minao` — dma = dmb = ½ P_MINAO
+///     (open shell: `_break_dm_spin_symm` is a no-op). Hcore is the fallback
+///     when an element has no MINAO table.
 ///   - `pyscf.scf.diis.CDIIS.update` — device CDIIS, one Pulay system per spin
 ///   - `pyscf.grad.uhf.grad_elec` / `get_veff` / `make_rdm1e` — forces
 ///
@@ -24,6 +26,7 @@
 
 #include <memory>
 
+#include "atomiverse/cuda/frame/frame.cuh"
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {
@@ -61,6 +64,12 @@ class UhfScfCycle {
 
     void build(void* stream, cuda::Frame& frame);
     void begin(void* stream);
+    /// @brief Upload a row-major spin-averaged initial density (both spins).
+    /// @param Pa_rm Alpha density, row-major [n*n]. Same pointer as beta is legal.
+    /// @param Pb_rm Beta density, row-major [n*n].
+    /// @param n AO count. Must equal the device workspace.
+    void seed_density(void* stream, const double* Pa_rm, const double* Pb_rm,
+                      int n);
     void step_fock(void* stream, cuda::Frame& frame, int step);
     void step_mix(void* stream, cuda::Frame& frame, int step);
     void step_diagonalize(void* stream, cuda::Frame& frame, int step);
