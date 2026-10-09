@@ -30,6 +30,23 @@ class UHF : public MeanFieldMethod<UHF> {
     /// @param n_alpha Spin-up electrons.
     /// @param n_beta  Spin-down electrons.
     explicit UHF(int n_alpha, int n_beta);
+
+    /// @brief Basis, α/β counts, and molecular charge (primary CPU form).
+    ///
+    /// CUDA twin: `cuda::scf::UHF{basis, n_alpha, n_beta, charge}`.
+    /// `n_alpha + n_beta` must equal ΣZ − charge; the integral build checks it.
+    /// Post-HF, solvent, and the analytic Hessian stay off this class.
+    /// `delta_scf` is the MOM/IMOM loop on the CPU type only.
+    ///
+    /// @param basis_in Basis set (e.g. `BasisSet::STO3G`).
+    /// @param n_alpha_in Spin-up electrons.
+    /// @param n_beta_in Spin-down electrons.
+    /// @param charge_in Molecular charge [e].
+    /// @param tol_in Energy tolerance [Ha].
+    /// @param max_iter_in Maximum SCF iterations [dimensionless].
+    UHF(BasisSet basis_in, int n_alpha_in, int n_beta_in, int charge_in = 0,
+        double tol_in = 1e-8, int max_iter_in = 100);
+
     std::string name() const { return "uhf"; }
 
     /// @brief ΔSCF vertical excitation with MOM/IMOM occupation locking.

@@ -29,6 +29,15 @@ UHF::UHF(int na, int nb) : UHF() {
     n_alpha = na;
     n_beta = nb;
 }
+
+UHF::UHF(BasisSet basis_in, int na, int nb, int charge_in, double tol_in,
+         int max_iter_in)
+    : UHF(na, nb) {
+    basis = basis_in;
+    charge = charge_in;
+    tol = tol_in;
+    max_iter = max_iter_in;
+}
 void UHF::resolve_occupation(int) {
     n_alpha_ = n_alpha;
     n_beta_ = n_beta;

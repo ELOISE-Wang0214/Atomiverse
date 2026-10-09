@@ -1542,6 +1542,26 @@ if(ATV_BUILD_HF)
     else()
         atv_add_regression(scf h2o_rhf_sto3g_grad)
     endif()
+    # UHF energy + analytic gradient, STO-3G. Device leg is cuda::scf::UHF
+    # (s/p only). Same pins on CPU.
+    if(ATV_BUILD_CUDA)
+        set(_reg_uhf reg_h2_uhf_sto3g)
+        add_executable(${_reg_uhf} scf/h2_uhf_sto3g/${_reg_uhf}.cu)
+        target_link_libraries(${_reg_uhf} PRIVATE atomiverse)
+        set_target_properties(${_reg_uhf} PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON CXX_STANDARD 20)
+        target_compile_definitions(${_reg_uhf} PRIVATE
+            ATV_REG_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data")
+        add_custom_target(run_${_reg_uhf}
+            COMMAND ${CMAKE_COMMAND} -E env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+                    $<TARGET_FILE:${_reg_uhf}> --device=both
+            DEPENDS ${_reg_uhf}
+            COMMENT "regression [scf/h2_uhf_sto3g] devices=both (1t)")
+        add_dependencies(regressions run_${_reg_uhf})
+        unset(_reg_uhf)
+    else()
+        atv_add_regression(scf h2_uhf_sto3g)
+    endif()
     # Short BOMD: MD + RHF composition (no AimdDriver); multi-device.
     if(ATV_BUILD_CUDA)
         set(_reg_aimd reg_h2_rhf_sto3g_aimd)

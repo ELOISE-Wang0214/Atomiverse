@@ -163,6 +163,18 @@ double e_ha = uhf.energy();           // total energy [Hartree]
 const auto& det = uhf.determinant();  // per-spin orbitals and occupations
 ```
 
+The same call on the device, for STO-3G with s and p shells only, is
+`cuda::scf::UHF`. Charge is a constructor argument, and the step loop
+(Fock, DIIS, diagonalize, density, forces) stays on the device. A basis
+the device kernels do not cover throws; it does not fall back to a host
+ERI.
+
+```cpp
+cuda::scf::UHF uhf{cpu::scf::BasisSet::STO3G, /*n_alpha=*/1,
+                   /*n_beta=*/0, /*charge=*/1};
+uhf.forces(frame);   // kEnergy [eV], kAtom_f* [eV/Å]
+```
+
 The input you must choose carefully is the spin occupation. `n_alpha` and
 `n_beta` are not bookkeeping details. They define the spin state. Their sum
 must equal the total number of electrons, and their difference fixes

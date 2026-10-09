@@ -911,6 +911,7 @@ if(ATV_BUILD_HF)
                      cpu/scf/test_fd_hessian_template.cpp)
     atv_add_cpp_test(test_cpu_scf_gradient_result
                      cpu/scf/test_gradient_result.cpp)
+    atv_add_cpp_test(test_cpu_scf_uhf_ctor cpu/scf/test_uhf_ctor.cpp)
     # hf-capability-gaps-09-soscf: CIAH stepper units — exp(κ) unitarity,
     # gradient vs FD, matrix-free CIAH vs dense augmented eigensolve, trust
     # region, MixStage latch; KS+soscf throw. No full RHF.run loop (wave-2).

@@ -139,6 +139,25 @@ void launch_rhf_forces_sp(double* fx, double* fy, double* fz, const double* P,
 void launch_build_W_rhf(double* W, const double* C, const double* eig, int n_ao,
                         int n_occ, void* stream);
 
+/// @brief Build W^σ = Σ_i ε_i C[:,i] C[:,i]ᵀ (occupation 1, PySCF make_rdm1e).
+void launch_build_W_uhf(double* W, const double* C, const double* eig, int n_ao,
+                        int n_occ, void* stream);
+
+/// @brief s+p UHF analytic forces. Ptot = Pα+Pβ, Wtot = Wα+Wβ.
+///
+/// 2e prefactor is PySCF `grad.uhf.grad_elec`:
+///   ½ Ptot_ij Ptot_kl − ½ (Pα_ik Pα_jl + Pβ_ik Pβ_jl)
+/// on ∂(ij|kl)/∂R. Output is −∂E/∂R [eV/Å].
+void launch_uhf_forces_sp(double* fx, double* fy, double* fz,
+                          const double* Ptot, const double* Wtot,
+                          const double* Pa, const double* Pb,
+                          const double* shell_alpha, const double* shell_coeff,
+                          const double* shell_centers, const int* shell_atom,
+                          const int* shell_L, const int* ao_shell,
+                          const int* ao_cart, const int* atom_Z,
+                          const double* atom_pos, int n_ao, int n_prim,
+                          int natm, void* stream);
+
 } // namespace scf
 } // namespace cuda
 } // namespace ATV

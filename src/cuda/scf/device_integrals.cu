@@ -1696,6 +1696,150 @@ void launch_rhf_forces_sp(double* fx, double* fy, double* fz, const double* P,
         fx, fy, fz, natm);
 }
 
+/// W_μν = Σ_{i<n_occ} ε_i C_μi C_νi (occupation 1).
+__global__ void build_W_uhf_kernel(prec_t* __restrict__ W,
+                                   const prec_t* __restrict__ C,
+                                   const prec_t* __restrict__ eig, int n,
+                                   int n_occ) {
+    const int idx = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+    const int nn = n * n;
+    if (idx >= nn)
+        return;
+    const int mu = idx % n;
+    const int nu = idx / n;
+    work_t acc = work_t(0);
+    for (int i = 0; i < n_occ; ++i) {
+        acc += static_cast<work_t>(eig[i]) * static_cast<work_t>(C[mu + i * n])
+               * static_cast<work_t>(C[nu + i * n]);
+    }
+    W[idx] = static_cast<prec_t>(acc);
+}
+
+void launch_build_W_uhf(double* W, const double* C, const double* eig, int n_ao,
+                        int n_occ, void* stream) {
+    auto s = static_cast<cudaStream_t>(stream);
+    const int nn = n_ao * n_ao;
+    const int threads = cuda::kDefaultBlock;
+    build_W_uhf_kernel<<<cuda::grid_size(nn, threads), threads, 0, s>>>(
+        W, C, eig, n_ao, n_occ);
+}
+
+/// Two-electron UHF gradient. Closed shell (Pα=Pβ=P/2) recovers the RHF factor.
+__global__ void uhf_forces_2e_sp_kernel(
+    real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
+    const prec_t* __restrict__ Pa, const prec_t* __restrict__ Pb,
+    const prec_t* __restrict__ shell_alpha,
+    const prec_t* __restrict__ shell_coeff,
+    const prec_t* __restrict__ shell_centers,
+    const int* __restrict__ shell_atom, const int* __restrict__ shell_L,
+    const int* __restrict__ ao_shell, const int* __restrict__ ao_cart, int n,
+    int n_prim) {
+    const int n2 = n * n;
+    const int n3 = n2 * n;
+    const int n4 = n3 * n;
+    const int tid = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+    const int stride = static_cast<int>(blockDim.x * gridDim.x);
+    for (int t = tid; t < n4; t += stride) {
+        const int i = t % n;
+        const int j = (t / n) % n;
+        const int k = (t / n2) % n;
+        const int l = t / n3;
+        const work_t Pa_ij = static_cast<work_t>(Pa[i + j * n]);
+        const work_t Pb_ij = static_cast<work_t>(Pb[i + j * n]);
+        const work_t Pa_kl = static_cast<work_t>(Pa[k + l * n]);
+        const work_t Pb_kl = static_cast<work_t>(Pb[k + l * n]);
+        const work_t Pa_ik = static_cast<work_t>(Pa[i + k * n]);
+        const work_t Pa_jl = static_cast<work_t>(Pa[j + l * n]);
+        const work_t Pb_ik = static_cast<work_t>(Pb[i + k * n]);
+        const work_t Pb_jl = static_cast<work_t>(Pb[j + l * n]);
+        const work_t factor = work_t(0.5) * (Pa_ij + Pb_ij) * (Pa_kl + Pb_kl)
+                              - work_t(0.5) * (Pa_ik * Pa_jl + Pb_ik * Pb_jl);
+        if (fabs(factor) < work_t(1e-18))
+            continue;
+
+        const int sa = ao_shell[i], sb = ao_shell[j];
+        const int sc = ao_shell[k], sd = ao_shell[l];
+        int aa[3], bb[3], cc[3], dd[3];
+        cart_ang_device(shell_L[sa], ao_cart[i], aa);
+        cart_ang_device(shell_L[sb], ao_cart[j], bb);
+        cart_ang_device(shell_L[sc], ao_cart[k], cc);
+        cart_ang_device(shell_L[sd], ao_cart[l], dd);
+
+        work_t Apos[3] = {static_cast<work_t>(shell_centers[sa * 3 + 0]),
+                          static_cast<work_t>(shell_centers[sa * 3 + 1]),
+                          static_cast<work_t>(shell_centers[sa * 3 + 2])};
+        work_t Bpos[3] = {static_cast<work_t>(shell_centers[sb * 3 + 0]),
+                          static_cast<work_t>(shell_centers[sb * 3 + 1]),
+                          static_cast<work_t>(shell_centers[sb * 3 + 2])};
+        work_t Cpos[3] = {static_cast<work_t>(shell_centers[sc * 3 + 0]),
+                          static_cast<work_t>(shell_centers[sc * 3 + 1]),
+                          static_cast<work_t>(shell_centers[sc * 3 + 2])};
+        work_t Dpos[3] = {static_cast<work_t>(shell_centers[sd * 3 + 0]),
+                          static_cast<work_t>(shell_centers[sd * 3 + 1]),
+                          static_cast<work_t>(shell_centers[sd * 3 + 2])};
+        const prec_t* aA = shell_alpha + sa * n_prim;
+        const prec_t* cA = shell_coeff + sa * n_prim;
+        const prec_t* aB = shell_alpha + sb * n_prim;
+        const prec_t* cB = shell_coeff + sb * n_prim;
+        const prec_t* aC = shell_alpha + sc * n_prim;
+        const prec_t* cC = shell_coeff + sc * n_prim;
+        const prec_t* aD = shell_alpha + sd * n_prim;
+        const prec_t* cD = shell_coeff + sd * n_prim;
+
+#pragma unroll
+        for (int which = 0; which < 4; ++which) {
+            work_t dE[3];
+            sp_eri_deriv_center(which, aa, bb, cc, dd, aA, cA, Apos, aB, cB,
+                                Bpos, aC, cC, Cpos, aD, cD, Dpos, n_prim, dE);
+            const int atom = (which == 0)   ? shell_atom[sa]
+                             : (which == 1) ? shell_atom[sb]
+                             : (which == 2) ? shell_atom[sc]
+                                            : shell_atom[sd];
+            atomic_add_grad3(fx, fy, fz, atom, factor * dE[0], factor * dE[1],
+                             factor * dE[2]);
+        }
+    }
+}
+
+void launch_uhf_forces_sp(double* fx, double* fy, double* fz,
+                          const double* Ptot, const double* Wtot,
+                          const double* Pa, const double* Pb,
+                          const double* shell_alpha, const double* shell_coeff,
+                          const double* shell_centers, const int* shell_atom,
+                          const int* shell_L, const int* ao_shell,
+                          const int* ao_cart, const int* atom_Z,
+                          const double* atom_pos, int n_ao, int n_prim,
+                          int natm, void* stream) {
+    auto s = static_cast<cudaStream_t>(stream);
+    const int threads = cuda::kDefaultBlock;
+    zero_forces_kernel<<<cuda::grid_size(natm, threads), threads, 0, s>>>(
+        fx, fy, fz, natm);
+    if (natm >= 2) {
+        const int npair = natm * (natm - 1) / 2;
+        rhf_forces_nuc_kernel<<<cuda::grid_size(npair, threads), threads, 0,
+                                s>>>(fx, fy, fz, atom_Z, atom_pos, natm);
+    }
+    {
+        const int nn = n_ao * n_ao;
+        rhf_forces_1e_sp_kernel<<<cuda::grid_size(nn, threads), threads, 0,
+                                  s>>>(fx, fy, fz, Ptot, Wtot, shell_alpha,
+                                       shell_coeff, shell_centers, shell_atom,
+                                       shell_L, ao_shell, ao_cart, atom_Z,
+                                       atom_pos, n_ao, n_prim, natm);
+    }
+    {
+        const int n4 = n_ao * n_ao * n_ao * n_ao;
+        int blocks = cuda::grid_size(n4, threads);
+        if (blocks > 1024)
+            blocks = 1024;
+        uhf_forces_2e_sp_kernel<<<blocks, threads, 0, s>>>(
+            fx, fy, fz, Pa, Pb, shell_alpha, shell_coeff, shell_centers,
+            shell_atom, shell_L, ao_shell, ao_cart, n_ao, n_prim);
+    }
+    rhf_forces_scale_kernel<<<cuda::grid_size(natm, threads), threads, 0, s>>>(
+        fx, fy, fz, natm);
+}
+
 } // namespace scf
 } // namespace cuda
 } // namespace ATV
