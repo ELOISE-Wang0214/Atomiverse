@@ -8,6 +8,8 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py rhf --geom water --basis sto-3g
   # Γ-point PBC RHF (offline only): pyscf.pbc gto+scf on the same geom/cell
   # as regressions/scf/periodic-rhf-gamma/REFERENCE.md
+  python tools/pyscf_oracle/pin_scf.py krhf --kmesh 2,1,1
+  python tools/pyscf_oracle/pin_scf.py kuhf --kmesh 2,1,1 --spin 2
   python tools/pyscf_oracle/pin_scf.py uhf --geom o2 --basis sto-3g --spin 2
   python tools/pyscf_oracle/pin_scf.py ump2 --geom o2 --basis sto-3g --spin 2
   python tools/pyscf_oracle/pin_scf.py romp2 --geom o2 --basis sto-3g --spin 2
@@ -122,10 +124,19 @@ N  0.000000  0.000000  1.097700
 
 
 
-def _krhf() -> int:
-    """H2 / STO-3G KRHF, 4 Bohr cube, kmesh 1x1x2. PySCF FFTDF default."""
+def _kmesh_arg(text: str | None, default: list[int]) -> list[int]:
+    if text is None:
+        return default
+    parts = [int(x) for x in text.split(",")]
+    if len(parts) != 3 or any(n < 1 for n in parts):
+        raise SystemExit(f"--kmesh must be nx,ny,nz with each n>=1, got {text!r}")
+    return parts
+
+
+def _h2_cell(spin: int):
+    """H2 along c, 4 Bohr cube. Smaller than STO-3G pair reach (cell.rcut)."""
     import numpy as np
-    from pyscf.pbc import gto, scf
+    from pyscf.pbc import gto
 
     cell = gto.Cell()
     cell.atom = "H 0 0 0; H 0 0 1.4"
@@ -134,13 +145,43 @@ def _krhf() -> int:
     cell.basis = "sto-3g"
     cell.verbose = 0
     cell.precision = 1e-8
+    cell.spin = spin
     cell.build()
-    kpts = cell.make_kpts([1, 1, 2])
+    return cell
+
+
+def _krhf(kmesh: list[int]) -> int:
+    """H2 / STO-3G KRHF, 4 Bohr cube. Default mesh is 1x1x2."""
+    from pyscf.pbc import scf
+
+    cell = _h2_cell(0)
+    kpts = cell.make_kpts(kmesh)
     mf = scf.KRHF(cell, kpts)
     mf.conv_tol = 1e-12
     e = mf.kernel()
     print(f"pyscf {__import__('pyscf').__version__} KRHF FFTDF exxdiv={mf.exxdiv}")
-    print(f"mesh {cell.mesh.tolist()} nk {len(kpts)}")
+    print(f"kmesh {kmesh} mesh {cell.mesh.tolist()} nk {len(kpts)}")
+    print(f"rcut {float(cell.rcut):.12f} Bohr")
+    print(f"E_tot = {e:.16f} Ha")
+    print(f"enuc = {float(cell.enuc):.16f} Ha")
+    print(f"converged {bool(mf.converged)}")
+    return 0
+
+
+def _kuhf(kmesh: list[int], spin: int) -> int:
+    """H2 / STO-3G KUHF. nelec follows kuhf.py (spin is not scaled by nk)."""
+    from pyscf.pbc import scf
+
+    cell = _h2_cell(spin)
+    kpts = cell.make_kpts(kmesh)
+    mf = scf.KUHF(cell, kpts)
+    mf.conv_tol = 1e-12
+    e = mf.kernel()
+    na, nb = (int(x) for x in mf.nelec)
+    print(f"pyscf {__import__('pyscf').__version__} KUHF FFTDF exxdiv={mf.exxdiv}")
+    print(f"kmesh {kmesh} mesh {cell.mesh.tolist()} nk {len(kpts)}")
+    print(f"rcut {float(cell.rcut):.12f} Bohr")
+    print(f"cell.spin {spin} nelec {na} {nb}")
     print(f"E_tot = {e:.16f} Ha")
     print(f"enuc = {float(cell.enuc):.16f} Ha")
     print(f"converged {bool(mf.converged)}")
@@ -151,12 +192,17 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "krhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2", "eom-ip-ccsd", "uks-tddft", "casscf", "nevpt2"],
+        choices=["rhf", "krhf", "kuhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2", "eom-ip-ccsd", "uks-tddft", "casscf", "nevpt2"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)
     p.add_argument("--spin", type=int, default=0, help="2S (PySCF spin)")
+    p.add_argument(
+        "--kmesh",
+        default=None,
+        help="Monkhorst-Pack nx,ny,nz for krhf/kuhf (default 1,1,2 / 2,1,1)",
+    )
     p.add_argument("--xc", default="b3lyp")
     p.add_argument("--nstates", type=int, default=3)
     p.add_argument(
@@ -225,7 +271,9 @@ def main() -> int:
         return 2
 
     if args.method == "krhf":
-        return _krhf()
+        return _krhf(_kmesh_arg(args.kmesh, [1, 1, 2]))
+    if args.method == "kuhf":
+        return _kuhf(_kmesh_arg(args.kmesh, [2, 1, 1]), args.spin)
 
     mol = _mol(args.geom, args.basis, args.charge, args.spin, args.cart)
     out: dict = {

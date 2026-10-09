@@ -713,6 +713,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/bse.cpp
             src/cpu/scf/rhf.cpp
             src/cpu/scf/krhf.cpp
+            src/cpu/scf/kuhf.cpp
             src/cpu/scf/gf2.cpp
             src/cpu/scf/rohf.cpp
             src/cpu/scf/uhf.cpp

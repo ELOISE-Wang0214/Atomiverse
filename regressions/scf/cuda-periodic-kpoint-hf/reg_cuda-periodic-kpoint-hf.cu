@@ -1,5 +1,5 @@
 /// @file regressions/scf/cuda-periodic-kpoint-hf/reg_cuda-periodic-kpoint-hf.cu
-/// @brief Device KRHF on the same H₂ / STO-3G 1×1×2 cell as the CPU pin.
+/// @brief Device KRHF on the H₂ / STO-3G 4 Bohr cell (1×1×2 and 2×1×1).
 
 #include <cmath>
 #include <cstdio>
@@ -8,7 +8,9 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/scf/krhf.cuh"
 
-int main() {
+namespace {
+
+ATV::cpu::Frame h2_cell() {
     using namespace ATV;
     const double L_A = 4.0 * units::kBohrInAngstrom;
     const double z_A = 1.4 * units::kBohrInAngstrom;
@@ -19,21 +21,42 @@ int main() {
     frame.span(kAtom_x)[1] = frame.span(kAtom_y)[1] = 0.0;
     frame.span(kAtom_z)[1] = z_A;
     frame.box = cpu::Box::cubic(L_A);
+    return frame;
+}
 
-    cuda::scf::KRHF krhf{cpu::scf::BasisSet::STO3G, {1, 1, 2}, 0, 1e-10, 40};
-    krhf.run(frame);
-    if (!krhf.converged()) {
-        std::fprintf(stderr, "FAIL: device KRHF did not converge\n");
+int gate(const char* name, double got, double want, bool conv) {
+    const double diff = std::fabs(got - want);
+    std::printf("%s got=%.16f |diff|=%.3e conv=%d\n", name, got, diff,
+                conv ? 1 : 0);
+    if (!conv || diff > 1e-6) {
+        std::fprintf(stderr, "FAIL: %s\n", name);
         return 1;
     }
-    constexpr double kEpinHa = -1.3541438798330374;
-    const double diff = std::fabs(krhf.energy() - kEpinHa);
-    std::printf("E_KRHF_cuda got=%.16f |diff|=%.3e iters=%d\n", krhf.energy(),
-                diff, krhf.iterations());
-    if (diff > 1e-6) {
-        std::fprintf(stderr, "FAIL: device KRHF energy off pin\n");
-        return 1;
-    }
-    std::printf("PASS\n");
     return 0;
+}
+
+} // namespace
+
+int main() {
+    using namespace ATV;
+    int rc = 0;
+    {
+        cpu::Frame frame = h2_cell();
+        cuda::scf::KRHF krhf{
+            cpu::scf::BasisSet::STO3G, {1, 1, 2}, 0, 1e-10, 40};
+        krhf.run(frame);
+        rc |= gate("KRHF cuda 1x1x2", krhf.energy(), -1.3541438798330374,
+                   krhf.converged());
+    }
+    {
+        cpu::Frame frame = h2_cell();
+        cuda::scf::KRHF krhf{
+            cpu::scf::BasisSet::STO3G, {2, 1, 1}, 0, 1e-10, 40};
+        krhf.run(frame);
+        rc |= gate("KRHF cuda 2x1x1", krhf.energy(), -1.4471748215213558,
+                   krhf.converged());
+    }
+    if (rc == 0)
+        std::printf("PASS\n");
+    return rc == 0 ? 0 : 1;
 }

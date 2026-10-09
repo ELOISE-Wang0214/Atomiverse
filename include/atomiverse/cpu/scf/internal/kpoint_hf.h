@@ -4,6 +4,8 @@
 /// Transplanted from PySCF 2.14.0 (read, not re-derived):
 ///   - pyscf/pbc/scf/khf.py: `get_occ`, `make_rdm1`, `energy_elec`,
 ///     `KSCF.get_veff` (vhf = J − ½K), `KRHF`
+///   - pyscf/pbc/scf/kuhf.py: `get_occ`, `make_rdm1`, `energy_elec`,
+///     `KUHF.get_veff` (J = Ja+Jb, vhf = J−K per spin), `KUHF.nelec`
 ///   - pyscf/pbc/scf/hf.py: `energy_nuc` (= `cell.ewald`)
 ///   - pyscf/pbc/df/fft.py: `get_nuc`
 ///   - pyscf/pbc/df/fft_jk.py: `get_j_kpts`, `get_k_kpts`
@@ -14,6 +16,7 @@
 ///
 /// v1 is all-electron s functions on an orthorhombic cell. l > 0 throws
 /// naming the missing collocation kernel — no host molecular-ERI fill.
+/// KUHF reuses the same FFT J/K; only the spin assembly differs.
 #pragma once
 
 #include <array>
@@ -112,6 +115,16 @@ struct KrhfEnergy {
 
 KrhfEnergy krhf_energy(const Frame& frame, BasisSet basis, const int k_mesh[3],
                        int charge, double tol, int max_iter);
+
+/// @brief Converged KUHF total energy [Hartree].
+///
+/// `n_alpha` and `n_beta` are mesh totals (`KUHF.nelec` in
+/// `pyscf/pbc/scf/kuhf.py`): `cell.spin = n_alpha - n_beta` is not
+/// multiplied by the number of k-points. `n_alpha + n_beta` must equal
+/// `(ΣZ)*nk − charge`. Same s-function orthorhombic envelope as KRHF.
+KrhfEnergy kuhf_energy(const Frame& frame, BasisSet basis, const int k_mesh[3],
+                       int n_alpha, int n_beta, int charge, double tol,
+                       int max_iter);
 
 } // namespace internal
 } // namespace scf

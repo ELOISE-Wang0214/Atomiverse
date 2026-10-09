@@ -1,23 +1,30 @@
 # Periodic k-point Hartree–Fock
 
-Restricted Hartree–Fock with a Monkhorst–Pack mesh on an orthorhombic
-cell. The Coulomb and exchange matrices are the PySCF FFT density-fitting
-kernels (discrete Fourier transform of the AO products, Coulomb kernel
-`4π/G²`, Ewald probe charge on the exchange `G = 0` term). The nuclear
-repulsion is the Ewald sum.
+Restricted and unrestricted Hartree–Fock with a Monkhorst–Pack mesh on
+an orthorhombic cell. The Coulomb and exchange matrices are the PySCF
+FFT density-fitting kernels (discrete Fourier transform of the AO
+products, Coulomb kernel `4π/G²`, Ewald probe charge on the exchange
+`G = 0` term). The nuclear repulsion is the Ewald sum.
 
 ```cpp
 #include "atomiverse/cpu/scf/krhf.h"
+#include "atomiverse/cpu/scf/kuhf.h"
 #include "atomiverse/cuda/scf/krhf.cuh"
 
 cpu::Frame frame = /* orthorhombic cell, positions in Å */;
-cpu::scf::KRHF krhf{cpu::scf::BasisSet::STO3G, /*k_mesh=*/{1, 1, 2}};
+cpu::scf::KRHF krhf{cpu::scf::BasisSet::STO3G, /*k_mesh=*/{2, 1, 1}};
 krhf.run(frame);                 // frame.meta kEnergy [eV]
 double e_ha = krhf.energy();     // Hartree
 
-// Same arguments on the device. The SCF step (J, K, diagonalize,
-// density) stays on device; l > 0 throws.
-cuda::scf::KRHF gpu{cpu::scf::BasisSet::STO3G, {1, 1, 2}};
+// Mesh totals, not a per-k copy. Triplet H₂ with cell.spin = 2 on a
+// 2-point mesh is Nα = 3, Nβ = 1 (PySCF KUHF.nelec).
+cpu::scf::KUHF kuhf{cpu::scf::BasisSet::STO3G, {2, 1, 1},
+                    /*n_alpha=*/3, /*n_beta=*/1};
+kuhf.run(frame);
+
+// Restricted SCF on the device. The step (J, K, diagonalize, density)
+// stays on device; l > 0 throws. There is no device KUHF.
+cuda::scf::KRHF gpu{cpu::scf::BasisSet::STO3G, {2, 1, 1}};
 gpu.run(frame);
 ```
 
@@ -26,6 +33,7 @@ truncated real-space lattice behind `RHF::periodic`). Shells with
 angular momentum above s throw. `forces` throws — there is no analytic
 nuclear gradient on this path.
 
-The reference energy for H₂ / STO-3G in a 4 Bohr cube with
-`k_mesh = {1,1,2}` is the PySCF `KRHF` total energy
-−1.354143879833 Ha.
+H₂ / STO-3G in a 4 Bohr cube (shorter than the STO-3G pair reach) has
+PySCF total energies −1.447174821522 Ha for `KRHF` with
+`k_mesh = {2,1,1}`, and −0.765847047189 Ha for triplet `KUHF` on that
+mesh (`cell.spin = 2`, Nα = 3, Nβ = 1).

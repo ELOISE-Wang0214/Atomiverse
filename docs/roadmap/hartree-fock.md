@@ -35,7 +35,7 @@ Shares one SCF solver with [Kohn–Sham DFT](dft.md): the 2×2 product
 | ---------- | :-: | :--: | ----- |
 | Γ-point periodic RHF | ✓ | ○ | Truncated lattice; `RHF.periodic`; short-range erfc gate |
 | k-point periodic RHF | ✓ | ✓ | `cpu::scf::KRHF` and `cuda::scf::KRHF`: `{basis, k_mesh}.run(Frame&)`. Orthorhombic cell, s functions, Monkhorst–Pack mesh, FFT Coulomb/exchange with Ewald exchange divergence. Device step is J/K, Fock, `zheevd`, density. `energy()` [Ha], `kEnergy` [eV]. l > 0 throws (`krhf_ao_lgt0`). Analytic forces throw (`krhf_nuclear_forces`). Tutorial: [k-point HF](../tutorial/methods/periodic-kpoint-hf.md) |
-| k-point UHF periodic HF | ○ | ○ | |
+| k-point UHF periodic HF | ✓ | ○ | `cpu::scf::KUHF{basis, k_mesh, n_alpha, n_beta}.run(Frame&)`. Same orthorhombic s-function FFTDF envelope as KRHF. `n_alpha` / `n_beta` are mesh totals (`KUHF.nelec`; spin is not scaled by the number of k-points). l > 0 throws (`krhf_ao_lgt0`). Analytic forces throw (`kuhf_nuclear_forces`). No device path |
 
 PW/GPW product paths are semi-local DFT — see [DFT § Periodic](dft.md#4-periodic-kohnsham).
 
