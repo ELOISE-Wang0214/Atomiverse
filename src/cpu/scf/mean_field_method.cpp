@@ -822,16 +822,6 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
                 "(no direct-SCF spinor path in this link).");
     }
 
-    // x2c-1e analytic forces are not derived (picture-change of the
-    // nuclear-gradient operator + dX/dR of the decoupling matrix). Refuse
-    // rather than return a non-relativistic force under an x2c energy.
-    if (opts.forces && x2c)
-        throw std::runtime_error(
-            "MeanFieldMethod::forces: analytic forces are not implemented "
-            "for x2c=true — the h^X2C nuclear gradient (picture-change + "
-            "decoupling-matrix response) is a follow-up chain link. Disable "
-            "x2c or use finite differences.");
-
     // ROHF-unsupported knobs — explicit refusal instead of a silently wrong
     // Restricted/Unrestricted branch (no fallback).
     const bool rohf = (spin_ == SpinType::RestrictedOpen);
@@ -1405,9 +1395,9 @@ void MeanFieldMethod<D>::validate_cpmd_config_() const {
     if (x2c)
         throw std::invalid_argument(
             "MeanFieldMethod: cpmd is not supported with x2c = true — the "
-            "h^X2C nuclear gradient (picture change + decoupling-matrix "
-            "response) is not derived, so the CP nuclei would feel a "
-            "non-relativistic force under a relativistic energy.");
+            "production step rebuilds the non-relativistic core "
+            "(compute_pvp = false) and never forms h^X2C. Analytic x2c "
+            "forces are wired through forces(), not this propagator.");
     if (solvent_eps_ > 0.0)
         throw std::invalid_argument(
             "MeanFieldMethod: cpmd is not supported with a continuum solvent "

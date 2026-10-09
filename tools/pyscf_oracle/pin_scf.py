@@ -104,6 +104,10 @@ H -0.629118  0.629118 -0.629118
 N  0.000000  0.000000  0.000000
 N  0.000000  0.000000  1.097700
 """,
+        "hcl": """
+Cl  0.000000  0.000000  0.000000
+H   0.000000  0.000000  1.350000
+""",
     }
     if geom not in presets:
         raise SystemExit(f"unknown geom preset {geom!r}; choose {sorted(presets)}")
@@ -238,6 +242,11 @@ def main() -> int:
     )
     p.add_argument("--cart", action=argparse.BooleanOptionalAction, default=None)
     p.add_argument("--grad", action="store_true")
+    p.add_argument(
+        "--x2c",
+        action="store_true",
+        help="Spin-free x2c-1e (x2c1e, xuncontract=False) before SCF/gradient",
+    )
     p.add_argument(
         "--pcm",
         action="store_true",
@@ -895,6 +904,15 @@ def main() -> int:
             "vdw_scale": args.pcm_scale,
             "lebedev_order": args.pcm_lebedev_order,
         }
+
+    if args.x2c:
+        if m not in ("rhf", "uhf", "rohf", "rks", "uks", "roks"):
+            print(json.dumps({"ok": False, "error": f"--x2c is not supported for method {m!r}"}))
+            return 2
+        mf = mf.x2c1e()
+        mf.with_x2c.xuncontract = False
+        out["x2c"] = "sfx2c1e"
+        out["xuncontract"] = False
 
     mf.conv_tol = args.conv_tol
     e = mf.kernel()

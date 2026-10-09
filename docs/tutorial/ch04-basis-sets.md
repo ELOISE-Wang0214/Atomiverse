@@ -393,16 +393,46 @@ x2c-1e replaces the one-electron Hamiltonian by a spin-free exact
 two-component operator built from \(\{S,T,V,W\}\)
 (\(W_{\mu\nu}=\langle\nabla\mu|V|\nabla\nu\rangle\)). Two-electron integrals
 stay non-relativistic. **Mutually exclusive with ECP** (double-counting).
-Property operators are not picture-change transformed. Forces with `x2c=true`
-are not implemented.
+Property operators are not picture-change transformed. Analytic nuclear
+forces with `x2c=true` use the spin-free x2c-1e core gradient (picture
+change of \(h^{\mathrm{X2C}}\)); two-electron integrals stay
+non-relativistic.
 
 ### Practice
 
 ```cpp
-cpu::scf::RHF x2c;
-x2c.basis = cpu::scf::BasisSet::Def2TZVP;
-x2c.x2c = true;
-x2c.run(ar_frame);
+cpu::scf::RHF rhf{cpu::scf::BasisSet::Def2TZVP};
+rhf.x2c = true;
+rhf.run(ar_frame); // kEnergy [eV]; rhf.energy() [Hartree]
+```
+
+### Nuclear forces
+
+`RHF::forces(Frame&)` with `RHF::x2c = true` runs that same SCF and
+replaces the core derivative: the trace is \(\mathrm{Tr}[P\,dh^{\mathrm{X2C}}]\),
+not \(\mathrm{Tr}[P\,(dT+dV)]\). Two-electron integrals and the overlap
+Pulay term stay non-relativistic. The call returns `GradientResult`
+(`forces` [eV/Å], `energy` [eV]) and writes the same numbers onto the
+Frame (`kAtom_fx/fy/fz`, `kEnergy`). `energy()` remains Hartree.
+`Hessian<RHF>::run` and `Hessian<UHF>::run` throw when `x2c` is true.
+There is no `x2c` member on `cuda::scf::RHF`.
+
+```cpp
+cpu::Frame frame(2);
+frame.span(kAtom_x)[0] = 0;
+frame.span(kAtom_y)[0] = 0;
+frame.span(kAtom_z)[0] = 0;
+frame.span(kAtom_x)[1] = 0;
+frame.span(kAtom_y)[1] = 0;
+frame.span(kAtom_z)[1] = 0.74;
+frame.span(kAtom_type)[0] = 1;
+frame.span(kAtom_type)[1] = 1;
+frame.box = cpu::Box::cubic(30.0);
+
+cpu::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-12};
+rhf.x2c = true;
+cpu::scf::GradientResult g = rhf.forces(frame); // kAtom_fx/fy/fz [eV/Å]
+// frame.meta.get(kEnergy) [eV]; rhf.energy() [Hartree]; g.energy [eV]
 ```
 
 ### Results

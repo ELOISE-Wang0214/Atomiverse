@@ -253,7 +253,9 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>,
     /// Combining x2c with an ECP-carrying atom throws at run(): relativistic
     /// ECPs already bake scalar relativity into their parameterization, so
     /// stacking x2c on top would double-count it (per-element gate).
-    /// Analytic forces with x2c=true throw (h^X2C gradient not derived).
+    /// Analytic forces replace Tr[P·(dT+dV)] by Tr[P·dh^X2C]
+    /// (`pyscf.x2c.sfx2c1e_grad`, contracted basis). Property operators
+    /// are not picture-change transformed. Car–Parrinello with x2c throws.
     ///
     /// **Picture-change warning:** expectation values of property operators
     /// (dipole, ESP, multipoles) evaluated on x2c orbitals with the

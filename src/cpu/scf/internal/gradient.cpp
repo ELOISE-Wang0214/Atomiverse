@@ -19,6 +19,7 @@
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
 #include "atomiverse/cpu/scf/internal/pcm.h"
 #include "atomiverse/cpu/scf/internal/point_charges.h"
+#include "atomiverse/cpu/scf/internal/x2c.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 #include <cmath>
@@ -67,15 +68,25 @@ static void accumulate_common_gradient(xt::xtensor<double, 2>& grad,
                                        const xt::xtensor<double, 2>& P,
                                        const xt::xtensor<double, 2>& W,
                                        const IntegralDerivPack& dpack,
-                                       int /*n_basis*/, int natm) {
-    // grad(A,d) = Tr[P · (dT + dV)] − Tr[W · dS] + dV_nuc
-    // Each (A, d) slice of dpack.dT/dV/dS is an [n×n] matrix.
+                                       int /*n_basis*/, int natm,
+                                       const xt::xtensor<double, 4>* d_hcore) {
+    // grad(A,d) = Tr[P · dH] − Tr[W · dS] + dV_nuc.
+    // dH is dT+dV, or dh^X2C when `d_hcore` is set (x2c-1e). One
+    // contraction — the relativistic core replaces dT+dV, it is not
+    // added on top (pyscf.grad.rhf.grad_elec + sfx2c1e_grad).
     for (int A = 0; A < natm; ++A) {
         for (int d = 0; d < 3; ++d) {
-            auto dH = xt::view(dpack.dT, A, d, xt::all(), xt::all())
-                      + xt::view(dpack.dV, A, d, xt::all(), xt::all());
+            double val;
+            if (d_hcore != nullptr) {
+                val = xt::sum(
+                    P * xt::view(*d_hcore, A, d, xt::all(), xt::all()))();
+            } else {
+                auto dH = xt::view(dpack.dT, A, d, xt::all(), xt::all())
+                          + xt::view(dpack.dV, A, d, xt::all(), xt::all());
+                val = xt::sum(P * dH)();
+            }
             auto dS = xt::view(dpack.dS, A, d, xt::all(), xt::all());
-            double val = xt::sum(P * dH)() - xt::sum(W * dS)();
+            val -= xt::sum(W * dS)();
             val += dpack.dV_nuc(A, d);
             grad(A, d) += val;
         }
@@ -710,8 +721,25 @@ GradientResult ScfGradient::assemble_(
     xt::xtensor<double, 2> grad = xt::zeros<double>({(int)natm, (int)3});
 
     const auto t_common = LogClock::now();
+    // x2c-1e replaces dT+dV inside the one common contraction. W on the
+    // integral view is assembled only when the method set x2c. Two-electron
+    // integrals and the overlap Pulay weight stay non-relativistic.
+    const xt::xtensor<double, 4>* d_hcore = nullptr;
+    xt::xtensor<double, 4> dh_x2c;
+    if (integrals.W.size() > 0) {
+        if (static_cast<int>(integrals.W.shape(0)) != n
+            || static_cast<int>(integrals.W.shape(1)) != n)
+            throw std::runtime_error(
+                "ScfGradient: x2c pVp matrix W is not n_basis × n_basis");
+        const xt::xtensor<double, 4> dWp = pvp_nuclear_deriv(integrals);
+        dh_x2c = internal::x2c_hcore_gradient(
+            integrals.S, integrals.T, integrals.V, integrals.W, dpack.dS,
+            dpack.dT, dpack.dV, dWp);
+        d_hcore = &dh_x2c;
+        ATV_INFO("[gradient] x2c-1e h^X2C nuclear derivative");
+    }
     xt::xtensor<double, 2> grad_common = xt::zeros<double>({(int)natm, (int)3});
-    accumulate_common_gradient(grad_common, P, W, dpack, n, natm);
+    accumulate_common_gradient(grad_common, P, W, dpack, n, natm, d_hcore);
     grad += grad_common;
     const auto [common_max_abs, common_max_atom_norm] =
         gradient_metrics(grad_common);

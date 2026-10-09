@@ -834,6 +834,8 @@ if(ATV_BUILD_HF)
     # EcpIntegrals U-matrix vs external PySCF ECPscalar pins, IntegralWorkspace
     # valence wiring, x2c double-counting gate (hf-capability-gaps-06-ecp).
     atv_add_cpp_test(test_ecp                  cpu/scf/test_ecp.cpp)
+    # x2c-1e nuclear gradient of h^X2C vs a central difference. No SCF.
+    atv_add_cpp_test(test_cpu_scf_x2c_hcore_grad cpu/scf/test_x2c_hcore_grad.cpp)
     # hf-capability-gaps-18-x2c: spin-free pVp kernel pins, X2cWorkspace
     # nonrel/exact-decoupling identities, ECP↔x2c mutual exclusion both
     # ways, forces() intercept. No heavy-atom SCF in this unit binary.

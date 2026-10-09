@@ -57,7 +57,7 @@ PW/GPW product paths are semi-local DFT — see [DFT § Periodic](dft.md#4-perio
 | Native Rys ERI (l ≤ 3) | ✓ | ○ | s/p/d/f |
 | Device ERI | — | ✓ | STO-3G l ≤ 1: `launch_eri_sp`. Cartesian s/p/d/f, l ≤ 3: `launch_eri_lgt1`. Spherical l ≤ 3 is that tensor plus CartToSph. l ≥ 4 throws `launch_eri_g` |
 | ECP | ✓ | ○ | Semi-numerical forces |
-| x2c-1e (energy) | ✓ | ○ | Forces throw |
+| x2c-1e | ✓ | ○ | `cpu::scf::RHF::forces(Frame&)` with `RHF::x2c = true` returns `GradientResult` and writes `kAtom_fx/fy/fz` [eV/Å] and `kEnergy` [eV] (`energy()` stays [Ha]). Molecular RHF: H2/STO-3G, H2O/6-31G, HCl/6-31G. An isolated atom is `RHF::run` only (Ar/def2-TZVP). `Hessian<RHF>::run` and `Hessian<UHF>::run` throw for `x2c=true`. No `x2c` on `cuda::scf::RHF`. Tutorial: [basis sets](../tutorial/ch04-basis-sets.md#nuclear-forces) |
 | Diagonalization | ✓ | ✓ | LAPACK / cuSOLVER |
 
 **Bases:** STO-3G, 6-31G, 6-31G\*, 6-31+G\*, def2-SVP, def2-TZVP, aug-cc-pVDZ.

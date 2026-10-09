@@ -25,6 +25,18 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
+namespace {
+
+void refuse_x2c_hessian(bool x2c) {
+    if (!x2c)
+        return;
+    throw std::runtime_error(
+        "Hessian::run: the analytic CPHF Hessian is not implemented "
+        "for x2c=true (pyscf.x2c.sfx2c1e_hess, deriv=2). The nuclear "
+        "gradient is sfx2c1e_grad; this path still differentiates T+V.");
+}
+
+} // namespace
 
 template <typename Method>
 Hessian<Method>::Hessian(Method& mf) : mf_(&mf) {}
@@ -36,6 +48,7 @@ template <typename Method>
 vib::HessianResult Hessian<Method>::run(Frame& frame,
                                         const SCFInitialGuess* guess) {
     Method& mf = *mf_;
+    refuse_x2c_hessian(mf.x2c);
     if (mf.ri != RI::None)
         throw std::runtime_error(
             "Hessian::run: the analytic Hessian is not wired for density "
@@ -315,6 +328,7 @@ template <>
 vib::HessianResult Hessian<UHF>::run(Frame& frame,
                                      const SCFInitialGuess* guess) {
     UHF& mf = *mf_;
+    refuse_x2c_hessian(mf.x2c);
     if (mf.ri != RI::None)
         throw std::runtime_error(
             "Hessian::run: the analytic Hessian is not wired for density "
