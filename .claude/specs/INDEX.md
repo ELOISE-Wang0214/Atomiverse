@@ -9,12 +9,13 @@ Merged to `dev` (`7b1df662f`). Off-eq water `F_H1,y` is still the H0/Pulay
 pair term, not `dTheta/dR`. xtb 6.7.1 pin is not met. Spec stays; status
 is `blocked`. Do not open a second CAMM slug for the same bend.
 
-## Live — component-plugin (2026-08-18)
+## Superseded — component-plugin (2026-10-09)
 
-`component-plugin-01-probe` predicates are already on `cpu::Component` and
-the energy/force kinds. `02-wrap` through `06-unmount` are not shipped:
-there is no `NestedLoopAdapter`. `Driver::unfix` exists and is not the
-05/06 live-table contract. Acceptance files stay `pending`.
+The 2026-08-18 chain specified a public `NestedLoopAdapter`. That type is
+not the design. `PhaseBuilder::mount_nested_cpu` mounts a private `Slot`
+(`name()` is `nested_driver`) and copies `provides_energy` /
+`provides_force`. `Driver::unfix` is the unmount entry. Specs deleted.
+`regressions/architecture/component-plugin-*` stay; they pin that behavior.
 
 ## Closed — dftb-data-00-honesty (2026-09-04)
 
@@ -68,67 +69,25 @@ which is why two dead helpers and a 306-line zero-caller source file survived
 review. The flag immediately surfaced 13 more dead symbols tree-wide. Nine were
 cleared in that slug (5 dead stores, `require_i32` in `molrs_exchange.cpp`,
 `decode_sc` in `phonon_dispersion.cpp`, plus the two comm ones the slug
-targeted). **Four remain, all in the semiempirical/DFTB area and deliberately
-NOT deleted** because they sit in the blast radius of the live `gfn2-camm-r`
-spec and the tb-method-loop — a "defined but not used" static in a half-landed
-gradient path may be exactly what the next slug wires up:
+targeted). The 2026-08-28 zero-caller helpers were deleted 2026-10-09:
+`pair_rep`, `h_radial`, `s_radial`, `apply_affine_strain`, `shell_sd_grad`,
+`sf_score`, `ensure_helpers`, and two unused `n` locals. `gfn2-camm-r` is
+blocked and does not wire them. Still open, not touched here:
+`gpw_solver.cpp` `ot_grad_tol_k` and the by-ref lambda captures, and the
+`-Wstringop-overflow=` caller. `-Wall` stays off.
 
-- `src/cpu/semiempirical/dftb2.cpp:79` `pair_rep`
-- `src/cpu/semiempirical/dftb2.cpp:87` `h_radial`, `:90` `s_radial`
-- `src/cpu/semiempirical/dftb2.cpp:1924` `apply_affine_strain`
-- plus `dftb3.cpp` `pair_rep` and `gfn2.cpp` `shell_sd_grad` on a clean build
-
-Each needs a one-line verdict from whoever owns that physics: wire it up or
-delete it. Until then the build emits those warnings, so the flag is not yet a
-clean gate. `-Wall` was NOT enabled — a separate, measured decision, owed
-alongside this.
-
-**Full list re-measured on a clean rebuild 2026-08-28** — the "four remain"
-count above was low, because an incremental build never recompiles the quiet
-files. Actual survivors:
-
-| Path | Warning |
-| --- | --- |
-| `src/cpu/semiempirical/dftb2.cpp:79`, `:87`, `:90`, `:1921` | `pair_rep`, `h_radial`, `s_radial`, `apply_affine_strain` unused |
-| `src/cpu/semiempirical/dftb3.cpp:61` | `pair_rep` unused |
-| `src/cpu/semiempirical/gfn2.cpp:392` | `shell_sd_grad` unused |
-| `src/cpu/scf/internal/hamiltonian_builder.cpp:107` | unused variable `n` |
-| `src/cpu/scf/internal/periodic_hf.cpp:130` | unused variable `n` |
-| `src/cpu/scf/eom_ee_ccsd.cpp:325` | `sf_score` unused |
-| `src/cpu/planewave/pw_solver.cpp:93` | `ensure_helpers` unused |
-| `src/cpu/gpw/gpw_solver.cpp:1775` | unused variable `ot_grad_tol_k` |
-| `src/cpu/gpw/gpw_solver.cpp:6070`+ | redundant by-ref lambda captures |
-| libstdc++ `stl_algobase.h:452` | `-Wstringop-overflow=` from a caller not yet identified |
-
-The six semiempirical ones stay in the `gfn2-camm-r` / tb-method-loop blast
-radius as before. The four SCF / PW / GPW ones are plain dead locals and are
-free to delete; the `-Wstringop-overflow=` one needs its caller found first.
-
-## Live — component-plugin chain (2026-08-18)
-
-Component 作为 Driver 的插件系统。派生类尽量零改；改基类 / 宿主。CUDA 镜像后置。
-
-| Spec | Deps | One-line |
-| ---- | ---- | -------- |
-| [component-plugin-01-probe](component-plugin-01-probe.md) | — | `provides_energy` / `provides_force` 落基类与 kind；FixLangevin 唯一具体覆盖 [approved] |
-| [component-plugin-02-wrap](component-plugin-02-wrap.md) | 01 | `NestedLoopAdapter`：DriverNode → Component，内环对外不透明 [approved] |
-| [component-plugin-03-slot](component-plugin-03-slot.md) | 02 | Plan / pending 只持 `Component*`；`add(DriverNode)` 自动包装 [approved] |
-| [component-plugin-04-match](component-plugin-04-match.md) | 01, 03 | preset `validate_components` 缩成 `require_*`；删族清单与 `name()==langevin` [approved] |
-| [component-plugin-05-live](component-plugin-05-live.md) | 03 | `build()` 保留 `pending_` 为活表；按实例身份可重编 Plan [approved] |
-| [component-plugin-06-unmount](component-plugin-06-unmount.md) | 04, 05 | 运行中 `unfix` / 再挂；destroy → 重编 → 同一套闭包 [approved] |
-
-**Live — TB method loop (2026-10-09 wave 2)**
+**Live — TB method loop**
 
 | Spec | One-line |
 | ---- | -------- |
-| [gfn2-camm-r](gfn2-camm-r/gfn2-camm-r.md) | Two-centre CAMM quadrupole on H (xtb `mmompop`) + \(\partial\Theta/\partial R\); angular \(F_{H1,y}\) vs xtb 6.7.1. Still `[~]` |
+| [gfn2-camm-r](gfn2-camm-r/gfn2-camm-r.md) | Blocked. The off-eq water bend is the H0/Pulay term, not \(\partial\Theta/\partial R\). |
 
-**Live count: 7.** (6 component-plugin + 1 TB)
+**Live count: 1.** (`gfn2-camm-r`, blocked). The component-plugin chain is superseded; see the top of this file.
 
 ## Closed — TB harness wave 2 (2026-10-09)
 
 Merged to `dev` (`911b004e5`, worker `d2bfe363d`); specs deleted; history is git.
-`gfn2-camm-r` stays `[~]` (spec on `dev`; local `wf/gfn2-camm-r` @ `bb7f675f7`, no worktree).
+`gfn2-camm-r` stays blocked (spec on `dev`; the record merged as `7b1df662f`).
 
 | Spec | Shipped |
 | ---- | ------- |

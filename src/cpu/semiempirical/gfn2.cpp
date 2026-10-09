@@ -389,37 +389,6 @@ void primitive_sd_grad(double a, const double A[3], int la, double b,
     }
 }
 
-void shell_sd_grad(const Shell& si, const double Ai[3], int ui, const Shell& sj,
-                   const double Aj[3], int vj, double& s, double ds_dAi[3],
-                   double D[3], double dD_dAi[3][3]) {
-    s = 0;
-    ds_dAi[0] = ds_dAi[1] = ds_dAi[2] = 0;
-    D[0] = D[1] = D[2] = 0;
-    for (int k = 0; k < 3; ++k)
-        for (int m = 0; m < 3; ++m)
-            dD_dAi[k][m] = 0;
-    const int Li = (si.l == 0) ? 0 : (ui + 1);
-    const int Lj = (sj.l == 0) ? 0 : (vj + 1);
-    for (int p = 0; p < si.n_prim; ++p) {
-        for (int q = 0; q < sj.n_prim; ++q) {
-            double sp = 0;
-            double dsp[3];
-            double Dp[3];
-            double dDp[3][3];
-            primitive_sd_grad(si.alpha[p], Ai, Li, sj.alpha[q], Aj, Lj, sp, dsp,
-                              Dp, dDp);
-            const double c = si.coeff[p] * sj.coeff[q];
-            s += c * sp;
-            for (int k = 0; k < 3; ++k) {
-                ds_dAi[k] += c * dsp[k];
-                D[k] += c * Dp[k];
-                for (int m = 0; m < 3; ++m)
-                    dD_dAi[k][m] += c * dDp[k][m];
-            }
-        }
-    }
-}
-
 // Cartesian quadrupole <r_a r_b> at origin 0 and d/dA (s/p primitives).
 void cartesian_rr_grad(int ia, int ib, const double P[3], const double dS00[3],
                        double S00, double dAi0, double dAj0, double ddAi0[3],

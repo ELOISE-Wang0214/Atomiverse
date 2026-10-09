@@ -104,7 +104,6 @@ FockResult HamiltonianBuilder::step(const internal::IntegralView& integrals,
                                     const RealMatrix& P_beta) const {
     FockResult out;
     const RealMatrix& Hcore = integrals.Hcore;
-    const int n = integrals.n_basis;
 
     // Spherical-basis bridge: the direct two-electron / XC engines are
     // Cartesian (they walk pack.shells). With a spherical pack the incoming

@@ -90,24 +90,6 @@ MPI_Datatype mpi_real_type() {
 
 // ── PW ────────────────────────────────────────────────────────────
 
-namespace {
-void ensure_helpers(PW& self, std::unique_ptr<internal::PoissonSolver>& poisson,
-                    std::unique_ptr<internal::XCBuilder>& xc,
-                    std::unique_ptr<internal::VeffBuilder>& veff,
-                    std::unique_ptr<internal::DensityBuilder>& density) {
-    if (!poisson)
-        poisson = std::make_unique<internal::PoissonSolver>();
-    if (!xc)
-        xc = std::make_unique<internal::XCBuilder>();
-    if (!veff)
-        veff = std::make_unique<internal::VeffBuilder>();
-    if (!density)
-        density = std::make_unique<internal::DensityBuilder>();
-}
-} // namespace
-
-// Helpers are allocated on first build()/run() from current member parameters.
-
 // Out-of-line where internal::* are complete types (required for the
 // unique_ptr members over forward-declared helpers).
 PW::PW() = default;

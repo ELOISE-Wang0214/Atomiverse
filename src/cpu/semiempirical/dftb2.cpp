@@ -121,7 +121,6 @@ using basis_data::Dftb3obElement;
 using basis_data::Dftb3obPair;
 using basis_data::Dftb3obSkPoint;
 using basis_data::DftbElementRow;
-using basis_data::DftbPairRepRow;
 using basis_data::DftbPairSkRow;
 using basis_data::kDftb3obElements;
 using basis_data::kDftb3obNElements;
@@ -129,9 +128,7 @@ using basis_data::kDftb3obNPairs;
 using basis_data::kDftb3obPairs;
 using basis_data::kDftbElements;
 using basis_data::kDftbNElements;
-using basis_data::kDftbNPairRep;
 using basis_data::kDftbNPairSk;
-using basis_data::kDftbPairRep;
 using basis_data::kDftbPairSk;
 
 // Hartree → eV; Bohr → Å (CODATA-aligned with common DFTB pins).
@@ -153,22 +150,6 @@ const DftbPairSkRow& pair_sk(int za, int zb) {
             return kDftbPairSk[i];
     throw std::runtime_error("DFTB2: no SK table for pair Z="
                              + std::to_string(za) + "-" + std::to_string(zb));
-}
-
-const DftbPairRepRow& pair_rep(int za, int zb) {
-    for (std::size_t i = 0; i < kDftbNPairRep; ++i)
-        if (kDftbPairRep[i].z_a == za && kDftbPairRep[i].z_b == zb)
-            return kDftbPairRep[i];
-    throw std::runtime_error("DFTB2: no repulsive table for pair Z="
-                             + std::to_string(za) + "-" + std::to_string(zb));
-}
-
-double h_radial(double v0, double r, double r0, double d) {
-    return v0 * std::exp(-(r - r0) / d);
-}
-double s_radial(double s0, double r, double r0, double w) {
-    const double t = (r - r0) / w;
-    return s0 * std::exp(-0.5 * t * t);
 }
 
 /// Retained iterates in the Anderson charge mixer (dimensionless).
@@ -2119,58 +2100,6 @@ SccResult scc_total(int n_at, int n_ao, const Occupancy& occ,
     return scc_energy_unrestricted(n_at, n_ao, occ.n_alpha, occ.n_beta, el, ao0,
                                    type, x, y, z, box, gam, scc_tol, max_scc,
                                    mix_beta, dq_guess, spin_guess, spin_w_ev);
-}
-
-/// Affine strain of box + coordinates (mechanical ε; matches PW/GPW stress FD).
-void apply_affine_strain(cpu::Frame& frame, int voigt, double h) {
-    // Voigt: 0=xx,1=yy,2=zz,3=xy,4=xz,5=yz. Off-diag: ε_αβ = ε_βα = h.
-    Mat3 F{};
-    for (int a = 0; a < 3; ++a)
-        for (int b = 0; b < 3; ++b)
-            F(a, b) = (a == b) ? 1.0 : 0.0;
-    if (voigt == 0)
-        F(0, 0) += h;
-    else if (voigt == 1)
-        F(1, 1) += h;
-    else if (voigt == 2)
-        F(2, 2) += h;
-    else if (voigt == 3) {
-        F(0, 1) += h;
-        F(1, 0) += h;
-    } else if (voigt == 4) {
-        F(0, 2) += h;
-        F(2, 0) += h;
-    } else if (voigt == 5) {
-        F(1, 2) += h;
-        F(2, 1) += h;
-    }
-
-    Mat3 cell = frame.box.cell();
-    Mat3 cell_new;
-    for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j) {
-            double s = 0;
-            for (int k = 0; k < 3; ++k)
-                s += F(i, k) * static_cast<double>(cell(k, j));
-            cell_new(i, j) = static_cast<AccReal>(s);
-        }
-    frame.box.set_cell(cell_new);
-
-    auto x = frame.span(kAtom_x);
-    auto y = frame.span(kAtom_y);
-    auto z = frame.span(kAtom_z);
-    const int n = frame.nlocal();
-    for (int a = 0; a < n; ++a) {
-        const double rx = static_cast<double>(x[a]);
-        const double ry = static_cast<double>(y[a]);
-        const double rz = static_cast<double>(z[a]);
-        x[a] = static_cast<StorageReal>(F(0, 0) * rx + F(0, 1) * ry
-                                        + F(0, 2) * rz);
-        y[a] = static_cast<StorageReal>(F(1, 0) * rx + F(1, 1) * ry
-                                        + F(1, 2) * rz);
-        z[a] = static_cast<StorageReal>(F(2, 0) * rx + F(2, 1) * ry
-                                        + F(2, 2) * rz);
-    }
 }
 
 double launch_mio(cpu::Frame& f, double scc_tol, int max_scc, double mix_beta,

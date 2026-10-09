@@ -34,13 +34,10 @@ namespace semiempirical {
 namespace {
 
 using basis_data::DftbElementRow;
-using basis_data::DftbPairRepRow;
 using basis_data::DftbPairSkRow;
 using basis_data::kDftbElements;
 using basis_data::kDftbNElements;
-using basis_data::kDftbNPairRep;
 using basis_data::kDftbNPairSk;
-using basis_data::kDftbPairRep;
 using basis_data::kDftbPairSk;
 
 const DftbElementRow& element_row(int z) {
@@ -56,14 +53,6 @@ const DftbPairSkRow& pair_sk(int za, int zb) {
         if (kDftbPairSk[i].z_a == za && kDftbPairSk[i].z_b == zb)
             return kDftbPairSk[i];
     throw std::runtime_error("DFTB3: no SK table for pair Z="
-                             + std::to_string(za) + "-" + std::to_string(zb));
-}
-
-const DftbPairRepRow& pair_rep(int za, int zb) {
-    for (std::size_t i = 0; i < kDftbNPairRep; ++i)
-        if (kDftbPairRep[i].z_a == za && kDftbPairRep[i].z_b == zb)
-            return kDftbPairRep[i];
-    throw std::runtime_error("DFTB3: no repulsive table for pair Z="
                              + std::to_string(za) + "-" + std::to_string(zb));
 }
 
