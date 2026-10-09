@@ -23,7 +23,7 @@ CPU-only domain. Oracles: **OpenMOPAC** (NDDO), **DFTB+** 24.1 (DFTB), **xtb
 
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
-| DFTB0 | ✓ | ○ | Forces still 6N FD |
+| DFTB0 | ✓ | ○ | Analytic nuclear forces (HF + Pulay + repulsive); no SCC γ |
 | DFTB2 (SCC) | ✓ | ○ | mio-1-1 + 3ob-3-1 (H/C/N/O); `lattice` γ is Ewald |
 | DFTB3 | ✓ | ○ | Energy + closed-form F + Γ-PBC F; no k / stress / spin / 3ob / D3 |
 | DFTB3 γ^h (DampXH) | ○ | ○ | ζ = 4 X–H damping; MioSketch DFTB3 runs undamped |

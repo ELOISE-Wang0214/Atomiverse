@@ -15,7 +15,9 @@ namespace semiempirical {
 ///
 /// Electronic tight-binding without self-consistent charge: Slater–Koster
 /// H0/S from static in-tree tables, generalized eigen, band energy + pair
-/// repulsive. No Hubbard / γ / Δq iteration (contrast @ref DFTB2). Tables:
+/// repulsive. Forces, when requested, are the closed-form non-SCC gradient
+/// (Hellmann–Feynman + Pulay + repulsive) — not a finite difference, and
+/// with no Hubbard / γ / Δq term (contrast @ref DFTB2). Tables:
 /// all ordered H/C/N/O pairs from transcribed DFTB.org mio-1-1
 /// (`basis_data/dftb_mio_sk_tables.h` via `internal/mio_sk_table.h` /
 /// `MioSketchPair`). Supported Z: 1, 6, 7, 8; any other element throws.
@@ -33,7 +35,10 @@ namespace semiempirical {
 /// @endcode
 class DFTB0 : public cpu::Semiempirical {
   public:
-    /// @brief When true, write forces F=−∇E [eV/Å] on launch (central FD of E).
+    /// @brief When true, write forces F=−∇E [eV/Å] on launch.
+    ///
+    /// Closed-form Hellmann–Feynman + Pulay + pair-repulsive gradient of the
+    /// non-SCC energy. There is no SCC γ contribution.
     bool with_forces = true;
 
     DFTB0() = default;

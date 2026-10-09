@@ -321,6 +321,10 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/communication/atom_pack.cpp
         src/cpu/communication/bcast_frame.cpp
         src/cpu/communication/comm_brick.cpp
+        # comm_brick.cpp calls md::sort_owned_atoms on every border refresh.
+        # The function is not an MD integrator, so an SE-only build (MD OFF)
+        # still has to link it.
+        src/cpu/dynamics/atom_sort.cpp
         src/cpu/communication/halo.cpp
         src/cpu/communication/domain.cpp
         src/cpu/communication/reduce.cpp
@@ -436,7 +440,6 @@ if(NOT ATV_DOCS_ONLY)
     if(ATV_BUILD_MD)
         list(APPEND ATOMIVERSE_SRCS
             src/cpu/dynamics/init.cpp
-            src/cpu/dynamics/atom_sort.cpp
             src/cpu/dynamics/cpmd_conserved.cpp
             src/cpu/dynamics/velocity_verlet.cpp
             src/cpu/dynamics/nve_limit.cpp
