@@ -57,7 +57,7 @@ Ha/Bohr.
   scales).
 - Basis: STO-3G **Cartesian** (`cart=True`).
 - Analytic nuclear gradient only; no UMP2 Hessian / vib analysis on this slug.
-- Cold UHF Hcore/MINAO often lands on a higher local solution for O₂; the
+- Cold UHF from the core Hamiltonian often lands on a higher local solution for O₂ (MINAO reaches the PySCF minimum); the
   regression **warm-starts** from ROHF \(\alpha/\beta\) densities so UHF
   matches the PySCF minimum used for the pin (same multi-minima note as
   `ump2-o2-sto3g`).

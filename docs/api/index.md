@@ -88,16 +88,21 @@ Start with these CPU headers:
 ### Run SCF workflows on the CUDA backend
 
 CUDA SCF presents the same public shape as CPU —
-`cuda::scf::RHF{basis}.run(frame)` / `.forces(frame)`, `Frame` in and out.
-The iteration is `cuda::Driver<scf::Phase>` (`fock`, `mix`, `diagonalize`,
-`density`, `check`). `set_evaluator` mounts that driver in one Plan slot.
-Coverage is narrower: restricted HF only (no UHF/KS), device-native integrals
-and analytic forces over STO-3G s/p shells (l ≤ 1, H…O), and `forces()` throws
-outside that envelope rather than falling back. See
+`cuda::scf::RHF{basis}.run(frame)` / `.forces(frame)` and
+`cuda::scf::UHF{basis, n_alpha, n_beta, charge}.run(frame)` / `.forces(frame)`,
+`Frame` in and out. The iteration is `cuda::Driver<scf::Phase>` (`fock`,
+`mix`, `diagonalize`, `density`, `check`). `set_evaluator` mounts that
+driver in one Plan slot. Coverage is narrower than the CPU: no KS, ROHF, or
+GHF. Device-native integrals and analytic forces cover STO-3G s/p shells
+(l ≤ 1). `cuda::scf::UHF` throws outside that envelope (`launch_eri_sp`,
+`launch_uhf_forces_sp`) and does not fill ERIs on the host.
+`cuda::scf::RHF` still builds integrals on the host for bases the device
+kernels do not cover; its `forces()` throws outside STO-3G l ≤ 1. See
 [Switching backends](../user-guide/backend-switching.md). Start with these
 headers:
 
 - [`cuda::scf::RHF`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/scf/rhf.cuh)
+- [`cuda::scf::UHF`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/scf/uhf.cuh)
 - [`cuda::scf::SCFEvaluator`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/scf/scf_evaluator.cuh)
 - [`cuda::Evaluate`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/evaluate/evaluate.cuh)
 - [`cuda::single_point`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/evaluate/single_point.cuh)

@@ -1542,6 +1542,46 @@ if(ATV_BUILD_HF)
     else()
         atv_add_regression(scf h2o_rhf_sto3g_grad)
     endif()
+    # UHF energy + analytic gradient, STO-3G. Device leg is cuda::scf::UHF
+    # (s/p only). Same pins on CPU.
+    if(ATV_BUILD_CUDA)
+        set(_reg_uhf reg_h2_uhf_sto3g)
+        add_executable(${_reg_uhf} scf/h2_uhf_sto3g/${_reg_uhf}.cu)
+        target_link_libraries(${_reg_uhf} PRIVATE atomiverse)
+        set_target_properties(${_reg_uhf} PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON CXX_STANDARD 20)
+        target_compile_definitions(${_reg_uhf} PRIVATE
+            ATV_REG_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data")
+        add_custom_target(run_${_reg_uhf}
+            COMMAND ${CMAKE_COMMAND} -E env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+                    $<TARGET_FILE:${_reg_uhf}> --device=both
+            DEPENDS ${_reg_uhf}
+            COMMENT "regression [scf/h2_uhf_sto3g] devices=both (1t)")
+        add_dependencies(regressions run_${_reg_uhf})
+        unset(_reg_uhf)
+    else()
+        atv_add_regression(scf h2_uhf_sto3g)
+    endif()
+    # O2 triplet + OH doublet, STO-3G UHF energy and gradient. Device leg
+    # is cuda::scf::UHF (MINAO seed, s/p Fock and forces on device).
+    if(ATV_BUILD_CUDA)
+        set(_reg_cuhf reg_cuda-uhf)
+        add_executable(${_reg_cuhf} scf/cuda-uhf/${_reg_cuhf}.cu)
+        target_link_libraries(${_reg_cuhf} PRIVATE atomiverse)
+        set_target_properties(${_reg_cuhf} PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON CXX_STANDARD 20)
+        target_compile_definitions(${_reg_cuhf} PRIVATE
+            ATV_REG_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data")
+        add_custom_target(run_${_reg_cuhf}
+            COMMAND ${CMAKE_COMMAND} -E env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+                    $<TARGET_FILE:${_reg_cuhf}> --device=both
+            DEPENDS ${_reg_cuhf}
+            COMMENT "regression [scf/cuda-uhf] devices=both (1t)")
+        add_dependencies(regressions run_${_reg_cuhf})
+        unset(_reg_cuhf)
+    else()
+        atv_add_regression(scf cuda-uhf)
+    endif()
     # Short BOMD: MD + RHF composition (no AimdDriver); multi-device.
     if(ATV_BUILD_CUDA)
         set(_reg_aimd reg_h2_rhf_sto3g_aimd)

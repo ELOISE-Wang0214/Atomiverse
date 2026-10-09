@@ -52,11 +52,12 @@ LAMMPS, MetalWalls — or against an analytic result. There are 564 of them.
 
 **Coverage is uneven between the backends, and the CPU side is far ahead.**
 The CUDA backend is a production classical-MD engine and a much narrower
-electronic-structure one: `cuda::scf::RHF` is restricted Hartree-Fock only,
-over STO-3G s/p shells, and it throws rather than falling back when you leave
-that envelope. [`docs/roadmap/`](docs/roadmap/index.md) states this method by
-method — what runs on CPU, what runs on CUDA, and what is not implemented at
-all. Read it before planning work around a method.
+electronic-structure one: `cuda::scf::RHF` and `cuda::scf::UHF` on STO-3G
+s/p shells (l ≤ 1). `UHF` throws outside that envelope (`launch_eri_sp`)
+rather than filling ERIs on the host; `RHF` forces throw there too.
+[`docs/roadmap/`](docs/roadmap/index.md) states this method by method —
+what runs on CPU, what runs on CUDA, and what is not implemented at all.
+Read it before planning work around a method.
 
 ## Quickstart
 

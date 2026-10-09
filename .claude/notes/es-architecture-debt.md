@@ -88,6 +88,7 @@ Priority: 🔴 bind/forces/Driver alignment before any new ES public API;
 | --- | --- | --- | --- |
 | CPU RHF/UHF/RKS/UKS/ROHF/ROKS/GHF | Yes | Yes | Pass (ghost_atoms aside) |
 | CUDA RHF | Yes | Yes | Pass |
+| CUDA UHF | Yes | Yes (`run`/`forces`, STO-3G l ≤ 1; else throws) | Pass |
 | AM1 / RM1 | No | Yes (`run`/`forces(Frame&)`) | Fail (`es-se-driver`) |
 | CPU PW | Yes | Yes (`run`/`forces`/`stress(Frame&)`) | Pass (evaluator 3-SCF aside) |
 | CUDA PW | No | `run` yes | Fail (`es-cuda-pw-driver`) |

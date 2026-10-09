@@ -43,7 +43,7 @@ Theory*, response / gradient chapters; PySCF `pyscf.grad.ump2`.
 
 ## Multi-minima note
 
-Cold UHF Hcore/MINAO often lands on a higher local solution for O₂. The
+Cold UHF from the core Hamiltonian often lands on a higher local solution for O₂. MINAO, PySCF's default, reaches the lower one. The
 regression warm-starts from ROHF densities (same path as `ump2-o2-sto3g`) so
 UHF lands on the PySCF minimum used for the pin.
 

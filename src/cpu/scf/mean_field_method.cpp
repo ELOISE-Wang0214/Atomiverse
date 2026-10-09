@@ -1142,20 +1142,13 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             P_alpha = P_minao;
             P_beta = P_alpha;
         } else if (want_minao) {
+            // pyscf.scf.uhf.UHF.init_guess_by_minao: dma = dmb = ½ P_MINAO.
+            // _break_dm_spin_symm acts only when mol.spin == 0, so an open
+            // shell keeps the spin-averaged projection. Replacing it with
+            // Hcore orbitals plus HOMO–LUMO mixing is init_guess_by_1e and
+            // drops triplet O2 onto the higher local solution.
             P_alpha = 0.5 * P_minao;
             P_beta = 0.5 * P_minao;
-            const bool is_ks = (method_ == MeanFieldType::KS);
-            // ROHF never wants the UHF symmetry-breaking guess perturbation: the
-            // coupled F_eff restores one MO set anyway, so start from the plain
-            // Aufbau split (PySCF-matching).
-            const bool skip_mixing = (is_ks && (n_alpha == n_beta)) || rohf;
-            if (method_ == MeanFieldType::HF && n_alpha > 0 && n_beta > 0
-                && !skip_mixing && n_alpha != n_beta) {
-                RealMatrix C_alpha_init = C0;
-                apply_homo_lumo_mixing(C_alpha_init, n_alpha, n);
-                P_alpha = density.step(C_alpha_init, n_alpha, n);
-                P_beta = density.step(C0, n_beta, n);
-            }
         } else if (restricted) {
             P_alpha = density.step(C0, n_alpha, n, double(2));
             P_beta = P_alpha;

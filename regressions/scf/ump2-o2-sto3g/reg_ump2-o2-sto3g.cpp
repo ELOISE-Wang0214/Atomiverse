@@ -36,7 +36,7 @@ int main() {
 
     auto frame = o2_frame();
 
-    // Cold UHF Hcore/MINAO often lands on a higher local solution for O2;
+    // Cold UHF from the core Hamiltonian often lands on a higher local solution for O2;
     // warm-start from ROHF densities (Tsuchimochi–Scuseria constrained-UHF
     // release) to reach the PySCF UHF minimum used for the UMP2 pin.
     cpu::scf::ROHF rohf(9, 7);

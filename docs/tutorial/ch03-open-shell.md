@@ -158,9 +158,44 @@ cpu::scf::UHF uhf(n_alpha, n_beta);
 uhf.basis = cpu::scf::BasisSet::STO3G;
 uhf.tol = tol;
 uhf.max_iter = max_iter;
-uhf.run(frame);                       // eV energy on frame.meta[kEnergy]
+uhf.run(frame);                       // eV energy on frame.meta.get(kEnergy)
 double e_ha = uhf.energy();           // total energy [Hartree]
 const auto& det = uhf.determinant();  // per-spin orbitals and occupations
+```
+
+## Device UHF
+
+`cuda::scf::UHF` is that call on the device, for STO-3G shells with
+l ≤ 1 only. The constructor is
+`cuda::scf::UHF{basis, n_alpha, n_beta, charge}`, the same arguments as
+`cpu::scf::UHF{basis, n_alpha, n_beta, charge}`. There is no const `run`.
+The SCF is `cuda::Driver<scf::Phase>`
+(`fock`, `mix`, `diagonalize`, `density`, `check`). Fock, CDIIS, both
+densities, and the analytic gradient stay on the device. The start is
+the spin-averaged MINAO density for H, C, N, O, and F; any other element
+keeps the core Hamiltonian. Anything outside STO-3G l ≤ 1 throws
+(`launch_eri_sp`, `launch_uhf_forces_sp`) and does not fill ERIs on the
+host.
+
+H₂⁺ is two protons and one α electron. `run` writes the energy onto the
+Frame; `forces` writes that energy and the nuclear forces.
+
+```cpp
+cpu::Frame frame(2);
+frame.span(kAtom_type)[0] = 1;
+frame.span(kAtom_type)[1] = 1;
+frame.span(kAtom_x)[0] = 0;
+frame.span(kAtom_y)[0] = 0;
+frame.span(kAtom_z)[0] = 0;
+frame.span(kAtom_x)[1] = 0;
+frame.span(kAtom_y)[1] = 0;
+frame.span(kAtom_z)[1] = 0.74;
+frame.box = cpu::Box::cubic(20.0);
+
+cuda::scf::UHF uhf{cpu::scf::BasisSet::STO3G, /*n_alpha=*/1,
+                   /*n_beta=*/0, /*charge=*/1};
+uhf.run(frame);  // frame.meta.get(kEnergy) [eV]; uhf.energy() [Hartree]
+cpu::scf::GradientResult g = uhf.forces(frame); // kAtom_fx/fy/fz [eV/Å]
 ```
 
 The input you must choose carefully is the spin occupation. `n_alpha` and
