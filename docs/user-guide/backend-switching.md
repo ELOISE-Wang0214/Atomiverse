@@ -56,11 +56,12 @@ its kernels cover, no scientific data returns to the host mid-SCF.
     The shape is the same; the coverage is not. Device Hartree–Fock is
     `cuda::scf::RHF` and `cuda::scf::UHF` — there is no `RKS`, `UKS`,
     `ROHF`, or `GHF` on device. Device-native integrals and analytic forces
-    cover STO-3G s/p shells (l ≤ 1). `cuda::scf::UHF` **throws** outside
-    that envelope (`launch_eri_sp`, `launch_uhf_forces_sp`) and does not
-    fill ERIs on the host; use `cpu::scf::UHF`. `cuda::scf::RHF::forces`
-    throws outside the same envelope. RHF energy for a basis the device
-    kernels do not cover still builds integrals on the host. The plane-wave
+    cover Cartesian RHF shells with l ≤ 2 (`launch_*_sp` / `launch_*_lgt1`)
+    and UHF on STO-3G s/p. `cuda::scf::UHF` **throws** outside that envelope
+    (`launch_eri_sp`, `launch_uhf_forces_sp`). `cuda::scf::RHF` throws
+    `launch_eri_sph` (spherical l ≥ 2), `launch_eri_f` (l ≥ 3), or
+    `launch_rhf_forces_lgt1` (forces outside STO-3G l ≤ 1) and does not fill
+    ERIs on the host. The plane-wave
     backend is similarly narrower on device
     than on host (LDA, spin-unpolarized). The
     [roadmap](../roadmap/index.md) is the per-method statement of what each

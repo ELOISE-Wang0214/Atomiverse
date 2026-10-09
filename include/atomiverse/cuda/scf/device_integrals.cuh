@@ -158,6 +158,48 @@ void launch_uhf_forces_sp(double* fx, double* fy, double* fz,
                           const double* atom_pos, int n_ao, int n_prim,
                           int natm, void* stream);
 
+/// @brief Fused 1e integrals for Cartesian shells with l ≤ 2.
+///
+/// Ragged contractions: primitive `p` of shell `s` is
+/// `prim_alpha[shell_prim_off[s] + p]`. Coefficients are physically
+/// normalized. One thread per unique AO pair. l > 2 is not evaluated
+/// (the host must throw `launch_eri_f` before this launch).
+///
+/// @param S,T,V Output [n_ao × n_ao, col-major, device].
+/// @param prim_alpha,prim_coeff Flat primitive list [device].
+/// @param shell_nprim,shell_prim_off Per-shell contraction [n_shells].
+/// @param shell_centers [n_shells × 3] Bohr.
+/// @param shell_L Angular momentum per shell (0..2).
+/// @param ao_shell,ao_cart AO → shell and Cartesian component.
+/// @param atom_Z,atom_pos Nuclei [natm], positions in Bohr.
+/// @param n_ao AO count. @param natm Atom count.
+/// @param stream CUDA stream.
+void launch_1e_integrals_lgt1(double* S, double* T, double* V,
+                              const double* prim_alpha,
+                              const double* prim_coeff, const int* shell_nprim,
+                              const int* shell_prim_off,
+                              const double* shell_centers, const int* shell_L,
+                              const int* ao_shell, const int* ao_cart,
+                              const int* atom_Z, const double* atom_pos,
+                              int n_ao, int natm, void* stream);
+
+/// @brief Cartesian ERI tensor for shells with l ≤ 2 (ragged n_prim).
+///
+/// Writes the full n_ao^4 tensor consumed by the RHF G build
+/// (PySCF `get_veff`: J − ½K). Shell quartets with total angular
+/// momentum ≤ 5 use the s/p McMurchie–Davidson primitive; heavier
+/// quartets up to (dd|dd) build one Hermite table per primitive quartet.
+/// @param ERI [n_ao^4, col-major] device.
+/// @param shell_ao_start First AO of each shell [n_shells].
+/// @param n_shells Shell count. @param n_ao AO count.
+/// @param stream CUDA stream.
+/// @throws std::invalid_argument when `n_shells` > 256.
+void launch_eri_lgt1(double* ERI, const double* prim_alpha,
+                     const double* prim_coeff, const int* shell_nprim,
+                     const int* shell_prim_off, const double* shell_centers,
+                     const int* shell_L, const int* shell_ao_start,
+                     int n_shells, int n_ao, void* stream);
+
 } // namespace scf
 } // namespace cuda
 } // namespace ATV

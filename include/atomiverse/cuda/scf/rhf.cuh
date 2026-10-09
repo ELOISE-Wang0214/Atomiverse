@@ -11,9 +11,12 @@
 /// Not a Component. Outer `cuda::Evaluate` / `cuda::md::MD` nest it with
 /// `set_evaluator` / `on(phase).add`, which mounts a private slot.
 ///
-/// **Energy (CUDA-only HF for STO-3G s/p):** device integral kernels + SCF
-/// (`launch_*_sp`) — no host ERI. **Forces:** s/p device analytic
-/// (`launch_rhf_forces_sp`); out-of-coverage throws (use `cpu::scf::RHF`).
+/// **Energy:** device integrals, no host ERI. STO-3G l ≤ 1 uses
+/// `launch_*_sp`. Cartesian l ≤ 2 (and spherical bases with max l ≤ 1)
+/// uses `launch_*_lgt1`. Spherical l ≥ 2 throws `launch_eri_sph`; l ≥ 3
+/// throws `launch_eri_f`. **Forces:** STO-3G s/p
+/// (`launch_rhf_forces_sp`). Cartesian l ≤ 2 forces throw
+/// `launch_rhf_forces_lgt1` — `with_gradient(false)` for that energy.
 ///
 /// Units: `kEnergy` [eV]; forces `kAtom_f*` [eV/Å]; `energy()` [Hartree].
 ///
@@ -150,9 +153,10 @@ class RHF : public cuda::Driver<ATV::scf::Phase>,
     ///        `forces()` throws instead of a host fallback.
     bool last_force_on_device() const { return last_force_device_; }
 
-    /// @brief True when the most recent SCF used device s/p integrals
-    ///        (`RHFFockDevice` / `launch_*_sp`), including non-zero level_shift.
-    ///        False for the uncovered-basis host-fill integral path.
+    /// @brief True when the most recent SCF built integrals on device
+    ///        (`launch_*_sp` or `launch_*_lgt1`), including a non-zero
+    ///        level shift. False only if `run` / `forces` has not completed
+    ///        a device SCF (a missing kernel throws instead of host-filling).
     bool last_scf_on_device() const { return last_device_sp_; }
 
     /// @brief Device SCF workspace during a solve.

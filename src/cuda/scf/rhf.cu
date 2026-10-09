@@ -1,17 +1,18 @@
 /// @file cuda/scf/rhf.cu
 /// @brief cuda::scf::RHF — concrete restricted HF on the CUDA backend.
 ///
-/// **Energy path (primary):** STO-3G with l ≤ 1 (H…O, mixed Z, e.g. H₂O):
-/// integrals + SCF stay on device (`RHFFockDevice` / `launch_*_sp`) —
-/// **CUDA-only HF**, no host ERI tensor. The iteration is the Driver plan
-/// (PySCF `scf.hf.kernel` / `scf.diis.CDIIS.update`). Other bases fill
-/// S / Hcore / ERI once in `assemble_` (setup), never inside a stage.
+/// **Energy path:** device integrals only — no host ERI fill.
+/// STO-3G l ≤ 1 uses `launch_*_sp`. Cartesian shells with l ≤ 2
+/// (6-31G, 6-31G*, 6-31+G*, and spherical bases whose highest shell is
+/// l ≤ 1) use `launch_*_lgt1`. Spherical l ≥ 2 throws `launch_eri_sph`.
+/// l ≥ 3 throws `launch_eri_f`. The iteration is the Driver plan
+/// (PySCF `scf.hf.kernel` / `get_veff` = J − ½K via `scf._vhf.direct`
+/// `int2e_cart`).
 ///
-/// **Forces path (Wave 6):** STO-3G s/p (l ≤ 1, H…O, e.g. H₂O) analytic on
-/// device (`launch_rhf_forces_sp`). Out-of-coverage (`compute_force` on a
-/// higher-L / other basis) throws with a how-to — no silent host fallback.
-/// Use `with_gradient(false)` for energy-only, or `cpu::scf::RHF` for
-/// other bases.
+/// **Forces:** STO-3G s/p analytic on device (`launch_rhf_forces_sp`).
+/// Cartesian l ≤ 2 energy with forces requested throws
+/// `launch_rhf_forces_lgt1`. Use `with_gradient(false)` for that energy,
+/// or `cpu::scf::RHF` for gradients and for spherical / f shells.
 
 #ifdef ATV_HAS_HF
 
@@ -32,6 +33,7 @@
 #include "atomiverse/cpu/scf/basis_data/accessors.h"
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/grid.h"
+#include "atomiverse/cpu/scf/internal/cartesian_shell_pack.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cpu/scf/scf_enums.h"
@@ -46,84 +48,6 @@ namespace ATV {
 namespace cuda {
 namespace scf {
 namespace {
-
-/// @brief True when every atom is s/p STO-3G (l ≤ 1) with uniform n_prim.
-///
-/// Wave 4: mixed Z (H₂O) OK — molecular shell list built from the table.
-/// Numbers come from `basis_data::sto3g()`, never retyped here.
-bool device_sp_sto3g_ok(cpu::scf::BasisSet basis, const int* h_Z, int natm) {
-    if (basis != cpu::scf::BasisSet::STO3G || natm <= 0 || h_Z == nullptr)
-        return false;
-    int n_prim0 = -1;
-    for (int i = 0; i < natm; ++i) {
-        const int Z = h_Z[i];
-        if (!cpu::scf::basis_data::is_sp_sto3g(Z))
-            return false;
-        const int np = cpu::scf::basis_data::sp_sto3g_n_prim(Z);
-        if (n_prim0 < 0)
-            n_prim0 = np;
-        else if (np != n_prim0)
-            return false;
-    }
-    return true;
-}
-
-/// @brief Reconstruct a host Frame from device positions + nuclear Z.
-///
-/// Used for force assembly and the transitional host-integral energy path.
-cpu::Frame host_frame_from_device(const cuda::Frame& dframe) {
-    const int n = dframe.n_atoms();
-    if (n <= 0) {
-        throw std::invalid_argument(
-            "cuda::scf::RHF: device frame has no atoms");
-    }
-    std::vector<real_t> hx(static_cast<size_t>(n));
-    std::vector<real_t> hy(static_cast<size_t>(n));
-    std::vector<real_t> hz(static_cast<size_t>(n));
-    std::vector<int> htype(static_cast<size_t>(n));
-    cudaMemcpy(hx.data(), dframe.atoms.x,
-               sizeof(real_t) * static_cast<size_t>(n), cudaMemcpyDeviceToHost);
-    cudaMemcpy(hy.data(), dframe.atoms.y,
-               sizeof(real_t) * static_cast<size_t>(n), cudaMemcpyDeviceToHost);
-    cudaMemcpy(hz.data(), dframe.atoms.z,
-               sizeof(real_t) * static_cast<size_t>(n), cudaMemcpyDeviceToHost);
-    cudaMemcpy(htype.data(), dframe.atoms.type,
-               sizeof(int) * static_cast<size_t>(n), cudaMemcpyDeviceToHost);
-
-    cpu::Frame host(n);
-    auto x = host.span(kAtom_x);
-    auto y = host.span(kAtom_y);
-    auto z = host.span(kAtom_z);
-    auto type = host.span(kAtom_type);
-    for (int i = 0; i < n; ++i) {
-        x[i] = static_cast<double>(hx[static_cast<size_t>(i)]);
-        y[i] = static_cast<double>(hy[static_cast<size_t>(i)]);
-        z[i] = static_cast<double>(hz[static_cast<size_t>(i)]);
-        type[i] = htype[static_cast<size_t>(i)];
-    }
-    // Isolated-molecule box placeholder (integrals do not use the cell).
-    host.box = cpu::Box::cubic(100.0);
-    return host;
-}
-
-/// @brief Transitional host fill of S/Hcore/ERI → device SCF (p shells).
-std::unique_ptr<internal::RhfScfCycle>
-make_host_integral_solver(const cpu::Frame& frame, cpu::scf::BasisSet basis,
-                          int charge, double tol, int max_iter,
-                          double level_shift) {
-    xt::xtensor<double, 2> S;
-    xt::xtensor<double, 2> Hcore;
-    xt::xtensor<double, 4> ERI;
-    double V_nuc = 0.0;
-    int n_basis = 0;
-    int n_electrons = 0;
-    cpu::scf::internal::IntegralWorkspace::fill_rhf_matrices(
-        frame, basis, charge, /*compute_eri=*/true, S, Hcore, ERI, V_nuc,
-        n_basis, n_electrons);
-    return std::make_unique<internal::RhfScfCycle>(
-        std::move(S), std::move(Hcore), std::move(ERI), V_nuc, n_electrons, tol,
-        max_iter, level_shift);
-}
 
 /// @brief CUDA-only RHF: molecular s/p STO-3G → device 1e/ERI + SCF (Wave 4).
 ///
@@ -183,6 +107,31 @@ make_device_sp_sto3g_solver(const int* h_Z, int natm, int charge, double tol,
     return std::make_unique<internal::RhfScfCycle>(
         n_shells, n_ao, n_prim, alpha_mol.data(), coeff_mol.data(),
         L_mol.data(), atom_of.data(), n_occ, tol, max_iter, level_shift);
+}
+
+/// @brief Cartesian l ≤ 2 (ragged n_prim) → device 1e + ERI. No host integrals.
+std::unique_ptr<internal::RhfScfCycle>
+make_device_lgt1_solver(cpu::scf::BasisSet basis, const int* h_Z, int natm,
+                        int charge, double tol, int max_iter,
+                        double level_shift) {
+    const cpu::scf::internal::CartesianShellPack pack =
+        cpu::scf::internal::pack_cartesian_shells(basis, h_Z, natm);
+    int n_electrons = -charge;
+    for (int i = 0; i < natm; ++i)
+        n_electrons += h_Z[i];
+    if (n_electrons < 0 || n_electrons % 2 != 0) {
+        throw std::invalid_argument(
+            "cuda::scf::RHF: closed-shell CUDA path requires even non-negative "
+            "electron count (n_electrons="
+            + std::to_string(n_electrons) + ", charge=" + std::to_string(charge)
+            + ")");
+    }
+    const int n_occ = n_electrons / 2;
+    return std::make_unique<internal::RhfScfCycle>(
+        pack.n_shells, pack.n_ao, pack.alpha.data(), pack.coeff.data(),
+        static_cast<int>(pack.alpha.size()), pack.nprim.data(),
+        pack.prim_off.data(), pack.L.data(), pack.atom_of.data(), n_occ, tol,
+        max_iter, level_shift);
 }
 
 } // namespace
@@ -339,26 +288,38 @@ void RHF::assemble_(cuda::Context& ctx, cuda::Frame& frame) {
     const int* h_Z = host_Z_.data();
 
     last_force_device_ = false;
-    if (compute_force && !device_sp_sto3g_ok(basis, h_Z, natm)) {
+    const cpu::scf::internal::CudaRhfRoute route =
+        cpu::scf::internal::classify_cuda_rhf(basis, h_Z, natm);
+    if (route.kind == cpu::scf::internal::CudaRhfRouteKind::MissingKernel) {
         throw std::invalid_argument(
-            "cuda::scf::RHF::forces: device analytic gradients cover "
-            "STO-3G l<=1 (H-O) only. Use cpu::scf::RHF{basis}.forces(frame) "
-            "for other bases or higher angular momentum.");
+            std::string("cuda::scf::RHF: missing kernel ")
+            + route.missing_kernel
+            + ". Cartesian l<=2 is launch_eri_lgt1 on device; spherical l>=2 "
+              "needs launch_eri_sph; l>=3 needs launch_eri_f. No host ERI "
+              "fill — use cpu::scf::RHF for this basis.");
+    }
+    if (compute_force
+        && route.kind != cpu::scf::internal::CudaRhfRouteKind::Sto3gSp) {
+        throw std::invalid_argument(
+            std::string("cuda::scf::RHF::forces: missing kernel ")
+            + cpu::scf::internal::kMissingKernelForcesLgt1
+            + ". Device analytic gradients cover STO-3G l<=1 "
+              "(launch_rhf_forces_sp) only. Cartesian l<=2 energy: "
+              "with_gradient(false). Forces: "
+              "cpu::scf::RHF{basis}.forces(frame).");
     }
 
     release_engine_();
     loop_->slot.ctx = &ctx;
     loop_->slot.frame = &frame;
-    if (device_sp_sto3g_ok(basis, h_Z, natm)) {
+    if (route.kind == cpu::scf::internal::CudaRhfRouteKind::Sto3gSp) {
         loop_->slot.cycle = make_device_sp_sto3g_solver(h_Z, natm, charge, tol,
                                                         max_iter, level_shift);
-        last_device_sp_ = true;
     } else {
-        cpu::Frame host = host_frame_from_device(frame);
-        loop_->slot.cycle = make_host_integral_solver(host, basis, charge, tol,
-                                                      max_iter, level_shift);
-        last_device_sp_ = false;
+        loop_->slot.cycle = make_device_lgt1_solver(basis, h_Z, natm, charge,
+                                                    tol, max_iter, level_shift);
     }
+    last_device_sp_ = true;
     loop_->slot.cycle->build(ctx.stream, frame);
 }
 

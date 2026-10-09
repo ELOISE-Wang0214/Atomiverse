@@ -60,6 +60,15 @@ class RhfScfCycle {
                 const int* atom_of_mol, int n_occ, double tol, int max_iter,
                 double level_shift = 0.0);
 
+    /// @brief Device RHF from ragged Cartesian shells (l ≤ 2).
+    ///
+    /// Raw table coefficients. See `RHFFockDevice`'s ragged constructor.
+    /// @param n_prim_total Length of the flat `alpha` / `coeff` lists.
+    RhfScfCycle(int n_shells, int n_ao, const double* alpha,
+                const double* coeff, int n_prim_total, const int* nprim,
+                const int* prim_off, const int* L_mol, const int* atom_of_mol,
+                int n_occ, double tol, int max_iter, double level_shift = 0.0);
+
     /// @brief One-time device workspace allocation.
     void build(void* stream, cuda::Frame& frame);
 

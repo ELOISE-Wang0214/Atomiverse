@@ -73,6 +73,17 @@ class RHFFockDevice {
                   const double* coeff_mol, const int* L_mol,
                   const int* atom_of_mol, int n_occ, double level_shift = 0.0);
 
+    /// @brief Ragged Cartesian shells, every l ≤ 2.
+    ///
+    /// `alpha` / `coeff` are the raw basis-table contraction (not
+    /// physically normalized). `nprim[s]` / `prim_off[s]` index that
+    /// flat list. Device `launch_*_lgt1` builds S, T, V, and the ERI.
+    /// @param n_prim_total Length of `alpha` and `coeff`.
+    RHFFockDevice(int n_shells, int n_ao, const double* alpha,
+                  const double* coeff, int n_prim_total, const int* nprim,
+                  const int* prim_off, const int* L_mol, const int* atom_of_mol,
+                  int n_occ, double level_shift = 0.0);
+
     /// @brief Multi-shell pure-s convenience (Wave 3): one element type, all L=0.
     /// @param n_shells_per_atom s shells per atom (table order).
     /// @param n_prim Primitives per shell.
@@ -115,6 +126,10 @@ class RHFFockDevice {
     std::vector<double> coeff_mol_;
     std::vector<int> L_mol_;
     std::vector<int> atom_of_mol_;
+    /// Ragged primitive counts / offsets. Empty on the uniform STO-3G path.
+    std::vector<int> nprim_;
+    std::vector<int> prim_off_;
+    bool ragged_ = false;
 
     void* cublas_handle_ = nullptr;
     void* cusolver_handle_ = nullptr;

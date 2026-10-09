@@ -7,6 +7,7 @@
 
 #include "atomiverse/core/gto.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/scf/internal/cartesian_shell_pack.h"
 #include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/scf/device_integrals.cuh"
 #include "atomiverse/cuda/scf/internal/rhf_fock.cuh"
@@ -18,6 +19,7 @@
 #include <cuda_runtime.h>
 #include <cusolverDn.h>
 #include <stdexcept>
+#include <string>
 #include <vector>
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/reducers/xnorm.hpp>
@@ -373,6 +375,32 @@ RHFFockDevice::RHFFockDevice(int n_shells, int n_ao, int n_prim,
     atom_of_mol_.assign(atom_of_mol, atom_of_mol + n_shells);
 }
 
+RHFFockDevice::RHFFockDevice(int n_shells, int n_ao, const double* alpha,
+                             const double* coeff, int n_prim_total,
+                             const int* nprim, const int* prim_off,
+                             const int* L_mol, const int* atom_of_mol,
+                             int n_occ, double level_shift)
+    : n_shells_(n_shells), n_ao_(n_ao), n_prim_(0), n_occ_(n_occ),
+      level_shift_(level_shift), pure_s_broadcast_(false), ragged_(true) {
+    if (n_prim_total < 1 || nprim == nullptr || prim_off == nullptr)
+        throw std::invalid_argument(
+            "RHFFockDevice: ragged Cartesian shells need a primitive list");
+    alpha_mol_.assign(alpha, alpha + n_prim_total);
+    coeff_mol_.assign(coeff, coeff + n_prim_total);
+    L_mol_.assign(L_mol, L_mol + n_shells);
+    atom_of_mol_.assign(atom_of_mol, atom_of_mol + n_shells);
+    nprim_.assign(nprim, nprim + n_shells);
+    prim_off_.assign(prim_off, prim_off + n_shells);
+    for (int L : L_mol_) {
+        if (L < 0 || L > cpu::scf::internal::kCudaCartesianLgt1Max) {
+            throw std::invalid_argument(
+                std::string("cuda::scf::RHF: missing kernel ")
+                + cpu::scf::internal::kMissingKernelEriF
+                + " for angular momentum l=" + std::to_string(L));
+        }
+    }
+}
+
 RHFFockDevice::RHFFockDevice(int n_shells_per_atom, int n_prim,
                              const double* alpha_atom, const double* coeff_atom,
                              int n_occ, int natm, double level_shift)
@@ -421,6 +449,8 @@ void RHFFockDevice::build(const SolverContext& ctx, SCFWorkspace& ws) {
     auto stream = static_cast<cudaStream_t>(ctx.stream);
     auto& scf = ws;
     int natm = ctx.frame.n_atoms();
+    int* d_nprim = nullptr;
+    int* d_prim_off = nullptr;
 
     // Pure-s broadcast ctor: expand atom block → molecular shells now.
     if (pure_s_broadcast_) {
@@ -496,19 +526,36 @@ void RHFFockDevice::build(const SolverContext& ctx, SCFWorkspace& ws) {
             "RHFFockDevice::build: n_ao mismatch vs shell L list");
     }
 
-    const std::size_t nflat =
-        static_cast<std::size_t>(n_shells) * static_cast<std::size_t>(n_prim_);
+    const std::size_t nflat = ragged_ ? alpha_mol_.size()
+                                      : static_cast<std::size_t>(n_shells)
+                                            * static_cast<std::size_t>(n_prim_);
     std::vector<prec_t> h_alpha(nflat), h_coeff(nflat);
-    for (int s = 0; s < n_shells; ++s) {
-        const int L = h_L[static_cast<std::size_t>(s)];
-        for (int p = 0; p < n_prim_; ++p) {
-            const std::size_t k = static_cast<std::size_t>(s * n_prim_ + p);
-            const double a = alpha_mol_[k];
-            const double c = coeff_mol_[k];
-            h_alpha[k] = static_cast<prec_t>(a);
-            const double norm =
-                (L == 0) ? ATV::phys_norm_s(a) : ATV::phys_norm_p(a);
-            h_coeff[k] = static_cast<prec_t>(c * norm);
+    if (!ragged_) {
+        for (int s = 0; s < n_shells; ++s) {
+            const int L = h_L[static_cast<std::size_t>(s)];
+            for (int p = 0; p < n_prim_; ++p) {
+                const std::size_t k = static_cast<std::size_t>(s * n_prim_ + p);
+                const double a = alpha_mol_[k];
+                const double c = coeff_mol_[k];
+                h_alpha[k] = static_cast<prec_t>(a);
+                const double norm =
+                    (L == 0) ? ATV::phys_norm_s(a) : ATV::phys_norm_p(a);
+                h_coeff[k] = static_cast<prec_t>(c * norm);
+            }
+        }
+    } else {
+        for (int s = 0; s < n_shells; ++s) {
+            const int L = h_L[static_cast<std::size_t>(s)];
+            const int off = prim_off_[static_cast<std::size_t>(s)];
+            const int np = nprim_[static_cast<std::size_t>(s)];
+            for (int p = 0; p < np; ++p) {
+                const std::size_t k = static_cast<std::size_t>(off + p);
+                const double a = alpha_mol_[k];
+                const double c = coeff_mol_[k];
+                h_alpha[k] = static_cast<prec_t>(a);
+                h_coeff[k] = static_cast<prec_t>(
+                    c * cpu::scf::internal::contraction_norm(L, a));
+            }
         }
     }
 
@@ -606,8 +653,10 @@ void RHFFockDevice::build(const SolverContext& ctx, SCFWorkspace& ws) {
         scf.d_converged = static_cast<int*>(d_ptr);
     }
     // Device forces (pure-s and mixed s/p) need W after SCF.
-    scf.device_sp_shells = true;
-    cudaMalloc(&scf.d_W, nn * sizeof(prec_t));
+    // Ragged l≤2 energy does not own launch_rhf_forces_lgt1.
+    scf.device_sp_shells = !ragged_;
+    if (!ragged_)
+        cudaMalloc(&scf.d_W, nn * sizeof(prec_t));
 
     cudaMemsetAsync(scf.P, 0, nn * sizeof(prec_t), stream);
     cudaMemsetAsync(scf.P_old, 0, nn * sizeof(prec_t), stream);
@@ -615,15 +664,31 @@ void RHFFockDevice::build(const SolverContext& ctx, SCFWorkspace& ws) {
     // ── 3. Device integral kernels (s+p MD/OS; pure-s is the l=0 subset) ─
     // Use the unified sp path for all device RHF so pure-s and mixed share
     // one contraction (avoids dual-kernel norm/layout drift).
-    ATV::cuda::scf::launch_1e_integrals_sp(
-        scf.S, d_T_, d_V_, scf.d_shell_alpha, scf.d_shell_coeff,
-        scf.d_shell_center, scf.d_shell_L, d_ao_start, scf.d_ao_shell,
-        scf.d_ao_cart, scf.d_atom_Z, scf.d_atom_pos, n_shells, n, n_prim_, natm,
-        stream);
-    ATV::cuda::scf::launch_eri_sp(scf.ERI, scf.d_shell_alpha, scf.d_shell_coeff,
-                                  scf.d_shell_center, scf.d_shell_L, d_ao_start,
-                                  scf.d_ao_shell, scf.d_ao_cart, n_shells, n,
-                                  n_prim_, stream);
+    if (!ragged_) {
+        ATV::cuda::scf::launch_1e_integrals_sp(
+            scf.S, d_T_, d_V_, scf.d_shell_alpha, scf.d_shell_coeff,
+            scf.d_shell_center, scf.d_shell_L, d_ao_start, scf.d_ao_shell,
+            scf.d_ao_cart, scf.d_atom_Z, scf.d_atom_pos, n_shells, n, n_prim_,
+            natm, stream);
+        ATV::cuda::scf::launch_eri_sp(
+            scf.ERI, scf.d_shell_alpha, scf.d_shell_coeff, scf.d_shell_center,
+            scf.d_shell_L, d_ao_start, scf.d_ao_shell, scf.d_ao_cart, n_shells,
+            n, n_prim_, stream);
+    } else {
+        cudaMalloc(&d_nprim, n_shells * sizeof(int));
+        cudaMalloc(&d_prim_off, n_shells * sizeof(int));
+        cudaMemcpyAsync(d_nprim, nprim_.data(), n_shells * sizeof(int),
+                        cudaMemcpyHostToDevice, stream);
+        cudaMemcpyAsync(d_prim_off, prim_off_.data(), n_shells * sizeof(int),
+                        cudaMemcpyHostToDevice, stream);
+        ATV::cuda::scf::launch_1e_integrals_lgt1(
+            scf.S, d_T_, d_V_, scf.d_shell_alpha, scf.d_shell_coeff, d_nprim,
+            d_prim_off, scf.d_shell_center, scf.d_shell_L, scf.d_ao_shell,
+            scf.d_ao_cart, scf.d_atom_Z, scf.d_atom_pos, n, natm, stream);
+        ATV::cuda::scf::launch_eri_lgt1(
+            scf.ERI, scf.d_shell_alpha, scf.d_shell_coeff, d_nprim, d_prim_off,
+            scf.d_shell_center, scf.d_shell_L, d_ao_start, n_shells, n, stream);
+    }
 
     // ── 4. Hcore = T + V ──────────────────────────────────────────────
     cublasHandle_t handle;
@@ -685,6 +750,8 @@ void RHFFockDevice::build(const SolverContext& ctx, SCFWorkspace& ws) {
     cudaFree(d_work_solver);
     cudaFree(d_info);
     cudaFree(d_ao_start);
+    cudaFree(d_nprim);
+    cudaFree(d_prim_off);
     // Wave 7: d_V_nuc stays as the sole nuclear-repulsion source for SCF energy;
     // host scf.V_nuc mirrored only in RhfScfCycle::finish post-pass.
 }

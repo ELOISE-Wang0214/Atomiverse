@@ -16,6 +16,8 @@
 #include "atomiverse/cuda/frame/types.cuh"
 #include <cmath>
 #include <cuda_runtime.h>
+#include <stdexcept>
+#include <string>
 
 namespace ATV {
 
@@ -68,6 +70,23 @@ __device__ __forceinline__ void cart_ang_device(int L, int cart, int ang[3]) {
             ang[1] = 1;
         else
             ang[2] = 1;
+    } else if (L == 2) {
+        // libcint / fill_cart_comps: xx, xy, xz, yy, yz, zz.
+        if (cart == 0)
+            ang[0] = 2;
+        else if (cart == 1) {
+            ang[0] = 1;
+            ang[1] = 1;
+        } else if (cart == 2) {
+            ang[0] = 1;
+            ang[2] = 1;
+        } else if (cart == 3)
+            ang[1] = 2;
+        else if (cart == 4) {
+            ang[1] = 1;
+            ang[2] = 1;
+        } else
+            ang[2] = 2;
     }
 }
 
@@ -1838,6 +1857,472 @@ void launch_uhf_forces_sp(double* fx, double* fy, double* fz,
     }
     rhf_forces_scale_kernel<<<cuda::grid_size(natm, threads), threads, 0, s>>>(
         fx, fy, fz, natm);
+}
+
+// ── Cartesian l ≤ 2, ragged n_prim (hf-cuda-lgt1) ────────────────────
+//
+// PySCF `scf.hf.get_jk` calls `scf._vhf.direct` with `intor='int2e_cart'`
+// when the molecule is Cartesian. `scf.hf.get_veff` returns J − ½K.
+// `build_G_kernel` is that contraction on the dense tensor
+// (G_ij = Σ_kl P_kl [(ij|kl) − ½(ik|jl)]). These launchers only fill
+// S, T, V and the Cartesian ERI. Quartets with Ltot ≤ 5 reuse
+// `eri_prim_md_device`. Heavier quartets (Ltot ≤ 8, (dd|dd)) build one
+// Hermite R table per primitive quartet — the same recurrence as
+// `native::eri_prim`, which matches `rys_eri_block` / libcint int2e_cart
+// for Cartesian d shells.
+
+static constexpr int kL2Dim = 9; // Hermite index 0..8 (Ltot ≤ 8)
+
+__device__ void build_hermite_R_l2(work_t R[kL2Dim][kL2Dim][kL2Dim][kL2Dim],
+                                   int Ltot, int Rx, int Ry, int Rz, work_t rho,
+                                   work_t Tval, const work_t PQ[3]) {
+    for (int m = 0; m < kL2Dim; ++m)
+        for (int t = 0; t < kL2Dim; ++t)
+            for (int u = 0; u < kL2Dim; ++u)
+                for (int v = 0; v < kL2Dim; ++v)
+                    R[m][t][u][v] = work_t(0);
+    work_t Fm[kL2Dim];
+    for (int m = 0; m <= Ltot && m < kL2Dim; ++m)
+        Fm[m] = boys_fn_device(m, Tval);
+    work_t neg2 = -work_t(2) * rho;
+    work_t pow = work_t(1);
+    for (int m = 0; m <= Ltot && m < kL2Dim; ++m) {
+        R[m][0][0][0] = pow * Fm[m];
+        pow *= neg2;
+    }
+    for (int m = Ltot - 1; m >= 0; --m) {
+        const int max_tuv = Ltot - m;
+        for (int t = 1; t <= Rx && t <= max_tuv && t < kL2Dim; ++t) {
+            R[m][t][0][0] = PQ[0] * R[m + 1][t - 1][0][0];
+            if (t >= 2)
+                R[m][t][0][0] += work_t(t - 1) * R[m + 1][t - 2][0][0];
+        }
+        for (int t = 0; t <= Rx && t <= max_tuv && t < kL2Dim; ++t) {
+            for (int u = 1; u <= Ry && t + u <= max_tuv && u < kL2Dim; ++u) {
+                R[m][t][u][0] = PQ[1] * R[m + 1][t][u - 1][0];
+                if (u >= 2)
+                    R[m][t][u][0] += work_t(u - 1) * R[m + 1][t][u - 2][0];
+            }
+        }
+        for (int t = 0; t <= Rx && t <= max_tuv && t < kL2Dim; ++t) {
+            for (int u = 0; u <= Ry && t + u <= max_tuv && u < kL2Dim; ++u) {
+                for (int v = 1; v <= Rz && t + u + v <= max_tuv && v < kL2Dim;
+                     ++v) {
+                    R[m][t][u][v] = PQ[2] * R[m + 1][t][u][v - 1];
+                    if (v >= 2)
+                        R[m][t][u][v] += work_t(v - 1) * R[m + 1][t][u][v - 2];
+                }
+            }
+        }
+    }
+}
+
+__device__ work_t contract_md_l2(const work_t R[kL2Dim][kL2Dim][kL2Dim][kL2Dim],
+                                 const int a_ang[3], const int b_ang[3],
+                                 const int c_ang[3], const int d_ang[3],
+                                 const work_t PA[3], const work_t PB[3],
+                                 const work_t QC[3], const work_t QD[3],
+                                 work_t inv2g1, work_t inv2g2,
+                                 work_t prefactor) {
+    const int Lx1 = a_ang[0] + b_ang[0];
+    const int Ly1 = a_ang[1] + b_ang[1];
+    const int Lz1 = a_ang[2] + b_ang[2];
+    const int Lx2 = c_ang[0] + d_ang[0];
+    const int Ly2 = c_ang[1] + d_ang[1];
+    const int Lz2 = c_ang[2] + d_ang[2];
+    work_t E1[3][kDeviceMDEDim];
+    work_t E2[3][kDeviceMDEDim];
+    for (int d = 0; d < 3; ++d) {
+        md_e_coeffs_device(a_ang[d], b_ang[d], PA[d], PB[d], inv2g1, E1[d]);
+        md_e_coeffs_device(c_ang[d], d_ang[d], QC[d], QD[d], inv2g2, E2[d]);
+    }
+    work_t eri_val = work_t(0);
+    for (int t = 0; t <= Lx1; ++t) {
+        for (int u = 0; u <= Ly1; ++u) {
+            for (int v = 0; v <= Lz1; ++v) {
+                const work_t e1 = E1[0][t] * E1[1][u] * E1[2][v];
+                if (e1 == work_t(0))
+                    continue;
+                for (int tau = 0; tau <= Lx2; ++tau) {
+                    for (int nu = 0; nu <= Ly2; ++nu) {
+                        for (int phi = 0; phi <= Lz2; ++phi) {
+                            const work_t e2 =
+                                E2[0][tau] * E2[1][nu] * E2[2][phi];
+                            if (e2 == work_t(0))
+                                continue;
+                            const work_t sign =
+                                ((tau + nu + phi) & 1) ? work_t(-1) : work_t(1);
+                            eri_val +=
+                                e1 * e2 * sign * R[0][t + tau][u + nu][v + phi];
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return prefactor * eri_val;
+}
+
+__device__ int ncart_of_device(int L) { return (L + 1) * (L + 2) / 2; }
+
+__global__ void compute_1e_lgt1_kernel(
+    prec_t* S, prec_t* T, prec_t* V, const prec_t* prim_alpha,
+    const prec_t* prim_coeff, const int* shell_nprim, const int* shell_prim_off,
+    const prec_t* shell_centers, const int* shell_L, const int* ao_shell,
+    const int* ao_cart, const int* atom_Z, const prec_t* atom_pos, int n_ao,
+    int natm) {
+    const int n_pairs = n_ao * (n_ao + 1) / 2;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    for (int pair = idx; pair < n_pairs; pair += blockDim.x * gridDim.x) {
+        int mu = (int)((-1.0 + sqrt(1.0 + 8.0 * pair)) * 0.5);
+        int nu = pair - mu * (mu + 1) / 2;
+        if (nu > mu) {
+            ++mu;
+            nu = pair - mu * (mu + 1) / 2;
+        }
+        const int si = ao_shell[mu];
+        const int sj = ao_shell[nu];
+        int a_ang[3], b_ang[3];
+        cart_ang_device(shell_L[si], ao_cart[mu], a_ang);
+        cart_ang_device(shell_L[sj], ao_cart[nu], b_ang);
+        work_t A[3] = {static_cast<work_t>(shell_centers[si * 3 + 0]),
+                       static_cast<work_t>(shell_centers[si * 3 + 1]),
+                       static_cast<work_t>(shell_centers[si * 3 + 2])};
+        work_t B[3] = {static_cast<work_t>(shell_centers[sj * 3 + 0]),
+                       static_cast<work_t>(shell_centers[sj * 3 + 1]),
+                       static_cast<work_t>(shell_centers[sj * 3 + 2])};
+        const int off_i = shell_prim_off[si];
+        const int off_j = shell_prim_off[sj];
+        const int npi = shell_nprim[si];
+        const int npj = shell_nprim[sj];
+        work_t acc_S = 0, acc_T = 0, acc_V = 0;
+        for (int p = 0; p < npi; ++p) {
+            work_t alpha_p = static_cast<work_t>(prim_alpha[off_i + p]);
+            work_t c_p = static_cast<work_t>(prim_coeff[off_i + p]);
+            for (int q = 0; q < npj; ++q) {
+                work_t alpha_q = static_cast<work_t>(prim_alpha[off_j + q]);
+                work_t c_q = static_cast<work_t>(prim_coeff[off_j + q]);
+                work_t c_pq = c_p * c_q;
+                acc_S += c_pq
+                         * overlap_prim_3d_device(a_ang, b_ang, alpha_p, A,
+                                                  alpha_q, B);
+                acc_T += c_pq
+                         * kinetic_prim_3d_device(a_ang, b_ang, alpha_p, A,
+                                                  alpha_q, B);
+                const work_t gamma = alpha_p + alpha_q;
+                const work_t mu_ab = alpha_p * alpha_q / gamma;
+                work_t R2 = dist2_device(A[0], A[1], A[2], B[0], B[1], B[2]);
+                work_t K_AB = exp(-mu_ab * R2);
+                work_t inv_g = work_t(1) / gamma;
+                work_t PA[3], PB[3], P[3];
+                for (int d = 0; d < 3; ++d) {
+                    P[d] = (alpha_p * A[d] + alpha_q * B[d]) * inv_g;
+                    PA[d] = P[d] - A[d];
+                    PB[d] = P[d] - B[d];
+                }
+                for (int a = 0; a < natm; ++a) {
+                    work_t Cpos[3] = {static_cast<work_t>(atom_pos[a * 3 + 0]),
+                                      static_cast<work_t>(atom_pos[a * 3 + 1]),
+                                      static_cast<work_t>(atom_pos[a * 3 + 2])};
+                    work_t PC[3] = {P[0] - Cpos[0], P[1] - Cpos[1],
+                                    P[2] - Cpos[2]};
+                    acc_V += c_pq * work_t(-atom_Z[a])
+                             * nuclear_prim_device(a_ang, b_ang, gamma, PA, PB,
+                                                   PC, K_AB);
+                }
+            }
+        }
+        const int ij = mu + nu * n_ao;
+        const int ji = nu + mu * n_ao;
+        S[ij] = acc_S;
+        T[ij] = acc_T;
+        V[ij] = acc_V;
+        if (mu != nu) {
+            S[ji] = acc_S;
+            T[ji] = acc_T;
+            V[ji] = acc_V;
+        }
+    }
+}
+
+__device__ void
+eri_quartet_light(prec_t* ERI, const prec_t* prim_alpha,
+                  const prec_t* prim_coeff, const int* shell_nprim,
+                  const int* shell_prim_off, const prec_t* shell_centers,
+                  int sa, int sb, int sc, int sd, int La, int Lb, int Lc,
+                  int Ld, int ao_a, int ao_b, int ao_c, int ao_d, int n_ao) {
+    const int na = ncart_of_device(La);
+    const int nb = ncart_of_device(Lb);
+    const int nc = ncart_of_device(Lc);
+    const int nd = ncart_of_device(Ld);
+    work_t A[3] = {static_cast<work_t>(shell_centers[sa * 3 + 0]),
+                   static_cast<work_t>(shell_centers[sa * 3 + 1]),
+                   static_cast<work_t>(shell_centers[sa * 3 + 2])};
+    work_t B[3] = {static_cast<work_t>(shell_centers[sb * 3 + 0]),
+                   static_cast<work_t>(shell_centers[sb * 3 + 1]),
+                   static_cast<work_t>(shell_centers[sb * 3 + 2])};
+    work_t C[3] = {static_cast<work_t>(shell_centers[sc * 3 + 0]),
+                   static_cast<work_t>(shell_centers[sc * 3 + 1]),
+                   static_cast<work_t>(shell_centers[sc * 3 + 2])};
+    work_t D[3] = {static_cast<work_t>(shell_centers[sd * 3 + 0]),
+                   static_cast<work_t>(shell_centers[sd * 3 + 1]),
+                   static_cast<work_t>(shell_centers[sd * 3 + 2])};
+    const int n2 = n_ao * n_ao;
+    const int n3 = n2 * n_ao;
+    for (int ia = 0; ia < na; ++ia) {
+        int a_ang[3] = {0, 0, 0};
+        cart_ang_device(La, ia, a_ang);
+        for (int ib = 0; ib < nb; ++ib) {
+            int b_ang[3] = {0, 0, 0};
+            cart_ang_device(Lb, ib, b_ang);
+            for (int ic = 0; ic < nc; ++ic) {
+                int c_ang[3] = {0, 0, 0};
+                cart_ang_device(Lc, ic, c_ang);
+                for (int id = 0; id < nd; ++id) {
+                    int d_ang[3] = {0, 0, 0};
+                    cart_ang_device(Ld, id, d_ang);
+                    work_t result = 0;
+                    const int oA = shell_prim_off[sa];
+                    const int oB = shell_prim_off[sb];
+                    const int oC = shell_prim_off[sc];
+                    const int oD = shell_prim_off[sd];
+                    for (int p = 0; p < shell_nprim[sa]; ++p) {
+                        work_t ap = static_cast<work_t>(prim_alpha[oA + p]);
+                        work_t cp = static_cast<work_t>(prim_coeff[oA + p]);
+                        for (int q = 0; q < shell_nprim[sb]; ++q) {
+                            work_t aq = static_cast<work_t>(prim_alpha[oB + q]);
+                            work_t cq = static_cast<work_t>(prim_coeff[oB + q]);
+                            for (int r = 0; r < shell_nprim[sc]; ++r) {
+                                work_t ar =
+                                    static_cast<work_t>(prim_alpha[oC + r]);
+                                work_t cr =
+                                    static_cast<work_t>(prim_coeff[oC + r]);
+                                for (int s = 0; s < shell_nprim[sd]; ++s) {
+                                    work_t as =
+                                        static_cast<work_t>(prim_alpha[oD + s]);
+                                    work_t cs =
+                                        static_cast<work_t>(prim_coeff[oD + s]);
+                                    result += cp * cq * cr * cs
+                                              * eri_prim_md_device(
+                                                  a_ang, b_ang, c_ang, d_ang,
+                                                  ap, A, aq, B, ar, C, as, D);
+                                }
+                            }
+                        }
+                    }
+                    const int mu = ao_a + ia;
+                    const int nu = ao_b + ib;
+                    const int lam = ao_c + ic;
+                    const int sig = ao_d + id;
+                    ERI[mu + nu * n_ao + lam * n2 + sig * n3] =
+                        static_cast<prec_t>(result);
+                }
+            }
+        }
+    }
+}
+
+__device__ void
+eri_quartet_heavy(prec_t* ERI, const prec_t* prim_alpha,
+                  const prec_t* prim_coeff, const int* shell_nprim,
+                  const int* shell_prim_off, const prec_t* shell_centers,
+                  int sa, int sb, int sc, int sd, int La, int Lb, int Lc,
+                  int Ld, int ao_a, int ao_b, int ao_c, int ao_d, int n_ao) {
+    const int na = ncart_of_device(La);
+    const int nb = ncart_of_device(Lb);
+    const int nc = ncart_of_device(Lc);
+    const int nd = ncart_of_device(Ld);
+    const int n_out = na * nb * nc * nd;
+    work_t acc[1296];
+    for (int i = 0; i < n_out; ++i)
+        acc[i] = work_t(0);
+    work_t A[3] = {static_cast<work_t>(shell_centers[sa * 3 + 0]),
+                   static_cast<work_t>(shell_centers[sa * 3 + 1]),
+                   static_cast<work_t>(shell_centers[sa * 3 + 2])};
+    work_t B[3] = {static_cast<work_t>(shell_centers[sb * 3 + 0]),
+                   static_cast<work_t>(shell_centers[sb * 3 + 1]),
+                   static_cast<work_t>(shell_centers[sb * 3 + 2])};
+    work_t C[3] = {static_cast<work_t>(shell_centers[sc * 3 + 0]),
+                   static_cast<work_t>(shell_centers[sc * 3 + 1]),
+                   static_cast<work_t>(shell_centers[sc * 3 + 2])};
+    work_t D[3] = {static_cast<work_t>(shell_centers[sd * 3 + 0]),
+                   static_cast<work_t>(shell_centers[sd * 3 + 1]),
+                   static_cast<work_t>(shell_centers[sd * 3 + 2])};
+    const int Rx = La + Lb + Lc + Ld;
+    const int Ry = Rx;
+    const int Rz = Rx;
+    const int Ltot = Rx;
+    const int oA = shell_prim_off[sa];
+    const int oB = shell_prim_off[sb];
+    const int oC = shell_prim_off[sc];
+    const int oD = shell_prim_off[sd];
+    for (int p = 0; p < shell_nprim[sa]; ++p) {
+        const work_t ap = static_cast<work_t>(prim_alpha[oA + p]);
+        const work_t cp = static_cast<work_t>(prim_coeff[oA + p]);
+        for (int q = 0; q < shell_nprim[sb]; ++q) {
+            const work_t aq = static_cast<work_t>(prim_alpha[oB + q]);
+            const work_t cq = static_cast<work_t>(prim_coeff[oB + q]);
+            for (int r = 0; r < shell_nprim[sc]; ++r) {
+                const work_t ar = static_cast<work_t>(prim_alpha[oC + r]);
+                const work_t cr = static_cast<work_t>(prim_coeff[oC + r]);
+                for (int s = 0; s < shell_nprim[sd]; ++s) {
+                    const work_t as = static_cast<work_t>(prim_alpha[oD + s]);
+                    const work_t cs = static_cast<work_t>(prim_coeff[oD + s]);
+                    const work_t gamma1 = ap + aq;
+                    const work_t gamma2 = ar + as;
+                    const work_t delta = gamma1 + gamma2;
+                    const work_t mu1 = ap * aq / gamma1;
+                    const work_t mu2 = ar * as / gamma2;
+                    const work_t rho = gamma1 * gamma2 / delta;
+                    const work_t inv2g1 = work_t(0.5) / gamma1;
+                    const work_t inv2g2 = work_t(0.5) / gamma2;
+                    work_t P[3], Q[3], PA[3], PB[3], QC[3], QD[3], PQ[3];
+                    work_t R2_AB = 0, R2_CD = 0, PQ2 = 0;
+                    for (int d = 0; d < 3; ++d) {
+                        P[d] = (ap * A[d] + aq * B[d]) / gamma1;
+                        Q[d] = (ar * C[d] + as * D[d]) / gamma2;
+                        PA[d] = P[d] - A[d];
+                        PB[d] = P[d] - B[d];
+                        QC[d] = Q[d] - C[d];
+                        QD[d] = Q[d] - D[d];
+                        PQ[d] = P[d] - Q[d];
+                        const work_t dAB = A[d] - B[d];
+                        const work_t dCD = C[d] - D[d];
+                        R2_AB += dAB * dAB;
+                        R2_CD += dCD * dCD;
+                        PQ2 += PQ[d] * PQ[d];
+                    }
+                    const work_t K_AB = exp(-mu1 * R2_AB);
+                    const work_t K_CD = exp(-mu2 * R2_CD);
+                    const work_t Tval = rho * PQ2;
+                    const work_t pi = work_t(ATV::units::pi);
+                    const work_t prefactor = work_t(2) * pi * pi * sqrt(pi)
+                                             / (gamma1 * gamma2 * sqrt(delta))
+                                             * K_AB * K_CD * cp * cq * cr * cs;
+                    work_t Rtab[kL2Dim][kL2Dim][kL2Dim][kL2Dim];
+                    build_hermite_R_l2(Rtab, Ltot, Rx, Ry, Rz, rho, Tval, PQ);
+                    int cout = 0;
+                    for (int ia = 0; ia < na; ++ia) {
+                        int a_ang[3] = {0, 0, 0};
+                        cart_ang_device(La, ia, a_ang);
+                        for (int ib = 0; ib < nb; ++ib) {
+                            int b_ang[3] = {0, 0, 0};
+                            cart_ang_device(Lb, ib, b_ang);
+                            for (int ic = 0; ic < nc; ++ic) {
+                                int c_ang[3] = {0, 0, 0};
+                                cart_ang_device(Lc, ic, c_ang);
+                                for (int id = 0; id < nd; ++id) {
+                                    int d_ang[3] = {0, 0, 0};
+                                    cart_ang_device(Ld, id, d_ang);
+                                    acc[cout] += contract_md_l2(
+                                        Rtab, a_ang, b_ang, c_ang, d_ang, PA,
+                                        PB, QC, QD, inv2g1, inv2g2, prefactor);
+                                    ++cout;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    const int n2 = n_ao * n_ao;
+    const int n3 = n2 * n_ao;
+    int cout = 0;
+    for (int ia = 0; ia < na; ++ia)
+        for (int ib = 0; ib < nb; ++ib)
+            for (int ic = 0; ic < nc; ++ic)
+                for (int id = 0; id < nd; ++id) {
+                    const int mu = ao_a + ia;
+                    const int nu = ao_b + ib;
+                    const int lam = ao_c + ic;
+                    const int sig = ao_d + id;
+                    ERI[mu + nu * n_ao + lam * n2 + sig * n3] =
+                        static_cast<prec_t>(acc[cout]);
+                    ++cout;
+                }
+}
+
+__global__ void
+compute_eri_lgt1_kernel(prec_t* ERI, const prec_t* prim_alpha,
+                        const prec_t* prim_coeff, const int* shell_nprim,
+                        const int* shell_prim_off, const prec_t* shell_centers,
+                        const int* shell_L, const int* shell_ao_start,
+                        int n_shells, int n_ao) {
+    const long long nsh = n_shells;
+    const long long n4 = nsh * nsh * nsh * nsh;
+    const long long stride = static_cast<long long>(blockDim.x) * gridDim.x;
+    for (long long q =
+             static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+         q < n4; q += stride) {
+        const int sd = static_cast<int>(q / (nsh * nsh * nsh));
+        long long rem = q % (nsh * nsh * nsh);
+        const int sc = static_cast<int>(rem / (nsh * nsh));
+        rem = rem % (nsh * nsh);
+        const int sb = static_cast<int>(rem / nsh);
+        const int sa = static_cast<int>(rem % nsh);
+        const int La = shell_L[sa];
+        const int Lb = shell_L[sb];
+        const int Lc = shell_L[sc];
+        const int Ld = shell_L[sd];
+        if (La > 2 || Lb > 2 || Lc > 2 || Ld > 2)
+            continue;
+        const int Ltot = La + Lb + Lc + Ld;
+        const int ao_a = shell_ao_start[sa];
+        const int ao_b = shell_ao_start[sb];
+        const int ao_c = shell_ao_start[sc];
+        const int ao_d = shell_ao_start[sd];
+        if (Ltot <= 5) {
+            eri_quartet_light(ERI, prim_alpha, prim_coeff, shell_nprim,
+                              shell_prim_off, shell_centers, sa, sb, sc, sd, La,
+                              Lb, Lc, Ld, ao_a, ao_b, ao_c, ao_d, n_ao);
+        } else {
+            eri_quartet_heavy(ERI, prim_alpha, prim_coeff, shell_nprim,
+                              shell_prim_off, shell_centers, sa, sb, sc, sd, La,
+                              Lb, Lc, Ld, ao_a, ao_b, ao_c, ao_d, n_ao);
+        }
+    }
+}
+
+void launch_1e_integrals_lgt1(double* S, double* T, double* V,
+                              const double* prim_alpha,
+                              const double* prim_coeff, const int* shell_nprim,
+                              const int* shell_prim_off,
+                              const double* shell_centers, const int* shell_L,
+                              const int* ao_shell, const int* ao_cart,
+                              const int* atom_Z, const double* atom_pos,
+                              int n_ao, int natm, void* stream) {
+    auto s = static_cast<cudaStream_t>(stream);
+    const int n_pairs = n_ao * (n_ao + 1) / 2;
+    const int threads = cuda::kDefaultBlock;
+    const int blocks = cuda::grid_size(n_pairs, threads);
+    compute_1e_lgt1_kernel<<<blocks, threads, 0, s>>>(
+        S, T, V, prim_alpha, prim_coeff, shell_nprim, shell_prim_off,
+        shell_centers, shell_L, ao_shell, ao_cart, atom_Z, atom_pos, n_ao,
+        natm);
+}
+
+void launch_eri_lgt1(double* ERI, const double* prim_alpha,
+                     const double* prim_coeff, const int* shell_nprim,
+                     const int* shell_prim_off, const double* shell_centers,
+                     const int* shell_L, const int* shell_ao_start,
+                     int n_shells, int n_ao, void* stream) {
+    if (n_shells > 256) {
+        throw std::invalid_argument(
+            "launch_eri_lgt1: n_shells=" + std::to_string(n_shells)
+            + " exceeds 256 (Cartesian l<=2 device ERI)");
+    }
+    auto s = static_cast<cudaStream_t>(stream);
+    const long long n4 = 1LL * n_shells * n_shells * n_shells * n_shells;
+    const int threads = cuda::kDefaultBlock;
+    int blocks = static_cast<int>((n4 + threads - 1) / threads);
+    if (blocks > 2048)
+        blocks = 2048;
+    if (blocks < 1)
+        blocks = 1;
+    compute_eri_lgt1_kernel<<<blocks, threads, 0, s>>>(
+        ERI, prim_alpha, prim_coeff, shell_nprim, shell_prim_off, shell_centers,
+        shell_L, shell_ao_start, n_shells, n_ao);
 }
 
 } // namespace scf
