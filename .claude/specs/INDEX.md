@@ -3,6 +3,19 @@
 Live specs under `.claude/specs/`. Completed work is **deleted**; history is
 the git log. Method census: `docs/roadmap/`.
 
+## Blocked — gfn2-camm-r (2026-10-09)
+
+Merged to `dev` (`7b1df662f`). Off-eq water `F_H1,y` is still the H0/Pulay
+pair term, not `dTheta/dR`. xtb 6.7.1 pin is not met. Spec stays; status
+is `blocked`. Do not open a second CAMM slug for the same bend.
+
+## Live — component-plugin (2026-08-18)
+
+`component-plugin-01-probe` predicates are already on `cpu::Component` and
+the energy/force kinds. `02-wrap` through `06-unmount` are not shipped:
+there is no `NestedLoopAdapter`. `Driver::unfix` exists and is not the
+05/06 live-table contract. Acceptance files stay `pending`.
+
 ## Closed — dftb-data-00-honesty (2026-09-04)
 
 Spec deleted; history is git (`17957633` + close). Fabricated U^d / W gone;

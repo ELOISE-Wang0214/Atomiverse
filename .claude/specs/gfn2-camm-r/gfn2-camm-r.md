@@ -1,6 +1,6 @@
 ---
 title: GFN2-xTB two-centre CAMM quadrupole (CAMM-vs-R)
-status: incomplete
+status: blocked
 created: 2026-08-25
 slug: gfn2-camm-r
 oracle: xtb
