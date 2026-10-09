@@ -145,6 +145,34 @@ RhfScfCycle::RhfScfCycle(int n_shells, int n_ao, int n_prim,
                                         level_shift_);
 }
 
+RhfScfCycle::RhfScfCycle(int n_shells, int n_ao, const double* alpha,
+                         const double* coeff, int n_prim_total,
+                         const int* nprim, const int* prim_off,
+                         const int* L_mol, const int* atom_of_mol, int n_occ,
+                         double tol, int max_iter, double level_shift,
+                         bool spherical)
+    : path_(Path::RHFDeviceIntegrals), tol_(tol), level_shift_(level_shift) {
+    (void)max_iter;
+    if (n_occ < 0) {
+        throw std::invalid_argument(
+            "cuda::scf::RHF: n_occ must be non-negative (got "
+            + std::to_string(n_occ) + ").");
+    }
+    if (n_shells < 1 || n_ao < 1 || n_prim_total < 1) {
+        throw std::invalid_argument(
+            "cuda::scf::RHF: ragged Cartesian shells need n_shells, n_ao, "
+            "and primitives ≥ 1");
+    }
+    eigen_ = std::make_unique<EigenSolver>();
+    convergence_ = std::make_unique<ConvergenceCheck>(tol, false);
+    rhf_fock_device_ = std::make_unique<RHFFockDevice>(
+        n_shells, n_ao, alpha, coeff, n_prim_total, nprim, prim_off, L_mol,
+        atom_of_mol, n_occ, level_shift_, spherical);
+    rhf_density_ = std::make_unique<RHFDensity>(n_occ);
+    diis_ = std::make_unique<DIISMixer>(/*max_vectors=*/8, /*start_iter=*/1,
+                                        level_shift_);
+}
+
 void RhfScfCycle::build(void* stream, cuda::Frame& frame) {
     SolverContext ctx{stream, frame, 0};
     switch (path_) {

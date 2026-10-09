@@ -10,13 +10,13 @@ Shares one SCF solver with [Kohn–Sham DFT](dft.md): the 2×2 product
 
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
-| RHF | ✓ | ✓ | `cpu::scf::RHF::run(Frame&)` / `run(const Frame&)` / `forces(Frame&)`. ADC, direct RPA, BSE, GF2, and EOM are not members. CUDA `cuda::scf::RHF` : `cuda::Driver<scf::Phase>` (fock, mix, diagonalize, density, check); device Fock/density/CDIIS; STO-3G s/p (l ≤ 1) native ERI+forces. PySCF energy: H₂/STO-3G on device; H₂O/6-31G on CPU (6-31G is not a device ERI kernel) |
+| RHF | ✓ | ✓ | `cpu::scf::RHF::run(Frame&)` / `run(const Frame&)` / `forces(Frame&)`. ADC, direct RPA, BSE, GF2, and EOM are not members. CUDA `cuda::scf::RHF` : `cuda::Driver<scf::Phase>` (fock, mix, diagonalize, density, check); `run(Frame&)` / `forces(Frame&)` only (no const overload); device Fock/density/CDIIS. STO-3G l ≤ 1: `launch_1e_integrals_sp` / `launch_eri_sp` energy and `launch_rhf_forces_sp` forces. Cartesian l ≤ 3 (6-31G, 6-31G*, 6-31+G*, ragged primitives): `launch_1e_integrals_lgt1` / `launch_eri_lgt1` energy with `with_gradient(false)`; `forces` throws `launch_rhf_forces_lgt1`. Spherical l ≤ 3 (def2-SVP, def2-TZVP, aug-cc-pVDZ) uses those Cartesian integrals and the CPU CartToSph sandwich on device — def2-TZVP's f shell is ten Cartesian GTOs, then the sandwich, not a Cartesian basis. l ≥ 4 throws `launch_eri_g`. No host ERI fill |
 | UHF | ✓ | ✓ | `cpu::scf::UHF{basis, n_alpha, n_beta, charge}` : `run(Frame&)` / `run(const Frame&)` / `forces(Frame&)`. CUDA `cuda::scf::UHF{basis, n_alpha, n_beta, charge}` : `cuda::Driver<scf::Phase>` with `run(Frame&)` / `forces(Frame&)` only (no const overload). `run` writes `kEnergy` [eV]; `forces` returns `GradientResult` and writes `kAtom_f*` [eV/Å]. Device Fock, density, CDIIS, and `launch_uhf_forces_sp` for STO-3G l ≤ 1. The device start is the spin-averaged MINAO density (`UHF.init_guess_by_minao`; H, C, N, O, F), so triplet O₂ matches PySCF's default rather than the core-Hamiltonian local minimum; any other element keeps that core start. Outside STO-3G l ≤ 1 the device call throws (`launch_eri_sp`) — no host-ERI fill. `CCSD<UHF>::eom_sf_ccsd`, `SfTDA<UHF>::run`, and `SfTDHF<UHF>::run` are not members |
 | ROHF | ✓ | ○ | Guest–Saunders. `ROHF::run` / `forces`. Correlation is `MP2<ROHF>::run`, not a member |
 | GHF | ✓ | ○ | Real two-component. `GHF::run` / `forces` |
 | Complex / spinor HF | ○ | ○ | |
 | ΔSCF / MOM / IMOM | ✓ | ○ | `UHF::delta_scf(Frame&, from, to, MomStyle)` |
-| RHF analytic gradient | ✓ | ✓ | `RHF::forces(Frame&)` and `cuda::scf::RHF::forces`. Same angular-momentum envelope as the energy |
+| RHF analytic gradient | ✓ | ✓ | `RHF::forces(Frame&)` and `cuda::scf::RHF::forces`. CUDA forces are STO-3G l ≤ 1 (`launch_rhf_forces_sp`). Any other basis throws `launch_rhf_forces_lgt1` (`with_gradient(false)` keeps that energy on device) |
 | UHF / ROHF / GHF analytic gradient | ✓ | UHF ✓ | `forces(Frame&)`. CUDA UHF uses `launch_uhf_forces_sp` on STO-3G l ≤ 1 (same envelope as the energy). ROHF and GHF gradients stay on the CPU |
 | RHF / UHF analytic Hessian | ✓ | ○ | CPHF: `Hessian<RHF>::run(Frame&)` / `Hessian<UHF>::run(Frame&)` (`pyscf.hessian.rhf` / `uhf`) |
 | ROHF Hessian | ✓ | ○ | `Hessian<ROHF>::run(Frame&)` — `central_difference_nuclear_hessian` of analytic `forces` (not CPHF; PySCF has no `hessian.ROHF`) |
@@ -25,7 +25,7 @@ Shares one SCF solver with [Kohn–Sham DFT](dft.md): the 2×2 product
 
 ### Gaps
 
-- CUDA Hartree–Fock is **RHF and UHF** on STO-3G l ≤ 1. No KS, ROHF, or GHF on device. `cuda::scf::UHF` throws outside that envelope (`launch_eri_sp`, `launch_uhf_forces_sp`) and does not fill ERIs on the host — use `cpu::scf::UHF`. `cuda::scf::RHF::forces` throws outside the same envelope; RHF energy for other bases still builds integrals on the host.
+- CUDA Hartree–Fock energy is **RHF** on shells with l ≤ 3 (`launch_1e_integrals_sp` / `launch_eri_sp` for uniform STO-3G s/p; `launch_1e_integrals_lgt1` / `launch_eri_lgt1` otherwise, including the CPU CartToSph sandwich on device for spherical def2-SVP, def2-TZVP, and aug-cc-pVDZ) and **UHF** on STO-3G l ≤ 1. No KS, ROHF, or GHF on device. No host ERI fill. `cuda::scf::UHF` throws outside STO-3G l ≤ 1 (`launch_eri_sp`, `launch_uhf_forces_sp`). `cuda::scf::RHF` throws `launch_eri_g` for l ≥ 4. `cuda::scf::RHF::forces` throws `launch_rhf_forces_lgt1` outside STO-3G l ≤ 1.
 - ROHF: SOSCF / level shift still throw. GHF: `MP2` / `FCI` / soscf throw.
 - Post-HF, continuum solvent, and CPHF response are not `MeanFieldMethod` members. SCF entries are `run(Frame&)` / `run(const Frame&)` / `forces(Frame&)`. Beside that: `ADC<RHF>::adc2` / `adc2x` / `ip_adc2` / `ea_adc2`, `DirectRPA<RHF>::run`, `BSE<RHF>::run`, `GF2<RHF>::run`, `G0W0<RHF>::run`, `Stability<RHF>::run`, `TDA<RHF>::run`, `TDHF<RHF>::run`, `CISD<RHF>::run`, `CCSD<RHF>::eom_ee_ccsd` / `eom_ip_ccsd` / `eom_ea_ccsd`, `CC2<RHF>::eom_cc2`, `CCSD<UHF>::eom_sf_ccsd`, `SfTDA<UHF>::run`, `SfTDHF<UHF>::run`, `MP2<Method>::run`, `WithSolvent<Method>::run`, `Hessian<RHF|UHF|ROHF>::run`, `Polarizability<RHF>::run`.
 
@@ -51,14 +51,15 @@ PW/GPW product paths are semi-local DFT — see [DFT § Periodic](dft.md#4-perio
 | Hcore / MINAO guess | ✓ | ✓ / ○ | MINAO: H, C, N, O, F only; else Hcore |
 | ASPC density predictor | ✓ | ○ | AIMD warm start |
 | ⟨S²⟩ analysis | ✓ | ○ | |
-| Spherical (pure) AO | ✓ | ○ | e.g. def2-SVP |
+| Spherical (pure) AO | ✓ | RHF ✓ | RHF energy, l ≤ 3 (def2-SVP, def2-TZVP, aug-cc-pVDZ): `launch_1e_integrals_lgt1` / `launch_eri_lgt1` plus the CPU CartToSph sandwich on device. Not a native spherical ERI. `cuda::scf::UHF` stays STO-3G l ≤ 1 (`launch_eri_sp`). l ≥ 4 throws `launch_eri_g` |
 | RI-J / RI-JK | ✓ | ○ | def2-universal JKFIT; SCF only |
 | CFMM-J | ✓ | ○ | `Coulomb::CFMM` |
 | Native Rys ERI (l ≤ 3) | ✓ | ○ | s/p/d/f |
-| Device ERI | — | ✓ | s/p, l ≤ 1 |
+| Device ERI | — | ✓ | STO-3G l ≤ 1: `launch_eri_sp`. Cartesian s/p/d/f, l ≤ 3: `launch_eri_lgt1`. Spherical l ≤ 3 is that tensor plus CartToSph. l ≥ 4 throws `launch_eri_g` |
 | ECP | ✓ | ○ | Semi-numerical forces |
 | x2c-1e (energy) | ✓ | ○ | Forces throw |
 | Diagonalization | ✓ | ✓ | LAPACK / cuSOLVER |
 
-**Bases:** STO-3G, 6-31G, 6-31G\*, def2-SVP, def2-TZVP. Cartesian default;
-spherical available where the set defines it.
+**Bases:** STO-3G, 6-31G, 6-31G\*, 6-31+G\*, def2-SVP, def2-TZVP, aug-cc-pVDZ.
+STO-3G and the Pople sets are Cartesian; def2-SVP, def2-TZVP, and aug-cc-pVDZ
+are spherical.

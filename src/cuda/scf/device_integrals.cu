@@ -14,8 +14,11 @@
 #include "atomiverse/cuda/scf/device_integrals.cuh"
 
 #include "atomiverse/cuda/frame/types.cuh"
+#include <cfloat>
 #include <cmath>
 #include <cuda_runtime.h>
+#include <stdexcept>
+#include <string>
 
 namespace ATV {
 
@@ -68,6 +71,53 @@ __device__ __forceinline__ void cart_ang_device(int L, int cart, int ang[3]) {
             ang[1] = 1;
         else
             ang[2] = 1;
+    } else if (L == 2) {
+        // libcint / fill_cart_comps: xx, xy, xz, yy, yz, zz.
+        if (cart == 0)
+            ang[0] = 2;
+        else if (cart == 1) {
+            ang[0] = 1;
+            ang[1] = 1;
+        } else if (cart == 2) {
+            ang[0] = 1;
+            ang[2] = 1;
+        } else if (cart == 3)
+            ang[1] = 2;
+        else if (cart == 4) {
+            ang[1] = 1;
+            ang[2] = 1;
+        } else
+            ang[2] = 2;
+    } else if (L == 3) {
+        // fill_cart_comps(l=3): xxx xxy xxz xyy xyz xzz yyy yyz yzz zzz.
+        if (cart == 0)
+            ang[0] = 3;
+        else if (cart == 1) {
+            ang[0] = 2;
+            ang[1] = 1;
+        } else if (cart == 2) {
+            ang[0] = 2;
+            ang[2] = 1;
+        } else if (cart == 3) {
+            ang[0] = 1;
+            ang[1] = 2;
+        } else if (cart == 4) {
+            ang[0] = 1;
+            ang[1] = 1;
+            ang[2] = 1;
+        } else if (cart == 5) {
+            ang[0] = 1;
+            ang[2] = 2;
+        } else if (cart == 6)
+            ang[1] = 3;
+        else if (cart == 7) {
+            ang[1] = 2;
+            ang[2] = 1;
+        } else if (cart == 8) {
+            ang[1] = 1;
+            ang[2] = 2;
+        } else
+            ang[2] = 3;
     }
 }
 
@@ -1838,6 +1888,660 @@ void launch_uhf_forces_sp(double* fx, double* fy, double* fz,
     }
     rhf_forces_scale_kernel<<<cuda::grid_size(natm, threads), threads, 0, s>>>(
         fx, fy, fz, natm);
+}
+
+// ── Cartesian l ≤ 3, ragged n_prim (hf-cuda-lgt1) ────────────────────
+//
+// PySCF `scf.hf.get_jk` calls `scf._vhf.direct` with `intor='int2e_cart'`
+// (`pyscf/scf/hf.py` get_veff = J − ½K). One McMurchie–Davidson quartet
+// (`native::eri_prim` / libcint `int2e_cart`). l ≤ 2 uses upward Boys
+// (`boys_fn_device`) and an R table of order ≤ 8. A quartet that touches
+// l = 3 uses libcint `gamma_inc_like` (`src/fmt.c`): upward recurrence
+// from F_0 is unstable at f-shell order (Ltot ≤ 12). No second primitive
+// loop and no host ERI fill.
+
+// libcint src/fmt.c turnover (index = Boys order). Nuclear l ≤ 3 needs
+// m ≤ 6; the f ERI kernel needs m ≤ 12.
+static const __device__ work_t kFmtTurnover[] = {
+    0.0,
+    0.0,
+    0.866025403784,
+    1.295010032056,
+    1.705493613097,
+    2.106432965305,
+    2.501471934009,
+    2.892473348218,
+    3.280525047072,
+    3.666320693281,
+    4.05033123037,
+    4.432891808508,
+    4.814249856864,
+    5.194593501454,
+    5.574069276051,
+    5.952793645111,
+    6.330860773135,
+};
+
+static constexpr work_t kSqrtPiE4 = work_t(0.88622692545275801365);
+static constexpr int kL3E = 7;      // E coeff, ai+bj ≤ 6
+static constexpr int kL3I = 5;      // E recurrence rows, ai ≤ 3
+static constexpr int kL3R = 7;      // nuclear Hermite index, Ltot ≤ 6
+static constexpr int kFDim = 13;    // ERI Hermite index, Ltot ≤ 12
+static constexpr int kFOut = 10000; // (ff|ff) = 10^4
+
+__device__ void fmt1_gamma_device(work_t* f, work_t t, int m) {
+    work_t b = work_t(m) + work_t(0.5);
+    work_t e = work_t(0.5) * exp(-t);
+    work_t x = e;
+    work_t s = e;
+    const work_t tol = work_t(DBL_EPSILON * 0.5) * e;
+    for (work_t bi = b + work_t(1); x > tol; bi += work_t(1)) {
+        x *= t / bi;
+        s += x;
+    }
+    f[m] = s / b;
+    for (int i = m; i > 0; --i) {
+        b -= work_t(1);
+        f[i - 1] = (e + t * f[i]) / b;
+    }
+}
+
+__device__ void gamma_inc_like_device(work_t* f, work_t t, int m) {
+    if (m < 0)
+        return;
+    if (t < kFmtTurnover[m]) {
+        fmt1_gamma_device(f, t, m);
+        return;
+    }
+    const work_t tt = sqrt(t);
+    f[0] = kSqrtPiE4 / tt * erf(tt);
+    if (m > 0) {
+        const work_t e = exp(-t);
+        const work_t b = work_t(0.5) / t;
+        for (int i = 1; i <= m; ++i)
+            f[i] = b * (work_t(2 * i - 1) * f[i - 1] - e);
+    }
+}
+
+__device__ void md_e_l3(int ai, int bj, work_t PA, work_t PB, work_t inv2g,
+                        work_t E[kL3E]) {
+    for (int t = 0; t < kL3E; ++t)
+        E[t] = work_t(0);
+    work_t E_buf[kL3I][kL3E];
+    for (int i = 0; i < kL3I; ++i)
+        for (int t = 0; t < kL3E; ++t)
+            E_buf[i][t] = work_t(0);
+    E_buf[0][0] = work_t(1);
+    for (int i = 0; i < ai; ++i) {
+        const int tmax = i + 1;
+        for (int t = 0; t <= tmax && t < kL3E; ++t) {
+            const work_t etm1 = (t > 0) ? E_buf[i][t - 1] : work_t(0);
+            const work_t et = E_buf[i][t];
+            const work_t etp1 = (t + 1 < kL3E) ? E_buf[i][t + 1] : work_t(0);
+            E_buf[i + 1][t] = inv2g * etm1 + PA * et + work_t(t + 1) * etp1;
+        }
+    }
+    work_t W[2][kL3E];
+    int cur = 0;
+    for (int t = 0; t < kL3E; ++t)
+        W[cur][t] = (ai < kL3I) ? E_buf[ai][t] : work_t(0);
+    for (int jj = 0; jj < bj; ++jj) {
+        const int nxt = 1 - cur;
+        for (int t = 0; t < kL3E; ++t)
+            W[nxt][t] = work_t(0);
+        const int tmax = ai + jj + 1;
+        for (int t = 0; t <= tmax && t < kL3E; ++t) {
+            const work_t etm1 = (t > 0) ? W[cur][t - 1] : work_t(0);
+            const work_t et = W[cur][t];
+            const work_t etp1 = (t + 1 < kL3E) ? W[cur][t + 1] : work_t(0);
+            W[nxt][t] = inv2g * etm1 + PB * et + work_t(t + 1) * etp1;
+        }
+        cur = nxt;
+    }
+    for (int t = 0; t <= ai + bj && t < kL3E; ++t)
+        E[t] = W[cur][t];
+}
+
+__device__ work_t nuclear_prim_l3_device(const int a_ang[3], const int b_ang[3],
+                                         work_t gamma, const work_t PA[3],
+                                         const work_t PB[3], const work_t PC[3],
+                                         work_t K_AB) {
+    const work_t inv2g = work_t(0.5) / gamma;
+    const work_t prefactor = work_t(2) * work_t(ATV::units::pi) / gamma * K_AB;
+    const work_t PC2 = PC[0] * PC[0] + PC[1] * PC[1] + PC[2] * PC[2];
+    const work_t T = gamma * PC2;
+    const int Lx = a_ang[0] + b_ang[0];
+    const int Ly = a_ang[1] + b_ang[1];
+    const int Lz = a_ang[2] + b_ang[2];
+    const int Ltot = Lx + Ly + Lz;
+    const int mmax = Ltot < kL3R ? Ltot : kL3R - 1;
+    work_t Fm[kL3R];
+    if (T < work_t(1e-14)) {
+        for (int m = 0; m <= mmax; ++m)
+            Fm[m] = work_t(1) / work_t(2 * m + 1);
+    } else {
+        gamma_inc_like_device(Fm, T, mmax);
+    }
+    work_t E[3][kL3E];
+    for (int d = 0; d < 3; ++d)
+        md_e_l3(a_ang[d], b_ang[d], PA[d], PB[d], inv2g, E[d]);
+    work_t R_tab[kL3R][kL3R][kL3R][kL3R];
+    for (int m = 0; m < kL3R; ++m)
+        for (int t = 0; t < kL3R; ++t)
+            for (int u = 0; u < kL3R; ++u)
+                for (int v = 0; v < kL3R; ++v)
+                    R_tab[m][t][u][v] = work_t(0);
+    const work_t neg2g = -work_t(2) * gamma;
+    work_t neg2g_pow = work_t(1);
+    for (int m = 0; m <= mmax; ++m) {
+        R_tab[m][0][0][0] = neg2g_pow * Fm[m];
+        neg2g_pow *= neg2g;
+    }
+    for (int m = mmax - 1; m >= 0; --m) {
+        const int max_tuv = mmax - m;
+        for (int t = 1; t <= Lx && t <= max_tuv; ++t) {
+            R_tab[m][t][0][0] = PC[0] * R_tab[m + 1][t - 1][0][0];
+            if (t >= 2)
+                R_tab[m][t][0][0] += work_t(t - 1) * R_tab[m + 1][t - 2][0][0];
+        }
+        for (int t = 0; t <= Lx && t <= max_tuv; ++t) {
+            for (int u = 1; u <= Ly && t + u <= max_tuv; ++u) {
+                R_tab[m][t][u][0] = PC[1] * R_tab[m + 1][t][u - 1][0];
+                if (u >= 2)
+                    R_tab[m][t][u][0] +=
+                        work_t(u - 1) * R_tab[m + 1][t][u - 2][0];
+            }
+        }
+        for (int t = 0; t <= Lx && t <= max_tuv; ++t) {
+            for (int u = 0; u <= Ly && t + u <= max_tuv; ++u) {
+                for (int v = 1; v <= Lz && t + u + v <= max_tuv; ++v) {
+                    R_tab[m][t][u][v] = PC[2] * R_tab[m + 1][t][u][v - 1];
+                    if (v >= 2)
+                        R_tab[m][t][u][v] +=
+                            work_t(v - 1) * R_tab[m + 1][t][u][v - 2];
+                }
+            }
+        }
+    }
+    work_t Vn = work_t(0);
+    for (int t = 0; t <= Lx; ++t)
+        for (int u = 0; u <= Ly; ++u)
+            for (int v = 0; v <= Lz; ++v)
+                Vn += E[0][t] * E[1][u] * E[2][v] * R_tab[0][t][u][v];
+    return prefactor * Vn;
+}
+
+template <bool FShell>
+__global__ void compute_1e_lgt1_kernel(
+    prec_t* S, prec_t* T, prec_t* V, const prec_t* prim_alpha,
+    const prec_t* prim_coeff, const int* shell_nprim, const int* shell_prim_off,
+    const prec_t* shell_centers, const int* shell_L, const int* ao_shell,
+    const int* ao_cart, const int* atom_Z, const prec_t* atom_pos, int n_ao,
+    int natm) {
+    const int n_pairs = n_ao * (n_ao + 1) / 2;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    for (int pair = idx; pair < n_pairs; pair += blockDim.x * gridDim.x) {
+        int mu = (int)((-1.0 + sqrt(1.0 + 8.0 * pair)) * 0.5);
+        int nu = pair - mu * (mu + 1) / 2;
+        if (nu > mu) {
+            ++mu;
+            nu = pair - mu * (mu + 1) / 2;
+        }
+        const int si = ao_shell[mu];
+        const int sj = ao_shell[nu];
+        int a_ang[3], b_ang[3];
+        cart_ang_device(shell_L[si], ao_cart[mu], a_ang);
+        cart_ang_device(shell_L[sj], ao_cart[nu], b_ang);
+        work_t A[3] = {static_cast<work_t>(shell_centers[si * 3 + 0]),
+                       static_cast<work_t>(shell_centers[si * 3 + 1]),
+                       static_cast<work_t>(shell_centers[si * 3 + 2])};
+        work_t B[3] = {static_cast<work_t>(shell_centers[sj * 3 + 0]),
+                       static_cast<work_t>(shell_centers[sj * 3 + 1]),
+                       static_cast<work_t>(shell_centers[sj * 3 + 2])};
+        const int off_i = shell_prim_off[si];
+        const int off_j = shell_prim_off[sj];
+        const int npi = shell_nprim[si];
+        const int npj = shell_nprim[sj];
+        work_t acc_S = 0, acc_T = 0, acc_V = 0;
+        for (int p = 0; p < npi; ++p) {
+            work_t alpha_p = static_cast<work_t>(prim_alpha[off_i + p]);
+            work_t c_p = static_cast<work_t>(prim_coeff[off_i + p]);
+            for (int q = 0; q < npj; ++q) {
+                work_t alpha_q = static_cast<work_t>(prim_alpha[off_j + q]);
+                work_t c_q = static_cast<work_t>(prim_coeff[off_j + q]);
+                work_t c_pq = c_p * c_q;
+                acc_S += c_pq
+                         * overlap_prim_3d_device(a_ang, b_ang, alpha_p, A,
+                                                  alpha_q, B);
+                acc_T += c_pq
+                         * kinetic_prim_3d_device(a_ang, b_ang, alpha_p, A,
+                                                  alpha_q, B);
+                const work_t gamma = alpha_p + alpha_q;
+                const work_t mu_ab = alpha_p * alpha_q / gamma;
+                work_t R2 = dist2_device(A[0], A[1], A[2], B[0], B[1], B[2]);
+                work_t K_AB = exp(-mu_ab * R2);
+                work_t inv_g = work_t(1) / gamma;
+                work_t PA[3], PB[3], P[3];
+                for (int d = 0; d < 3; ++d) {
+                    P[d] = (alpha_p * A[d] + alpha_q * B[d]) * inv_g;
+                    PA[d] = P[d] - A[d];
+                    PB[d] = P[d] - B[d];
+                }
+                for (int a = 0; a < natm; ++a) {
+                    work_t Cpos[3] = {static_cast<work_t>(atom_pos[a * 3 + 0]),
+                                      static_cast<work_t>(atom_pos[a * 3 + 1]),
+                                      static_cast<work_t>(atom_pos[a * 3 + 2])};
+                    work_t PC[3] = {P[0] - Cpos[0], P[1] - Cpos[1],
+                                    P[2] - Cpos[2]};
+                    if constexpr (FShell) {
+                        acc_V += c_pq * work_t(-atom_Z[a])
+                                 * nuclear_prim_l3_device(a_ang, b_ang, gamma,
+                                                          PA, PB, PC, K_AB);
+                    } else {
+                        acc_V += c_pq * work_t(-atom_Z[a])
+                                 * nuclear_prim_device(a_ang, b_ang, gamma, PA,
+                                                       PB, PC, K_AB);
+                    }
+                }
+            }
+        }
+        const int ij = mu + nu * n_ao;
+        const int ji = nu + mu * n_ao;
+        S[ij] = acc_S;
+        T[ij] = acc_T;
+        V[ij] = acc_V;
+        if (mu != nu) {
+            S[ji] = acc_S;
+            T[ji] = acc_T;
+            V[ji] = acc_V;
+        }
+    }
+}
+
+static constexpr int kL2Dim = 9;    // Hermite index 0..8 (shell Ltot ≤ 8)
+static constexpr int kL2Out = 1296; // (dd|dd) = 6^4
+
+__device__ __forceinline__ int hermite_at(int dim, int m, int t, int u, int v) {
+    return ((m * dim + t) * dim + u) * dim + v;
+}
+
+// One Hermite R recurrence. Stable=false is upward Boys (l ≤ 2, order ≤ 8).
+// Stable=true is libcint gamma_inc_like (a quartet that touches f).
+template <bool Stable, int Dim>
+__device__ void build_hermite_R(work_t* R, int Ltot, work_t rho, work_t Tval,
+                                const work_t PQ[3]) {
+    constexpr int n4 = Dim * Dim * Dim * Dim;
+    for (int i = 0; i < n4; ++i)
+        R[i] = work_t(0);
+    const int mmax = Ltot < Dim ? Ltot : Dim - 1;
+    work_t Fm[Dim];
+    if constexpr (Stable) {
+        if (Tval < work_t(1e-14)) {
+            for (int m = 0; m <= mmax; ++m)
+                Fm[m] = work_t(1) / work_t(2 * m + 1);
+        } else {
+            gamma_inc_like_device(Fm, Tval, mmax);
+        }
+    } else {
+        for (int m = 0; m <= mmax; ++m)
+            Fm[m] = boys_fn_device(m, Tval);
+    }
+    const work_t neg2 = -work_t(2) * rho;
+    work_t powv = work_t(1);
+    for (int m = 0; m <= mmax; ++m) {
+        R[hermite_at(Dim, m, 0, 0, 0)] = powv * Fm[m];
+        powv *= neg2;
+    }
+    for (int m = mmax - 1; m >= 0; --m) {
+        const int max_tuv = mmax - m;
+        for (int t = 1; t <= max_tuv && t < Dim; ++t) {
+            work_t val = PQ[0] * R[hermite_at(Dim, m + 1, t - 1, 0, 0)];
+            if (t >= 2)
+                val += work_t(t - 1) * R[hermite_at(Dim, m + 1, t - 2, 0, 0)];
+            R[hermite_at(Dim, m, t, 0, 0)] = val;
+        }
+        for (int t = 0; t <= max_tuv && t < Dim; ++t) {
+            for (int u = 1; u + t <= max_tuv && u < Dim; ++u) {
+                work_t val = PQ[1] * R[hermite_at(Dim, m + 1, t, u - 1, 0)];
+                if (u >= 2)
+                    val +=
+                        work_t(u - 1) * R[hermite_at(Dim, m + 1, t, u - 2, 0)];
+                R[hermite_at(Dim, m, t, u, 0)] = val;
+            }
+        }
+        for (int t = 0; t <= max_tuv && t < Dim; ++t) {
+            for (int u = 0; u + t <= max_tuv && u < Dim; ++u) {
+                for (int v = 1; v + t + u <= max_tuv && v < Dim; ++v) {
+                    work_t val = PQ[2] * R[hermite_at(Dim, m + 1, t, u, v - 1)];
+                    if (v >= 2)
+                        val += work_t(v - 1)
+                               * R[hermite_at(Dim, m + 1, t, u, v - 2)];
+                    R[hermite_at(Dim, m, t, u, v)] = val;
+                }
+            }
+        }
+    }
+}
+
+template <bool L3, int Dim>
+__device__ work_t contract_md(const work_t* R, const int a_ang[3],
+                              const int b_ang[3], const int c_ang[3],
+                              const int d_ang[3], const work_t PA[3],
+                              const work_t PB[3], const work_t QC[3],
+                              const work_t QD[3], work_t inv2g1, work_t inv2g2,
+                              work_t prefactor) {
+    constexpr int EDim = L3 ? kL3E : kDeviceMDEDim;
+    const int Lx1 = a_ang[0] + b_ang[0];
+    const int Ly1 = a_ang[1] + b_ang[1];
+    const int Lz1 = a_ang[2] + b_ang[2];
+    const int Lx2 = c_ang[0] + d_ang[0];
+    const int Ly2 = c_ang[1] + d_ang[1];
+    const int Lz2 = c_ang[2] + d_ang[2];
+    work_t E1[3][EDim];
+    work_t E2[3][EDim];
+    for (int d = 0; d < 3; ++d) {
+        if constexpr (L3) {
+            md_e_l3(a_ang[d], b_ang[d], PA[d], PB[d], inv2g1, E1[d]);
+            md_e_l3(c_ang[d], d_ang[d], QC[d], QD[d], inv2g2, E2[d]);
+        } else {
+            md_e_coeffs_device(a_ang[d], b_ang[d], PA[d], PB[d], inv2g1, E1[d]);
+            md_e_coeffs_device(c_ang[d], d_ang[d], QC[d], QD[d], inv2g2, E2[d]);
+        }
+    }
+    work_t eri_val = work_t(0);
+    for (int t = 0; t <= Lx1; ++t) {
+        for (int u = 0; u <= Ly1; ++u) {
+            for (int v = 0; v <= Lz1; ++v) {
+                const work_t e1 = E1[0][t] * E1[1][u] * E1[2][v];
+                if (e1 == work_t(0))
+                    continue;
+                for (int tau = 0; tau <= Lx2; ++tau) {
+                    for (int nu = 0; nu <= Ly2; ++nu) {
+                        for (int phi = 0; phi <= Lz2; ++phi) {
+                            const work_t e2 =
+                                E2[0][tau] * E2[1][nu] * E2[2][phi];
+                            if (e2 == work_t(0))
+                                continue;
+                            const work_t sign =
+                                ((tau + nu + phi) & 1) ? work_t(-1) : work_t(1);
+                            eri_val += e1 * e2 * sign
+                                       * R[hermite_at(Dim, 0, t + tau, u + nu,
+                                                      v + phi)];
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return prefactor * eri_val;
+}
+
+__device__ int ncart_of_device(int L) { return (L + 1) * (L + 2) / 2; }
+
+// Hoisted shell quartet. FShell=false: l ≤ 2, caller R is kL2Dim^4 and acc
+// holds (dd|dd). FShell=true: caller R/acc are the f-shell scratch
+// (kFDim^4 + kFOut). Contraction coefficients are already in `prim_coeff`.
+template <bool FShell>
+__device__ void
+eri_quartet_md(prec_t* ERI, const prec_t* prim_alpha, const prec_t* prim_coeff,
+               const int* shell_nprim, const int* shell_prim_off,
+               const prec_t* shell_centers, int sa, int sb, int sc, int sd,
+               int La, int Lb, int Lc, int Ld, int ao_a, int ao_b, int ao_c,
+               int ao_d, int n_ao, work_t* R, work_t* acc) {
+    const int na = ncart_of_device(La);
+    const int nb = ncart_of_device(Lb);
+    const int nc = ncart_of_device(Lc);
+    const int nd = ncart_of_device(Ld);
+    const int n_out = na * nb * nc * nd;
+    for (int i = 0; i < n_out; ++i)
+        acc[i] = work_t(0);
+    work_t A[3] = {static_cast<work_t>(shell_centers[sa * 3 + 0]),
+                   static_cast<work_t>(shell_centers[sa * 3 + 1]),
+                   static_cast<work_t>(shell_centers[sa * 3 + 2])};
+    work_t B[3] = {static_cast<work_t>(shell_centers[sb * 3 + 0]),
+                   static_cast<work_t>(shell_centers[sb * 3 + 1]),
+                   static_cast<work_t>(shell_centers[sb * 3 + 2])};
+    work_t C[3] = {static_cast<work_t>(shell_centers[sc * 3 + 0]),
+                   static_cast<work_t>(shell_centers[sc * 3 + 1]),
+                   static_cast<work_t>(shell_centers[sc * 3 + 2])};
+    work_t D[3] = {static_cast<work_t>(shell_centers[sd * 3 + 0]),
+                   static_cast<work_t>(shell_centers[sd * 3 + 1]),
+                   static_cast<work_t>(shell_centers[sd * 3 + 2])};
+    const int Ltot = La + Lb + Lc + Ld;
+    const int oA = shell_prim_off[sa];
+    const int oB = shell_prim_off[sb];
+    const int oC = shell_prim_off[sc];
+    const int oD = shell_prim_off[sd];
+    for (int p = 0; p < shell_nprim[sa]; ++p) {
+        const work_t ap = static_cast<work_t>(prim_alpha[oA + p]);
+        const work_t cp = static_cast<work_t>(prim_coeff[oA + p]);
+        for (int q = 0; q < shell_nprim[sb]; ++q) {
+            const work_t aq = static_cast<work_t>(prim_alpha[oB + q]);
+            const work_t cq = static_cast<work_t>(prim_coeff[oB + q]);
+            for (int r = 0; r < shell_nprim[sc]; ++r) {
+                const work_t ar = static_cast<work_t>(prim_alpha[oC + r]);
+                const work_t cr = static_cast<work_t>(prim_coeff[oC + r]);
+                for (int s = 0; s < shell_nprim[sd]; ++s) {
+                    const work_t as = static_cast<work_t>(prim_alpha[oD + s]);
+                    const work_t cs = static_cast<work_t>(prim_coeff[oD + s]);
+                    const work_t gamma1 = ap + aq;
+                    const work_t gamma2 = ar + as;
+                    const work_t delta = gamma1 + gamma2;
+                    const work_t mu1 = ap * aq / gamma1;
+                    const work_t mu2 = ar * as / gamma2;
+                    const work_t rho = gamma1 * gamma2 / delta;
+                    const work_t inv2g1 = work_t(0.5) / gamma1;
+                    const work_t inv2g2 = work_t(0.5) / gamma2;
+                    work_t P[3], Q[3], PA[3], PB[3], QC[3], QD[3], PQ[3];
+                    work_t R2_AB = 0, R2_CD = 0, PQ2 = 0;
+                    for (int d = 0; d < 3; ++d) {
+                        P[d] = (ap * A[d] + aq * B[d]) / gamma1;
+                        Q[d] = (ar * C[d] + as * D[d]) / gamma2;
+                        PA[d] = P[d] - A[d];
+                        PB[d] = P[d] - B[d];
+                        QC[d] = Q[d] - C[d];
+                        QD[d] = Q[d] - D[d];
+                        PQ[d] = P[d] - Q[d];
+                        const work_t dAB = A[d] - B[d];
+                        const work_t dCD = C[d] - D[d];
+                        R2_AB += dAB * dAB;
+                        R2_CD += dCD * dCD;
+                        PQ2 += PQ[d] * PQ[d];
+                    }
+                    const work_t K_AB = exp(-mu1 * R2_AB);
+                    const work_t K_CD = exp(-mu2 * R2_CD);
+                    const work_t Tval = rho * PQ2;
+                    const work_t pi = work_t(ATV::units::pi);
+                    const work_t prefactor = work_t(2) * pi * pi * sqrt(pi)
+                                             / (gamma1 * gamma2 * sqrt(delta))
+                                             * K_AB * K_CD * cp * cq * cr * cs;
+                    if constexpr (FShell)
+                        build_hermite_R<true, kFDim>(R, Ltot, rho, Tval, PQ);
+                    else
+                        build_hermite_R<false, kL2Dim>(R, Ltot, rho, Tval, PQ);
+                    int cout = 0;
+                    for (int ia = 0; ia < na; ++ia) {
+                        int a_ang[3] = {0, 0, 0};
+                        cart_ang_device(La, ia, a_ang);
+                        for (int ib = 0; ib < nb; ++ib) {
+                            int b_ang[3] = {0, 0, 0};
+                            cart_ang_device(Lb, ib, b_ang);
+                            for (int ic = 0; ic < nc; ++ic) {
+                                int c_ang[3] = {0, 0, 0};
+                                cart_ang_device(Lc, ic, c_ang);
+                                for (int id = 0; id < nd; ++id) {
+                                    int d_ang[3] = {0, 0, 0};
+                                    cart_ang_device(Ld, id, d_ang);
+                                    if constexpr (FShell) {
+                                        acc[cout] += contract_md<true, kFDim>(
+                                            R, a_ang, b_ang, c_ang, d_ang, PA,
+                                            PB, QC, QD, inv2g1, inv2g2,
+                                            prefactor);
+                                    } else {
+                                        acc[cout] += contract_md<false, kL2Dim>(
+                                            R, a_ang, b_ang, c_ang, d_ang, PA,
+                                            PB, QC, QD, inv2g1, inv2g2,
+                                            prefactor);
+                                    }
+                                    ++cout;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    const int n2 = n_ao * n_ao;
+    const int n3 = n2 * n_ao;
+    int cout = 0;
+    for (int ia = 0; ia < na; ++ia)
+        for (int ib = 0; ib < nb; ++ib)
+            for (int ic = 0; ic < nc; ++ic)
+                for (int id = 0; id < nd; ++id) {
+                    const int mu = ao_a + ia;
+                    const int nu = ao_b + ib;
+                    const int lam = ao_c + ic;
+                    const int sig = ao_d + id;
+                    ERI[mu + nu * n_ao + lam * n2 + sig * n3] =
+                        static_cast<prec_t>(acc[cout]);
+                    ++cout;
+                }
+}
+
+__device__ void decode_shell_quartet(long long q, long long nsh, int& sa,
+                                     int& sb, int& sc, int& sd) {
+    sd = static_cast<int>(q / (nsh * nsh * nsh));
+    long long rem = q % (nsh * nsh * nsh);
+    sc = static_cast<int>(rem / (nsh * nsh));
+    rem = rem % (nsh * nsh);
+    sb = static_cast<int>(rem / nsh);
+    sa = static_cast<int>(rem % nsh);
+}
+
+__global__ void
+compute_eri_lgt1_kernel(prec_t* ERI, const prec_t* prim_alpha,
+                        const prec_t* prim_coeff, const int* shell_nprim,
+                        const int* shell_prim_off, const prec_t* shell_centers,
+                        const int* shell_L, const int* shell_ao_start,
+                        int n_shells, int n_ao) {
+    work_t R[kL2Dim * kL2Dim * kL2Dim * kL2Dim];
+    work_t acc[kL2Out];
+    const long long nsh = n_shells;
+    const long long n4 = nsh * nsh * nsh * nsh;
+    const long long stride = static_cast<long long>(blockDim.x) * gridDim.x;
+    for (long long q =
+             static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+         q < n4; q += stride) {
+        int sa, sb, sc, sd;
+        decode_shell_quartet(q, nsh, sa, sb, sc, sd);
+        const int La = shell_L[sa];
+        const int Lb = shell_L[sb];
+        const int Lc = shell_L[sc];
+        const int Ld = shell_L[sd];
+        if (La > 2 || Lb > 2 || Lc > 2 || Ld > 2)
+            continue;
+        eri_quartet_md<false>(ERI, prim_alpha, prim_coeff, shell_nprim,
+                              shell_prim_off, shell_centers, sa, sb, sc, sd, La,
+                              Lb, Lc, Ld, shell_ao_start[sa],
+                              shell_ao_start[sb], shell_ao_start[sc],
+                              shell_ao_start[sd], n_ao, R, acc);
+    }
+}
+
+__global__ void
+compute_eri_f_kernel(prec_t* ERI, const prec_t* prim_alpha,
+                     const prec_t* prim_coeff, const int* shell_nprim,
+                     const int* shell_prim_off, const prec_t* shell_centers,
+                     const int* shell_L, const int* shell_ao_start,
+                     int n_shells, int n_ao, work_t* scratch, int n_workers) {
+    const int worker = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+    if (worker >= n_workers)
+        return;
+    const int rdim = kFDim * kFDim * kFDim * kFDim;
+    work_t* R = scratch + static_cast<long long>(worker) * (rdim + kFOut);
+    work_t* acc = R + rdim;
+    const long long nsh = n_shells;
+    const long long n4 = nsh * nsh * nsh * nsh;
+    for (long long q = worker; q < n4; q += n_workers) {
+        int sa, sb, sc, sd;
+        decode_shell_quartet(q, nsh, sa, sb, sc, sd);
+        const int La = shell_L[sa];
+        const int Lb = shell_L[sb];
+        const int Lc = shell_L[sc];
+        const int Ld = shell_L[sd];
+        if (La > 3 || Lb > 3 || Lc > 3 || Ld > 3)
+            continue;
+        if (La < 3 && Lb < 3 && Lc < 3 && Ld < 3)
+            continue;
+        eri_quartet_md<true>(ERI, prim_alpha, prim_coeff, shell_nprim,
+                             shell_prim_off, shell_centers, sa, sb, sc, sd, La,
+                             Lb, Lc, Ld, shell_ao_start[sa], shell_ao_start[sb],
+                             shell_ao_start[sc], shell_ao_start[sd], n_ao, R,
+                             acc);
+    }
+}
+
+void launch_1e_integrals_lgt1(double* S, double* T, double* V,
+                              const double* prim_alpha,
+                              const double* prim_coeff, const int* shell_nprim,
+                              const int* shell_prim_off,
+                              const double* shell_centers, const int* shell_L,
+                              const int* ao_shell, const int* ao_cart,
+                              const int* atom_Z, const double* atom_pos,
+                              int n_ao, int natm, int max_l, void* stream) {
+    auto s = static_cast<cudaStream_t>(stream);
+    const int n_pairs = n_ao * (n_ao + 1) / 2;
+    const int threads = cuda::kDefaultBlock;
+    const int blocks = cuda::grid_size(n_pairs, threads);
+    if (max_l >= 3) {
+        compute_1e_lgt1_kernel<true><<<blocks, threads, 0, s>>>(
+            S, T, V, prim_alpha, prim_coeff, shell_nprim, shell_prim_off,
+            shell_centers, shell_L, ao_shell, ao_cart, atom_Z, atom_pos, n_ao,
+            natm);
+    } else {
+        compute_1e_lgt1_kernel<false><<<blocks, threads, 0, s>>>(
+            S, T, V, prim_alpha, prim_coeff, shell_nprim, shell_prim_off,
+            shell_centers, shell_L, ao_shell, ao_cart, atom_Z, atom_pos, n_ao,
+            natm);
+    }
+}
+
+void launch_eri_lgt1(double* ERI, const double* prim_alpha,
+                     const double* prim_coeff, const int* shell_nprim,
+                     const int* shell_prim_off, const double* shell_centers,
+                     const int* shell_L, const int* shell_ao_start,
+                     int n_shells, int n_ao, int max_l, void* stream) {
+    if (n_shells > 256) {
+        throw std::invalid_argument(
+            "launch_eri_lgt1: n_shells=" + std::to_string(n_shells)
+            + " exceeds 256 (Cartesian l<=3 device ERI)");
+    }
+    auto s = static_cast<cudaStream_t>(stream);
+    const long long n4 = 1LL * n_shells * n_shells * n_shells * n_shells;
+    const int threads = cuda::kDefaultBlock;
+    int blocks = static_cast<int>((n4 + threads - 1) / threads);
+    if (blocks > 2048)
+        blocks = 2048;
+    if (blocks < 1)
+        blocks = 1;
+    compute_eri_lgt1_kernel<<<blocks, threads, 0, s>>>(
+        ERI, prim_alpha, prim_coeff, shell_nprim, shell_prim_off, shell_centers,
+        shell_L, shell_ao_start, n_shells, n_ao);
+    if (max_l >= 3) {
+        constexpr int kWorkers = 128;
+        const int rdim = kFDim * kFDim * kFDim * kFDim;
+        work_t* scratch = nullptr;
+        cudaMalloc(&scratch, static_cast<std::size_t>(kWorkers)
+                                 * static_cast<std::size_t>(rdim + kFOut)
+                                 * sizeof(work_t));
+        compute_eri_f_kernel<<<4, 32, 0, s>>>(
+            ERI, prim_alpha, prim_coeff, shell_nprim, shell_prim_off,
+            shell_centers, shell_L, shell_ao_start, n_shells, n_ao, scratch,
+            kWorkers);
+        cudaStreamSynchronize(s);
+        cudaFree(scratch);
+    }
 }
 
 } // namespace scf

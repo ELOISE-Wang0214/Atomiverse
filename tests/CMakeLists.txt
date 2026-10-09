@@ -828,6 +828,8 @@ if(ATV_BUILD_HF)
     # Static basis-table structure for the third-period + diffuse extension
     # (hf-capability-gaps-05-basis) — table pins vs PySCF, no SCF solve.
     atv_add_cpp_test(test_basis_tables         cpu/scf/test_basis_tables.cpp)
+    # hf-cuda-lgt1: Cartesian shell pack and CUDA route. No SCF.
+    atv_add_cpp_test(test_cuda_lgt1_pack       cpu/scf/test_cuda_lgt1_pack.cpp)
     # Semi-local def2-ECP: static table pins, EcpPotential lookup,
     # EcpIntegrals U-matrix vs external PySCF ECPscalar pins, IntegralWorkspace
     # valence wiring, x2c double-counting gate (hf-capability-gaps-06-ecp).
