@@ -4,7 +4,8 @@
 /// Setup (mesh, AO, Hcore, canonical X, Coulomb kernels) is
 /// `cpu::scf::internal::krhf_assemble` — geometry and basis, not the
 /// density. The iteration builds J (`fft_jk.get_j_kpts`), K
-/// (`get_k_kpts`), the Fock, `zheevd`, and the density on device.
+/// (`get_k_kpts`), the Fock, `zheevd`, occupation and the density on
+/// device. Orbital coefficients stay on device.
 
 #include "atomiverse/cuda/scf/krhf.cuh"
 
@@ -16,7 +17,6 @@
 #include <cuda_runtime.h>
 #include <cusolverDn.h>
 
-#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <stdexcept>
@@ -181,12 +181,41 @@ __global__ void k_vhf(const Z* vj, const Z* vk, Z* v, int n) {
     v[i] = Z{vj[i].r - 0.5 * vk[i].r, vj[i].i - 0.5 * vk[i].i};
 }
 
-__global__ void k_fock(const Z* H, const Z* vj, const Z* vk, Z* F, int n) {
+__global__ void k_fock(const Z* H, const Z* vhf, Z* F, int n) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
-    F[i] =
-        Z{H[i].r + vj[i].r - 0.5 * vk[i].r, H[i].i + vj[i].i - 0.5 * vk[i].i};
+    F[i] = Z{H[i].r + vhf[i].r, H[i].i + vhf[i].i};
+}
+
+__global__ void k_fill_d(double* a, int n, double v) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n)
+        a[i] = v;
+}
+
+// khf.get_occ: lowest nocc across k. Stable in (k, orbital) index order.
+__global__ void k_occupy(const double* eps, int* idx, double* occ, int n,
+                         int nocc) {
+    if (threadIdx.x != 0 || blockIdx.x != 0)
+        return;
+    for (int i = 0; i < n; ++i)
+        idx[i] = i;
+    for (int i = 1; i < n; ++i) {
+        const int key = idx[i];
+        const double e = eps[key];
+        int j = i - 1;
+        while (j >= 0 && eps[idx[j]] > e) {
+            idx[j + 1] = idx[j];
+            --j;
+        }
+        idx[j + 1] = key;
+    }
+    for (int i = 0; i < n; ++i)
+        occ[i] = 0.0;
+    const int nfill = nocc < n ? nocc : n;
+    for (int i = 0; i < nfill; ++i)
+        occ[idx[i]] = 2.0;
 }
 
 __global__ void k_trace_energy(const Z* dm, const Z* H, const Z* vhf, int nk,
@@ -393,7 +422,7 @@ KRHF::KRHF(cpu::scf::BasisSet basis_in, std::array<int, 3> k_mesh_in,
     : basis(basis_in), k_mesh(k_mesh_in), charge(charge_in), tol(tol_in),
       max_iter(max_iter_in) {}
 
-void KRHF::solve(const cpu::Frame& frame, bool write, cpu::Frame* out) {
+void KRHF::run(const cpu::Frame& frame) {
     const int mesh_k[3] = {k_mesh[0], k_mesh[1], k_mesh[2]};
     const cpu::scf::internal::KrhfStatic sys =
         cpu::scf::internal::krhf_assemble(frame, basis, mesh_k, charge);
@@ -403,6 +432,11 @@ void KRHF::solve(const cpu::Frame& frame, bool write, cpu::Frame* out) {
     const int nx = sys.mesh[0], ny = sys.mesh[1], nz = sys.mesh[2];
     if (nk < 1 || nao < 1 || ng != nx * ny * nz)
         throw std::runtime_error("cuda::scf::KRHF: empty k-point system");
+    if (sys.nocc < 0
+        || static_cast<long long>(sys.nocc) > static_cast<long long>(nk) * nao)
+        throw std::runtime_error(
+            "cuda::scf::KRHF: occupied count exceeds the basis "
+            "(pyscf.pbc.scf.khf.get_occ)");
 
     auto hz = [](const std::complex<double>& z) {
         return Z{z.real(), z.imag()};
@@ -425,8 +459,11 @@ void KRHF::solve(const cpu::Frame& frame, bool write, cpu::Frame* out) {
     cuDoubleComplex* d_col = nullptr;
     cuDoubleComplex* d_work = nullptr;
     double* d_eig = nullptr;
-    int* d_info = nullptr;
     double* d_occ = nullptr;
+    double* d_eps = nullptr;
+    Z* d_C = nullptr;
+    int* d_idx = nullptr;
+    int* d_infos = nullptr;
     cudaStream_t stream = nullptr;
     check_cuda(cudaStreamCreate(&stream), "stream");
     auto guard = [&]() {
@@ -451,15 +488,21 @@ void KRHF::solve(const cpu::Frame& frame, bool write, cpu::Frame* out) {
         cudaFree(d_col);
         cudaFree(d_work);
         cudaFree(d_eig);
-        cudaFree(d_info);
         cudaFree(d_occ);
+        cudaFree(d_eps);
+        cudaFree(d_C);
+        cudaFree(d_idx);
+        cudaFree(d_infos);
         d_ao = d_H = d_X = d_dm = d_vj = d_vk = d_F = d_vhf = nullptr;
         d_rho = d_tmp = d_rho1 = d_aodm = d_vrdm = d_Hp = nullptr;
         d_coul_j = d_coul_k = d_coords = d_e = nullptr;
         d_col = d_work = nullptr;
         d_eig = nullptr;
-        d_info = nullptr;
         d_occ = nullptr;
+        d_eps = nullptr;
+        d_C = nullptr;
+        d_idx = nullptr;
+        d_infos = nullptr;
         if (stream) {
             cudaStreamDestroy(stream);
             stream = nullptr;
@@ -490,6 +533,14 @@ void KRHF::solve(const cpu::Frame& frame, bool write, cpu::Frame* out) {
         check_cuda(
             cudaMalloc(&d_Hp, static_cast<std::size_t>(nao * nao) * sizeof(Z)),
             "Hp");
+        check_cuda(cudaMalloc(&d_C, nmat * sizeof(Z)), "C");
+        const std::size_t norb = static_cast<std::size_t>(nk) * nao;
+        check_cuda(cudaMalloc(&d_eps, norb * sizeof(double)), "eps");
+        check_cuda(cudaMalloc(&d_idx, norb * sizeof(int)), "idx");
+        check_cuda(
+            cudaMalloc(&d_infos, static_cast<std::size_t>(nk) * sizeof(int)),
+            "infos");
+        check_cuda(cudaMalloc(&d_occ, norb * sizeof(double)), "occ");
         check_cuda(cudaMalloc(&d_coul_j,
                               static_cast<std::size_t>(ng) * sizeof(double)),
                    "coul_j");
@@ -504,7 +555,6 @@ void KRHF::solve(const cpu::Frame& frame, bool write, cpu::Frame* out) {
         check_cuda(
             cudaMalloc(&d_eig, static_cast<std::size_t>(nao) * sizeof(double)),
             "eig");
-        check_cuda(cudaMalloc(&d_info, sizeof(int)), "info");
         check_cuda(cudaMemcpyAsync(d_ao, h_ao.data(), h_ao.size() * sizeof(Z),
                                    cudaMemcpyHostToDevice, stream),
                    "H2D ao");
@@ -540,82 +590,49 @@ void KRHF::solve(const cpu::Frame& frame, bool write, cpu::Frame* out) {
                                            * sizeof(cuDoubleComplex)),
                    "work");
 
-        auto diagonalize_k = [&](const Z* Fk, int k, std::vector<double>& eps,
-                                 Z* Ck_unused) {
-            (void)Ck_unused;
-            const int m = sys.nmo[static_cast<std::size_t>(k)];
-            k_xform<<<1, 64, 0, stream>>>(d_X, Fk, d_Hp, nao, m, k);
-            k_row_to_col<<<(m * m + 127) / 128, 128, 0, stream>>>(d_Hp, d_col,
-                                                                  m);
-            check_sol(cusolverDnZheevd(sol, CUSOLVER_EIG_MODE_VECTOR,
-                                       CUBLAS_FILL_MODE_LOWER, m, d_col, m,
-                                       d_eig, d_work, lwork, d_info),
-                      "zheevd");
-            int info = 0;
-            check_cuda(cudaMemcpyAsync(&info, d_info, sizeof(int),
-                                       cudaMemcpyDeviceToHost, stream),
-                       "D2H info");
-            check_cuda(cudaStreamSynchronize(stream), "sync zheevd");
-            if (info != 0)
-                throw std::runtime_error("cuda::scf::KRHF: zheevd info="
-                                         + std::to_string(info));
-            eps.assign(static_cast<std::size_t>(nao), 1.0e8);
+        check_cuda(cudaMemsetAsync(d_C, 0, nmat * sizeof(Z), stream), "zero C");
+        k_fill_d<<<(static_cast<int>(norb) + 127) / 128, 128, 0, stream>>>(
+            d_eps, static_cast<int>(norb), 1.0e8);
+        // Eigenvalues stay on device (tail beyond nmo is 1e8). Coefficients
+        // are written to d_C; khf.get_occ does not need them on the host.
+        auto diagonalize_into_dm = [&](const Z* fock) {
+            for (int k = 0; k < nk; ++k) {
+                const int m = sys.nmo[static_cast<std::size_t>(k)];
+                k_xform<<<1, 64, 0, stream>>>(d_X, fock, d_Hp, nao, m, k);
+                k_row_to_col<<<(m * m + 127) / 128, 128, 0, stream>>>(d_Hp,
+                                                                      d_col, m);
+                check_sol(cusolverDnZheevd(sol, CUSOLVER_EIG_MODE_VECTOR,
+                                           CUBLAS_FILL_MODE_LOWER, m, d_col, m,
+                                           d_eig, d_work, lwork, d_infos + k),
+                          "zheevd");
+                check_cuda(cudaMemcpyAsync(
+                               d_eps + static_cast<std::size_t>(k) * nao, d_eig,
+                               sizeof(double) * static_cast<std::size_t>(m),
+                               cudaMemcpyDeviceToDevice, stream),
+                           "D2D eig");
+                k_apply_x<<<m, 32, 0, stream>>>(d_X, d_col, d_C, nao, m, k);
+            }
+            std::vector<int> info(static_cast<std::size_t>(nk));
             check_cuda(
-                cudaMemcpyAsync(eps.data(), d_eig,
-                                sizeof(double) * static_cast<std::size_t>(m),
+                cudaMemcpyAsync(info.data(), d_infos,
+                                sizeof(int) * static_cast<std::size_t>(nk),
                                 cudaMemcpyDeviceToHost, stream),
-                "D2H eig");
-            check_cuda(cudaStreamSynchronize(stream), "sync eig");
-            k_apply_x<<<m, 32, 0, stream>>>(d_X, d_col, d_F, nao, m, k);
-            // Eigenvectors land in d_F temporarily; caller copies to C.
+                "D2H info");
+            check_cuda(cudaStreamSynchronize(stream), "sync zheevd");
+            for (int k = 0; k < nk; ++k)
+                if (info[static_cast<std::size_t>(k)] != 0)
+                    throw std::runtime_error(
+                        "cuda::scf::KRHF: zheevd info="
+                        + std::to_string(info[static_cast<std::size_t>(k)]));
+            k_occupy<<<1, 1, 0, stream>>>(d_eps, d_idx, d_occ, nk * nao,
+                                          sys.nocc);
+            for (int k = 0; k < nk; ++k)
+                k_dm_from_c<<<1, 32, 0, stream>>>(
+                    d_C, d_occ + static_cast<std::size_t>(k) * nao, d_dm, nao,
+                    k);
+            k_hermitize<<<nk, 32, 0, stream>>>(d_dm, nk, nao);
         };
-
-        // Core-Hamiltonian guess, diagonalized on device.
-        std::vector<Z> hC(nmat);
-        std::vector<std::vector<double>> eps(static_cast<std::size_t>(nk));
-        // Use d_vj as orbital-coefficient scratch (overwritten by J later).
-        for (int k = 0; k < nk; ++k) {
-            diagonalize_k(d_H, k, eps[static_cast<std::size_t>(k)], nullptr);
-            check_cuda(cudaMemcpyAsync(
-                           hC.data() + static_cast<std::size_t>(k) * nao * nao,
-                           d_F + static_cast<std::size_t>(k) * nao * nao,
-                           sizeof(Z) * nao * nao, cudaMemcpyDeviceToHost,
-                           stream),
-                       "D2H C");
-        }
-        check_cuda(cudaStreamSynchronize(stream), "sync C");
-        // Occupy on the host from the eigenvalues only (khf.get_occ).
-        struct Item {
-            double e;
-            int k, a;
-        };
-        std::vector<Item> all;
-        for (int k = 0; k < nk; ++k)
-            for (int a = 0; a < nao; ++a)
-                all.push_back({eps[static_cast<std::size_t>(k)]
-                                  [static_cast<std::size_t>(a)],
-                               k, a});
-        std::stable_sort(
-            all.begin(), all.end(),
-            [](const Item& x, const Item& y) { return x.e < y.e; });
-        std::vector<double> hocc(static_cast<std::size_t>(nk * nao), 0.0);
-        for (int i = 0; i < sys.nocc; ++i) {
-            const Item& it = all[static_cast<std::size_t>(i)];
-            hocc[static_cast<std::size_t>(it.k * nao + it.a)] = 2.0;
-        }
-        // Put C back and build dm on device.
-        check_cuda(cudaMemcpyAsync(d_F, hC.data(), nmat * sizeof(Z),
-                                   cudaMemcpyHostToDevice, stream),
-                   "H2D C");
-        check_cuda(cudaMalloc(&d_occ, hocc.size() * sizeof(double)), "occ");
-        check_cuda(cudaMemcpyAsync(d_occ, hocc.data(),
-                                   hocc.size() * sizeof(double),
-                                   cudaMemcpyHostToDevice, stream),
-                   "H2D occ");
-        for (int k = 0; k < nk; ++k)
-            k_dm_from_c<<<1, 32, 0, stream>>>(
-                d_F, d_occ + static_cast<std::size_t>(k) * nao, d_dm, nao, k);
-        k_hermitize<<<nk, 32, 0, stream>>>(d_dm, nk, nao);
+        diagonalize_into_dm(d_H);
 
         const int blk = 128;
         const double jw = sys.vol / static_cast<double>(ng);
@@ -691,63 +708,17 @@ void KRHF::solve(const cpu::Frame& frame, bool write, cpu::Frame* out) {
             }
             e_prev = e_ha;
             k_fock<<<div_up(static_cast<int>(nmat), blk), blk, 0, stream>>>(
-                d_H, d_vj, d_vk, d_F, static_cast<int>(nmat));
-            // d_F is the Fock. Diagonalize into d_vj as scratch coefficients,
-            // then rebuild dm. Save Fock first: diagonalize_k writes C into d_F.
-            check_cuda(cudaMemcpyAsync(d_vhf, d_F, nmat * sizeof(Z),
-                                       cudaMemcpyDeviceToDevice, stream),
-                       "save F");
-            for (int k = 0; k < nk; ++k) {
-                diagonalize_k(d_vhf, k, eps[static_cast<std::size_t>(k)],
-                              nullptr);
-                check_cuda(
-                    cudaMemcpyAsync(
-                        hC.data() + static_cast<std::size_t>(k) * nao * nao,
-                        d_F + static_cast<std::size_t>(k) * nao * nao,
-                        sizeof(Z) * nao * nao, cudaMemcpyDeviceToHost, stream),
-                    "D2H C2");
-            }
-            check_cuda(cudaStreamSynchronize(stream), "sync C2");
-            all.clear();
-            for (int k = 0; k < nk; ++k)
-                for (int a = 0; a < nao; ++a)
-                    all.push_back({eps[static_cast<std::size_t>(k)]
-                                      [static_cast<std::size_t>(a)],
-                                   k, a});
-            std::stable_sort(
-                all.begin(), all.end(),
-                [](const Item& x, const Item& y) { return x.e < y.e; });
-            std::fill(hocc.begin(), hocc.end(), 0.0);
-            for (int i = 0; i < sys.nocc; ++i)
-                hocc[static_cast<std::size_t>(
-                    all[static_cast<std::size_t>(i)].k * nao
-                    + all[static_cast<std::size_t>(i)].a)] = 2.0;
-            check_cuda(cudaMemcpyAsync(d_F, hC.data(), nmat * sizeof(Z),
-                                       cudaMemcpyHostToDevice, stream),
-                       "H2D C2");
-            check_cuda(cudaMemcpyAsync(d_occ, hocc.data(),
-                                       hocc.size() * sizeof(double),
-                                       cudaMemcpyHostToDevice, stream),
-                       "H2D occ2");
-            for (int k = 0; k < nk; ++k)
-                k_dm_from_c<<<1, 32, 0, stream>>>(
-                    d_F, d_occ + static_cast<std::size_t>(k) * nao, d_dm, nao,
-                    k);
-            k_hermitize<<<nk, 32, 0, stream>>>(d_dm, nk, nao);
+                d_H, d_vhf, d_F, static_cast<int>(nmat));
+            diagonalize_into_dm(d_F);
         }
         cusolverDnDestroy(sol);
         if (!conv)
-            throw std::runtime_error(
-                "cuda::scf::KRHF: SCF did not converge (missing a device "
-                "iteration, or krhf_scf_step did not reach tol)");
+            throw std::runtime_error("cuda::scf::KRHF: SCF did not converge in "
+                                     + std::to_string(max_iter)
+                                     + " iterations");
         energy_ha_ = e_ha;
         converged_ = true;
         iterations_ = iters;
-        if (write) {
-            const double e_ev = energy_ha_ * units::kHartreeInEv;
-            out->meta.get(kEnergy) = e_ev;
-            out->meta.get(kEnergyElectronic) = e_ev;
-        }
         guard();
     } catch (...) {
         guard();
@@ -755,8 +726,12 @@ void KRHF::solve(const cpu::Frame& frame, bool write, cpu::Frame* out) {
     }
 }
 
-void KRHF::run(cpu::Frame& frame) { solve(frame, true, &frame); }
-void KRHF::run(const cpu::Frame& frame) { solve(frame, false, nullptr); }
+void KRHF::run(cpu::Frame& frame) {
+    run(static_cast<const cpu::Frame&>(frame));
+    const double e_ev = energy_ha_ * units::kHartreeInEv;
+    frame.meta.get(kEnergy) = e_ev;
+    frame.meta.get(kEnergyElectronic) = e_ev;
+}
 
 cpu::scf::GradientResult KRHF::forces(cpu::Frame& /*frame*/) {
     throw std::runtime_error(

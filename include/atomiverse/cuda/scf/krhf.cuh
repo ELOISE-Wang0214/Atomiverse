@@ -67,7 +67,6 @@ class KRHF : public cuda::HF {
     double energy_ha_ = 0.0;
     bool converged_ = false;
     int iterations_ = 0;
-    void solve(const cpu::Frame& frame, bool write, cpu::Frame* out);
 };
 
 } // namespace scf

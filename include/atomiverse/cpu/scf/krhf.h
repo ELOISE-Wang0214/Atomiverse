@@ -78,8 +78,6 @@ class KRHF : public cpu::HF {
     double energy_ha_ = 0.0;
     bool converged_ = false;
     int iterations_ = 0;
-
-    void solve(const Frame& frame, bool write, Frame* out);
 };
 
 } // namespace scf

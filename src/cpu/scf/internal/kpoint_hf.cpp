@@ -450,8 +450,6 @@ double ewald_nuclear(const double* Z, const double (*R)[3], int natm,
         std::log(precision / (zsum * 16.0 * kPi * kPi));
     const double ke = -2.0 * eta * eta * log_precision;
     // Mesh from the same ortho cutoff rule, no basis primitives: Gmax.
-    PgtoSpec dummy{0, 1.0, 1.0};
-    (void)dummy;
     std::array<int, 3> mesh{1, 1, 1};
     const double gcut = std::sqrt(2.0 * ke);
     for (int d = 0; d < 3; ++d) {
@@ -709,11 +707,6 @@ struct Setup {
 
 Setup setup_krhf(const Frame& frame, BasisSet basis, const int k_mesh[3],
                  int charge, const char* tag = "KRHF", bool restricted = true) {
-    const double tol = 1.0;
-    const int max_iter = 1;
-    (void)tol;
-    (void)max_iter;
-
     if (!frame.box.is_orthorhombic())
         throw std::runtime_error(
             std::string(tag)
@@ -723,9 +716,6 @@ Setup setup_krhf(const Frame& frame, BasisSet basis, const int k_mesh[3],
         if (k_mesh[d] < 1)
             throw std::runtime_error(std::string(tag)
                                      + ": k_mesh entries must be >= 1");
-    if (!(tol > 0.0) || max_iter < 1)
-        throw std::runtime_error(std::string(tag)
-                                 + ": tol must be positive and max_iter >= 1");
 
     const double L[3] = {frame.box.length(0) * units::kAngstromInBohr,
                          frame.box.length(1) * units::kAngstromInBohr,
@@ -813,12 +803,12 @@ Setup setup_krhf(const Frame& frame, BasisSet basis, const int k_mesh[3],
 
     std::vector<double> Z(static_cast<std::size_t>(atoms.atoms.size()));
     std::vector<std::array<double, 3>> Rarr(atoms.atoms.size());
-    for (int a = 0; a < static_cast<int>(atoms.atoms.size()); ++a)
+    for (int a = 0; a < static_cast<int>(atoms.atoms.size()); ++a) {
         Z[static_cast<std::size_t>(a)] = static_cast<double>(atoms.atoms[a].Z);
-    for (int a = 0; a < static_cast<int>(atoms.atoms.size()); ++a)
         Rarr[static_cast<std::size_t>(a)] = {atoms.atoms[a].pos[0],
                                              atoms.atoms[a].pos[1],
                                              atoms.atoms[a].pos[2]};
+    }
     const double enuc = ewald_nuclear(
         Z.data(), reinterpret_cast<const double (*)[3]>(Rarr.data()),
         static_cast<int>(atoms.atoms.size()), L, kPrecision);
@@ -936,116 +926,41 @@ KrhfStatic krhf_assemble(const Frame& frame, BasisSet basis,
     return o;
 }
 
-KrhfEnergy krhf_energy(const Frame& frame, BasisSet basis, const int k_mesh[3],
-                       int charge, double tol, int max_iter) {
-    if (!(tol > 0.0) || max_iter < 1)
-        throw std::runtime_error(
-            "KRHF: tol must be positive and max_iter >= 1");
-    Setup s = setup_krhf(frame, basis, k_mesh, charge);
+// Restricted (n_b < 0): one density, vhf = J − ½K, occupation 2.
+// Unrestricted: J from α+β, vhf = J−K per spin, occupation 1
+// (pyscf.pbc.scf.kuhf.KUHF.get_veff). Hcore guess is init_guess_by_1e.
+KrhfEnergy scf_kpoint(const Setup& s, int n_a, int n_b, double tol,
+                      int max_iter, const char* tag) {
+    const int nspin = n_b < 0 ? 1 : 2;
     const int nk = s.nk;
     const int nao = s.nao;
     const int* mesh = s.mesh;
-    const double vol = s.vol;
-    const double enuc = s.enuc;
-    const int nocc = s.nocc;
-    auto& ao = s.ao;
-    auto& H = s.H;
-    auto& orth = s.orth;
-    auto& coords = s.coords;
-    auto& kpts = s.kpts;
-    auto& coul_j = s.coul_j;
-    auto& coul_k = s.coul_k;
+    const int nocc_s[2] = {n_a, n_b};
 
-    std::vector<CMat> dm(static_cast<std::size_t>(nk));
-    {
+    auto density_from = [&](const std::vector<CMat>& f, int nocc,
+                            std::vector<CMat>& dm) {
         std::vector<std::vector<double>> eps(static_cast<std::size_t>(nk));
-        std::vector<linalg::CplxMatrix> C(static_cast<std::size_t>(nk));
+        std::vector<linalg::CplxMatrix> cmo(static_cast<std::size_t>(nk));
         for (int k = 0; k < nk; ++k)
-            eigh_fock(H[k], orth[k], eps[k], C[k]);
-        std::vector<std::vector<double>> occ;
-        occupy(eps, nocc, 2.0, occ);
-        for (int k = 0; k < nk; ++k)
-            dm[k] = make_rdm1(C[k], occ[k]);
-    }
-
-    KrhfEnergy report;
-    double e_prev = 0.0;
-    for (int it = 0; it < max_iter; ++it) {
-        const auto vj = build_j(ao, dm, coul_j, mesh, vol);
-        const auto vk = build_k(ao, dm, coords, kpts, coul_k, mesh, vol);
-        std::vector<CMat> vhf(static_cast<std::size_t>(nk), CMat::zeros(nao));
-        std::vector<CMat> F(static_cast<std::size_t>(nk), CMat::zeros(nao));
-        for (int k = 0; k < nk; ++k) {
-            for (int i = 0; i < nao; ++i)
-                for (int j = 0; j < nao; ++j)
-                    vhf[static_cast<std::size_t>(k)](i, j) =
-                        vj[static_cast<std::size_t>(k)](i, j)
-                        - 0.5 * vk[static_cast<std::size_t>(k)](i, j);
-            vhf[static_cast<std::size_t>(k)].hermitize();
-            for (int i = 0; i < nao; ++i)
-                for (int j = 0; j < nao; ++j)
-                    F[static_cast<std::size_t>(k)](i, j) =
-                        H[static_cast<std::size_t>(k)](i, j)
-                        + vhf[static_cast<std::size_t>(k)](i, j);
-            F[static_cast<std::size_t>(k)].hermitize();
-        }
-        const double e = energy_elec(dm, H, vhf) + enuc;
-        report.hartree = e;
-        report.iterations = it + 1;
-        if (it > 0 && std::abs(e - e_prev) < tol) {
-            report.converged = true;
-            return report;
-        }
-        e_prev = e;
-        std::vector<std::vector<double>> eps(static_cast<std::size_t>(nk));
-        std::vector<linalg::CplxMatrix> C(static_cast<std::size_t>(nk));
-        for (int k = 0; k < nk; ++k)
-            eigh_fock(F[static_cast<std::size_t>(k)],
-                      orth[static_cast<std::size_t>(k)],
+            eigh_fock(f[static_cast<std::size_t>(k)],
+                      s.orth[static_cast<std::size_t>(k)],
                       eps[static_cast<std::size_t>(k)],
-                      C[static_cast<std::size_t>(k)]);
+                      cmo[static_cast<std::size_t>(k)]);
         std::vector<std::vector<double>> occ;
-        occupy(eps, nocc, 2.0, occ);
+        occupy(eps, nocc, nspin == 1 ? 2.0 : 1.0, occ);
+        dm.resize(static_cast<std::size_t>(nk));
         for (int k = 0; k < nk; ++k)
             dm[static_cast<std::size_t>(k)] =
-                make_rdm1(C[static_cast<std::size_t>(k)],
+                make_rdm1(cmo[static_cast<std::size_t>(k)],
                           occ[static_cast<std::size_t>(k)]);
-    }
-    throw std::runtime_error("KRHF: SCF did not converge in "
-                             + std::to_string(max_iter)
-                             + " iterations (last |energy| = "
-                             + std::to_string(report.hartree) + " Ha)");
-}
+    };
 
-KrhfEnergy kuhf_energy(const Frame& frame, BasisSet basis, const int k_mesh[3],
-                       int n_alpha, int n_beta, int charge, double tol,
-                       int max_iter) {
-    if (!(tol > 0.0) || max_iter < 1)
-        throw std::runtime_error(
-            "KUHF: tol must be positive and max_iter >= 1");
-    Setup s = setup_krhf(frame, basis, k_mesh, charge, "KUHF", false);
-    if (n_alpha < 0 || n_beta < 0 || n_alpha + n_beta != s.ne_total)
-        throw std::runtime_error(
-            "KUHF: n_alpha + n_beta must equal tot_electrons(nk) = "
-            "(sum Z)*nk - charge (pyscf.pbc.scf.kuhf.KUHF.nelec). "
-            "cell.spin = n_alpha - n_beta is the mesh total and is not "
-            "multiplied by nk; got n_alpha="
-            + std::to_string(n_alpha) + " n_beta=" + std::to_string(n_beta)
-            + " ne=" + std::to_string(s.ne_total));
-    const int nk = s.nk;
-    const int nao = s.nao;
-    const int* mesh = s.mesh;
-    const double vol = s.vol;
-    const double enuc = s.enuc;
-    auto& ao = s.ao;
-    auto& H = s.H;
-    auto& orth = s.orth;
-    auto& coords = s.coords;
-    auto& kpts = s.kpts;
-    auto& coul_j = s.coul_j;
-    auto& coul_k = s.coul_k;
+    std::vector<CMat> dm[2];
+    density_from(s.H, nocc_s[0], dm[0]);
+    if (nspin == 2)
+        density_from(s.H, nocc_s[1], dm[1]);
 
-    auto sum_dm = [](const std::vector<CMat>& a, const std::vector<CMat>& b) {
+    auto add_dm = [](const std::vector<CMat>& a, const std::vector<CMat>& b) {
         std::vector<CMat> out(a.size());
         for (std::size_t k = 0; k < a.size(); ++k) {
             out[k] = CMat::zeros(a[k].n);
@@ -1055,80 +970,42 @@ KrhfEnergy kuhf_energy(const Frame& frame, BasisSet basis, const int k_mesh[3],
         }
         return out;
     };
-    // kuhf.get_occ + make_rdm1. Hcore guess is init_guess_by_1e: the same
-    // core Hamiltonian for both spins, occupations n_alpha / n_beta.
-    auto rebuild = [&](const std::vector<CMat>& fa, const std::vector<CMat>& fb,
-                       std::vector<CMat>& dma, std::vector<CMat>& dmb) {
-        std::vector<std::vector<double>> eps_a(static_cast<std::size_t>(nk));
-        std::vector<std::vector<double>> eps_b(static_cast<std::size_t>(nk));
-        std::vector<linalg::CplxMatrix> ca(static_cast<std::size_t>(nk));
-        std::vector<linalg::CplxMatrix> cb(static_cast<std::size_t>(nk));
-        for (int k = 0; k < nk; ++k) {
-            eigh_fock(fa[static_cast<std::size_t>(k)],
-                      orth[static_cast<std::size_t>(k)],
-                      eps_a[static_cast<std::size_t>(k)],
-                      ca[static_cast<std::size_t>(k)]);
-            eigh_fock(fb[static_cast<std::size_t>(k)],
-                      orth[static_cast<std::size_t>(k)],
-                      eps_b[static_cast<std::size_t>(k)],
-                      cb[static_cast<std::size_t>(k)]);
-        }
-        std::vector<std::vector<double>> occ_a, occ_b;
-        occupy(eps_a, n_alpha, 1.0, occ_a);
-        occupy(eps_b, n_beta, 1.0, occ_b);
-        dma.resize(static_cast<std::size_t>(nk));
-        dmb.resize(static_cast<std::size_t>(nk));
-        for (int k = 0; k < nk; ++k) {
-            dma[static_cast<std::size_t>(k)] =
-                make_rdm1(ca[static_cast<std::size_t>(k)],
-                          occ_a[static_cast<std::size_t>(k)]);
-            dmb[static_cast<std::size_t>(k)] =
-                make_rdm1(cb[static_cast<std::size_t>(k)],
-                          occ_b[static_cast<std::size_t>(k)]);
-        }
-    };
-
-    std::vector<CMat> dma, dmb;
-    rebuild(H, H, dma, dmb);
 
     KrhfEnergy report;
     double e_prev = 0.0;
     for (int it = 0; it < max_iter; ++it) {
-        const auto vj = build_j(ao, sum_dm(dma, dmb), coul_j, mesh, vol);
-        const auto vk_a = build_k(ao, dma, coords, kpts, coul_k, mesh, vol);
-        const auto vk_b = build_k(ao, dmb, coords, kpts, coul_k, mesh, vol);
-        std::vector<CMat> vhf_a(static_cast<std::size_t>(nk), CMat::zeros(nao));
-        std::vector<CMat> vhf_b(static_cast<std::size_t>(nk), CMat::zeros(nao));
-        std::vector<CMat> fa(static_cast<std::size_t>(nk), CMat::zeros(nao));
-        std::vector<CMat> fb(static_cast<std::size_t>(nk), CMat::zeros(nao));
-        for (int k = 0; k < nk; ++k) {
-            // KUHF.get_veff: vj = Ja + Jb (already the total), vhf = vj - vk.
-            for (int i = 0; i < nao; ++i)
-                for (int j = 0; j < nao; ++j) {
-                    vhf_a[static_cast<std::size_t>(k)](i, j) =
-                        vj[static_cast<std::size_t>(k)](i, j)
-                        - vk_a[static_cast<std::size_t>(k)](i, j);
-                    vhf_b[static_cast<std::size_t>(k)](i, j) =
-                        vj[static_cast<std::size_t>(k)](i, j)
-                        - vk_b[static_cast<std::size_t>(k)](i, j);
-                }
-            vhf_a[static_cast<std::size_t>(k)].hermitize();
-            vhf_b[static_cast<std::size_t>(k)].hermitize();
-            for (int i = 0; i < nao; ++i)
-                for (int j = 0; j < nao; ++j) {
-                    fa[static_cast<std::size_t>(k)](i, j) =
-                        H[static_cast<std::size_t>(k)](i, j)
-                        + vhf_a[static_cast<std::size_t>(k)](i, j);
-                    fb[static_cast<std::size_t>(k)](i, j) =
-                        H[static_cast<std::size_t>(k)](i, j)
-                        + vhf_b[static_cast<std::size_t>(k)](i, j);
-                }
-            fa[static_cast<std::size_t>(k)].hermitize();
-            fb[static_cast<std::size_t>(k)].hermitize();
+        const std::vector<CMat> dm_j =
+            (nspin == 1) ? dm[0] : add_dm(dm[0], dm[1]);
+        const auto vj = build_j(s.ao, dm_j, s.coul_j, mesh, s.vol);
+        std::vector<CMat> fock[2];
+        double e_elec = 0.0;
+        for (int sp = 0; sp < nspin; ++sp) {
+            const auto vk =
+                build_k(s.ao, dm[sp], s.coords, s.kpts, s.coul_k, mesh, s.vol);
+            std::vector<CMat> vhf(static_cast<std::size_t>(nk),
+                                  CMat::zeros(nao));
+            fock[sp].assign(static_cast<std::size_t>(nk), CMat::zeros(nao));
+            for (int k = 0; k < nk; ++k) {
+                for (int i = 0; i < nao; ++i)
+                    for (int j = 0; j < nao; ++j) {
+                        const std::complex<double> kterm =
+                            (nspin == 1)
+                                ? 0.5 * vk[static_cast<std::size_t>(k)](i, j)
+                                : vk[static_cast<std::size_t>(k)](i, j);
+                        vhf[static_cast<std::size_t>(k)](i, j) =
+                            vj[static_cast<std::size_t>(k)](i, j) - kterm;
+                    }
+                vhf[static_cast<std::size_t>(k)].hermitize();
+                for (int i = 0; i < nao; ++i)
+                    for (int j = 0; j < nao; ++j)
+                        fock[sp][static_cast<std::size_t>(k)](i, j) =
+                            s.H[static_cast<std::size_t>(k)](i, j)
+                            + vhf[static_cast<std::size_t>(k)](i, j);
+                fock[sp][static_cast<std::size_t>(k)].hermitize();
+            }
+            e_elec += energy_elec(dm[sp], s.H, vhf);
         }
-        // kuhf.energy_elec: sum over spin of (e1 + 0.5 e2) / nk.
-        const double e =
-            energy_elec(dma, H, vhf_a) + energy_elec(dmb, H, vhf_b) + enuc;
+        const double e = e_elec + s.enuc;
         report.hartree = e;
         report.iterations = it + 1;
         if (it > 0 && std::abs(e - e_prev) < tol) {
@@ -1136,12 +1013,40 @@ KrhfEnergy kuhf_energy(const Frame& frame, BasisSet basis, const int k_mesh[3],
             return report;
         }
         e_prev = e;
-        rebuild(fa, fb, dma, dmb);
+        for (int sp = 0; sp < nspin; ++sp)
+            density_from(fock[sp], nocc_s[sp], dm[sp]);
     }
-    throw std::runtime_error("KUHF: SCF did not converge in "
+    throw std::runtime_error(std::string(tag) + ": SCF did not converge in "
                              + std::to_string(max_iter)
                              + " iterations (last |energy| = "
                              + std::to_string(report.hartree) + " Ha)");
+}
+
+KrhfEnergy krhf_energy(const Frame& frame, BasisSet basis, const int k_mesh[3],
+                       int charge, double tol, int max_iter) {
+    if (!(tol > 0.0) || max_iter < 1)
+        throw std::runtime_error(
+            "KRHF: tol must be positive and max_iter >= 1");
+    const Setup s = setup_krhf(frame, basis, k_mesh, charge);
+    return scf_kpoint(s, s.nocc, -1, tol, max_iter, "KRHF");
+}
+
+KrhfEnergy kuhf_energy(const Frame& frame, BasisSet basis, const int k_mesh[3],
+                       int n_alpha, int n_beta, int charge, double tol,
+                       int max_iter) {
+    if (!(tol > 0.0) || max_iter < 1)
+        throw std::runtime_error(
+            "KUHF: tol must be positive and max_iter >= 1");
+    const Setup s = setup_krhf(frame, basis, k_mesh, charge, "KUHF", false);
+    if (n_alpha < 0 || n_beta < 0 || n_alpha + n_beta != s.ne_total)
+        throw std::runtime_error(
+            "KUHF: n_alpha + n_beta must equal tot_electrons(nk) = "
+            "(sum Z)*nk - charge (pyscf.pbc.scf.kuhf.KUHF.nelec). "
+            "cell.spin = n_alpha - n_beta is the mesh total and is not "
+            "multiplied by nk; got n_alpha="
+            + std::to_string(n_alpha) + " n_beta=" + std::to_string(n_beta)
+            + " ne=" + std::to_string(s.ne_total));
+    return scf_kpoint(s, n_alpha, n_beta, tol, max_iter, "KUHF");
 }
 
 } // namespace internal
