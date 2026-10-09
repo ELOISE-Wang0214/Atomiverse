@@ -601,7 +601,7 @@ Complex coefficients and one-electron spin–orbit coupling are a separate
 method, `ComplexGHF`, not a member of real `GHF`. With `x2c = true` the
 core is the spin-orbital X2C-1e Hamiltonian (PySCF `GHF.x2c1e`,
 contracted basis). Two-electron integrals stay non-relativistic.
-`forces` is not available. The device call throws; the CPU call is
+`forces` is not available. There is no device path. The CPU call is
 Frame in / Frame out:
 
 ```cpp

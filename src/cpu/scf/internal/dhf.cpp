@@ -9,15 +9,12 @@
 
 #include "atomiverse/cpu/scf/internal/dhf.h"
 
-#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <stdexcept>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/internal/basis_workspace.h"
 #include "atomiverse/cpu/scf/internal/complex_ghf.h"
@@ -34,178 +31,6 @@ namespace {
 
 using Cplx = std::complex<double>;
 using CMat = ComplexMatrix;
-
-CMat zeros(int n, int m) { return xt::zeros<Cplx>({n, m}); }
-
-CMat adjoint(const CMat& A) {
-    const int n = static_cast<int>(A.shape(0));
-    const int m = static_cast<int>(A.shape(1));
-    CMat B = zeros(m, n);
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < m; ++j)
-            B(j, i) = std::conj(A(i, j));
-    return B;
-}
-
-CMat mul(const CMat& A, const CMat& B) {
-    const int n = static_cast<int>(A.shape(0));
-    const int k = static_cast<int>(A.shape(1));
-    const int m = static_cast<int>(B.shape(1));
-    CMat C = zeros(n, m);
-    for (int i = 0; i < n; ++i) {
-        for (int p = 0; p < k; ++p) {
-            const Cplx a = A(i, p);
-            if (a == Cplx{0.0, 0.0})
-                continue;
-            for (int j = 0; j < m; ++j)
-                C(i, j) += a * B(p, j);
-        }
-    }
-    return C;
-}
-
-void hermitize(CMat& A) {
-    const int n = static_cast<int>(A.shape(0));
-    for (int i = 0; i < n; ++i) {
-        A(i, i) = Cplx{A(i, i).real(), 0.0};
-        for (int j = i + 1; j < n; ++j) {
-            const Cplx v = 0.5 * (A(i, j) + std::conj(A(j, i)));
-            A(i, j) = v;
-            A(j, i) = std::conj(v);
-        }
-    }
-}
-
-double real_trace_ji(const CMat& H, const CMat& P) {
-    const int n = static_cast<int>(H.shape(0));
-    Cplx acc{0.0, 0.0};
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j)
-            acc += H(i, j) * P(j, i);
-    return acc.real();
-}
-
-double frobenius_re(const CMat& A, const CMat& B) {
-    const int n = static_cast<int>(A.shape(0));
-    const int m = static_cast<int>(A.shape(1));
-    double acc = 0.0;
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < m; ++j)
-            acc += (std::conj(A(i, j)) * B(i, j)).real();
-    return acc;
-}
-
-struct GenEigen {
-    std::vector<double> w;
-    CMat V;
-};
-
-GenEigen eigh_generalized(const CMat& H_in, const CMat& M_in, double tol) {
-    CMat H = H_in;
-    CMat M = M_in;
-    hermitize(H);
-    hermitize(M);
-    const int n = static_cast<int>(H.shape(0));
-    std::vector<double> mw;
-    CMat MV;
-    linalg::eigh_hermitian(M, mw, MV);
-    int nkeep = 0;
-    for (double ev : mw)
-        if (ev > tol)
-            ++nkeep;
-    if (nkeep != n) {
-        const double emin = mw.empty() ? 0.0 : mw.front();
-        throw std::runtime_error("DHF::run: metric eigenvalue "
-                                 + std::to_string(emin) + " is at or below "
-                                 + std::to_string(tol));
-    }
-    CMat X = zeros(n, n);
-    for (int k = 0; k < n; ++k) {
-        const double inv = 1.0 / std::sqrt(mw[static_cast<std::size_t>(k)]);
-        for (int i = 0; i < n; ++i)
-            X(i, k) = MV(i, k) * inv;
-    }
-    CMat Hp = mul(adjoint(X), mul(H, X));
-    hermitize(Hp);
-    std::vector<double> ew;
-    CMat Cp;
-    linalg::eigh_hermitian(Hp, ew, Cp);
-    GenEigen out;
-    out.w = std::move(ew);
-    out.V = mul(X, Cp);
-    return out;
-}
-
-CMat commutator(const CMat& F, const CMat& P, const CMat& S) {
-    return mul(mul(F, P), S) - mul(mul(S, P), F);
-}
-
-bool solve_dense(std::vector<double>& A, std::vector<double>& b, int n) {
-    for (int k = 0; k < n; ++k) {
-        int piv = k;
-        double best = std::abs(A[static_cast<std::size_t>(k * n + k)]);
-        for (int i = k + 1; i < n; ++i) {
-            const double v = std::abs(A[static_cast<std::size_t>(i * n + k)]);
-            if (v > best) {
-                best = v;
-                piv = i;
-            }
-        }
-        if (!(best > 1e-14))
-            return false;
-        if (piv != k) {
-            for (int j = k; j < n; ++j)
-                std::swap(A[static_cast<std::size_t>(k * n + j)],
-                          A[static_cast<std::size_t>(piv * n + j)]);
-            std::swap(b[static_cast<std::size_t>(k)],
-                      b[static_cast<std::size_t>(piv)]);
-        }
-        const double diag = A[static_cast<std::size_t>(k * n + k)];
-        for (int i = k + 1; i < n; ++i) {
-            const double f = A[static_cast<std::size_t>(i * n + k)] / diag;
-            for (int j = k + 1; j < n; ++j)
-                A[static_cast<std::size_t>(i * n + j)] -=
-                    f * A[static_cast<std::size_t>(k * n + j)];
-            b[static_cast<std::size_t>(i)] -=
-                f * b[static_cast<std::size_t>(k)];
-        }
-    }
-    for (int i = n - 1; i >= 0; --i) {
-        double s = b[static_cast<std::size_t>(i)];
-        for (int j = i + 1; j < n; ++j)
-            s -= A[static_cast<std::size_t>(i * n + j)]
-                 * b[static_cast<std::size_t>(j)];
-        b[static_cast<std::size_t>(i)] =
-            s / A[static_cast<std::size_t>(i * n + i)];
-    }
-    return true;
-}
-
-CMat pulay(const std::vector<CMat>& F, const std::vector<CMat>& E) {
-    const int m = static_cast<int>(F.size());
-    const int n = m + 1;
-    std::vector<double> A(static_cast<std::size_t>(n * n), 0.0);
-    std::vector<double> rhs(static_cast<std::size_t>(n), 0.0);
-    for (int i = 0; i < m; ++i) {
-        for (int j = 0; j < m; ++j)
-            A[static_cast<std::size_t>(i * n + j)] = frobenius_re(E[i], E[j]);
-        A[static_cast<std::size_t>(i * n + m)] = 1.0;
-        A[static_cast<std::size_t>(m * n + i)] = 1.0;
-    }
-    rhs[static_cast<std::size_t>(m)] = 1.0;
-    if (!solve_dense(A, rhs, n))
-        return F.back();
-    const int nr = static_cast<int>(F[0].shape(0));
-    CMat out = zeros(nr, nr);
-    for (int i = 0; i < m; ++i) {
-        const double c = rhs[static_cast<std::size_t>(i)];
-        for (int p = 0; p < nr; ++p)
-            for (int q = 0; q < nr; ++q)
-                out(p, q) += c * F[static_cast<std::size_t>(i)](p, q);
-    }
-    hermitize(out);
-    return out;
-}
 
 int at4(int n, int a, int b, int c, int d) {
     return ((a * n + b) * n + c) * n + d;
@@ -644,13 +469,8 @@ DhfEnergy dhf_energy(const Frame& frame, BasisSet basis, int charge, double tol,
 
     const auto blocks = blocks_from_shells(pack.shells);
     int n2 = 0;
-    for (const auto& b : blocks) {
-        if (b.l > 1)
-            throw std::runtime_error(
-                "DHF::run: angular momentum l=" + std::to_string(b.l)
-                + " is not implemented (missing kernel dhf_ao_lgt1)");
+    for (const auto& b : blocks)
         n2 += 4 * b.l + 2;
-    }
     CMat ca = zeros(nao, n2);
     CMat cb = zeros(nao, n2);
     int col = 0;
@@ -667,31 +487,10 @@ DhfEnergy dhf_energy(const Frame& frame, BasisSet basis, int charge, double tol,
     ShellList shells{atoms, basis};
     Spnucsp q = int1e_spnucsp(shells, atoms);
     if (pack.spherical()) {
-        auto sand = [](const RealMatrix& M, const RealMatrix& c2s) {
-            const int nc = static_cast<int>(c2s.shape(0));
-            const int ns = static_cast<int>(c2s.shape(1));
-            RealMatrix MC = xt::zeros<double>({nc, ns});
-            for (int i = 0; i < nc; ++i)
-                for (int a = 0; a < ns; ++a) {
-                    double s = 0.0;
-                    for (int p = 0; p < nc; ++p)
-                        s += M(i, p) * c2s(p, a);
-                    MC(i, a) = s;
-                }
-            RealMatrix out = xt::zeros<double>({ns, ns});
-            for (int a = 0; a < ns; ++a)
-                for (int b = 0; b < ns; ++b) {
-                    double s = 0.0;
-                    for (int i = 0; i < nc; ++i)
-                        s += c2s(i, a) * MC(i, b);
-                    out(a, b) = s;
-                }
-            return out;
-        };
-        q.x = sand(q.x, pack.c2s);
-        q.y = sand(q.y, pack.c2s);
-        q.z = sand(q.z, pack.c2s);
-        q.s = sand(q.s, pack.c2s);
+        q.x = sandwich(q.x, pack.c2s);
+        q.y = sandwich(q.y, pack.c2s);
+        q.z = sandwich(q.z, pack.c2s);
+        q.s = sandwich(q.s, pack.c2s);
     }
     const CMat Wso = sigma_dot(q.x, q.y, q.z, q.s);
     const CMat Ws = spinor_so(Wso, ca, cb);
@@ -761,38 +560,25 @@ DhfEnergy dhf_energy(const Frame& frame, BasisSet basis, int charge, double tol,
             "DHF::run: electron count must be positive");
 
     CMat P = make_rdm1(eigh_generalized(H, S4, 1e-9), n_elec, c);
-    std::vector<CMat> diis_f;
-    std::vector<CMat> diis_e;
-    double e_prev = 0.0;
-    bool have = false;
-    bool prev_close = false;
+    TwoStepEnergy gate;
+    HermitianDiis diis;
     DhfEnergy result;
     for (int iter = 1; iter <= max_iter; ++iter) {
         const CMat V = veff(ell, ess, P, n2, scale);
         const double e =
             real_trace_ji(H, P) + 0.5 * real_trace_ji(V, P) + pack.V_nuc;
-        const bool close = have && std::abs(e - e_prev) < tol;
         result.hartree = e;
         result.iterations = iter;
-        if (close && prev_close) {
+        if (gate.converged(e, tol)) {
             result.converged = true;
             return result;
         }
-        prev_close = close;
-        e_prev = e;
-        have = true;
         CMat F = zeros(n4, n4);
         for (int i = 0; i < n4; ++i)
             for (int j = 0; j < n4; ++j)
                 F(i, j) = H(i, j) + V(i, j);
         hermitize(F);
-        diis_f.push_back(F);
-        diis_e.push_back(commutator(F, P, S4));
-        if (static_cast<int>(diis_f.size()) > 8) {
-            diis_f.erase(diis_f.begin());
-            diis_e.erase(diis_e.begin());
-        }
-        const CMat Fnext = diis_f.size() >= 2 ? pulay(diis_f, diis_e) : F;
+        const CMat Fnext = diis.next(F, commutator(F, P, S4));
         P = make_rdm1(eigh_generalized(Fnext, S4, 1e-9), n_elec, c);
     }
     result.converged = false;

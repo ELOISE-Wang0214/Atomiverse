@@ -796,7 +796,6 @@ if(NOT ATV_DOCS_ONLY)
                 src/cuda/scf/uhf_fock.cu
                 src/cuda/scf/uhf_density.cu
                 src/cuda/scf/krhf.cu
-                src/cuda/scf/complex_ghf.cu
             )
         endif()
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_HF)

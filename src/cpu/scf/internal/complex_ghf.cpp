@@ -36,47 +36,45 @@ namespace {
 using Cplx = std::complex<double>;
 using CMat = ComplexMatrix;
 
-CMat zeros(int n, int m) { return xt::zeros<Cplx>({n, m}); }
-
-CMat adjoint(const CMat& A) {
-    const int n = static_cast<int>(A.shape(0));
-    const int m = static_cast<int>(A.shape(1));
-    CMat B = zeros(m, n);
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < m; ++j)
-            B(j, i) = std::conj(A(i, j));
-    return B;
-}
-
-CMat mul(const CMat& A, const CMat& B) {
-    const int n = static_cast<int>(A.shape(0));
-    const int k = static_cast<int>(A.shape(1));
-    const int m = static_cast<int>(B.shape(1));
-    if (static_cast<int>(B.shape(0)) != k)
-        throw std::invalid_argument("complex_ghf: matrix product shape");
-    CMat C = zeros(n, m);
-    for (int i = 0; i < n; ++i) {
-        for (int p = 0; p < k; ++p) {
-            const Cplx a = A(i, p);
-            if (a == Cplx{0, 0})
-                continue;
-            for (int j = 0; j < m; ++j)
-                C(i, j) += a * B(p, j);
+bool solve_dense(std::vector<double>& A, std::vector<double>& b, int n) {
+    for (int k = 0; k < n; ++k) {
+        int piv = k;
+        double best = std::abs(A[static_cast<std::size_t>(k * n + k)]);
+        for (int i = k + 1; i < n; ++i) {
+            const double v = std::abs(A[static_cast<std::size_t>(i * n + k)]);
+            if (v > best) {
+                best = v;
+                piv = i;
+            }
+        }
+        if (!(best > 1e-14))
+            return false;
+        if (piv != k) {
+            for (int j = k; j < n; ++j)
+                std::swap(A[static_cast<std::size_t>(k * n + j)],
+                          A[static_cast<std::size_t>(piv * n + j)]);
+            std::swap(b[static_cast<std::size_t>(k)],
+                      b[static_cast<std::size_t>(piv)]);
+        }
+        const double diag = A[static_cast<std::size_t>(k * n + k)];
+        for (int i = k + 1; i < n; ++i) {
+            const double f = A[static_cast<std::size_t>(i * n + k)] / diag;
+            for (int j = k + 1; j < n; ++j)
+                A[static_cast<std::size_t>(i * n + j)] -=
+                    f * A[static_cast<std::size_t>(k * n + j)];
+            b[static_cast<std::size_t>(i)] -=
+                f * b[static_cast<std::size_t>(k)];
         }
     }
-    return C;
-}
-
-void hermitize(CMat& A) {
-    const int n = static_cast<int>(A.shape(0));
-    for (int i = 0; i < n; ++i) {
-        A(i, i) = Cplx{A(i, i).real(), 0.0};
-        for (int j = i + 1; j < n; ++j) {
-            const Cplx v = 0.5 * (A(i, j) + std::conj(A(j, i)));
-            A(i, j) = v;
-            A(j, i) = std::conj(v);
-        }
+    for (int i = n - 1; i >= 0; --i) {
+        double s = b[static_cast<std::size_t>(i)];
+        for (int j = i + 1; j < n; ++j)
+            s -= A[static_cast<std::size_t>(i * n + j)]
+                 * b[static_cast<std::size_t>(j)];
+        b[static_cast<std::size_t>(i)] =
+            s / A[static_cast<std::size_t>(i * n + i)];
     }
+    return true;
 }
 
 double frobenius_re(const CMat& A, const CMat& B) {
@@ -87,59 +85,6 @@ double frobenius_re(const CMat& A, const CMat& B) {
         for (int j = 0; j < m; ++j)
             acc += (std::conj(A(i, j)) * B(i, j)).real();
     return acc;
-}
-
-double real_trace_ji(const CMat& H, const CMat& P) {
-    const int n = static_cast<int>(H.shape(0));
-    Cplx acc{0.0, 0.0};
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j)
-            acc += H(i, j) * P(j, i);
-    return acc.real();
-}
-
-/// Generalized Hermitian eigenproblem. Eigenvalues ascending.
-/// Eigenvectors are columns in the original basis, M-normalized.
-struct GenEigen {
-    std::vector<double> w;
-    CMat V;
-};
-
-GenEigen eigh_generalized(const CMat& H_in, const CMat& M_in, double tol) {
-    CMat H = H_in;
-    CMat M = M_in;
-    hermitize(H);
-    hermitize(M);
-    const int n = static_cast<int>(H.shape(0));
-    std::vector<double> mw;
-    CMat MV;
-    linalg::eigh_hermitian(M, mw, MV);
-    int nkeep = 0;
-    for (double ev : mw)
-        if (ev > tol)
-            ++nkeep;
-    if (nkeep != n) {
-        double emin = mw.empty() ? 0.0 : mw.front();
-        throw std::runtime_error(
-            "complex_ghf: metric eigenvalue " + std::to_string(emin)
-            + " is at or below " + std::to_string(tol)
-            + " — refusing a rank-deficient complex spinor metric");
-    }
-    CMat X = zeros(n, n);
-    for (int k = 0; k < n; ++k) {
-        const double inv = 1.0 / std::sqrt(mw[static_cast<std::size_t>(k)]);
-        for (int i = 0; i < n; ++i)
-            X(i, k) = MV(i, k) * inv;
-    }
-    CMat Hp = mul(adjoint(X), mul(H, X));
-    hermitize(Hp);
-    std::vector<double> ew;
-    CMat Cp;
-    linalg::eigh_hermitian(Hp, ew, Cp);
-    GenEigen out;
-    out.w = std::move(ew);
-    out.V = mul(X, Cp);
-    return out;
 }
 
 /// ⟨∂_d g_a | 1/r | ∂_e g_b⟩ without −Z. Same four-term identity as
@@ -339,49 +284,99 @@ CMat make_rdm1(const GenEigen& sol, int n_elec) {
     return P;
 }
 
-CMat commutator(const CMat& F, const CMat& P, const CMat& S) {
-    return mul(mul(F, P), S) - mul(mul(S, P), F);
+} // namespace
+
+CMat zeros(int n, int m) { return xt::zeros<Cplx>({n, m}); }
+
+CMat adjoint(const CMat& A) {
+    const int n = static_cast<int>(A.shape(0));
+    const int m = static_cast<int>(A.shape(1));
+    CMat B = zeros(m, n);
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < m; ++j)
+            B(j, i) = std::conj(A(i, j));
+    return B;
 }
 
-bool solve_dense(std::vector<double>& A, std::vector<double>& b, int n) {
+CMat mul(const CMat& A, const CMat& B) {
+    const int n = static_cast<int>(A.shape(0));
+    const int k = static_cast<int>(A.shape(1));
+    const int m = static_cast<int>(B.shape(1));
+    if (static_cast<int>(B.shape(0)) != k)
+        throw std::invalid_argument("complex_ghf: matrix product shape");
+    CMat C = zeros(n, m);
+    for (int i = 0; i < n; ++i) {
+        for (int p = 0; p < k; ++p) {
+            const Cplx a = A(i, p);
+            if (a == Cplx{0, 0})
+                continue;
+            for (int j = 0; j < m; ++j)
+                C(i, j) += a * B(p, j);
+        }
+    }
+    return C;
+}
+
+void hermitize(CMat& A) {
+    const int n = static_cast<int>(A.shape(0));
+    for (int i = 0; i < n; ++i) {
+        A(i, i) = Cplx{A(i, i).real(), 0.0};
+        for (int j = i + 1; j < n; ++j) {
+            const Cplx v = 0.5 * (A(i, j) + std::conj(A(j, i)));
+            A(i, j) = v;
+            A(j, i) = std::conj(v);
+        }
+    }
+}
+
+double real_trace_ji(const CMat& H, const CMat& P) {
+    const int n = static_cast<int>(H.shape(0));
+    Cplx acc{0.0, 0.0};
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            acc += H(i, j) * P(j, i);
+    return acc.real();
+}
+
+GenEigen eigh_generalized(const CMat& H_in, const CMat& M_in, double tol) {
+    CMat H = H_in;
+    CMat M = M_in;
+    hermitize(H);
+    hermitize(M);
+    const int n = static_cast<int>(H.shape(0));
+    std::vector<double> mw;
+    CMat MV;
+    linalg::eigh_hermitian(M, mw, MV);
+    int nkeep = 0;
+    for (double ev : mw)
+        if (ev > tol)
+            ++nkeep;
+    if (nkeep != n) {
+        double emin = mw.empty() ? 0.0 : mw.front();
+        throw std::runtime_error(
+            "complex_ghf: metric eigenvalue " + std::to_string(emin)
+            + " is at or below " + std::to_string(tol)
+            + " — refusing a rank-deficient complex spinor metric");
+    }
+    CMat X = zeros(n, n);
     for (int k = 0; k < n; ++k) {
-        int piv = k;
-        double best = std::abs(A[static_cast<std::size_t>(k * n + k)]);
-        for (int i = k + 1; i < n; ++i) {
-            const double v = std::abs(A[static_cast<std::size_t>(i * n + k)]);
-            if (v > best) {
-                best = v;
-                piv = i;
-            }
-        }
-        if (!(best > 1e-14))
-            return false;
-        if (piv != k) {
-            for (int j = k; j < n; ++j)
-                std::swap(A[static_cast<std::size_t>(k * n + j)],
-                          A[static_cast<std::size_t>(piv * n + j)]);
-            std::swap(b[static_cast<std::size_t>(k)],
-                      b[static_cast<std::size_t>(piv)]);
-        }
-        const double diag = A[static_cast<std::size_t>(k * n + k)];
-        for (int i = k + 1; i < n; ++i) {
-            const double f = A[static_cast<std::size_t>(i * n + k)] / diag;
-            for (int j = k + 1; j < n; ++j)
-                A[static_cast<std::size_t>(i * n + j)] -=
-                    f * A[static_cast<std::size_t>(k * n + j)];
-            b[static_cast<std::size_t>(i)] -=
-                f * b[static_cast<std::size_t>(k)];
-        }
+        const double inv = 1.0 / std::sqrt(mw[static_cast<std::size_t>(k)]);
+        for (int i = 0; i < n; ++i)
+            X(i, k) = MV(i, k) * inv;
     }
-    for (int i = n - 1; i >= 0; --i) {
-        double s = b[static_cast<std::size_t>(i)];
-        for (int j = i + 1; j < n; ++j)
-            s -= A[static_cast<std::size_t>(i * n + j)]
-                 * b[static_cast<std::size_t>(j)];
-        b[static_cast<std::size_t>(i)] =
-            s / A[static_cast<std::size_t>(i * n + i)];
-    }
-    return true;
+    CMat Hp = mul(adjoint(X), mul(H, X));
+    hermitize(Hp);
+    std::vector<double> ew;
+    CMat Cp;
+    linalg::eigh_hermitian(Hp, ew, Cp);
+    GenEigen out;
+    out.w = std::move(ew);
+    out.V = mul(X, Cp);
+    return out;
+}
+
+CMat commutator(const CMat& F, const CMat& P, const CMat& S) {
+    return mul(mul(F, P), S) - mul(mul(S, P), F);
 }
 
 CMat pulay(const std::vector<CMat>& F, const std::vector<CMat>& E) {
@@ -411,11 +406,48 @@ CMat pulay(const std::vector<CMat>& F, const std::vector<CMat>& E) {
 }
 
 RealMatrix sandwich(const RealMatrix& M, const RealMatrix& c2s) {
-    const auto ct = xt::transpose(c2s);
-    return xt::linalg::dot(ct, xt::linalg::dot(M, c2s));
+    const int nc = static_cast<int>(c2s.shape(0));
+    const int ns = static_cast<int>(c2s.shape(1));
+    RealMatrix MC = xt::zeros<double>({nc, ns});
+    for (int i = 0; i < nc; ++i)
+        for (int a = 0; a < ns; ++a) {
+            double s = 0.0;
+            for (int p = 0; p < nc; ++p)
+                s += M(i, p) * c2s(p, a);
+            MC(i, a) = s;
+        }
+    RealMatrix out = xt::zeros<double>({ns, ns});
+    for (int a = 0; a < ns; ++a)
+        for (int b = 0; b < ns; ++b) {
+            double s = 0.0;
+            for (int i = 0; i < nc; ++i)
+                s += c2s(i, a) * MC(i, b);
+            out(a, b) = s;
+        }
+    return out;
 }
 
-} // namespace
+ComplexMatrix HermitianDiis::next(const ComplexMatrix& fock,
+                                  const ComplexMatrix& error) {
+    fock_.push_back(fock);
+    error_.push_back(error);
+    if (static_cast<int>(fock_.size()) > 8) {
+        fock_.erase(fock_.begin());
+        error_.erase(error_.begin());
+    }
+    if (fock_.size() < 2)
+        return fock;
+    return pulay(fock_, error_);
+}
+
+bool TwoStepEnergy::converged(double energy, double tol) {
+    const bool close = seen_ && std::abs(energy - previous_) < tol;
+    const bool done = close && was_close_;
+    was_close_ = close;
+    previous_ = energy;
+    seen_ = true;
+    return done;
+}
 
 Spnucsp int1e_spnucsp(const ShellList& shells, const AtomList& atoms) {
     for (const native::Shell& sh : shells.shells) {
@@ -628,11 +660,8 @@ ComplexGhfEnergy complex_ghf_energy(const Frame& frame, BasisSet basis,
     GenEigen guess = eigh_generalized(h, S, 1e-8);
     CMat P = make_rdm1(guess, n_elec);
 
-    std::vector<CMat> diis_f;
-    std::vector<CMat> diis_e;
-    double e_prev = 0.0;
-    bool have = false;
-    bool prev_close = false;
+    TwoStepEnergy gate;
+    HermitianDiis diis;
     ComplexGhfEnergy result;
     for (int iter = 1; iter <= max_iter; ++iter) {
         CMat F = ghf_fock(h, pack.ERI, P);
@@ -642,24 +671,13 @@ ComplexGhfEnergy complex_ghf_energy(const Frame& frame, BasisSet basis,
                 vhf(i, j) -= h(i, j);
         const double e_elec = real_trace_ji(h, P) + 0.5 * real_trace_ji(vhf, P);
         const double e = e_elec + pack.V_nuc;
-        const bool close = have && std::abs(e - e_prev) < tol;
         result.hartree = e;
         result.iterations = iter;
-        if (close && prev_close) {
+        if (gate.converged(e, tol)) {
             result.converged = true;
             return result;
         }
-        prev_close = close;
-        e_prev = e;
-        have = true;
-
-        diis_f.push_back(F);
-        diis_e.push_back(commutator(F, P, S));
-        if (static_cast<int>(diis_f.size()) > 8) {
-            diis_f.erase(diis_f.begin());
-            diis_e.erase(diis_e.begin());
-        }
-        CMat Fnext = diis_f.size() >= 2 ? pulay(diis_f, diis_e) : F;
+        const CMat Fnext = diis.next(F, commutator(F, P, S));
         const GenEigen sol = eigh_generalized(Fnext, S, 1e-8);
         P = make_rdm1(sol, n_elec);
     }
