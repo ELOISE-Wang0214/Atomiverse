@@ -34,6 +34,9 @@ if(NOT ATV_DOCS_ONLY)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
     option(ATV_BUILD_CUDA "Build CUDA backend (requires CUDA toolkit)" ON)
+    option(ATV_BUILD_KOKKOS
+        "Build the Kokkos Serial CPU-execution-space LJ foothold (does not vendor Kokkos)"
+        OFF)
     if(ATV_BUILD_CUDA)
         # Prefer an explicit arch when building for GH200 (sm_90). `native`
         # only works when configure+compile run on the target GPU node; a
@@ -1377,6 +1380,11 @@ if(NOT ATV_DOCS_ONLY)
         enable_testing()
     endif()
 
+    # Kokkos Serial foothold (atomiverse_kokkos). OFF returns immediately
+    # and adds no sources. Included after atomiverse so Kokkos's own
+    # project() cannot rewrite the main library's flags.
+    include("${CMAKE_SOURCE_DIR}/cmake/AtvKokkos.cmake")
+
     if(ATV_BUILD_TESTS)
         # Surface the build option as a compile definition so library code
         # that wants to enable test-only hooks (e.g. the
@@ -1386,6 +1394,12 @@ if(NOT ATV_DOCS_ONLY)
         # atomiverse pick up the same definition.
         target_compile_definitions(atomiverse PUBLIC ATV_BUILD_TESTS)
         add_subdirectory(tests)
+    endif()
+
+    # Kokkos unit test. Kept out of tests/CMakeLists.txt so an OFF build
+    # adds no Kokkos test target. Requires GTest from add_subdirectory(tests).
+    if(ATV_BUILD_TESTS AND ATV_BUILD_KOKKOS)
+        add_subdirectory(tests/kokkos)
     endif()
 
     # End-to-end textbook regressions. Deliberately NOT registered with ctest —
