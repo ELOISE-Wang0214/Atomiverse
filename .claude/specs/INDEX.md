@@ -104,13 +104,22 @@ Component 作为 Driver 的插件系统。派生类尽量零改；改基类 / �
 | [component-plugin-05-live](component-plugin-05-live.md) | 03 | `build()` 保留 `pending_` 为活表；按实例身份可重编 Plan [approved] |
 | [component-plugin-06-unmount](component-plugin-06-unmount.md) | 04, 05 | 运行中 `unfix` / 再挂；destroy → 重编 → 同一套闭包 [approved] |
 
-**Live — TB method loop (wave 13 resume)**
+**Live — TB method loop (2026-10-09 wave 2)**
 
 | Spec | One-line |
 | ---- | -------- |
-| [gfn2-camm-r](gfn2-camm-r/gfn2-camm-r.md) | Two-centre CAMM quadrupole on H (xtb `mmompop`) + \(\partial\Theta/\partial R\); angular \(F_{H1,y}\) vs xtb 6.7.1 |
+| [gfn2-camm-r](gfn2-camm-r/gfn2-camm-r.md) | Two-centre CAMM quadrupole on H (xtb `mmompop`) + \(\partial\Theta/\partial R\); angular \(F_{H1,y}\) vs xtb 6.7.1. Still `[~]` |
 
 **Live count: 7.** (6 component-plugin + 1 TB)
+
+## Closed — TB harness wave 2 (2026-10-09)
+
+Merged to `dev` (`911b004e5`, worker `d2bfe363d`); specs deleted; history is git.
+`gfn2-camm-r` stays `[~]` (spec on `dev`; local `wf/gfn2-camm-r` @ `bb7f675f7`, no worktree).
+
+| Spec | Shipped |
+| ---- | ------- |
+| `dftb0-analytic-forces` | Closed-form DFTB0 F (HF+Pulay+rep); `reg_dftb0-analytic-forces` vs DFTB+ 24.1 `SCC=No` mio-1-1 (H₂, off-eq H₂O, tilted CO) |
 
 ## Closed — TB harness wave 13 (2026-08-25)
 
