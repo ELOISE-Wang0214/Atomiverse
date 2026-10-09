@@ -15,6 +15,7 @@
 #include "atomiverse/core/gto.h"
 #include "atomiverse/cpu/scf/basis_data/accessors.h"
 #include "atomiverse/cpu/scf/basis_data/aug_ccpvdz.h"
+#include "atomiverse/cpu/scf/basis_data/ccpvdz.h"
 #include "atomiverse/cpu/scf/basis_data/def2_svp.h"
 #include "atomiverse/cpu/scf/basis_data/def2_tzvp.h"
 #include "atomiverse/cpu/scf/basis_data/pople_631g.h"
@@ -111,6 +112,8 @@ inline const std::vector<basis_data::AtomBasis>& basis_table(BasisSet basis) {
         return basis_data::def2_tzvp();
     case BasisSet::AugCcPVDZ:
         return basis_data::aug_ccpvdz();
+    case BasisSet::CcPVDZ:
+        return basis_data::ccpvdz();
     }
     throw std::invalid_argument("basis_table: unknown BasisSet");
 }

@@ -731,6 +731,10 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/rohf.cpp
             src/cpu/scf/uhf.cpp
             src/cpu/scf/ghf.cpp
+            src/cpu/scf/complex_ghf.cpp
+            src/cpu/scf/internal/complex_ghf.cpp
+            src/cpu/scf/dhf.cpp
+            src/cpu/scf/internal/dhf.cpp
             src/cpu/scf/rks.cpp
             src/cpu/scf/uks.cpp
             src/cpu/scf/roks.cpp
