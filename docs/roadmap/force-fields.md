@@ -23,7 +23,7 @@ LAMMPS-shaped. Catalogue is GAFF-capable on CPU plus EAM/SW. Legend:
 
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
-| LJ 12-6 | ⚡ | ⚡ | Multi-type + special_bonds scales |
+| LJ 12-6 | ⚡ | ⚡ | Multi-type + special_bonds scales. Kokkos ◐: `ATV::kokkos::PairLJCut` on `Kokkos::Serial` only — not multi-type, not special_bonds, not an MD step |
 | Buckingham / Morse / Born (Fumi–Tosi) | ✓ | ○ | |
 | WCA / Yukawa / DPD / FENE+WCA | ✓ | ○ | |
 | Soft-core LJ / Coulomb | ✓ | ○ | Beutler; alchemical λ |

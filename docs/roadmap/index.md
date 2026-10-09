@@ -63,7 +63,11 @@ not a roadmap row.
 | ------- | ---- |
 | **CPU** | Primary portable path (OpenMP / MPI; xsimd where used) |
 | **CUDA** | Device path for selected MD and SCF/PW/GPW kernels (GH200) |
+| **Kokkos** | Serial (CPU) execution-space foothold only. Not a method column. |
 
 A CUDA ✓ requires the **principal** work of that method to run on device.
-A CPU fallback does not count. **Kokkos** is planned and ○ everywhere — not a
-table column. Tables use **CPU \| CUDA \| Notes**.
+A CPU fallback does not count. Kokkos is not a table column — tables stay
+**CPU \| CUDA \| Notes**. `ATV_BUILD_KOKKOS` builds one target,
+`atomiverse_kokkos`: the shifted LJ 12-6 pair kernel on `Kokkos::Serial`
+(LAMMPS `lj/cut/kk` host `parallel_reduce`). That kernel is ◐, not a ✓,
+and it is not an MD backend.
