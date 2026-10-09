@@ -269,7 +269,8 @@ order: the method fixes the stage sequence, and members on the method
 
 A common question is why the repository has both a CPU and a CUDA SCF stack
 when they now present the same public shape (`cpu::scf::RHF{basis}.run(frame)`
-vs `cuda::scf::RHF{basis}.run(frame)`).
+vs `cuda::scf::RHF{basis}.run(frame)`, and
+`UHF{basis, n_alpha, n_beta, charge}.run(frame)` / `.forces(frame)` on both).
 
 They solve different engineering problems. The CPU stack is the clearest place
 to express reference algorithms with xtensor and dense linear algebra: it is
@@ -277,7 +278,9 @@ where validation, deep-dive tutorials, and physical-correctness tests live, and
 it covers every method and basis. The CUDA stack is organized around device
 residency — for the shells its kernels cover it keeps integrals, the SCF
 iteration, and forces on the GPU with no scientific data returning to the host
-mid-solve — and falls back to the host path outside that coverage.
+mid-solve. `cuda::scf::RHF` energy outside that coverage still builds
+integrals on the host. `cuda::scf::UHF` does not: past STO-3G l ≤ 1 it
+throws (`launch_eri_sp`, `launch_uhf_forces_sp`).
 
 So the duplication is not accidental: one emphasizes breadth and
 reference-quality clarity, the other device-resident execution. Their

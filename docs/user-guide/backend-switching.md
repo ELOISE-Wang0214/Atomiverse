@@ -32,9 +32,19 @@ cuda::scf::RHF rhf{cpu::scf::BasisSet::STO3G, /*charge=*/0, /*tol=*/1e-10};
 rhf.run(frame);                       // same Frame, same key, same units
 ```
 
+Open shell is the same shape. `n_alpha` and `n_beta` are constructor
+arguments, and `run` / `forces` still take one `cpu::Frame`:
+
+```cpp
+cuda::scf::UHF uhf{cpu::scf::BasisSet::STO3G, /*n_alpha=*/1,
+                   /*n_beta=*/0, /*charge=*/1};
+uhf.run(frame);                       // frame.meta.get(kEnergy) [eV]
+cpu::scf::GradientResult g = uhf.forces(frame); // kAtom_fx/fy/fz [eV/Å]
+```
+
 Integrals, the SCF iteration, and the density are private workspace inside the
 method on either device — there is no integral bag to hand around and no
-`*Config` to fill in. Forces are `rhf.forces(frame)` on both.
+`*Config` to fill in. Forces are `forces(frame)` on either device.
 
 The CPU path is the best one for learning, debugging, and validating the
 mathematics: the code is compact and the linear algebra stays close to the
@@ -43,12 +53,15 @@ its kernels cover, no scientific data returns to the host mid-SCF.
 
 !!! warning "The CUDA SCF covers far less than the CPU one"
 
-    The shape is the same; the coverage is not. `cuda::scf::RHF` is a
-    **restricted Hartree-Fock engine only** — there is no `cuda::scf::UHF`,
-    `RKS` or `UKS`. Its device-native integrals and analytic forces cover
-    STO-3G s/p shells (l ≤ 1, H through O). Outside that envelope `forces()`
-    **throws** rather than silently falling back, and the answer is to use
-    `cpu::scf::RHF`. The plane-wave backend is similarly narrower on device
+    The shape is the same; the coverage is not. Device Hartree–Fock is
+    `cuda::scf::RHF` and `cuda::scf::UHF` — there is no `RKS`, `UKS`,
+    `ROHF`, or `GHF` on device. Device-native integrals and analytic forces
+    cover STO-3G s/p shells (l ≤ 1). `cuda::scf::UHF` **throws** outside
+    that envelope (`launch_eri_sp`, `launch_uhf_forces_sp`) and does not
+    fill ERIs on the host; use `cpu::scf::UHF`. `cuda::scf::RHF::forces`
+    throws outside the same envelope. RHF energy for a basis the device
+    kernels do not cover still builds integrals on the host. The plane-wave
+    backend is similarly narrower on device
     than on host (LDA, spin-unpolarized). The
     [roadmap](../roadmap/index.md) is the per-method statement of what each
     backend actually does.
@@ -63,7 +76,7 @@ eval.build();
 eval.run(frame);
 ```
 
-`cuda::scf::RHF` is `cuda::Driver<scf::Phase>` with the stages
+`cuda::scf::RHF` and `cuda::scf::UHF` are each `cuda::Driver<scf::Phase>` with the stages
 `fock → mix → diagonalize → density → check`. It is not itself a Component.
 `set_evaluator` mounts it in one Plan slot. That slot's single call runs the
 SCF loop. The outer Evaluate or MD plan still sees one component.
