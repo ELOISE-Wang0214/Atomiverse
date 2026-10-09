@@ -35,7 +35,6 @@
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/cartesian_shell_pack.h"
-#include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cpu/scf/scf_enums.h"
 #include "atomiverse/cpu/scf/slater_determinant.h"
@@ -50,14 +49,8 @@ namespace cuda {
 namespace scf {
 namespace {
 
-/// @brief CUDA-only RHF: molecular s/p STO-3G → device 1e/ERI + SCF (Wave 4).
-///
-/// Builds a full-molecule shell list from `basis_data::sp_sto3g_shells(Z)`
-/// per atom (mixed Z OK). n_AO = Σ n_cart(L) with s→1, p→3.
-/// @param level_shift Virtual level shift λ [Hartree]; wired on device Fock.
-std::unique_ptr<internal::RhfScfCycle>
-make_device_sp_sto3g_solver(const int* h_Z, int natm, int charge, double tol,
-                            int max_iter, double level_shift) {
+/// @brief Closed-shell occupation, or throw. Shared by the STO-3G and l>1 paths.
+int require_closed_shell_occ(const int* h_Z, int natm, int charge) {
     int n_electrons = -charge;
     for (int i = 0; i < natm; ++i)
         n_electrons += h_Z[i];
@@ -68,7 +61,18 @@ make_device_sp_sto3g_solver(const int* h_Z, int natm, int charge, double tol,
             + std::to_string(n_electrons) + ", charge=" + std::to_string(charge)
             + ")");
     }
-    const int n_occ = n_electrons / 2;
+    return n_electrons / 2;
+}
+
+/// @brief CUDA-only RHF: molecular s/p STO-3G → device 1e/ERI + SCF (Wave 4).
+///
+/// Builds a full-molecule shell list from `basis_data::sp_sto3g_shells(Z)`
+/// per atom (mixed Z OK). n_AO = Σ n_cart(L) with s→1, p→3.
+/// @param level_shift Virtual level shift λ [Hartree]; wired on device Fock.
+std::unique_ptr<internal::RhfScfCycle>
+make_device_sp_sto3g_solver(const int* h_Z, int natm, int charge, double tol,
+                            int max_iter, double level_shift) {
+    const int n_occ = require_closed_shell_occ(h_Z, natm, charge);
 
     // Count shells / AOs, then fill molecular SoA from the basis table.
     int n_shells = 0;
@@ -117,17 +121,7 @@ make_device_lgt1_solver(cpu::scf::BasisSet basis, const int* h_Z, int natm,
                         double level_shift) {
     const cpu::scf::internal::CartesianShellPack pack =
         cpu::scf::internal::pack_cartesian_shells(basis, h_Z, natm);
-    int n_electrons = -charge;
-    for (int i = 0; i < natm; ++i)
-        n_electrons += h_Z[i];
-    if (n_electrons < 0 || n_electrons % 2 != 0) {
-        throw std::invalid_argument(
-            "cuda::scf::RHF: closed-shell CUDA path requires even non-negative "
-            "electron count (n_electrons="
-            + std::to_string(n_electrons) + ", charge=" + std::to_string(charge)
-            + ")");
-    }
-    const int n_occ = n_electrons / 2;
+    const int n_occ = require_closed_shell_occ(h_Z, natm, charge);
     const bool sph = cpu::scf::angular_convention(basis)
                          == cpu::scf::basis_data::AngularConvention::Spherical
                      && pack.max_l >= 2;

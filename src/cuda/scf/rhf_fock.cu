@@ -659,32 +659,18 @@ void RHFFockDevice::build(const SolverContext& ctx, SCFWorkspace& ws) {
                                       : static_cast<std::size_t>(n_shells)
                                             * static_cast<std::size_t>(n_prim_);
     std::vector<prec_t> h_alpha(nflat), h_coeff(nflat);
-    if (!ragged_) {
-        for (int s = 0; s < n_shells; ++s) {
-            const int L = h_L[static_cast<std::size_t>(s)];
-            for (int p = 0; p < n_prim_; ++p) {
-                const std::size_t k = static_cast<std::size_t>(s * n_prim_ + p);
-                const double a = alpha_mol_[k];
-                const double c = coeff_mol_[k];
-                h_alpha[k] = static_cast<prec_t>(a);
-                const double norm =
-                    (L == 0) ? ATV::phys_norm_s(a) : ATV::phys_norm_p(a);
-                h_coeff[k] = static_cast<prec_t>(c * norm);
-            }
-        }
-    } else {
-        for (int s = 0; s < n_shells; ++s) {
-            const int L = h_L[static_cast<std::size_t>(s)];
-            const int off = prim_off_[static_cast<std::size_t>(s)];
-            const int np = nprim_[static_cast<std::size_t>(s)];
-            for (int p = 0; p < np; ++p) {
-                const std::size_t k = static_cast<std::size_t>(off + p);
-                const double a = alpha_mol_[k];
-                const double c = coeff_mol_[k];
-                h_alpha[k] = static_cast<prec_t>(a);
-                h_coeff[k] = static_cast<prec_t>(
-                    c * cpu::scf::internal::contraction_norm(L, a));
-            }
+    for (int s = 0; s < n_shells; ++s) {
+        const int L = h_L[static_cast<std::size_t>(s)];
+        const int off =
+            ragged_ ? prim_off_[static_cast<std::size_t>(s)] : s * n_prim_;
+        const int np = ragged_ ? nprim_[static_cast<std::size_t>(s)] : n_prim_;
+        for (int p = 0; p < np; ++p) {
+            const std::size_t k = static_cast<std::size_t>(off + p);
+            const double a = alpha_mol_[k];
+            const double c = coeff_mol_[k];
+            h_alpha[k] = static_cast<prec_t>(a);
+            h_coeff[k] = static_cast<prec_t>(
+                c * cpu::scf::internal::contraction_norm(L, a));
         }
     }
 

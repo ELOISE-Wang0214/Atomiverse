@@ -1893,12 +1893,12 @@ void launch_uhf_forces_sp(double* fx, double* fy, double* fz,
 // ── Cartesian l ≤ 3, ragged n_prim (hf-cuda-lgt1) ────────────────────
 //
 // PySCF `scf.hf.get_jk` calls `scf._vhf.direct` with `intor='int2e_cart'`
-// (`pyscf/scf/hf.py` get_veff = J − ½K). Quartets with every shell l ≤ 2
-// keep the l ≤ 2 kernels. A quartet that touches l = 3 uses the same
-// McMurchie–Davidson recurrence as `native::eri_prim` / `rys_eri_block`
-// (libcint `int2e_cart`). Boys F_m is libcint `gamma_inc_like`
-// (`src/fmt.c`, `rys_roots_iterative.cpp`): upward recurrence from F_0
-// is unstable at f-shell order (Ltot ≤ 12).
+// (`pyscf/scf/hf.py` get_veff = J − ½K). One McMurchie–Davidson quartet
+// (`native::eri_prim` / libcint `int2e_cart`). l ≤ 2 uses upward Boys
+// (`boys_fn_device`) and an R table of order ≤ 8. A quartet that touches
+// l = 3 uses libcint `gamma_inc_like` (`src/fmt.c`): upward recurrence
+// from F_0 is unstable at f-shell order (Ltot ≤ 12). No second primitive
+// loop and no host ERI fill.
 
 // libcint src/fmt.c turnover (index = Boys order). Nuclear l ≤ 3 needs
 // m ≤ 6; the f ERI kernel needs m ≤ 12.
@@ -2071,100 +2071,6 @@ __device__ work_t nuclear_prim_l3_device(const int a_ang[3], const int b_ang[3],
     return prefactor * Vn;
 }
 
-static constexpr int kL2Dim = 9; // Hermite index 0..8 (Ltot ≤ 8)
-
-__device__ void build_hermite_R_l2(work_t R[kL2Dim][kL2Dim][kL2Dim][kL2Dim],
-                                   int Ltot, int Rx, int Ry, int Rz, work_t rho,
-                                   work_t Tval, const work_t PQ[3]) {
-    for (int m = 0; m < kL2Dim; ++m)
-        for (int t = 0; t < kL2Dim; ++t)
-            for (int u = 0; u < kL2Dim; ++u)
-                for (int v = 0; v < kL2Dim; ++v)
-                    R[m][t][u][v] = work_t(0);
-    work_t Fm[kL2Dim];
-    for (int m = 0; m <= Ltot && m < kL2Dim; ++m)
-        Fm[m] = boys_fn_device(m, Tval);
-    work_t neg2 = -work_t(2) * rho;
-    work_t pow = work_t(1);
-    for (int m = 0; m <= Ltot && m < kL2Dim; ++m) {
-        R[m][0][0][0] = pow * Fm[m];
-        pow *= neg2;
-    }
-    for (int m = Ltot - 1; m >= 0; --m) {
-        const int max_tuv = Ltot - m;
-        for (int t = 1; t <= Rx && t <= max_tuv && t < kL2Dim; ++t) {
-            R[m][t][0][0] = PQ[0] * R[m + 1][t - 1][0][0];
-            if (t >= 2)
-                R[m][t][0][0] += work_t(t - 1) * R[m + 1][t - 2][0][0];
-        }
-        for (int t = 0; t <= Rx && t <= max_tuv && t < kL2Dim; ++t) {
-            for (int u = 1; u <= Ry && t + u <= max_tuv && u < kL2Dim; ++u) {
-                R[m][t][u][0] = PQ[1] * R[m + 1][t][u - 1][0];
-                if (u >= 2)
-                    R[m][t][u][0] += work_t(u - 1) * R[m + 1][t][u - 2][0];
-            }
-        }
-        for (int t = 0; t <= Rx && t <= max_tuv && t < kL2Dim; ++t) {
-            for (int u = 0; u <= Ry && t + u <= max_tuv && u < kL2Dim; ++u) {
-                for (int v = 1; v <= Rz && t + u + v <= max_tuv && v < kL2Dim;
-                     ++v) {
-                    R[m][t][u][v] = PQ[2] * R[m + 1][t][u][v - 1];
-                    if (v >= 2)
-                        R[m][t][u][v] += work_t(v - 1) * R[m + 1][t][u][v - 2];
-                }
-            }
-        }
-    }
-}
-
-__device__ work_t contract_md_l2(const work_t R[kL2Dim][kL2Dim][kL2Dim][kL2Dim],
-                                 const int a_ang[3], const int b_ang[3],
-                                 const int c_ang[3], const int d_ang[3],
-                                 const work_t PA[3], const work_t PB[3],
-                                 const work_t QC[3], const work_t QD[3],
-                                 work_t inv2g1, work_t inv2g2,
-                                 work_t prefactor) {
-    const int Lx1 = a_ang[0] + b_ang[0];
-    const int Ly1 = a_ang[1] + b_ang[1];
-    const int Lz1 = a_ang[2] + b_ang[2];
-    const int Lx2 = c_ang[0] + d_ang[0];
-    const int Ly2 = c_ang[1] + d_ang[1];
-    const int Lz2 = c_ang[2] + d_ang[2];
-    work_t E1[3][kDeviceMDEDim];
-    work_t E2[3][kDeviceMDEDim];
-    for (int d = 0; d < 3; ++d) {
-        md_e_coeffs_device(a_ang[d], b_ang[d], PA[d], PB[d], inv2g1, E1[d]);
-        md_e_coeffs_device(c_ang[d], d_ang[d], QC[d], QD[d], inv2g2, E2[d]);
-    }
-    work_t eri_val = work_t(0);
-    for (int t = 0; t <= Lx1; ++t) {
-        for (int u = 0; u <= Ly1; ++u) {
-            for (int v = 0; v <= Lz1; ++v) {
-                const work_t e1 = E1[0][t] * E1[1][u] * E1[2][v];
-                if (e1 == work_t(0))
-                    continue;
-                for (int tau = 0; tau <= Lx2; ++tau) {
-                    for (int nu = 0; nu <= Ly2; ++nu) {
-                        for (int phi = 0; phi <= Lz2; ++phi) {
-                            const work_t e2 =
-                                E2[0][tau] * E2[1][nu] * E2[2][phi];
-                            if (e2 == work_t(0))
-                                continue;
-                            const work_t sign =
-                                ((tau + nu + phi) & 1) ? work_t(-1) : work_t(1);
-                            eri_val +=
-                                e1 * e2 * sign * R[0][t + tau][u + nu][v + phi];
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return prefactor * eri_val;
-}
-
-__device__ int ncart_of_device(int L) { return (L + 1) * (L + 2) / 2; }
-
 template <bool FShell>
 __global__ void compute_1e_lgt1_kernel(
     prec_t* S, prec_t* T, prec_t* V, const prec_t* prim_alpha,
@@ -2252,314 +2158,95 @@ __global__ void compute_1e_lgt1_kernel(
     }
 }
 
-__device__ void
-eri_quartet_light(prec_t* ERI, const prec_t* prim_alpha,
-                  const prec_t* prim_coeff, const int* shell_nprim,
-                  const int* shell_prim_off, const prec_t* shell_centers,
-                  int sa, int sb, int sc, int sd, int La, int Lb, int Lc,
-                  int Ld, int ao_a, int ao_b, int ao_c, int ao_d, int n_ao) {
-    const int na = ncart_of_device(La);
-    const int nb = ncart_of_device(Lb);
-    const int nc = ncart_of_device(Lc);
-    const int nd = ncart_of_device(Ld);
-    work_t A[3] = {static_cast<work_t>(shell_centers[sa * 3 + 0]),
-                   static_cast<work_t>(shell_centers[sa * 3 + 1]),
-                   static_cast<work_t>(shell_centers[sa * 3 + 2])};
-    work_t B[3] = {static_cast<work_t>(shell_centers[sb * 3 + 0]),
-                   static_cast<work_t>(shell_centers[sb * 3 + 1]),
-                   static_cast<work_t>(shell_centers[sb * 3 + 2])};
-    work_t C[3] = {static_cast<work_t>(shell_centers[sc * 3 + 0]),
-                   static_cast<work_t>(shell_centers[sc * 3 + 1]),
-                   static_cast<work_t>(shell_centers[sc * 3 + 2])};
-    work_t D[3] = {static_cast<work_t>(shell_centers[sd * 3 + 0]),
-                   static_cast<work_t>(shell_centers[sd * 3 + 1]),
-                   static_cast<work_t>(shell_centers[sd * 3 + 2])};
-    const int n2 = n_ao * n_ao;
-    const int n3 = n2 * n_ao;
-    for (int ia = 0; ia < na; ++ia) {
-        int a_ang[3] = {0, 0, 0};
-        cart_ang_device(La, ia, a_ang);
-        for (int ib = 0; ib < nb; ++ib) {
-            int b_ang[3] = {0, 0, 0};
-            cart_ang_device(Lb, ib, b_ang);
-            for (int ic = 0; ic < nc; ++ic) {
-                int c_ang[3] = {0, 0, 0};
-                cart_ang_device(Lc, ic, c_ang);
-                for (int id = 0; id < nd; ++id) {
-                    int d_ang[3] = {0, 0, 0};
-                    cart_ang_device(Ld, id, d_ang);
-                    work_t result = 0;
-                    const int oA = shell_prim_off[sa];
-                    const int oB = shell_prim_off[sb];
-                    const int oC = shell_prim_off[sc];
-                    const int oD = shell_prim_off[sd];
-                    for (int p = 0; p < shell_nprim[sa]; ++p) {
-                        work_t ap = static_cast<work_t>(prim_alpha[oA + p]);
-                        work_t cp = static_cast<work_t>(prim_coeff[oA + p]);
-                        for (int q = 0; q < shell_nprim[sb]; ++q) {
-                            work_t aq = static_cast<work_t>(prim_alpha[oB + q]);
-                            work_t cq = static_cast<work_t>(prim_coeff[oB + q]);
-                            for (int r = 0; r < shell_nprim[sc]; ++r) {
-                                work_t ar =
-                                    static_cast<work_t>(prim_alpha[oC + r]);
-                                work_t cr =
-                                    static_cast<work_t>(prim_coeff[oC + r]);
-                                for (int s = 0; s < shell_nprim[sd]; ++s) {
-                                    work_t as =
-                                        static_cast<work_t>(prim_alpha[oD + s]);
-                                    work_t cs =
-                                        static_cast<work_t>(prim_coeff[oD + s]);
-                                    result += cp * cq * cr * cs
-                                              * eri_prim_md_device(
-                                                  a_ang, b_ang, c_ang, d_ang,
-                                                  ap, A, aq, B, ar, C, as, D);
-                                }
-                            }
-                        }
-                    }
-                    const int mu = ao_a + ia;
-                    const int nu = ao_b + ib;
-                    const int lam = ao_c + ic;
-                    const int sig = ao_d + id;
-                    ERI[mu + nu * n_ao + lam * n2 + sig * n3] =
-                        static_cast<prec_t>(result);
-                }
-            }
-        }
-    }
+static constexpr int kL2Dim = 9;    // Hermite index 0..8 (shell Ltot ≤ 8)
+static constexpr int kL2Out = 1296; // (dd|dd) = 6^4
+
+__device__ __forceinline__ int hermite_at(int dim, int m, int t, int u, int v) {
+    return ((m * dim + t) * dim + u) * dim + v;
 }
 
-__device__ void
-eri_quartet_heavy(prec_t* ERI, const prec_t* prim_alpha,
-                  const prec_t* prim_coeff, const int* shell_nprim,
-                  const int* shell_prim_off, const prec_t* shell_centers,
-                  int sa, int sb, int sc, int sd, int La, int Lb, int Lc,
-                  int Ld, int ao_a, int ao_b, int ao_c, int ao_d, int n_ao) {
-    const int na = ncart_of_device(La);
-    const int nb = ncart_of_device(Lb);
-    const int nc = ncart_of_device(Lc);
-    const int nd = ncart_of_device(Ld);
-    const int n_out = na * nb * nc * nd;
-    work_t acc[1296];
-    for (int i = 0; i < n_out; ++i)
-        acc[i] = work_t(0);
-    work_t A[3] = {static_cast<work_t>(shell_centers[sa * 3 + 0]),
-                   static_cast<work_t>(shell_centers[sa * 3 + 1]),
-                   static_cast<work_t>(shell_centers[sa * 3 + 2])};
-    work_t B[3] = {static_cast<work_t>(shell_centers[sb * 3 + 0]),
-                   static_cast<work_t>(shell_centers[sb * 3 + 1]),
-                   static_cast<work_t>(shell_centers[sb * 3 + 2])};
-    work_t C[3] = {static_cast<work_t>(shell_centers[sc * 3 + 0]),
-                   static_cast<work_t>(shell_centers[sc * 3 + 1]),
-                   static_cast<work_t>(shell_centers[sc * 3 + 2])};
-    work_t D[3] = {static_cast<work_t>(shell_centers[sd * 3 + 0]),
-                   static_cast<work_t>(shell_centers[sd * 3 + 1]),
-                   static_cast<work_t>(shell_centers[sd * 3 + 2])};
-    const int Rx = La + Lb + Lc + Ld;
-    const int Ry = Rx;
-    const int Rz = Rx;
-    const int Ltot = Rx;
-    const int oA = shell_prim_off[sa];
-    const int oB = shell_prim_off[sb];
-    const int oC = shell_prim_off[sc];
-    const int oD = shell_prim_off[sd];
-    for (int p = 0; p < shell_nprim[sa]; ++p) {
-        const work_t ap = static_cast<work_t>(prim_alpha[oA + p]);
-        const work_t cp = static_cast<work_t>(prim_coeff[oA + p]);
-        for (int q = 0; q < shell_nprim[sb]; ++q) {
-            const work_t aq = static_cast<work_t>(prim_alpha[oB + q]);
-            const work_t cq = static_cast<work_t>(prim_coeff[oB + q]);
-            for (int r = 0; r < shell_nprim[sc]; ++r) {
-                const work_t ar = static_cast<work_t>(prim_alpha[oC + r]);
-                const work_t cr = static_cast<work_t>(prim_coeff[oC + r]);
-                for (int s = 0; s < shell_nprim[sd]; ++s) {
-                    const work_t as = static_cast<work_t>(prim_alpha[oD + s]);
-                    const work_t cs = static_cast<work_t>(prim_coeff[oD + s]);
-                    const work_t gamma1 = ap + aq;
-                    const work_t gamma2 = ar + as;
-                    const work_t delta = gamma1 + gamma2;
-                    const work_t mu1 = ap * aq / gamma1;
-                    const work_t mu2 = ar * as / gamma2;
-                    const work_t rho = gamma1 * gamma2 / delta;
-                    const work_t inv2g1 = work_t(0.5) / gamma1;
-                    const work_t inv2g2 = work_t(0.5) / gamma2;
-                    work_t P[3], Q[3], PA[3], PB[3], QC[3], QD[3], PQ[3];
-                    work_t R2_AB = 0, R2_CD = 0, PQ2 = 0;
-                    for (int d = 0; d < 3; ++d) {
-                        P[d] = (ap * A[d] + aq * B[d]) / gamma1;
-                        Q[d] = (ar * C[d] + as * D[d]) / gamma2;
-                        PA[d] = P[d] - A[d];
-                        PB[d] = P[d] - B[d];
-                        QC[d] = Q[d] - C[d];
-                        QD[d] = Q[d] - D[d];
-                        PQ[d] = P[d] - Q[d];
-                        const work_t dAB = A[d] - B[d];
-                        const work_t dCD = C[d] - D[d];
-                        R2_AB += dAB * dAB;
-                        R2_CD += dCD * dCD;
-                        PQ2 += PQ[d] * PQ[d];
-                    }
-                    const work_t K_AB = exp(-mu1 * R2_AB);
-                    const work_t K_CD = exp(-mu2 * R2_CD);
-                    const work_t Tval = rho * PQ2;
-                    const work_t pi = work_t(ATV::units::pi);
-                    const work_t prefactor = work_t(2) * pi * pi * sqrt(pi)
-                                             / (gamma1 * gamma2 * sqrt(delta))
-                                             * K_AB * K_CD * cp * cq * cr * cs;
-                    work_t Rtab[kL2Dim][kL2Dim][kL2Dim][kL2Dim];
-                    build_hermite_R_l2(Rtab, Ltot, Rx, Ry, Rz, rho, Tval, PQ);
-                    int cout = 0;
-                    for (int ia = 0; ia < na; ++ia) {
-                        int a_ang[3] = {0, 0, 0};
-                        cart_ang_device(La, ia, a_ang);
-                        for (int ib = 0; ib < nb; ++ib) {
-                            int b_ang[3] = {0, 0, 0};
-                            cart_ang_device(Lb, ib, b_ang);
-                            for (int ic = 0; ic < nc; ++ic) {
-                                int c_ang[3] = {0, 0, 0};
-                                cart_ang_device(Lc, ic, c_ang);
-                                for (int id = 0; id < nd; ++id) {
-                                    int d_ang[3] = {0, 0, 0};
-                                    cart_ang_device(Ld, id, d_ang);
-                                    acc[cout] += contract_md_l2(
-                                        Rtab, a_ang, b_ang, c_ang, d_ang, PA,
-                                        PB, QC, QD, inv2g1, inv2g2, prefactor);
-                                    ++cout;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    const int n2 = n_ao * n_ao;
-    const int n3 = n2 * n_ao;
-    int cout = 0;
-    for (int ia = 0; ia < na; ++ia)
-        for (int ib = 0; ib < nb; ++ib)
-            for (int ic = 0; ic < nc; ++ic)
-                for (int id = 0; id < nd; ++id) {
-                    const int mu = ao_a + ia;
-                    const int nu = ao_b + ib;
-                    const int lam = ao_c + ic;
-                    const int sig = ao_d + id;
-                    ERI[mu + nu * n_ao + lam * n2 + sig * n3] =
-                        static_cast<prec_t>(acc[cout]);
-                    ++cout;
-                }
-}
-
-__global__ void
-compute_eri_lgt1_kernel(prec_t* ERI, const prec_t* prim_alpha,
-                        const prec_t* prim_coeff, const int* shell_nprim,
-                        const int* shell_prim_off, const prec_t* shell_centers,
-                        const int* shell_L, const int* shell_ao_start,
-                        int n_shells, int n_ao) {
-    const long long nsh = n_shells;
-    const long long n4 = nsh * nsh * nsh * nsh;
-    const long long stride = static_cast<long long>(blockDim.x) * gridDim.x;
-    for (long long q =
-             static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
-         q < n4; q += stride) {
-        const int sd = static_cast<int>(q / (nsh * nsh * nsh));
-        long long rem = q % (nsh * nsh * nsh);
-        const int sc = static_cast<int>(rem / (nsh * nsh));
-        rem = rem % (nsh * nsh);
-        const int sb = static_cast<int>(rem / nsh);
-        const int sa = static_cast<int>(rem % nsh);
-        const int La = shell_L[sa];
-        const int Lb = shell_L[sb];
-        const int Lc = shell_L[sc];
-        const int Ld = shell_L[sd];
-        if (La > 2 || Lb > 2 || Lc > 2 || Ld > 2)
-            continue;
-        const int Ltot = La + Lb + Lc + Ld;
-        const int ao_a = shell_ao_start[sa];
-        const int ao_b = shell_ao_start[sb];
-        const int ao_c = shell_ao_start[sc];
-        const int ao_d = shell_ao_start[sd];
-        if (Ltot <= 5) {
-            eri_quartet_light(ERI, prim_alpha, prim_coeff, shell_nprim,
-                              shell_prim_off, shell_centers, sa, sb, sc, sd, La,
-                              Lb, Lc, Ld, ao_a, ao_b, ao_c, ao_d, n_ao);
-        } else {
-            eri_quartet_heavy(ERI, prim_alpha, prim_coeff, shell_nprim,
-                              shell_prim_off, shell_centers, sa, sb, sc, sd, La,
-                              Lb, Lc, Ld, ao_a, ao_b, ao_c, ao_d, n_ao);
-        }
-    }
-}
-
-__device__ __forceinline__ int f_r_at(int m, int t, int u, int v) {
-    return ((m * kFDim + t) * kFDim + u) * kFDim + v;
-}
-
-__device__ void build_hermite_R_f(work_t* R, int Ltot, work_t rho, work_t Tval,
-                                  const work_t PQ[3]) {
-    const int n4 = kFDim * kFDim * kFDim * kFDim;
+// One Hermite R recurrence. Stable=false is upward Boys (l ≤ 2, order ≤ 8).
+// Stable=true is libcint gamma_inc_like (a quartet that touches f).
+template <bool Stable, int Dim>
+__device__ void build_hermite_R(work_t* R, int Ltot, work_t rho, work_t Tval,
+                                const work_t PQ[3]) {
+    constexpr int n4 = Dim * Dim * Dim * Dim;
     for (int i = 0; i < n4; ++i)
         R[i] = work_t(0);
-    const int mmax = Ltot < kFDim ? Ltot : kFDim - 1;
-    work_t Fm[kFDim];
-    if (Tval < work_t(1e-14)) {
-        for (int m = 0; m <= mmax; ++m)
-            Fm[m] = work_t(1) / work_t(2 * m + 1);
+    const int mmax = Ltot < Dim ? Ltot : Dim - 1;
+    work_t Fm[Dim];
+    if constexpr (Stable) {
+        if (Tval < work_t(1e-14)) {
+            for (int m = 0; m <= mmax; ++m)
+                Fm[m] = work_t(1) / work_t(2 * m + 1);
+        } else {
+            gamma_inc_like_device(Fm, Tval, mmax);
+        }
     } else {
-        gamma_inc_like_device(Fm, Tval, mmax);
+        for (int m = 0; m <= mmax; ++m)
+            Fm[m] = boys_fn_device(m, Tval);
     }
     const work_t neg2 = -work_t(2) * rho;
     work_t powv = work_t(1);
     for (int m = 0; m <= mmax; ++m) {
-        R[f_r_at(m, 0, 0, 0)] = powv * Fm[m];
+        R[hermite_at(Dim, m, 0, 0, 0)] = powv * Fm[m];
         powv *= neg2;
     }
     for (int m = mmax - 1; m >= 0; --m) {
         const int max_tuv = mmax - m;
-        for (int t = 1; t <= max_tuv && t < kFDim; ++t) {
-            work_t val = PQ[0] * R[f_r_at(m + 1, t - 1, 0, 0)];
+        for (int t = 1; t <= max_tuv && t < Dim; ++t) {
+            work_t val = PQ[0] * R[hermite_at(Dim, m + 1, t - 1, 0, 0)];
             if (t >= 2)
-                val += work_t(t - 1) * R[f_r_at(m + 1, t - 2, 0, 0)];
-            R[f_r_at(m, t, 0, 0)] = val;
+                val += work_t(t - 1) * R[hermite_at(Dim, m + 1, t - 2, 0, 0)];
+            R[hermite_at(Dim, m, t, 0, 0)] = val;
         }
-        for (int t = 0; t <= max_tuv && t < kFDim; ++t) {
-            for (int u = 1; u + t <= max_tuv && u < kFDim; ++u) {
-                work_t val = PQ[1] * R[f_r_at(m + 1, t, u - 1, 0)];
+        for (int t = 0; t <= max_tuv && t < Dim; ++t) {
+            for (int u = 1; u + t <= max_tuv && u < Dim; ++u) {
+                work_t val = PQ[1] * R[hermite_at(Dim, m + 1, t, u - 1, 0)];
                 if (u >= 2)
-                    val += work_t(u - 1) * R[f_r_at(m + 1, t, u - 2, 0)];
-                R[f_r_at(m, t, u, 0)] = val;
+                    val +=
+                        work_t(u - 1) * R[hermite_at(Dim, m + 1, t, u - 2, 0)];
+                R[hermite_at(Dim, m, t, u, 0)] = val;
             }
         }
-        for (int t = 0; t <= max_tuv && t < kFDim; ++t) {
-            for (int u = 0; u + t <= max_tuv && u < kFDim; ++u) {
-                for (int v = 1; v + t + u <= max_tuv && v < kFDim; ++v) {
-                    work_t val = PQ[2] * R[f_r_at(m + 1, t, u, v - 1)];
+        for (int t = 0; t <= max_tuv && t < Dim; ++t) {
+            for (int u = 0; u + t <= max_tuv && u < Dim; ++u) {
+                for (int v = 1; v + t + u <= max_tuv && v < Dim; ++v) {
+                    work_t val = PQ[2] * R[hermite_at(Dim, m + 1, t, u, v - 1)];
                     if (v >= 2)
-                        val += work_t(v - 1) * R[f_r_at(m + 1, t, u, v - 2)];
-                    R[f_r_at(m, t, u, v)] = val;
+                        val += work_t(v - 1)
+                               * R[hermite_at(Dim, m + 1, t, u, v - 2)];
+                    R[hermite_at(Dim, m, t, u, v)] = val;
                 }
             }
         }
     }
 }
 
-__device__ work_t contract_md_f(const work_t* R, const int a_ang[3],
-                                const int b_ang[3], const int c_ang[3],
-                                const int d_ang[3], const work_t PA[3],
-                                const work_t PB[3], const work_t QC[3],
-                                const work_t QD[3], work_t inv2g1,
-                                work_t inv2g2, work_t prefactor) {
+template <bool L3, int Dim>
+__device__ work_t contract_md(const work_t* R, const int a_ang[3],
+                              const int b_ang[3], const int c_ang[3],
+                              const int d_ang[3], const work_t PA[3],
+                              const work_t PB[3], const work_t QC[3],
+                              const work_t QD[3], work_t inv2g1, work_t inv2g2,
+                              work_t prefactor) {
+    constexpr int EDim = L3 ? kL3E : kDeviceMDEDim;
     const int Lx1 = a_ang[0] + b_ang[0];
     const int Ly1 = a_ang[1] + b_ang[1];
     const int Lz1 = a_ang[2] + b_ang[2];
     const int Lx2 = c_ang[0] + d_ang[0];
     const int Ly2 = c_ang[1] + d_ang[1];
     const int Lz2 = c_ang[2] + d_ang[2];
-    work_t E1[3][kL3E];
-    work_t E2[3][kL3E];
+    work_t E1[3][EDim];
+    work_t E2[3][EDim];
     for (int d = 0; d < 3; ++d) {
-        md_e_l3(a_ang[d], b_ang[d], PA[d], PB[d], inv2g1, E1[d]);
-        md_e_l3(c_ang[d], d_ang[d], QC[d], QD[d], inv2g2, E2[d]);
+        if constexpr (L3) {
+            md_e_l3(a_ang[d], b_ang[d], PA[d], PB[d], inv2g1, E1[d]);
+            md_e_l3(c_ang[d], d_ang[d], QC[d], QD[d], inv2g2, E2[d]);
+        } else {
+            md_e_coeffs_device(a_ang[d], b_ang[d], PA[d], PB[d], inv2g1, E1[d]);
+            md_e_coeffs_device(c_ang[d], d_ang[d], QC[d], QD[d], inv2g2, E2[d]);
+        }
     }
     work_t eri_val = work_t(0);
     for (int t = 0; t <= Lx1; ++t) {
@@ -2578,7 +2265,8 @@ __device__ work_t contract_md_f(const work_t* R, const int a_ang[3],
                             const work_t sign =
                                 ((tau + nu + phi) & 1) ? work_t(-1) : work_t(1);
                             eri_val += e1 * e2 * sign
-                                       * R[f_r_at(0, t + tau, u + nu, v + phi)];
+                                       * R[hermite_at(Dim, 0, t + tau, u + nu,
+                                                      v + phi)];
                         }
                     }
                 }
@@ -2588,13 +2276,18 @@ __device__ work_t contract_md_f(const work_t* R, const int a_ang[3],
     return prefactor * eri_val;
 }
 
-__device__ void eri_quartet_f(prec_t* ERI, const prec_t* prim_alpha,
-                              const prec_t* prim_coeff, const int* shell_nprim,
-                              const int* shell_prim_off,
-                              const prec_t* shell_centers, int sa, int sb,
-                              int sc, int sd, int La, int Lb, int Lc, int Ld,
-                              int ao_a, int ao_b, int ao_c, int ao_d, int n_ao,
-                              work_t* R, work_t* acc) {
+__device__ int ncart_of_device(int L) { return (L + 1) * (L + 2) / 2; }
+
+// Hoisted shell quartet. FShell=false: l ≤ 2, caller R is kL2Dim^4 and acc
+// holds (dd|dd). FShell=true: caller R/acc are the f-shell scratch
+// (kFDim^4 + kFOut). Contraction coefficients are already in `prim_coeff`.
+template <bool FShell>
+__device__ void
+eri_quartet_md(prec_t* ERI, const prec_t* prim_alpha, const prec_t* prim_coeff,
+               const int* shell_nprim, const int* shell_prim_off,
+               const prec_t* shell_centers, int sa, int sb, int sc, int sd,
+               int La, int Lb, int Lc, int Ld, int ao_a, int ao_b, int ao_c,
+               int ao_d, int n_ao, work_t* R, work_t* acc) {
     const int na = ncart_of_device(La);
     const int nb = ncart_of_device(Lb);
     const int nc = ncart_of_device(Lc);
@@ -2662,7 +2355,10 @@ __device__ void eri_quartet_f(prec_t* ERI, const prec_t* prim_alpha,
                     const work_t prefactor = work_t(2) * pi * pi * sqrt(pi)
                                              / (gamma1 * gamma2 * sqrt(delta))
                                              * K_AB * K_CD * cp * cq * cr * cs;
-                    build_hermite_R_f(R, Ltot, rho, Tval, PQ);
+                    if constexpr (FShell)
+                        build_hermite_R<true, kFDim>(R, Ltot, rho, Tval, PQ);
+                    else
+                        build_hermite_R<false, kL2Dim>(R, Ltot, rho, Tval, PQ);
                     int cout = 0;
                     for (int ia = 0; ia < na; ++ia) {
                         int a_ang[3] = {0, 0, 0};
@@ -2676,9 +2372,17 @@ __device__ void eri_quartet_f(prec_t* ERI, const prec_t* prim_alpha,
                                 for (int id = 0; id < nd; ++id) {
                                     int d_ang[3] = {0, 0, 0};
                                     cart_ang_device(Ld, id, d_ang);
-                                    acc[cout] += contract_md_f(
-                                        R, a_ang, b_ang, c_ang, d_ang, PA, PB,
-                                        QC, QD, inv2g1, inv2g2, prefactor);
+                                    if constexpr (FShell) {
+                                        acc[cout] += contract_md<true, kFDim>(
+                                            R, a_ang, b_ang, c_ang, d_ang, PA,
+                                            PB, QC, QD, inv2g1, inv2g2,
+                                            prefactor);
+                                    } else {
+                                        acc[cout] += contract_md<false, kL2Dim>(
+                                            R, a_ang, b_ang, c_ang, d_ang, PA,
+                                            PB, QC, QD, inv2g1, inv2g2,
+                                            prefactor);
+                                    }
                                     ++cout;
                                 }
                             }
@@ -2705,6 +2409,46 @@ __device__ void eri_quartet_f(prec_t* ERI, const prec_t* prim_alpha,
                 }
 }
 
+__device__ void decode_shell_quartet(long long q, long long nsh, int& sa,
+                                     int& sb, int& sc, int& sd) {
+    sd = static_cast<int>(q / (nsh * nsh * nsh));
+    long long rem = q % (nsh * nsh * nsh);
+    sc = static_cast<int>(rem / (nsh * nsh));
+    rem = rem % (nsh * nsh);
+    sb = static_cast<int>(rem / nsh);
+    sa = static_cast<int>(rem % nsh);
+}
+
+__global__ void
+compute_eri_lgt1_kernel(prec_t* ERI, const prec_t* prim_alpha,
+                        const prec_t* prim_coeff, const int* shell_nprim,
+                        const int* shell_prim_off, const prec_t* shell_centers,
+                        const int* shell_L, const int* shell_ao_start,
+                        int n_shells, int n_ao) {
+    work_t R[kL2Dim * kL2Dim * kL2Dim * kL2Dim];
+    work_t acc[kL2Out];
+    const long long nsh = n_shells;
+    const long long n4 = nsh * nsh * nsh * nsh;
+    const long long stride = static_cast<long long>(blockDim.x) * gridDim.x;
+    for (long long q =
+             static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+         q < n4; q += stride) {
+        int sa, sb, sc, sd;
+        decode_shell_quartet(q, nsh, sa, sb, sc, sd);
+        const int La = shell_L[sa];
+        const int Lb = shell_L[sb];
+        const int Lc = shell_L[sc];
+        const int Ld = shell_L[sd];
+        if (La > 2 || Lb > 2 || Lc > 2 || Ld > 2)
+            continue;
+        eri_quartet_md<false>(ERI, prim_alpha, prim_coeff, shell_nprim,
+                              shell_prim_off, shell_centers, sa, sb, sc, sd, La,
+                              Lb, Lc, Ld, shell_ao_start[sa],
+                              shell_ao_start[sb], shell_ao_start[sc],
+                              shell_ao_start[sd], n_ao, R, acc);
+    }
+}
+
 __global__ void
 compute_eri_f_kernel(prec_t* ERI, const prec_t* prim_alpha,
                      const prec_t* prim_coeff, const int* shell_nprim,
@@ -2720,12 +2464,8 @@ compute_eri_f_kernel(prec_t* ERI, const prec_t* prim_alpha,
     const long long nsh = n_shells;
     const long long n4 = nsh * nsh * nsh * nsh;
     for (long long q = worker; q < n4; q += n_workers) {
-        const int sd = static_cast<int>(q / (nsh * nsh * nsh));
-        long long rem = q % (nsh * nsh * nsh);
-        const int sc = static_cast<int>(rem / (nsh * nsh));
-        rem = rem % (nsh * nsh);
-        const int sb = static_cast<int>(rem / nsh);
-        const int sa = static_cast<int>(rem % nsh);
+        int sa, sb, sc, sd;
+        decode_shell_quartet(q, nsh, sa, sb, sc, sd);
         const int La = shell_L[sa];
         const int Lb = shell_L[sb];
         const int Lc = shell_L[sc];
@@ -2734,10 +2474,11 @@ compute_eri_f_kernel(prec_t* ERI, const prec_t* prim_alpha,
             continue;
         if (La < 3 && Lb < 3 && Lc < 3 && Ld < 3)
             continue;
-        eri_quartet_f(ERI, prim_alpha, prim_coeff, shell_nprim, shell_prim_off,
-                      shell_centers, sa, sb, sc, sd, La, Lb, Lc, Ld,
-                      shell_ao_start[sa], shell_ao_start[sb],
-                      shell_ao_start[sc], shell_ao_start[sd], n_ao, R, acc);
+        eri_quartet_md<true>(ERI, prim_alpha, prim_coeff, shell_nprim,
+                             shell_prim_off, shell_centers, sa, sb, sc, sd, La,
+                             Lb, Lc, Ld, shell_ao_start[sa], shell_ao_start[sb],
+                             shell_ao_start[sc], shell_ao_start[sd], n_ao, R,
+                             acc);
     }
 }
 

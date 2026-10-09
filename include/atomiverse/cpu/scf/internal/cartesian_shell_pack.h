@@ -35,13 +35,6 @@ inline constexpr int kCudaCartesianLgt1Max = 3;
 /// @brief Named when a shell has l ≥ 4 (no device g-ERI).
 inline constexpr const char* kMissingKernelEriG = "launch_eri_g";
 
-/// @brief Kept so callers can name the old f-shell gap. l = 3 is evaluated.
-inline constexpr const char* kMissingKernelEriF = "launch_eri_f";
-
-/// @brief Spherical l ≤ 3 is Cartesian integrals plus the CPU c2s sandwich.
-///        Not thrown for l ≤ 3. l ≥ 4 throws @ref kMissingKernelEriG.
-inline constexpr const char* kMissingKernelEriSph = "launch_eri_sph";
-
 /// @brief Named when Cartesian l ≤ 2 forces are requested (energy kernel only).
 inline constexpr const char* kMissingKernelForcesLgt1 =
     "launch_rhf_forces_lgt1";
@@ -122,27 +115,23 @@ inline const std::vector<basis_data::AtomBasis>& basis_table(BasisSet basis) {
     throw std::invalid_argument("basis_table: unknown BasisSet");
 }
 
-/// @brief Pack Cartesian shells for `Z[0..natm)`.
+/// @brief Walk contracted shells of `basis` on `Z[0..natm)`.
 ///
-/// Shell order matches `ShellList`: table order per atom, Cartesian
-/// components in `fill_cart_comps` order (not emitted here — one record
-/// per angular shell). Geometry is not stored; the device expands centers
-/// from `atom_of`.
-/// @param basis Orbital basis.
-/// @param Z Nuclear charges / elemental numbers [natm].
-/// @param natm Atom count.
+/// One call, used by the pack and by the route classifier, so the
+/// missing-element check is not a second copy of the table loop.
+/// @param fn Called as `fn(atom, shell)` in table order.
 /// @throws std::invalid_argument when `natm<=0` or `Z` is null.
-/// @throws std::runtime_error when an element has no row in the table.
-inline CartesianShellPack pack_cartesian_shells(BasisSet basis, const int* Z,
-                                                int natm) {
+/// @throws std::runtime_error when an element has no row, or a contraction
+///         is empty.
+template <typename Fn>
+void for_each_contracted_shell(BasisSet basis, const int* Z, int natm,
+                               Fn&& fn) {
     if (natm <= 0 || Z == nullptr) {
         throw std::invalid_argument(
             "pack_cartesian_shells: need a non-empty nuclear-charge list");
     }
     const auto& table = basis_table(basis);
     const char* name = basis_set_name(basis);
-    CartesianShellPack out;
-    int ao = 0;
     for (int a = 0; a < natm; ++a) {
         const int z = Z[a];
         if (z < 1 || static_cast<std::size_t>(z) >= table.size()
@@ -157,26 +146,46 @@ inline CartesianShellPack pack_cartesian_shells(BasisSet basis, const int* Z,
                                          + name + "' Z=" + std::to_string(z)
                                          + " has an empty contraction");
             }
-            const int np = static_cast<int>(sh.alpha.size());
-            const int s = out.n_shells;
-            out.nprim.push_back(np);
-            out.prim_off.push_back(static_cast<int>(out.alpha.size()));
-            out.L.push_back(sh.l);
-            out.atom_of.push_back(a);
-            out.ao_start.push_back(ao);
-            out.alpha.insert(out.alpha.end(), sh.alpha.begin(), sh.alpha.end());
-            out.coeff.insert(out.coeff.end(), sh.coeff.begin(), sh.coeff.end());
-            if (sh.l > out.max_l)
-                out.max_l = sh.l;
-            const int ncart = n_cart_of(sh.l);
-            for (int c = 0; c < ncart; ++c) {
-                out.ao_shell.push_back(s);
-                out.ao_cart.push_back(c);
-                ++ao;
-            }
-            ++out.n_shells;
+            fn(a, sh);
         }
     }
+}
+
+/// @brief Pack Cartesian shells for `Z[0..natm)`.
+///
+/// Shell order matches `ShellList`: table order per atom, Cartesian
+/// components in `fill_cart_comps` order (not emitted here — one record
+/// per angular shell). Geometry is not stored; the device expands centers
+/// from `atom_of`.
+/// @param basis Orbital basis.
+/// @param Z Nuclear charges / elemental numbers [natm].
+/// @param natm Atom count.
+/// @throws std::invalid_argument when `natm<=0` or `Z` is null.
+/// @throws std::runtime_error when an element has no row in the table.
+inline CartesianShellPack pack_cartesian_shells(BasisSet basis, const int* Z,
+                                                int natm) {
+    CartesianShellPack out;
+    int ao = 0;
+    for_each_contracted_shell(basis, Z, natm, [&](int a, const auto& sh) {
+        const int np = static_cast<int>(sh.alpha.size());
+        const int s = out.n_shells;
+        out.nprim.push_back(np);
+        out.prim_off.push_back(static_cast<int>(out.alpha.size()));
+        out.L.push_back(sh.l);
+        out.atom_of.push_back(a);
+        out.ao_start.push_back(ao);
+        out.alpha.insert(out.alpha.end(), sh.alpha.begin(), sh.alpha.end());
+        out.coeff.insert(out.coeff.end(), sh.coeff.begin(), sh.coeff.end());
+        if (sh.l > out.max_l)
+            out.max_l = sh.l;
+        const int ncart = n_cart_of(sh.l);
+        for (int c = 0; c < ncart; ++c) {
+            out.ao_shell.push_back(s);
+            out.ao_cart.push_back(c);
+            ++ao;
+        }
+        ++out.n_shells;
+    });
     out.n_ao = ao;
     return out;
 }
@@ -205,8 +214,12 @@ inline bool sto3g_sp_uniform(BasisSet basis, const int* Z, int natm) {
 inline CudaRhfRoute classify_cuda_rhf(BasisSet basis, const int* Z, int natm) {
     if (sto3g_sp_uniform(basis, Z, natm))
         return {CudaRhfRouteKind::Sto3gSp, nullptr};
-    const CartesianShellPack pack = pack_cartesian_shells(basis, Z, natm);
-    if (pack.max_l > kCudaCartesianLgt1Max)
+    int max_l = 0;
+    for_each_contracted_shell(basis, Z, natm, [&](int, const auto& sh) {
+        if (sh.l > max_l)
+            max_l = sh.l;
+    });
+    if (max_l > kCudaCartesianLgt1Max)
         return {CudaRhfRouteKind::MissingKernel, kMissingKernelEriG};
     // Spherical l ≤ 3 stays on this route. The fock build sandwiches
     // S, T, V, and the Cartesian ERI with CartToSph (integrals.cpp).
