@@ -393,8 +393,10 @@ x2c-1e replaces the one-electron Hamiltonian by a spin-free exact
 two-component operator built from \(\{S,T,V,W\}\)
 (\(W_{\mu\nu}=\langle\nabla\mu|V|\nabla\nu\rangle\)). Two-electron integrals
 stay non-relativistic. **Mutually exclusive with ECP** (double-counting).
-Property operators are not picture-change transformed. Forces with `x2c=true`
-are not implemented.
+Property operators are not picture-change transformed. Analytic nuclear
+forces with `x2c=true` use the spin-free x2c-1e core gradient (picture
+change of \(h^{\mathrm{X2C}}\)); two-electron integrals stay
+non-relativistic.
 
 ### Practice
 

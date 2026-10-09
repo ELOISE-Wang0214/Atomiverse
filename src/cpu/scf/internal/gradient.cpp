@@ -19,6 +19,7 @@
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
 #include "atomiverse/cpu/scf/internal/pcm.h"
 #include "atomiverse/cpu/scf/internal/point_charges.h"
+#include "atomiverse/cpu/scf/internal/x2c.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 #include <cmath>
@@ -713,6 +714,30 @@ GradientResult ScfGradient::assemble_(
     xt::xtensor<double, 2> grad_common = xt::zeros<double>({(int)natm, (int)3});
     accumulate_common_gradient(grad_common, P, W, dpack, n, natm);
     grad += grad_common;
+    // x2c-1e: the core Hamiltonian whose derivative enters Tr[P · dH] is
+    // h^X2C, not T+V. Two-electron integrals and the overlap Pulay weight
+    // stay non-relativistic (pyscf.grad.rhf.grad_elec + sfx2c1e_grad).
+    // W on the integral view is assembled only when the method set x2c.
+    if (integrals.W.size() > 0) {
+        if (static_cast<int>(integrals.W.shape(0)) != n
+            || static_cast<int>(integrals.W.shape(1)) != n)
+            throw std::runtime_error(
+                "ScfGradient: x2c pVp matrix W is not n_basis × n_basis");
+        const xt::xtensor<double, 4> dWp = pvp_nuclear_deriv(integrals);
+        const xt::xtensor<double, 4> dh = internal::x2c_hcore_gradient(
+            integrals.S, integrals.T, integrals.V, integrals.W, dpack.dS,
+            dpack.dT, dpack.dV, dWp);
+        for (int A = 0; A < natm; ++A) {
+            for (int d = 0; d < 3; ++d) {
+                const xt::xtensor<double, 2> rel =
+                    xt::view(dh, A, d, xt::all(), xt::all())
+                    - xt::view(dpack.dT, A, d, xt::all(), xt::all())
+                    - xt::view(dpack.dV, A, d, xt::all(), xt::all());
+                grad(A, d) += xt::sum(P * rel)();
+            }
+        }
+        ATV_INFO("[gradient] x2c-1e h^X2C nuclear derivative");
+    }
     const auto [common_max_abs, common_max_atom_norm] =
         gradient_metrics(grad_common);
     ATV_DEBUG("[gradient] common_terms_ms={:.1f}", elapsed_ms(t_common));

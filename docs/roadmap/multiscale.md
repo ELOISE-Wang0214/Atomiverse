@@ -48,7 +48,7 @@ QM region = `kAtomQmZ` mask; link cuts derived from mask × bonds.
 | Fixed point-charge embedding | ✓ | ○ | + analytic forces |
 | Uniform external E-field | ✓ | ○ | + analytic forces |
 | ECP | ✓ | ○ | Semi-numerical forces |
-| x2c-1e (energy) | ✓ | ○ | Forces throw |
+| x2c-1e | ✓ | ○ | Analytic nuclear forces. No device path |
 | DKH / ZORA / SOC / 4c | ○ | ○ | |
 | FDE / DMET / PBE embedding | ○ | ○ | |
 

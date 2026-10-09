@@ -243,6 +243,21 @@ void accumulate_two_electron_hessian_uhf(
     xt::xtensor<double, 2>& hess, const internal::IntegralView& integrals,
     const xt::xtensor<double, 2>& Pa, const xt::xtensor<double, 2>& Pb);
 
+/// @brief Nuclear derivative of the spin-free pVp matrix
+///        W_μν = ⟨∇μ|V|∇ν⟩ [Hartree/Bohr²].
+///
+/// Layout matches `IntegralDerivPack::dV`: [n_atoms, 3, n_basis, n_basis]
+/// in the working AO basis. A spherical pack is sandwiched with the stored
+/// `c2s`, the same transform the undifferentiated W received. This is the
+/// symmetrized `w1cc` block of `pyscf.x2c.sfx2c1e_grad._gen_h1_s1`
+/// (`int1e_ippnucp` bra derivative plus the per-nucleus `int1e_ipprinvp`
+/// operator derivative).
+///
+/// @param pack Integral pack (atoms in Bohr + resolved shells). `W` itself
+///             is not read — the derivative is rebuilt from the shells.
+/// @return dW/dR [Hartree/Bohr³].
+xt::xtensor<double, 4> pvp_nuclear_deriv(const internal::IntegralView& pack);
+
 // ── Primitive nuclear-attraction derivatives (internal; unit-testable) ─
 // -Z / -q prefactor is NOT included; caller multiplies.
 
