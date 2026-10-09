@@ -471,6 +471,12 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/electrodes/charging_work.cpp
             src/cpu/electrodes/charge_aspc.cpp
         )
+        # cuda::md::Brownian host launch. The .cu owns the symbol when CUDA
+        # is on; this TU is only the CPU-only build, and it throws the
+        # kernel name rather than stepping positions on the host.
+        if(NOT ATV_BUILD_CUDA)
+            list(APPEND ATOMIVERSE_SRCS src/cuda/dynamics/brownian.cpp)
+        endif()
     endif()
 
     if(ATV_BUILD_VIB)
@@ -599,6 +605,7 @@ if(NOT ATV_DOCS_ONLY)
                 src/cuda/dynamics/velocity_verlet.cu
                 src/cuda/dynamics/nve_limit.cu
                 src/cuda/dynamics/fix_langevin.cu
+                src/cuda/dynamics/brownian.cu
                 src/cuda/dynamics/nose_hoover_npt.cu
                 src/cuda/dynamics/init.cu
                 src/cuda/dynamics/kinetic_energy.cu

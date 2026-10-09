@@ -12,7 +12,7 @@ Tutorial: [MD](../tutorial/ch10-classical-md.md) · [ensembles](../tutorial/ch11
 | ---------- | :-: | :--: | ----- |
 | Velocity Verlet | ✓ | ✓ | |
 | Langevin (Schneider–Stoll) | ✓ | ✓ | Not BAOAB/GJF |
-| Brownian dynamics | ✓ | ○ | |
+| Brownian dynamics | ✓ | ◐ | CUDA: device kernel; CPU-only build throws `brownian_integrate`. Einstein ⟨r²⟩=6Dt pin stays the CPU regression |
 | Nosé–Hoover (single chain) | ✓ | ✓ | Standalone NVT |
 | Nosé–Hoover chain (M-chain) | ✓ | ✓ | Inside MTK NPT only |
 | Bussi / CSVR | ✓ | ○ | |
