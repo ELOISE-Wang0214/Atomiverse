@@ -9,6 +9,7 @@
 
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
+#include <xtensor/views/xview.hpp>
 
 #include "atomiverse/cpu/linalg/eigensolve.h"
 
@@ -93,15 +94,42 @@ RealMatrix get_r(const RealMatrix& S, const RealMatrix& S_tilde) {
     return R;
 }
 
-/// @brief Column-major copy of a row-major AO matrix.
-RealMatrix to_cm(const xt::xtensor<double, 2>& A) {
-    const int n0 = static_cast<int>(A.shape(0));
-    const int n1 = static_cast<int>(A.shape(1));
-    RealMatrix M = xt::zeros<double>({n0, n1});
-    for (int i = 0; i < n0; ++i)
-        for (int j = 0; j < n1; ++j)
-            M(i, j) = A(i, j);
-    return M;
+/// @brief Modified Dirac matrix and metric, PySCF `_get_h0_s0` / `_gen_h1_s1`.
+///
+/// h = [[V, T], [T, W/(4c²)−T]], M = [[S, 0], [0, T/(2c²)]].
+/// `h` and `m` are zero on entry; blocks that stay zero are not written.
+void fill_modified_dirac(RealMatrix& h, RealMatrix& m, const RealMatrix& v,
+                         const RealMatrix& t, const RealMatrix& w,
+                         const RealMatrix& s, double inv_4c2, double inv_2c2) {
+    const int n = static_cast<int>(v.shape(0));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            h(i, j) = v(i, j);
+            h(i, n + j) = t(i, j);
+            h(n + i, j) = t(i, j);
+            h(n + i, n + j) = w(i, j) * inv_4c2 - t(i, j);
+            m(i, j) = s(i, j);
+            m(n + i, n + j) = t(i, j) * inv_2c2;
+        }
+    }
+}
+
+/// @brief X = C_S C_L⁻¹, i.e. solve C_Lᵀ Xᵀ = C_Sᵀ (PySCF `solve(cl.T, cs.T).T`).
+RealMatrix x_from_components(const RealMatrix& Cl, const RealMatrix& Cs) {
+    return xt::transpose(
+        xt::linalg::solve(xt::transpose(Cl), xt::transpose(Cs)));
+}
+
+/// @brief Picture-changed coefficient: large block over small block.
+void write_fw(RealMatrix& c_fw, const RealMatrix& large,
+              const RealMatrix& small) {
+    const int n = static_cast<int>(large.shape(0));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            c_fw(i, j) = large(i, j);
+            c_fw(n + i, j) = small(i, j);
+        }
+    }
 }
 
 /// @brief R¹ of JCP 135, 084114 (2011) Eq. (34). PySCF `_get_r1`.
@@ -207,16 +235,7 @@ X2cWorkspace::X2cWorkspace(const RealMatrix& S, const RealMatrix& T,
     // Modified Dirac matrix h and metric M (kinetic-balance, spin-free).
     RealMatrix h = xt::zeros<double>({n2, n2});
     RealMatrix M = xt::zeros<double>({n2, n2});
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            h(i, j) = V(i, j);
-            h(i, n + j) = T(i, j);
-            h(n + i, j) = T(i, j);
-            h(n + i, n + j) = W(i, j) * inv_4c2 - T(i, j);
-            M(i, j) = S(i, j);
-            M(n + i, n + j) = T(i, j) * inv_2c2;
-        }
-    }
+    fill_modified_dirac(h, M, V, T, W, S, inv_4c2, inv_2c2);
 
     // Generalised eigenproblem h A = M A ε. PySCF happy path takes the
     // upper half a[:, n:] of the ascending spectrum (positive-energy
@@ -273,10 +292,7 @@ X2cWorkspace::X2cWorkspace(const RealMatrix& S, const RealMatrix& T,
     // X = C_S C_L⁻¹  ⇔  solve C_Lᵀ Xᵀ = C_Sᵀ
     RealMatrix X;
     try {
-        const RealMatrix ClT = xt::transpose(Cl);
-        const RealMatrix CsT = xt::transpose(Cs);
-        const RealMatrix XT = xt::linalg::solve(ClT, CsT);
-        X = xt::transpose(XT);
+        X = x_from_components(Cl, Cs);
     } catch (...) {
         throw std::runtime_error(
             "X2cWorkspace: large-component block C_L is singular — cannot "
@@ -341,10 +357,11 @@ xt::xtensor<double, 4> x2c_hcore_gradient(
     check4(dV, "dV");
     check4(dW, "dW");
 
-    const RealMatrix S = to_cm(S_in);
-    const RealMatrix T = to_cm(T_in);
-    const RealMatrix V = to_cm(V_in);
-    const RealMatrix Wp = to_cm(W_in);
+    // RealMatrix is column-major; the integral blocks are row-major.
+    const RealMatrix S = S_in;
+    const RealMatrix T = T_in;
+    const RealMatrix V = V_in;
+    const RealMatrix Wp = W_in;
 
     const double c2 = c * c;
     const double inv_4c2 = 0.25 / c2;
@@ -354,16 +371,7 @@ xt::xtensor<double, 4> x2c_hcore_gradient(
     // Modified Dirac matrix and metric. PySCF sfx2c1e_grad._get_h0_s0.
     RealMatrix h0 = xt::zeros<double>({n2, n2});
     RealMatrix M0 = xt::zeros<double>({n2, n2});
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            h0(i, j) = V(i, j);
-            h0(i, n + j) = T(i, j);
-            h0(n + i, j) = T(i, j);
-            h0(n + i, n + j) = Wp(i, j) * inv_4c2 - T(i, j);
-            M0(i, j) = S(i, j);
-            M0(n + i, n + j) = T(i, j) * inv_2c2;
-        }
-    }
+    fill_modified_dirac(h0, M0, V, T, Wp, S, inv_4c2, inv_2c2);
 
     RealVector e0;
     RealMatrix c0;
@@ -385,19 +393,12 @@ xt::xtensor<double, 4> x2c_hcore_gradient(
             "negative and n positive states (ε ≷ −c²) — refusing to build "
             "dh^X2C");
 
-    RealMatrix Cl = xt::zeros<double>({n, n});
-    RealMatrix Cs = xt::zeros<double>({n, n});
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            Cl(i, j) = c0(i, n + j);
-            Cs(i, j) = c0(n + i, n + j);
-        }
-    }
+    // Positive-energy block is columns [n, 2n). PySCF `c0[:nao, nao:]`.
+    const RealMatrix Cl = xt::view(c0, xt::range(0, n), xt::range(n, n2));
+    const RealMatrix Cs = xt::view(c0, xt::range(n, n2), xt::range(n, n2));
     RealMatrix X;
     try {
-        const RealMatrix XT =
-            xt::linalg::solve(xt::transpose(Cl), xt::transpose(Cs));
-        X = xt::transpose(XT);
+        X = x_from_components(Cl, Cs);
     } catch (...) {
         throw std::runtime_error(
             "x2c_hcore_gradient: large-component block C_L is singular — "
@@ -457,12 +458,7 @@ xt::xtensor<double, 4> x2c_hcore_gradient(
         xt::linalg::dot(v_s, xt::linalg::dot(R0b, xt::transpose(v_s)));
 
     RealMatrix c_fw0 = xt::zeros<double>({n2, n});
-    const RealMatrix XR0 = xt::linalg::dot(X, R0);
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j) {
-            c_fw0(i, j) = R0(i, j);
-            c_fw0(n + i, j) = XR0(i, j);
-        }
+    write_fw(c_fw0, R0, xt::linalg::dot(X, R0));
     const RealMatrix h0_fw_half = xt::linalg::dot(h0, c_fw0);
 
     // (e_p − e_q); degenerate pairs (|Δε| < 1e-7) get a huge denominator
@@ -475,34 +471,17 @@ xt::xtensor<double, 4> x2c_hcore_gradient(
             epq(p, q) = (std::abs(dep) < kDegen) ? 1e200 : dep;
         }
 
-    const auto slice4 = [&](const xt::xtensor<double, 4>& A, int a, int d) {
-        RealMatrix M = xt::zeros<double>({n, n});
-        for (int i = 0; i < n; ++i)
-            for (int j = 0; j < n; ++j)
-                M(i, j) = A(a, d, i, j);
-        return M;
-    };
-
     xt::xtensor<double, 4> out = xt::zeros<double>({natm, 3, n, n});
     for (int a = 0; a < natm; ++a) {
         for (int d = 0; d < 3; ++d) {
-            const RealMatrix s1 = slice4(dS, a, d);
-            const RealMatrix t1 = slice4(dT, a, d);
-            const RealMatrix v1 = slice4(dV, a, d);
-            const RealMatrix w1 = slice4(dW, a, d);
+            const RealMatrix s1 = xt::view(dS, a, d, xt::all(), xt::all());
+            const RealMatrix t1 = xt::view(dT, a, d, xt::all(), xt::all());
+            const RealMatrix v1 = xt::view(dV, a, d, xt::all(), xt::all());
+            const RealMatrix w1 = xt::view(dW, a, d, xt::all(), xt::all());
 
             RealMatrix h1 = xt::zeros<double>({n2, n2});
             RealMatrix m1 = xt::zeros<double>({n2, n2});
-            for (int i = 0; i < n; ++i) {
-                for (int j = 0; j < n; ++j) {
-                    h1(i, j) = v1(i, j);
-                    h1(i, n + j) = t1(i, j);
-                    h1(n + i, j) = t1(i, j);
-                    h1(n + i, n + j) = w1(i, j) * inv_4c2 - t1(i, j);
-                    m1(i, j) = s1(i, j);
-                    m1(n + i, n + j) = t1(i, j) * inv_2c2;
-                }
-            }
+            fill_modified_dirac(h1, m1, v1, t1, w1, s1, inv_4c2, inv_2c2);
 
             const RealMatrix h1mo =
                 xt::linalg::dot(xt::transpose(c0), xt::linalg::dot(h1, c0));
@@ -519,19 +498,12 @@ xt::xtensor<double, 4> x2c_hcore_gradient(
                 }
             }
             const RealMatrix c1_ao = xt::linalg::dot(c0, c1_mo);
-            RealMatrix cl1 = xt::zeros<double>({n, n});
-            RealMatrix cs1 = xt::zeros<double>({n, n});
-            for (int i = 0; i < n; ++i)
-                for (int j = 0; j < n; ++j) {
-                    cl1(i, j) = c1_ao(i, j);
-                    cs1(i, j) = c1_ao(n + i, j);
-                }
+            const RealMatrix cl1 = xt::view(c1_ao, xt::range(0, n), xt::all());
+            const RealMatrix cs1 = xt::view(c1_ao, xt::range(n, n2), xt::all());
             const RealMatrix tmp = cs1 - xt::linalg::dot(X, cl1);
             RealMatrix x1;
             try {
-                const RealMatrix x1T =
-                    xt::linalg::solve(xt::transpose(Cl), xt::transpose(tmp));
-                x1 = xt::transpose(x1T);
+                x1 = x_from_components(Cl, tmp);
             } catch (...) {
                 throw std::runtime_error(
                     "x2c_hcore_gradient: large-component block C_L is "
@@ -543,10 +515,8 @@ xt::xtensor<double, 4> x2c_hcore_gradient(
                 const RealMatrix sym = s_nesc1 + xt::transpose(s_nesc1);
                 s_nesc1 = sym;
             }
-            RealMatrix m1_ss = xt::zeros<double>({n, n});
-            for (int i = 0; i < n; ++i)
-                for (int j = 0; j < n; ++j)
-                    m1_ss(i, j) = m1(n + i, n + j);
+            const RealMatrix m1_ss =
+                xt::view(m1, xt::range(n, n2), xt::range(n, n2));
             s_nesc1 =
                 s_nesc1
                 + xt::linalg::dot(xt::transpose(X), xt::linalg::dot(m1_ss, X));
@@ -556,13 +526,9 @@ xt::xtensor<double, 4> x2c_hcore_gradient(
                 get_r1(w_sqrt, v_s, s_nesc0_vbas, s1, s_nesc1, wr0_sqrt, vr0);
 
             RealMatrix c_fw1 = xt::zeros<double>({n2, n});
-            const RealMatrix XR1 = xt::linalg::dot(X, R1);
-            const RealMatrix x1R0 = xt::linalg::dot(x1, R0);
-            for (int i = 0; i < n; ++i)
-                for (int j = 0; j < n; ++j) {
-                    c_fw1(i, j) = R1(i, j);
-                    c_fw1(n + i, j) = XR1(i, j) + x1R0(i, j);
-                }
+            const RealMatrix small =
+                xt::linalg::dot(X, R1) + xt::linalg::dot(x1, R0);
+            write_fw(c_fw1, R1, small);
 
             // hfw¹ = c_fw¹† h c_fw⁰ + h.c. + c_fw⁰† h¹ c_fw⁰.
             RealMatrix hfw = xt::linalg::dot(xt::transpose(c_fw1), h0_fw_half);
@@ -574,9 +540,7 @@ xt::xtensor<double, 4> x2c_hcore_gradient(
                   + xt::linalg::dot(xt::transpose(c_fw0),
                                     xt::linalg::dot(h1, c_fw0));
             hfw = 0.5 * (hfw + xt::transpose(hfw));
-            for (int i = 0; i < n; ++i)
-                for (int j = 0; j < n; ++j)
-                    out(a, d, i, j) = hfw(i, j);
+            xt::view(out, a, d, xt::all(), xt::all()) = hfw;
         }
     }
     return out;

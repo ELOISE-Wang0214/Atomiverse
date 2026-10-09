@@ -450,6 +450,48 @@ static void accumulate_quartet_into_gradient(xt::xtensor<double, 2>& grad,
     }
 }
 
+/// @brief Shell-center → atom index. Centers are Bohr and come from the
+///        same Frame, so equality is bit-exact.
+static std::vector<int> shell_owner(const std::vector<native::Shell>& shells,
+                                    const std::vector<native::Atom>& atoms,
+                                    int n_shell, const char* who) {
+    const int natm = static_cast<int>(atoms.size());
+    std::vector<int> owner(static_cast<std::size_t>(n_shell), -1);
+    for (int i = 0; i < n_shell; ++i) {
+        const double* c = shells[static_cast<std::size_t>(i)].center;
+        for (int a = 0; a < natm; ++a) {
+            const double* p = atoms[static_cast<std::size_t>(a)].pos;
+            if (c[0] == p[0] && c[1] == p[1] && c[2] == p[2]) {
+                owner[static_cast<std::size_t>(i)] = a;
+                break;
+            }
+        }
+        if (owner[static_cast<std::size_t>(i)] < 0)
+            throw std::runtime_error(std::string(who) + ": shell "
+                                     + std::to_string(i)
+                                     + " center has no matching atom");
+    }
+    return owner;
+}
+
+/// @brief dO^sph[A,d] = c2sᵀ · dO^cart[A,d] · c2s. `c2s` is (n_cart, n_sph).
+static xt::xtensor<double, 4>
+deriv_to_spherical(const xt::xtensor<double, 4>& d_cart,
+                   const xt::xtensor<double, 2>& c2s, int n_sph) {
+    const auto ct = xt::transpose(c2s);
+    const int natm = static_cast<int>(d_cart.shape(0));
+    xt::xtensor<double, 4> d_sph = xt::zeros<double>({natm, 3, n_sph, n_sph});
+    for (int a = 0; a < natm; ++a) {
+        for (int d = 0; d < 3; ++d) {
+            const xt::xtensor<double, 2> blk =
+                xt::view(d_cart, a, d, xt::all(), xt::all());
+            xt::view(d_sph, a, d, xt::all(), xt::all()) =
+                xt::linalg::dot(ct, xt::linalg::dot(blk, c2s));
+        }
+    }
+    return d_sph;
+}
+
 // ── Main entry point ─────────────────────────────────────────────────
 
 IntegralDerivPack::IntegralDerivPack(const internal::IntegralView& ipack) {
@@ -475,22 +517,8 @@ IntegralDerivPack::IntegralDerivPack(const internal::IntegralView& ipack) {
     // Shell → atom mapping via shell-center vs atom-position match.
     // Both are in Bohr and constructed from the same Frame positions,
     // so bit-exact equality holds.
-    std::vector<int> shell_to_atom(n_basis, -1);
-    for (int i = 0; i < n_basis; ++i) {
-        const double* c = shells[i].center;
-        for (int a = 0; a < natm; ++a) {
-            const double* p = atoms[a].pos;
-            if (c[0] == p[0] && c[1] == p[1] && c[2] == p[2]) {
-                shell_to_atom[i] = a;
-                break;
-            }
-        }
-        if (shell_to_atom[i] < 0) {
-            throw std::runtime_error("cpu::scf::IntegralDerivPack: shell "
-                                     + std::to_string(i)
-                                     + " center has no matching atom");
-        }
-    }
+    const std::vector<int> shell_to_atom =
+        shell_owner(shells, atoms, n_basis, "cpu::scf::IntegralDerivPack");
 
     // ── 1e integral derivatives ──────────────────────────────────────
 
@@ -648,34 +676,10 @@ IntegralDerivPack::IntegralDerivPack(const internal::IntegralView& ipack) {
     // basis-independent and untouched. After this the dS/dT/dV blocks align
     // with the spherical P/W that ScfGradient::compute contracts against.
     if (ipack.spherical()) {
-        const auto& c2s = ipack.c2s;
-        const auto ct = xt::transpose(c2s);
         const int n_sph = ipack.n_basis;
-        xt::xtensor<double, 4> dS_s =
-            xt::zeros<double>({natm, 3, n_sph, n_sph});
-        xt::xtensor<double, 4> dT_s =
-            xt::zeros<double>({natm, 3, n_sph, n_sph});
-        xt::xtensor<double, 4> dV_s =
-            xt::zeros<double>({natm, 3, n_sph, n_sph});
-        for (int a = 0; a < natm; ++a) {
-            for (int d = 0; d < 3; ++d) {
-                const xt::xtensor<double, 2> S_blk =
-                    xt::view(dS, a, d, xt::all(), xt::all());
-                const xt::xtensor<double, 2> T_blk =
-                    xt::view(dT, a, d, xt::all(), xt::all());
-                const xt::xtensor<double, 2> V_blk =
-                    xt::view(dV, a, d, xt::all(), xt::all());
-                xt::view(dS_s, a, d, xt::all(), xt::all()) =
-                    xt::linalg::dot(ct, xt::linalg::dot(S_blk, c2s));
-                xt::view(dT_s, a, d, xt::all(), xt::all()) =
-                    xt::linalg::dot(ct, xt::linalg::dot(T_blk, c2s));
-                xt::view(dV_s, a, d, xt::all(), xt::all()) =
-                    xt::linalg::dot(ct, xt::linalg::dot(V_blk, c2s));
-            }
-        }
-        dS = std::move(dS_s);
-        dT = std::move(dT_s);
-        dV = std::move(dV_s);
+        dS = deriv_to_spherical(dS, ipack.c2s, n_sph);
+        dT = deriv_to_spherical(dT, ipack.c2s, n_sph);
+        dV = deriv_to_spherical(dV, ipack.c2s, n_sph);
         this->n_basis = n_sph;
     }
 }
@@ -755,21 +759,8 @@ xt::xtensor<double, 4> pvp_nuclear_deriv(const internal::IntegralView& ipack) {
             "pvp_nuclear_deriv: shell count does not match the Cartesian "
             "AO dimension");
 
-    std::vector<int> shell_to_atom(static_cast<std::size_t>(n_cart), -1);
-    for (int i = 0; i < n_cart; ++i) {
-        const double* c = shells[static_cast<std::size_t>(i)].center;
-        for (int a = 0; a < natm; ++a) {
-            const double* p = atoms[static_cast<std::size_t>(a)].pos;
-            if (c[0] == p[0] && c[1] == p[1] && c[2] == p[2]) {
-                shell_to_atom[static_cast<std::size_t>(i)] = a;
-                break;
-            }
-        }
-        if (shell_to_atom[static_cast<std::size_t>(i)] < 0)
-            throw std::runtime_error("pvp_nuclear_deriv: shell "
-                                     + std::to_string(i)
-                                     + " center has no matching atom");
-    }
+    const std::vector<int> shell_to_atom =
+        shell_owner(shells, atoms, n_cart, "pvp_nuclear_deriv");
 
     for (int i = 0; i < n_cart; ++i) {
         const int atom_i = shell_to_atom[static_cast<std::size_t>(i)];
@@ -815,22 +806,8 @@ xt::xtensor<double, 4> pvp_nuclear_deriv(const internal::IntegralView& ipack) {
         }
     }
 
-    if (ipack.spherical()) {
-        const auto& c2s = ipack.c2s;
-        const auto ct = xt::transpose(c2s);
-        const int n_sph = ipack.n_basis;
-        xt::xtensor<double, 4> dW_s =
-            xt::zeros<double>({natm, 3, n_sph, n_sph});
-        for (int a = 0; a < natm; ++a) {
-            for (int d = 0; d < 3; ++d) {
-                const xt::xtensor<double, 2> blk =
-                    xt::view(dW, a, d, xt::all(), xt::all());
-                xt::view(dW_s, a, d, xt::all(), xt::all()) =
-                    xt::linalg::dot(ct, xt::linalg::dot(blk, c2s));
-            }
-        }
-        return dW_s;
-    }
+    if (ipack.spherical())
+        return deriv_to_spherical(dW, ipack.c2s, ipack.n_basis);
     return dW;
 }
 

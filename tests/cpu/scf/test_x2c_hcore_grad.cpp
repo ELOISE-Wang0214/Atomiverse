@@ -56,19 +56,14 @@ TEST(X2cHcoreGrad, MatchesCentralDifferenceOnH2) {
     const auto dh = cpu::scf::internal::x2c_hcore_gradient(
         p0.S, p0.T, p0.V, p0.W, dpack.dS, dpack.dT, dpack.dV, dW);
 
-    const auto to_cm = [](const xt::xtensor<double, 2>& A) {
-        cpu::scf::RealMatrix M = xt::zeros<double>({A.shape(0), A.shape(1)});
-        for (std::size_t i = 0; i < A.shape(0); ++i)
-            for (std::size_t j = 0; j < A.shape(1); ++j)
-                M(i, j) = A(i, j);
-        return M;
-    };
     const auto pp = pack_at(z0 + delta_ang);
     const auto pm = pack_at(z0 - delta_ang);
-    const cpu::scf::internal::X2cWorkspace wp{to_cm(pp.S), to_cm(pp.T),
-                                              to_cm(pp.V), to_cm(pp.W)};
-    const cpu::scf::internal::X2cWorkspace wm{to_cm(pm.S), to_cm(pm.T),
-                                              to_cm(pm.V), to_cm(pm.W)};
+    const cpu::scf::internal::X2cWorkspace wp{
+        cpu::scf::RealMatrix(pp.S), cpu::scf::RealMatrix(pp.T),
+        cpu::scf::RealMatrix(pp.V), cpu::scf::RealMatrix(pp.W)};
+    const cpu::scf::internal::X2cWorkspace wm{
+        cpu::scf::RealMatrix(pm.S), cpu::scf::RealMatrix(pm.T),
+        cpu::scf::RealMatrix(pm.V), cpu::scf::RealMatrix(pm.W)};
 
     const int n = p0.n_basis;
     ASSERT_EQ(static_cast<int>(dh.shape(0)), 2);
