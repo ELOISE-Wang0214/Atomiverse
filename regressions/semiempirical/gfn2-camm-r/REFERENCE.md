@@ -93,20 +93,31 @@ envelope used for \(F_{O,x}\) in `reg_gfn2-aes-fock`. Energy floor 10 meV
 covers remaining mixer / D4 / intcut residual (sibling 9.19 meV). Dual
 gate includes analytic vs ATV energy FD.
 
-**Wave-13 resume (not closed).** The three-together of the spec is on
-the tip: two-centre \(\Theta\) on every centre (tblite
-`shift_operator` / \(\langle(r-R)(r-R)\rangle\)), \(v^Q\) in the SCC
-Fock on s-only H, frozen-\(P\) \(\partial\Theta/\partial R\) on every
-pair. Off-eq dual-gate: \(E\) **10.6 meV**, \(F_{O,x}\) residual
-**0.260** eV/Å, analytic-vs-FD holds, \(T_{\mathrm{atv}}/T_{\mathrm{xtb}}
-\approx 0.05\). Angular \(F_{H1,y}\) stays **+0.123** vs xtb **−0.799**
-(0.92 eV/Å) — the physical origin-shift on H does **not** tilt the
-bend. Eq-H₂O energy moves **23 meV** (unit test no longer freezes the
-O-centre xtb digit). Minus-RRS (xtb `mmompop` with opab4-signed \(Q\)
-on unsigned ATV \(Q\)) still breaks SCC (residual stuck \(7\times10^{-6}\),
-\(\Delta E\sim 0.67\) eV). xtb `mmompop` on H is **not** this operator
-— do not bless it. Dipole–quadrupole / quadrupole–quadrupole pair ranks
-wait.
+**Wave-13 resume (not closed).** Two-centre \(\Theta\) on every centre
+does not tilt the bend: \(F_{H1,y}\) **+0.123** vs xtb **−0.799** eV/Å.
+\(E\) **10.6 meV**, \(F_{O,x}\) **0.260** eV/Å, analytic-vs-FD holds.
+
+**2026-10-09 (not closed).** Replacing the \(\tfrac12 P\) population and
+the \(/3\) kernel with tblite `qpat`
+(\(\Theta=-\sum P\,\Theta_{\mathrm{op}}\), Fock \(-\tfrac12\),
+\(E=q(\Theta:\mathrm{rr})g_5\)) gives \(E\) **128 meV** off and
+\(F_{H1,y}\) **+0.050**. Not adopted. On the restored baseline the
+analytic \(\nabla E\) [Eh/a0] splits as:
+
+| Piece | \(g_{O,x}\) | \(g_{H1,y}\) |
+| ----- | ----------- | ------------ |
+| H0/Pulay | −5.74e−2 | **−7.09e−3** |
+| dipole CAMM chain | −2.81e−3 | +4.68e−4 |
+| quadrupole CAMM chain | −1.35e−3 | +4.78e−4 |
+| IES \(\partial\gamma/\partial R\) | −1.32e−2 | +3.28e−3 |
+| repulsion | +1.96e−3 | +6.24e−4 |
+| + CN, AES kernel, D4 | (rest) | ~−1.5e−4 |
+| **total** | **−7.02e−2** | **−2.38e−3** |
+| xtb | **−7.52e−2** | **+1.55e−2** |
+
+The bend residual is the H0/Pulay pair term, not \(\partial\Theta/\partial R\).
+Mulliken \(q_O\) is −0.678 e vs xtb −0.549 e (gap 10.74 vs 10.61 eV).
+Dipole–quadrupole / quadrupole–quadrupole pair ranks wait.
 
 ## Perf
 
