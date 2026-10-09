@@ -598,27 +598,32 @@ to a torsional spin-density-wave sector: magnetisation lies in one spin plane
 (\(\sigma_x,\sigma_z\) real; \(\sigma_y\) imaginary).
 
 Complex coefficients and one-electron spin–orbit coupling are a separate
-method, `ComplexGHF`, not a member of real `GHF`. With `x2c = true` the
-core is the spin-orbital X2C-1e Hamiltonian (PySCF `GHF.x2c1e`,
-contracted basis). Two-electron integrals stay non-relativistic.
-`forces` is not available. There is no device path. The CPU call is
-Frame in / Frame out:
+method, `cpu::scf::ComplexGHF` : `cpu::HF`, not a `MeanFieldMethod` and
+not a member of real `GHF`. Member `x2c` defaults to true: the core is
+the spin-orbital X2C-1e Hamiltonian (PySCF `GHF.x2c1e`, contracted
+basis). `x2c = false` is non-relativistic complex GHF (block-diagonal
+T+V). Two-electron integrals stay non-relativistic. `provides_force()`
+is false; `forces` throws `complex_ghf_nuclear_forces`. On the X2C path,
+shells with l > 3 throw `complex_ghf_ao_lgt3`. There is no device path.
+The CPU call is Frame in / Frame out:
 
 ```cpp
-cpu::scf::ComplexGHF ghf{cpu::scf::BasisSet::STO3G};
-ghf.x2c = true;
-ghf.run(frame);   // kEnergy [eV]; ghf.energy() [Ha]
+cpu::Frame frame = /* positions [Å], species in kAtom_type */;
+cpu::scf::ComplexGHF ghf{cpu::scf::BasisSet::STO3G}; // charge 0, tol 1e-10, max_iter 80
+ghf.run(frame);   // kEnergy and kEnergyElectronic [eV]; ghf.energy() [Ha]
 ```
 
-Four-component Dirac–Hartree–Fock is a separate type, `DHF`, not a
-member of `MeanFieldMethod` or `ComplexGHF`. It follows PySCF
-`scf.DHF`: complex j-adapted spinors, a kinetically balanced
-large/small metric, and Dirac–Coulomb (LL|LL)+(SS|LL). Shells with
-l > 1 throw. `forces` throws. There is no device path.
+Four-component Dirac–Hartree–Fock is `cpu::scf::DHF` : `cpu::HF`, not a
+member of `MeanFieldMethod` or `ComplexGHF`. It follows PySCF `scf.DHF`:
+complex j-adapted spinors, a kinetically balanced large/small metric,
+and Dirac–Coulomb (LL|LL)+(SS|LL). The (SS|SS) block is not assembled,
+and there is no Gaunt or Breit term. Shells with l > 1 throw
+`dhf_ao_lgt1`. `provides_force()` is false; `forces` throws
+`dhf_nuclear_forces`. There is no device path.
 
 ```cpp
-cpu::scf::DHF dhf{cpu::scf::BasisSet::CcPVDZ};
-dhf.run(frame);   // kEnergy [eV]; dhf.energy() [Ha]
+cpu::scf::DHF dhf{cpu::scf::BasisSet::CcPVDZ}; // hydrogen only; l ≤ 1
+dhf.run(frame);   // kEnergy and kEnergyElectronic [eV]; dhf.energy() [Ha]
 ```
 
 ### When the extra freedom matters
