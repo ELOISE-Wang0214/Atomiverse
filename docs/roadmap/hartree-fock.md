@@ -57,7 +57,7 @@ PW/GPW product paths are semi-local DFT — see [DFT § Periodic](dft.md#4-perio
 | Native Rys ERI (l ≤ 3) | ✓ | ○ | s/p/d/f |
 | Device ERI | — | ✓ | STO-3G l ≤ 1: `launch_eri_sp`. Cartesian s/p/d/f, l ≤ 3: `launch_eri_lgt1`. Spherical l ≤ 3 is that tensor plus CartToSph. l ≥ 4 throws `launch_eri_g` |
 | ECP | ✓ | ○ | Semi-numerical forces |
-| x2c-1e | ✓ | ○ | Analytic nuclear forces (`forces` with `x2c=true`). No device path |
+| x2c-1e | ✓ | ○ | Analytic nuclear forces (`forces` with `x2c=true`) on molecular RHF (H2, H2O). An isolated atom is an energy pin only. No device path |
 | Diagonalization | ✓ | ✓ | LAPACK / cuSOLVER |
 
 **Bases:** STO-3G, 6-31G, 6-31G\*, 6-31+G\*, def2-SVP, def2-TZVP, aug-cc-pVDZ.

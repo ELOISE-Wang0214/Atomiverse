@@ -1740,6 +1740,7 @@ if(ATV_BUILD_HF)
     atv_add_regression(scf h2o_dimer_cp_hf631gs)
     atv_add_regression(scf x2c_argon)
     atv_add_regression(scf x2c_hcl_grad)
+    atv_add_regression(scf hf-x2c-forces)
     # AO-basis Car–Parrinello MD (dynamics domain, esmm-cpmd-04): fictitious
     # electronic DOF on the Gaussian SCF methods. Needs the MD driver as well
     # as HF — the electrons are propagated on the integrator's clock, so these
