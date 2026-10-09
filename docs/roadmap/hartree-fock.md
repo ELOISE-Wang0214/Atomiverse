@@ -34,7 +34,8 @@ Shares one SCF solver with [Kohn–Sham DFT](dft.md): the 2×2 product
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
 | Γ-point periodic RHF | ✓ | ○ | Truncated lattice; `RHF.periodic`; short-range erfc gate |
-| k-point / UHF periodic HF | ○ | ○ | Need Ewald for long-range 1/r |
+| k-point periodic RHF | ✓ | ✓ | `cpu::scf::KRHF` and `cuda::scf::KRHF`: `{basis, k_mesh}.run(Frame&)`. Orthorhombic cell, s functions, Monkhorst–Pack mesh, FFT Coulomb/exchange with Ewald exchange divergence. Device step is J/K, Fock, `zheevd`, density. `energy()` [Ha], `kEnergy` [eV]. l > 0 throws (`krhf_ao_lgt0`). Analytic forces throw (`krhf_nuclear_forces`). Tutorial: [k-point HF](../tutorial/methods/periodic-kpoint-hf.md) |
+| k-point UHF periodic HF | ○ | ○ | |
 
 PW/GPW product paths are semi-local DFT — see [DFT § Periodic](dft.md#4-periodic-kohnsham).
 

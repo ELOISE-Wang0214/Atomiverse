@@ -121,11 +121,37 @@ N  0.000000  0.000000  1.097700
     )
 
 
+
+def _krhf() -> int:
+    """H2 / STO-3G KRHF, 4 Bohr cube, kmesh 1x1x2. PySCF FFTDF default."""
+    import numpy as np
+    from pyscf.pbc import gto, scf
+
+    cell = gto.Cell()
+    cell.atom = "H 0 0 0; H 0 0 1.4"
+    cell.a = np.eye(3) * 4.0
+    cell.unit = "Bohr"
+    cell.basis = "sto-3g"
+    cell.verbose = 0
+    cell.precision = 1e-8
+    cell.build()
+    kpts = cell.make_kpts([1, 1, 2])
+    mf = scf.KRHF(cell, kpts)
+    mf.conv_tol = 1e-12
+    e = mf.kernel()
+    print(f"pyscf {__import__('pyscf').__version__} KRHF FFTDF exxdiv={mf.exxdiv}")
+    print(f"mesh {cell.mesh.tolist()} nk {len(kpts)}")
+    print(f"E_tot = {e:.16f} Ha")
+    print(f"enuc = {float(cell.enuc):.16f} Ha")
+    print(f"converged {bool(mf.converged)}")
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2", "eom-ip-ccsd", "uks-tddft", "casscf", "nevpt2"],
+        choices=["rhf", "krhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2", "eom-ip-ccsd", "uks-tddft", "casscf", "nevpt2"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -197,6 +223,9 @@ def main() -> int:
     except ImportError as e:
         print(json.dumps({"ok": False, "error": f"pyscf missing: {e}"}))
         return 2
+
+    if args.method == "krhf":
+        return _krhf()
 
     mol = _mol(args.geom, args.basis, args.charge, args.spin, args.cart)
     out: dict = {

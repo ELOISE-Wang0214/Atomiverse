@@ -677,6 +677,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/internal/sap_guess.cpp
             src/cpu/scf/internal/hamiltonian_builder.cpp
             src/cpu/scf/internal/periodic_hf.cpp
+            src/cpu/scf/internal/kpoint_hf.cpp
             src/cpu/scf/internal/cfmm_j.cpp
             src/cpu/scf/internal/density_fitting.cpp
             src/cpu/scf/internal/alda_kernel.cpp
@@ -711,6 +712,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/rpa.cpp
             src/cpu/scf/bse.cpp
             src/cpu/scf/rhf.cpp
+            src/cpu/scf/krhf.cpp
             src/cpu/scf/gf2.cpp
             src/cpu/scf/rohf.cpp
             src/cpu/scf/uhf.cpp
@@ -788,6 +790,7 @@ if(NOT ATV_DOCS_ONLY)
                 src/cuda/scf/uhf_scf_cycle.cu
                 src/cuda/scf/uhf_fock.cu
                 src/cuda/scf/uhf_density.cu
+                src/cuda/scf/krhf.cu
             )
         endif()
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_HF)

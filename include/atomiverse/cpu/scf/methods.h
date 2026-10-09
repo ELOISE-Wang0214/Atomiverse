@@ -2,7 +2,7 @@
 /// @brief Umbrella header for the concrete Gaussian mean-field methods.
 ///
 /// Includes the shared CRTP base `MeanFieldMethod<D>` (`mean_field_method.h`)
-/// and the seven concrete methods `RHF` / `ROHF` / `UHF` / `GHF` / `RKS` /
+/// and the concrete methods `RHF` / `ROHF` / `UHF` / `GHF` / `KRHF` / `RKS` /
 /// `UKS` / `ROKS` (`rhf.h` / `rohf.h` / `uhf.h` / `ghf.h` / `rks.h` /
 /// `uks.h` / `roks.h`). There is no method-agnostic name here: pick the
 /// concrete method whose ansatz you mean.
@@ -28,6 +28,7 @@
 #include "atomiverse/cpu/scf/g0w0.h"
 #include "atomiverse/cpu/scf/gf2.h"
 #include "atomiverse/cpu/scf/ghf.h"
+#include "atomiverse/cpu/scf/krhf.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/post_hf.h"
 #include "atomiverse/cpu/scf/response.h"

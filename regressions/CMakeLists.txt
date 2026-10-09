@@ -1661,6 +1661,21 @@ if(ATV_BUILD_HF)
     atv_add_regression(scf b2plyp-h2o)
     atv_add_regression(scf cam-b3lyp-h2-sto3g)
     atv_add_regression(scf periodic-rhf-gamma)
+    atv_add_regression(scf periodic-kpoint-hf)
+    if(ATV_BUILD_CUDA)
+        set(_reg_ckrhf reg_cuda-periodic-kpoint-hf)
+        add_executable(${_reg_ckrhf} scf/cuda-periodic-kpoint-hf/${_reg_ckrhf}.cu)
+        target_link_libraries(${_reg_ckrhf} PRIVATE atomiverse)
+        set_target_properties(${_reg_ckrhf} PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON CXX_STANDARD 20)
+        add_custom_target(run_${_reg_ckrhf}
+            COMMAND ${CMAKE_COMMAND} -E env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+                    $<TARGET_FILE:${_reg_ckrhf}>
+            DEPENDS ${_reg_ckrhf}
+            COMMENT "regression [scf/cuda-periodic-kpoint-hf] (1t)")
+        add_dependencies(regressions run_${_reg_ckrhf})
+        unset(_reg_ckrhf)
+    endif()
     atv_add_regression(scf d3bj-molecular-pbe)
     atv_add_regression(scf dft-d4-h2o-pbe)
     atv_add_regression(scf h2_analytic_tda_force)
