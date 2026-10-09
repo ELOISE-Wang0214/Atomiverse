@@ -12,11 +12,12 @@
 /// `set_evaluator` / `on(phase).add`, which mounts a private slot.
 ///
 /// **Energy:** device integrals, no host ERI. STO-3G l ≤ 1 uses
-/// `launch_*_sp`. Cartesian l ≤ 2 (and spherical bases with max l ≤ 1)
-/// uses `launch_*_lgt1`. Spherical l ≥ 2 throws `launch_eri_sph`; l ≥ 3
-/// throws `launch_eri_f`. **Forces:** STO-3G s/p
-/// (`launch_rhf_forces_sp`). Cartesian l ≤ 2 forces throw
-/// `launch_rhf_forces_lgt1` — `with_gradient(false)` for that energy.
+/// `launch_*_sp`. Cartesian l ≤ 3 uses `launch_*_lgt1`. Spherical bases
+/// with l ≤ 3 (def2-SVP, def2-TZVP) use that Cartesian engine and the
+/// CPU CartToSph sandwich on device. l ≥ 4 throws `launch_eri_g`.
+/// **Forces:** STO-3G s/p (`launch_rhf_forces_sp`). Any other basis
+/// throws `launch_rhf_forces_lgt1` — `with_gradient(false)` for that
+/// energy.
 ///
 /// Units: `kEnergy` [eV]; forces `kAtom_f*` [eV/Å]; `energy()` [Hartree].
 ///

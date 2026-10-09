@@ -73,16 +73,19 @@ class RHFFockDevice {
                   const double* coeff_mol, const int* L_mol,
                   const int* atom_of_mol, int n_occ, double level_shift = 0.0);
 
-    /// @brief Ragged Cartesian shells, every l ≤ 2.
+    /// @brief Ragged Cartesian shells, every l ≤ 3.
     ///
     /// `alpha` / `coeff` are the raw basis-table contraction (not
     /// physically normalized). `nprim[s]` / `prim_off[s]` index that
     /// flat list. Device `launch_*_lgt1` builds S, T, V, and the ERI.
+    /// When `spherical` is true the SCF dimension is the 2l+1 basis and
+    /// the Cartesian tensors are sandwiched with CartToSph on device.
     /// @param n_prim_total Length of `alpha` and `coeff`.
+    /// @param spherical Spherical-convention basis (def2 / cc) with l ≥ 2.
     RHFFockDevice(int n_shells, int n_ao, const double* alpha,
                   const double* coeff, int n_prim_total, const int* nprim,
                   const int* prim_off, const int* L_mol, const int* atom_of_mol,
-                  int n_occ, double level_shift = 0.0);
+                  int n_occ, double level_shift = 0.0, bool spherical = false);
 
     /// @brief Multi-shell pure-s convenience (Wave 3): one element type, all L=0.
     /// @param n_shells_per_atom s shells per atom (table order).
@@ -130,6 +133,8 @@ class RHFFockDevice {
     std::vector<int> nprim_;
     std::vector<int> prim_off_;
     bool ragged_ = false;
+    /// Spherical AO basis: Cartesian integrals, then device c2s.
+    bool spherical_ = false;
 
     void* cublas_handle_ = nullptr;
     void* cusolver_handle_ = nullptr;

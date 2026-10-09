@@ -3,8 +3,9 @@
 ///
 /// Setup only: exponents, raw contraction coefficients, and AO maps. No
 /// integrals. The device step evaluates them (`launch_1e_integrals_lgt1`,
-/// `launch_eri_lgt1`). PySCF `scf.hf.get_jk` / `scf.hf.get_veff` consume
+/// `launch_eri_lgt1`, l ≤ 3). PySCF `scf.hf.get_jk` / `scf.hf.get_veff` consume
 /// Cartesian `int2e` (`pyscf.scf._vhf.direct` with `intor='int2e_cart'`).
+/// Spherical bases then apply the same CartToSph sandwich as the CPU pack.
 #pragma once
 
 #include <stdexcept>
@@ -28,13 +29,17 @@ namespace cpu {
 namespace scf {
 namespace internal {
 
-/// @brief Highest angular momentum `launch_eri_lgt1` evaluates (Cartesian d).
-inline constexpr int kCudaCartesianLgt1Max = 2;
+/// @brief Highest angular momentum `launch_eri_lgt1` evaluates (Cartesian f).
+inline constexpr int kCudaCartesianLgt1Max = 3;
 
-/// @brief Named when a shell has l ≥ 3 (no device f-ERI).
+/// @brief Named when a shell has l ≥ 4 (no device g-ERI).
+inline constexpr const char* kMissingKernelEriG = "launch_eri_g";
+
+/// @brief Kept so callers can name the old f-shell gap. l = 3 is evaluated.
 inline constexpr const char* kMissingKernelEriF = "launch_eri_f";
 
-/// @brief Named when a spherical basis has l ≥ 2 (no 5d/7f device transform).
+/// @brief Spherical l ≤ 3 is Cartesian integrals plus the CPU c2s sandwich.
+///        Not thrown for l ≤ 3. l ≥ 4 throws @ref kMissingKernelEriG.
 inline constexpr const char* kMissingKernelEriSph = "launch_eri_sph";
 
 /// @brief Named when Cartesian l ≤ 2 forces are requested (energy kernel only).
@@ -44,7 +49,7 @@ inline constexpr const char* kMissingKernelForcesLgt1 =
 /// @brief Which CUDA RHF integral path a basis + nuclear charges take.
 enum class CudaRhfRouteKind {
     Sto3gSp,       ///< Uniform STO-3G, every shell l ≤ 1 (`launch_*_sp`).
-    CartesianLgt1, ///< Cartesian (or l ≤ 1 spherical) shells, max l ≤ 2.
+    CartesianLgt1, ///< Cartesian shells, max l ≤ 3 (spherical uses c2s).
     MissingKernel, ///< Device kernel does not exist; do not host-fill ERIs.
 };
 
@@ -75,10 +80,10 @@ struct CartesianShellPack {
 };
 
 /// @brief libcint / PySCF Cartesian primitive norm for shell angular momentum.
-/// @param l Angular momentum (0, 1, or 2).
+/// @param l Angular momentum (0, 1, 2, or 3).
 /// @param alpha Gaussian exponent [Bohr^-2].
 /// @return Physical normalization factor.
-/// @throws std::invalid_argument when `l` is outside 0..2.
+/// @throws std::invalid_argument when `l` is outside 0..3.
 inline double contraction_norm(int l, double alpha) {
     switch (l) {
     case 0:
@@ -87,10 +92,12 @@ inline double contraction_norm(int l, double alpha) {
         return ATV::phys_norm_p(alpha);
     case 2:
         return ATV::phys_norm_d(alpha);
+    case 3:
+        return ATV::phys_norm_f(alpha);
     default:
         throw std::invalid_argument(
             "contraction_norm: l=" + std::to_string(l)
-            + " is outside the Cartesian l<=2 device envelope");
+            + " is outside the Cartesian l<=3 device envelope");
     }
 }
 
@@ -200,11 +207,9 @@ inline CudaRhfRoute classify_cuda_rhf(BasisSet basis, const int* Z, int natm) {
         return {CudaRhfRouteKind::Sto3gSp, nullptr};
     const CartesianShellPack pack = pack_cartesian_shells(basis, Z, natm);
     if (pack.max_l > kCudaCartesianLgt1Max)
-        return {CudaRhfRouteKind::MissingKernel, kMissingKernelEriF};
-    // l ≤ 1 is the same AO layout in Cartesian and spherical conventions.
-    if (angular_convention(basis) == basis_data::AngularConvention::Spherical
-        && pack.max_l >= 2)
-        return {CudaRhfRouteKind::MissingKernel, kMissingKernelEriSph};
+        return {CudaRhfRouteKind::MissingKernel, kMissingKernelEriG};
+    // Spherical l ≤ 3 stays on this route. The fock build sandwiches
+    // S, T, V, and the Cartesian ERI with CartToSph (integrals.cpp).
     return {CudaRhfRouteKind::CartesianLgt1, nullptr};
 }
 

@@ -1500,6 +1500,25 @@ if(ATV_BUILD_HF)
     else()
         atv_add_regression(scf es-cuda-rhf-driver)
     endif()
+    # Cartesian d (6-31G*) and Cartesian f + spherical sandwich (def2-TZVP).
+    if(ATV_BUILD_CUDA)
+        set(_reg_lgt1 reg_hf-cuda-lgt1)
+        add_executable(${_reg_lgt1} scf/hf-cuda-lgt1/${_reg_lgt1}.cu)
+        target_link_libraries(${_reg_lgt1} PRIVATE atomiverse)
+        set_target_properties(${_reg_lgt1} PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON CXX_STANDARD 20)
+        target_compile_definitions(${_reg_lgt1} PRIVATE
+            ATV_REG_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data")
+        add_custom_target(run_${_reg_lgt1}
+            COMMAND ${CMAKE_COMMAND} -E env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+                    $<TARGET_FILE:${_reg_lgt1}> --device=both
+            DEPENDS ${_reg_lgt1}
+            COMMENT "regression [scf/hf-cuda-lgt1] devices=both (1t)")
+        add_dependencies(regressions run_${_reg_lgt1})
+        unset(_reg_lgt1)
+    else()
+        atv_add_regression(scf hf-cuda-lgt1)
+    endif()
     atv_add_regression(scf es-mean-field-split)
     atv_add_regression(scf mean-field-method-split)
     atv_add_regression(scf h2o_rhf_def2svp_sph)

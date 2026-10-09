@@ -2,17 +2,18 @@
 /// @brief cuda::scf::RHF — concrete restricted HF on the CUDA backend.
 ///
 /// **Energy path:** device integrals only — no host ERI fill.
-/// STO-3G l ≤ 1 uses `launch_*_sp`. Cartesian shells with l ≤ 2
-/// (6-31G, 6-31G*, 6-31+G*, and spherical bases whose highest shell is
-/// l ≤ 1) use `launch_*_lgt1`. Spherical l ≥ 2 throws `launch_eri_sph`.
-/// l ≥ 3 throws `launch_eri_f`. The iteration is the Driver plan
-/// (PySCF `scf.hf.kernel` / `get_veff` = J − ½K via `scf._vhf.direct`
+/// STO-3G l ≤ 1 uses `launch_*_sp`. Cartesian shells with l ≤ 3 use
+/// `launch_*_lgt1` (6-31G, 6-31G*, 6-31+G*, def2-TZVP f). Spherical
+/// bases with l ≤ 3 (def2-SVP, def2-TZVP) evaluate those Cartesian
+/// integrals and sandwich with CartToSph on device. l ≥ 4 throws
+/// `launch_eri_g`. The iteration is the Driver plan (PySCF
+/// `scf.hf.kernel` / `get_veff` = J − ½K via `scf._vhf.direct`
 /// `int2e_cart`).
 ///
 /// **Forces:** STO-3G s/p analytic on device (`launch_rhf_forces_sp`).
-/// Cartesian l ≤ 2 energy with forces requested throws
+/// Any other energy with forces requested throws
 /// `launch_rhf_forces_lgt1`. Use `with_gradient(false)` for that energy,
-/// or `cpu::scf::RHF` for gradients and for spherical / f shells.
+/// or `cpu::scf::RHF` for gradients.
 
 #ifdef ATV_HAS_HF
 
@@ -109,7 +110,7 @@ make_device_sp_sto3g_solver(const int* h_Z, int natm, int charge, double tol,
         L_mol.data(), atom_of.data(), n_occ, tol, max_iter, level_shift);
 }
 
-/// @brief Cartesian l ≤ 2 (ragged n_prim) → device 1e + ERI. No host integrals.
+/// @brief Cartesian l ≤ 3 (ragged n_prim) → device 1e + ERI. No host integrals.
 std::unique_ptr<internal::RhfScfCycle>
 make_device_lgt1_solver(cpu::scf::BasisSet basis, const int* h_Z, int natm,
                         int charge, double tol, int max_iter,
@@ -127,11 +128,14 @@ make_device_lgt1_solver(cpu::scf::BasisSet basis, const int* h_Z, int natm,
             + ")");
     }
     const int n_occ = n_electrons / 2;
+    const bool sph = cpu::scf::angular_convention(basis)
+                         == cpu::scf::basis_data::AngularConvention::Spherical
+                     && pack.max_l >= 2;
     return std::make_unique<internal::RhfScfCycle>(
         pack.n_shells, pack.n_ao, pack.alpha.data(), pack.coeff.data(),
         static_cast<int>(pack.alpha.size()), pack.nprim.data(),
         pack.prim_off.data(), pack.L.data(), pack.atom_of.data(), n_occ, tol,
-        max_iter, level_shift);
+        max_iter, level_shift, sph);
 }
 
 } // namespace
@@ -294,9 +298,9 @@ void RHF::assemble_(cuda::Context& ctx, cuda::Frame& frame) {
         throw std::invalid_argument(
             std::string("cuda::scf::RHF: missing kernel ")
             + route.missing_kernel
-            + ". Cartesian l<=2 is launch_eri_lgt1 on device; spherical l>=2 "
-              "needs launch_eri_sph; l>=3 needs launch_eri_f. No host ERI "
-              "fill — use cpu::scf::RHF for this basis.");
+            + ". Cartesian l<=3 is launch_eri_lgt1 on device (spherical "
+              "l<=3 sandwiches with CartToSph). l>=4 needs launch_eri_g. "
+              "No host ERI fill — use cpu::scf::RHF for this basis.");
     }
     if (compute_force
         && route.kind != cpu::scf::internal::CudaRhfRouteKind::Sto3gSp) {
@@ -304,7 +308,7 @@ void RHF::assemble_(cuda::Context& ctx, cuda::Frame& frame) {
             std::string("cuda::scf::RHF::forces: missing kernel ")
             + cpu::scf::internal::kMissingKernelForcesLgt1
             + ". Device analytic gradients cover STO-3G l<=1 "
-              "(launch_rhf_forces_sp) only. Cartesian l<=2 energy: "
+              "(launch_rhf_forces_sp) only. Cartesian l<=3 energy: "
               "with_gradient(false). Forces: "
               "cpu::scf::RHF{basis}.forces(frame).");
     }

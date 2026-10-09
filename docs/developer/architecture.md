@@ -278,10 +278,10 @@ where validation, deep-dive tutorials, and physical-correctness tests live, and
 it covers every method and basis. The CUDA stack is organized around device
 residency — for the shells its kernels cover it keeps integrals, the SCF
 iteration, and forces on the GPU with no scientific data returning to the host
-mid-solve. `cuda::scf::RHF` does not host-fill ERIs: Cartesian l ≤ 2 runs
-`launch_eri_lgt1` (STO-3G s/p stays on `launch_eri_sp`); spherical l ≥ 2
-throws `launch_eri_sph` and l ≥ 3 throws `launch_eri_f`. Forces outside
-STO-3G l ≤ 1 throw `launch_rhf_forces_lgt1`. `cuda::scf::UHF` throws past
+mid-solve. `cuda::scf::RHF` does not host-fill ERIs: Cartesian l ≤ 3 runs
+`launch_eri_lgt1` (STO-3G s/p stays on `launch_eri_sp`); spherical l ≤ 3
+sandwiches that tensor with CartToSph. l ≥ 4 throws `launch_eri_g`. Forces
+outside STO-3G l ≤ 1 throw `launch_rhf_forces_lgt1`. `cuda::scf::UHF` throws past
 STO-3G l ≤ 1 (`launch_eri_sp`, `launch_uhf_forces_sp`).
 
 So the duplication is not accidental: one emphasizes breadth and

@@ -56,10 +56,11 @@ its kernels cover, no scientific data returns to the host mid-SCF.
     The shape is the same; the coverage is not. Device Hartree–Fock is
     `cuda::scf::RHF` and `cuda::scf::UHF` — there is no `RKS`, `UKS`,
     `ROHF`, or `GHF` on device. Device-native integrals and analytic forces
-    cover Cartesian RHF shells with l ≤ 2 (`launch_*_sp` / `launch_*_lgt1`)
-    and UHF on STO-3G s/p. `cuda::scf::UHF` **throws** outside that envelope
+    cover Cartesian RHF shells with l ≤ 3 (`launch_*_sp` / `launch_*_lgt1`,
+    spherical def2 / cc via CartToSph) and UHF on STO-3G s/p.
+    `cuda::scf::UHF` **throws** outside that envelope
     (`launch_eri_sp`, `launch_uhf_forces_sp`). `cuda::scf::RHF` throws
-    `launch_eri_sph` (spherical l ≥ 2), `launch_eri_f` (l ≥ 3), or
+    `launch_eri_g` (l ≥ 4) or
     `launch_rhf_forces_lgt1` (forces outside STO-3G l ≤ 1) and does not fill
     ERIs on the host. The plane-wave
     backend is similarly narrower on device

@@ -26,8 +26,6 @@ using ATV::cpu::scf::internal::CartesianShellPack;
 using ATV::cpu::scf::internal::classify_cuda_rhf;
 using ATV::cpu::scf::internal::contraction_norm;
 using ATV::cpu::scf::internal::CudaRhfRouteKind;
-using ATV::cpu::scf::internal::kMissingKernelEriF;
-using ATV::cpu::scf::internal::kMissingKernelEriSph;
 using ATV::cpu::scf::internal::pack_cartesian_shells;
 
 namespace {
@@ -114,18 +112,48 @@ TEST(CudaLgt1Pack, Pople631GWaterIsRaggedSp) {
     EXPECT_NE(pack.nprim.front(), pack.nprim.back());
 }
 
-TEST(CudaLgt1Pack, SphericalDThrowsNamedKernel) {
+TEST(CudaLgt1Pack, SphericalDIsCartesianRoute) {
     const int Z[] = {8, 1, 1};
     const auto route = classify_cuda_rhf(BasisSet::Def2SVP, Z, 3);
-    ASSERT_EQ(route.kind, CudaRhfRouteKind::MissingKernel);
-    EXPECT_STREQ(route.missing_kernel, kMissingKernelEriSph);
+    EXPECT_EQ(route.kind, CudaRhfRouteKind::CartesianLgt1);
+    EXPECT_EQ(route.missing_kernel, nullptr);
+    const CartesianShellPack pack =
+        pack_cartesian_shells(BasisSet::Def2SVP, Z, 3);
+    EXPECT_GE(pack.max_l, 2);
+    EXPECT_LE(pack.max_l, 3);
 }
 
-TEST(CudaLgt1Pack, FShellThrowsNamedKernel) {
-    const int Z[] = {6};
-    const auto route = classify_cuda_rhf(BasisSet::Def2TZVP, Z, 1);
-    ASSERT_EQ(route.kind, CudaRhfRouteKind::MissingKernel);
-    EXPECT_STREQ(route.missing_kernel, kMissingKernelEriF);
+TEST(CudaLgt1Pack, Def2TzvpWaterHasCartesianF) {
+    const int Z[] = {8, 1, 1};
+    const auto route = classify_cuda_rhf(BasisSet::Def2TZVP, Z, 3);
+    ASSERT_EQ(route.kind, CudaRhfRouteKind::CartesianLgt1);
+    const CartesianShellPack pack =
+        pack_cartesian_shells(BasisSet::Def2TZVP, Z, 3);
+    EXPECT_EQ(pack.max_l, 3);
+    int f_shell = -1;
+    for (int s = 0; s < pack.n_shells; ++s) {
+        if (pack.L[static_cast<std::size_t>(s)] == 3) {
+            f_shell = s;
+            break;
+        }
+    }
+    ASSERT_GE(f_shell, 0);
+    EXPECT_EQ(n_cart_of(3), 10);
+    const int ao0 = pack.ao_start[static_cast<std::size_t>(f_shell)];
+    for (int c = 0; c < 10; ++c) {
+        EXPECT_EQ(pack.ao_shell[static_cast<std::size_t>(ao0 + c)], f_shell);
+        EXPECT_EQ(pack.ao_cart[static_cast<std::size_t>(ao0 + c)], c);
+    }
+    int ang[10][3];
+    ATV::cpu::scf::fill_cart_comps(3, ang);
+    EXPECT_EQ(ang[0][0], 3);
+    EXPECT_EQ(ang[4][0], 1);
+    EXPECT_EQ(ang[4][1], 1);
+    EXPECT_EQ(ang[4][2], 1);
+    EXPECT_EQ(ang[9][2], 3);
+    const int off = pack.prim_off[static_cast<std::size_t>(f_shell)];
+    const double alpha = pack.alpha[static_cast<std::size_t>(off)];
+    EXPECT_DOUBLE_EQ(contraction_norm(3, alpha), ATV::phys_norm_f(alpha));
 }
 
 TEST(CudaLgt1Pack, MissingElementThrows) {
@@ -134,6 +162,6 @@ TEST(CudaLgt1Pack, MissingElementThrows) {
                  std::runtime_error);
 }
 
-TEST(CudaLgt1Pack, ContractionNormRejectsF) {
-    EXPECT_THROW(contraction_norm(3, 1.0), std::invalid_argument);
+TEST(CudaLgt1Pack, ContractionNormRejectsG) {
+    EXPECT_THROW(contraction_norm(4, 1.0), std::invalid_argument);
 }

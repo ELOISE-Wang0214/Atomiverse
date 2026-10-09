@@ -93,10 +93,11 @@ CUDA SCF presents the same public shape as CPU —
 `Frame` in and out. The iteration is `cuda::Driver<scf::Phase>` (`fock`,
 `mix`, `diagonalize`, `density`, `check`). `set_evaluator` mounts that
 driver in one Plan slot. Coverage is narrower than the CPU: no KS, ROHF, or
-GHF. Device-native RHF integrals cover Cartesian shells with l ≤ 2
-(`launch_*_sp` for STO-3G s/p, `launch_*_lgt1` otherwise). Analytic forces
-stay on STO-3G s/p; Cartesian l ≤ 2 forces throw `launch_rhf_forces_lgt1`.
-Spherical l ≥ 2 throws `launch_eri_sph`; l ≥ 3 throws `launch_eri_f`. There
+GHF. Device-native RHF integrals cover Cartesian shells with l ≤ 3
+(`launch_*_sp` for STO-3G s/p, `launch_*_lgt1` for Cartesian l ≤ 3,
+including a device CartToSph sandwich for spherical def2 / cc). Analytic
+forces stay on STO-3G s/p; other bases throw `launch_rhf_forces_lgt1`.
+l ≥ 4 throws `launch_eri_g`. There
 is no host ERI fill. `cuda::scf::UHF` throws outside STO-3G l ≤ 1
 (`launch_eri_sp`, `launch_uhf_forces_sp`). See
 [Switching backends](../user-guide/backend-switching.md). Start with these
