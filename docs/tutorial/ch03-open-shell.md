@@ -610,6 +610,17 @@ ghf.x2c = true;
 ghf.run(frame);   // kEnergy [eV]; ghf.energy() [Ha]
 ```
 
+Four-component Dirac–Hartree–Fock is a separate type, `DHF`, not a
+member of `MeanFieldMethod` or `ComplexGHF`. It follows PySCF
+`scf.DHF`: complex j-adapted spinors, a kinetically balanced
+large/small metric, and Dirac–Coulomb (LL|LL)+(SS|LL). Shells with
+l > 1 throw. `forces` throws. There is no device path.
+
+```cpp
+cpu::scf::DHF dhf{cpu::scf::BasisSet::CcPVDZ};
+dhf.run(frame);   // kEnergy [eV]; dhf.energy() [Ha]
+```
+
 ### When the extra freedom matters
 
 Without spin–orbit coupling every UHF solution is a GHF stationary point

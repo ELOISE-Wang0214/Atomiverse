@@ -82,6 +82,7 @@ BasisSet basis_from_name(const std::string& name) {
         {"def2-SVP", BasisSet::Def2SVP},
         {"def2-TZVP", BasisSet::Def2TZVP},
         {"aug-cc-pVDZ", BasisSet::AugCcPVDZ},
+        {"cc-pVDZ", BasisSet::CcPVDZ},
     };
     std::string supported;
     for (const auto& [key, value] : kTable) {

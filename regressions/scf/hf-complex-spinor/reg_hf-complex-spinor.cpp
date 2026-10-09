@@ -1,7 +1,9 @@
 /// @file regressions/scf/hf-complex-spinor/reg_hf-complex-spinor.cpp
-/// @brief H2 and H2O STO-3G complex spin-orbital HF vs PySCF GHF.x2c1e.
+/// @brief Complex spin-orbital HF and Dirac–Hartree–Fock vs PySCF.
 ///
-/// Public API only. Pins: REFERENCE.md (PySCF 2.14.0, xuncontract=False).
+/// Public API only. Pins: REFERENCE.md.
+///   - ComplexGHF x2c / real GHF on H2 and H2O STO-3G (existing pins).
+///   - DHF on H2 at 1.0 Angstrom, STO-3G and cc-pVDZ (scf.DHF docstring).
 
 #include <cmath>
 #include <cstdio>
@@ -12,11 +14,11 @@
 
 namespace {
 
-ATV::cpu::Frame h2() {
+ATV::cpu::Frame h2(double z) {
     ATV::cpu::Frame frame(2);
     frame.span(ATV::kAtom_type)[0] = 1;
     frame.span(ATV::kAtom_type)[1] = 1;
-    frame.span(ATV::kAtom_z)[1] = 0.74;
+    frame.span(ATV::kAtom_z)[1] = z;
     frame.box = ATV::cpu::Box::cubic(30.0);
     return frame;
 }
@@ -38,7 +40,7 @@ ATV::cpu::Frame h2o() {
     return frame;
 }
 
-bool check(const char* label, ATV::cpu::Frame frame, bool x2c, double pin) {
+bool check_ghf(const char* label, ATV::cpu::Frame frame, bool x2c, double pin) {
     ATV::cpu::scf::ComplexGHF ghf{ATV::cpu::scf::BasisSet::STO3G, 0, 1e-12, 80};
     ghf.x2c = x2c;
     ghf.run(frame);
@@ -46,29 +48,43 @@ bool check(const char* label, ATV::cpu::Frame frame, bool x2c, double pin) {
     const double diff = std::abs(e - pin);
     std::printf("%s: E = %.12f Ha (pin %.12f, |dE| = %.3e, iters %d)\n", label,
                 e, pin, diff, ghf.iterations());
-    if (!ghf.converged()) {
-        std::printf("FAIL: %s did not converge\n", label);
+    if (!ghf.converged() || !(diff <= 1e-8)) {
+        std::printf("FAIL: %s\n", label);
         return false;
     }
     const double e_ev = frame.meta.get(ATV::kEnergy) / ATV::units::kHartreeInEv;
-    if (std::abs(e_ev - e) > 1e-12) {
-        std::printf("FAIL: %s kEnergy does not match energy()\n", label);
+    return std::abs(e_ev - e) <= 1e-12;
+}
+
+bool check_dhf(const char* label, ATV::cpu::scf::BasisSet basis, double pin) {
+    auto frame = h2(1.0);
+    ATV::cpu::scf::DHF dhf{basis, 0, 1e-12, 80};
+    dhf.run(frame);
+    const double e = dhf.energy();
+    const double diff = std::abs(e - pin);
+    std::printf("%s: E = %.12f Ha (pin %.12f, |dE| = %.3e, iters %d)\n", label,
+                e, pin, diff, dhf.iterations());
+    if (!dhf.converged() || !(diff <= 1e-8)) {
+        std::printf("FAIL: %s\n", label);
         return false;
     }
-    if (!(diff <= 1e-8)) {
-        std::printf("FAIL: %s off PySCF pin\n", label);
-        return false;
-    }
-    return true;
+    const double e_ev = frame.meta.get(ATV::kEnergy) / ATV::units::kHartreeInEv;
+    return std::abs(e_ev - e) <= 1e-12;
 }
 
 } // namespace
 
 int main() {
     bool ok = true;
-    ok = check("H2 x2c", h2(), true, -1.11677137468639) && ok;
-    ok = check("H2O x2c", h2o(), true, -75.00458277099555) && ok;
-    ok = check("H2O GHF", h2o(), false, -74.96175405132141) && ok;
+    ok = check_ghf("H2 x2c", h2(0.74), true, -1.11677137468639) && ok;
+    ok = check_ghf("H2O x2c", h2o(), true, -75.00458277099555) && ok;
+    ok = check_ghf("H2O GHF", h2o(), false, -74.96175405132141) && ok;
+    ok = check_dhf("H2 DHF STO-3G", ATV::cpu::scf::BasisSet::STO3G,
+                   -1.0661226588590456)
+         && ok;
+    ok = check_dhf("H2 DHF cc-pVDZ", ATV::cpu::scf::BasisSet::CcPVDZ,
+                   -1.1001626190803968)
+         && ok;
     std::printf("hf-complex-spinor: %s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

@@ -6,6 +6,8 @@ then paste numbers into REFERENCE.md and hard-coded regression asserts.
 
 Examples:
   python tools/pyscf_oracle/pin_scf.py rhf --geom water --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py dhf --geom h2-1A --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py dhf --geom h2-1A --basis cc-pvdz
   # Γ-point PBC RHF (offline only): pyscf.pbc gto+scf on the same geom/cell
   # as regressions/scf/periodic-rhf-gamma/REFERENCE.md
   python tools/pyscf_oracle/pin_scf.py krhf --kmesh 2,1,1
@@ -78,6 +80,10 @@ H  0.000000 -0.757200 -0.469200
         "h2": """
 H  0.000000  0.000000  0.000000
 H  0.000000  0.000000  0.740000
+""",
+        "h2-1A": """
+H  0.000000  0.000000  0.000000
+H  0.000000  0.000000  1.000000
 """,
         "o2": """
 O  0.000000  0.000000  0.000000
@@ -196,7 +202,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "krhf", "kuhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2", "eom-ip-ccsd", "uks-tddft", "casscf", "nevpt2"],
+        choices=["dhf", "rhf", "krhf", "kuhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2", "eom-ip-ccsd", "uks-tddft", "casscf", "nevpt2"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -640,6 +646,22 @@ def main() -> int:
             out["ac_error"] = str(ac_err)
         print(json.dumps(out, indent=2, sort_keys=True))
         return 0 if out.get("converged", True) else 1
+
+    if m == "dhf":
+        # pyscf.scf.dhf.DHF. Docstring geometry is --geom h2-1A (1.0 Angstrom).
+        mol = _mol(args.geom, args.basis, args.charge, args.spin, False)
+        out["cart"] = False
+        out["geom"] = args.geom
+        out["basis"] = args.basis
+        out["nao_2c"] = int(mol.nao_2c())
+        mf = scf.DHF(mol)
+        mf.conv_tol = args.conv_tol
+        e = float(mf.kernel())
+        out["e_tot_ha"] = e
+        out["converged"] = bool(mf.converged)
+        out["cycles"] = int(mf.cycles)
+        print(json.dumps(out, indent=2, sort_keys=True))
+        return 0 if mf.converged else 1
 
     if m == "rhf":
         mf = scf.RHF(mol)

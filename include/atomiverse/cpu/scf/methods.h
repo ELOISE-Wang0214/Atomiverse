@@ -26,6 +26,7 @@
 #include "atomiverse/cpu/scf/complex_ghf.h"
 #include "atomiverse/cpu/scf/counterpoise.h"
 #include "atomiverse/cpu/scf/dftd3.h"
+#include "atomiverse/cpu/scf/dhf.h"
 #include "atomiverse/cpu/scf/g0w0.h"
 #include "atomiverse/cpu/scf/gf2.h"
 #include "atomiverse/cpu/scf/ghf.h"
@@ -46,4 +47,4 @@
 
 // This header declares no symbols of its own — it is the umbrella over the
 // concrete methods above. Name the method you mean: `RHF` / `ROHF` / `UHF` /
-// `GHF` / `ComplexGHF` for Hartree–Fock, `RKS` / `UKS` / `ROKS` for Kohn–Sham DFT.
+// `GHF` / `ComplexGHF` / `DHF` for Hartree–Fock, `RKS` / `UKS` / `ROKS` for Kohn–Sham DFT.
