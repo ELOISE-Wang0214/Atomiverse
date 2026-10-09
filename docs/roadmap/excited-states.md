@@ -45,7 +45,7 @@ Response and many-body methods on HF/KS references. Legend:
 
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
-| TD-DFTB | ✓ | ○ | `DFTB2::td_casida`; energies + length oscillator strengths; Γ, closed shell; no absolute oracle |
+| TD-DFTB | ✓ | ○ | `DFTB2::td_casida`; energies + length oscillator strengths; Γ, closed-shell MioSketch. 3ob and collinear-reference Casida still ○. No absolute oracle |
 | TD-DFTB excited gradient / NAC | ○ | ○ | |
 | sTDA / sTDDFT / sTDA-xTB | ○ | ○ | |
 
