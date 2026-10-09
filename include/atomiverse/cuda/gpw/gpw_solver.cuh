@@ -27,14 +27,12 @@
 ///
 /// @code
 ///   cuda::gpw::GpwDft m;
-///   m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+///   m.kinds.push_back({el, basis, pot});
 ///   m.cutoff_ry = 100.0;
-///   m.n_alpha = 2; m.n_beta = 0;   // or n_occ = 1 for RKS
-///   m.k_mesh[0] = 2;               // multi-k RKS (optional)
-///   m.xc = cpu::gpw::XcKind::PADE;
-///   m.build(atoms);
-///   const auto& res = m.run(atoms);   // energy [Hartree]
-///   auto F = cuda::gpw::gpw_forces_analytic(atoms, m);
+///   m.n_occ = 5;                   // or n_alpha / n_beta for UKS
+///   m.build(frame);                // cell from frame.box, Z → kinds
+///   const auto& res = m.run(frame); // kEnergy [eV]; result in Hartree
+///   m.forces(frame);               // kAtom_f* [eV/Å]
 /// @endcode
 #pragma once
 
@@ -83,6 +81,10 @@ class GpwDft {
     bool nonperiodic = false; ///< MT Poisson — not on device (throws).
     bool local_pp_on_grid = true; ///< collocate GTH local SR PP on grid.
     bool use_ot = false;          ///< OT — not on device product (throws).
+    /// @brief Per-element basis + GTH potential. `build(Frame)` / `run(Frame)`
+    ///        map `kAtom_type` (Z) onto these entries. The atom-list entry
+    ///        points do not read this member.
+    std::vector<cpu::gpw::Kind> kinds;
     /// @brief Monkhorst–Pack subdivisions (CP2K convention). `{1,1,1}` is Γ
     ///        product path; any \(N_d>1\) selects multi-k RKS DIIS (single-grid).
     int k_mesh[3] = {1, 1, 1};
@@ -105,6 +107,16 @@ class GpwDft {
     /// @throws std::invalid_argument on empty atoms, missing occupation,
     ///         non-positive cell edges, or product-slice-unsupported members.
     void build(const std::vector<GpwAtom>& reference);
+
+    /// @brief Validate against a Frame and copy its orthorhombic cell.
+    ///
+    /// Sets `cell` from `frame.box` [Å → Bohr]. Each atom's Z must match one
+    /// `kinds` entry. Closed-shell RKS with `n_occ == 0` fills `n_occ` from
+    /// the valence electron count.
+    /// @param reference Geometry [Å] + Z.
+    /// @throws std::invalid_argument on an empty Frame, a sheared cell, a Z
+    ///         with no `Kind`, or an odd valence count when `n_occ` is unset.
+    void build(const cpu::Frame& reference);
 
     /// @return true when configured for UKS (`n_alpha+n_beta>0`).
     bool is_uks() const { return n_alpha + n_beta > 0; }
@@ -134,6 +146,32 @@ class GpwDft {
                    const cpu::linalg::RealMatrix* guess_C = nullptr,
                    const cpu::linalg::RealMatrix* guess_P = nullptr,
                    const cpu::linalg::RealMatrix* guess_P_beta = nullptr);
+
+    /// @brief DIIS SCF at the Frame geometry. Does not write the Frame.
+    /// @param frame Geometry [Å] + Z. `cell` is refreshed from `frame.box`.
+    /// @param guess_C Optional Γ MO warm-start.
+    /// @param guess_P Optional Γ density warm-start.
+    /// @param guess_P_beta Optional UKS β density.
+    /// @return Owned result (Hartree), valid until the next `run()`.
+    /// @throws std::logic_error when called before `build()`.
+    GpwResult& run(const cpu::Frame& frame,
+                   const cpu::linalg::RealMatrix* guess_C = nullptr,
+                   const cpu::linalg::RealMatrix* guess_P = nullptr,
+                   const cpu::linalg::RealMatrix* guess_P_beta = nullptr);
+
+    /// @brief `run(const Frame&)`, then write `kEnergy` [eV].
+    /// @param frame Geometry in, energy meta out.
+    /// @return Owned result (Hartree).
+    GpwResult& run(cpu::Frame& frame,
+                   const cpu::linalg::RealMatrix* guess_C = nullptr,
+                   const cpu::linalg::RealMatrix* guess_P = nullptr,
+                   const cpu::linalg::RealMatrix* guess_P_beta = nullptr);
+
+    /// @brief SCF plus analytic forces into `kAtom_f*` [eV/Å] and `kEnergy` [eV].
+    /// @param frame Geometry in, forces and energy out.
+    /// @return The SCF result that produced the forces.
+    /// @throws std::runtime_error if the SCF does not converge.
+    GpwResult& forces(cpu::Frame& frame);
 
     /// @brief Result of the most recent `run()` (`converged==false` before first).
     const GpwResult& last_result() const { return result_; }

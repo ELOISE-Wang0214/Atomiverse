@@ -22,11 +22,10 @@ footholds.
 | CUDA stages | `cuda/gpw/internal/`: Poisson, XC LDA/GGA, product collocate/integrate (PBC sphere-window), weight pack, `KsChainDevice` / `KsMultiGridChainDevice`, `AoDiisEigenDevice`, multi-k collocate/integrate/STVnl/DIIS |
 | CUDA public method | **product landed** — `cuda::gpw::GpwDft` members + `build`/`run`/`last_result` + free-fn forces/stress. Slice: Γ RKS (SG + MG monom device KS, PADE/PBE) + Γ UKS PADE + multi-k RKS H₂ spine; mid-SCF device H/DIIS/payload (RKS+UKS); Si dual-gates green. Depth residual: multi-k χ/orth/vnl/payload, cold-start, free-fn AO Pulay/stress device, MG F/σ, `cuda::Driver<gpw::Phase>` nest (same class as CUDA SCF fold residual) |
 
-**Open shape gap:** the CUDA product still takes `internal::GpwAtom` lists
-and a public `cell[3]`, while the CPU twin is Frame-in — ledger row
-`es-cuda-gpw-frame-io` in [es-architecture-debt.md](es-architecture-debt.md).
-CUDA regressions/tests reach the CPU oracle through
-`cpu::gpw::internal::GpwDftAccess` until that closes.
+Frame `build` / `run` / `forces` are on `cuda::gpw::GpwDft` and read
+`kinds` plus `frame.box`. The device kernels and the current CUDA
+regressions still pass `internal::GpwAtom`. `cell[3]` is set from the box
+on the Frame path.
 
 ## Frozen public shape (CUDA product must match)
 

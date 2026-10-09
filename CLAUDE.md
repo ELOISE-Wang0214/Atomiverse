@@ -210,7 +210,8 @@ Which atoms, bonds, or region a method acts on is declared on the **Frame**
 membership is fine when it is a pure function of Frame data already present
 (QM/MM link cuts = bonds whose endpoints differ in the QM mask; no bonds ⇒ no
 links). Algorithm parameters and component slots stay on the object — those are
-not "which atoms".
+not "which atoms". Gaussian SCF ghost indices
+(`MeanFieldMethod::ghost_atoms`) stay on the method.
 
 ### 5. Frame columns are `span`, meta is `get`
 
@@ -497,7 +498,8 @@ written to Frame** — never Driver-level categories.
 **Remaining debt, do not extend:** ES method families do **not** yet share
 one public shape (science factorization OK; engineering dialects —
 method-as-Driver vs method+`*Evaluator` vs Solver-internal SCC; CUDA
-`cuda::gpw::GpwDft` still atom-in, not Frame-in). Full ledger and close order:
+`cuda::gpw::GpwDft` Frame `build`/`run`/`forces` read `kinds`, while the
+device kernels still take `GpwAtom`). Full ledger and close order:
 [`.claude/notes/es-architecture-debt.md`](.claude/notes/es-architecture-debt.md).
 Named residuals still open there include: `cuda::pw::PW` has no Driver
 mirror; `GpwDft` OT free-loop (DIIS paths are Driver stages).
@@ -520,6 +522,10 @@ Reduce) inherits `Component` directly; there is no `Infrastructure` kind.
 | --- | --- | --- |
 | `Potential` | required | PairLJCut, BondHarmonic, CoulLong, KSpace |
 | `HF` / `Semiempirical` / `PlaneWave` / `GPW` | required | concrete methods |
+
+`HF` is a tag on the Driver node, not a `Component` subclass.
+`Semiempirical`, `PlaneWave`, and `GPW` are Component kinds. The
+registration slot copies `provides_energy` / `provides_force` off the tag.
 | `Bias` / `PathCoupling` | required | HarmonicBias, NebCoupling |
 | `Observer` | FrameImmutable\|Deferred | RDF, MSD, Virial, KineticEnergy |
 | `Recorder` | +ExternalIO | Thermo, XYZ |

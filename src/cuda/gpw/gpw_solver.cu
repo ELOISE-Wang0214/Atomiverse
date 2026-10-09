@@ -46,6 +46,9 @@
 
 #include "atomiverse/cuda/gpw/gpw_solver.cuh"
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/gpw_forces.h"
@@ -1157,6 +1160,121 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             "cuda::gpw::GpwDft::build: empty atom set (nothing to solve)");
     validate_slice_();
     built_ = true;
+}
+
+namespace {
+
+std::vector<GpwAtom> atoms_from_frame(const GpwDft& m,
+                                      const cpu::Frame& frame) {
+    const int n = frame.nlocal();
+    if (n < 1)
+        throw std::invalid_argument(
+            "cuda::gpw::GpwDft: empty Frame (nothing to solve) — fill "
+            "kAtom_x/y/z and kAtom_type (Z) first");
+    const int* sp_type = frame.span(kAtom_type);
+    const StorageReal* sp_x = frame.span(kAtom_x);
+    const StorageReal* sp_y = frame.span(kAtom_y);
+    const StorageReal* sp_z = frame.span(kAtom_z);
+    std::vector<GpwAtom> atoms;
+    atoms.reserve(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        const int z = sp_type[i];
+        const cpu::gpw::Kind* kind = nullptr;
+        for (const cpu::gpw::Kind& k : m.kinds)
+            if (static_cast<int>(k.element) == z) {
+                kind = &k;
+                break;
+            }
+        if (kind == nullptr)
+            throw std::invalid_argument(
+                "cuda::gpw::GpwDft: atom " + std::to_string(i)
+                + " has Z=" + std::to_string(z)
+                + " but no Kind is configured — add "
+                  "kinds.push_back({element, GaussianBasis(...), "
+                  "GthPotential(...)})");
+        const double pos[3] = {
+            static_cast<double>(sp_x[i]) * units::kAngstromInBohr,
+            static_cast<double>(sp_y[i]) * units::kAngstromInBohr,
+            static_cast<double>(sp_z[i]) * units::kAngstromInBohr};
+        atoms.emplace_back(pos, kind->basis, kind->pot, z);
+    }
+    return atoms;
+}
+
+void fill_closed_shell_occ(GpwDft& m, const std::vector<GpwAtom>& atoms) {
+    if (m.is_uks() || m.n_occ != 0)
+        return;
+    double z_val = 0.0;
+    for (const GpwAtom& a : atoms)
+        z_val += a.z_val;
+    const long n_elec = std::lround(z_val);
+    if (n_elec % 2 != 0)
+        throw std::invalid_argument(
+            "cuda::gpw::GpwDft::build: closed-shell RKS needs an even valence "
+            "electron count, but the Frame carries "
+            + std::to_string(n_elec)
+            + " — set n_alpha/n_beta for UKS, or n_occ explicitly");
+    m.n_occ = static_cast<int>(n_elec / 2);
+}
+
+} // namespace
+
+void GpwDft::build(const cpu::Frame& reference) {
+    const auto edges = cpu::gpw::internal::cell_from_box(reference.box);
+    cell[0] = edges[0];
+    cell[1] = edges[1];
+    cell[2] = edges[2];
+    const std::vector<GpwAtom> atoms = atoms_from_frame(*this, reference);
+    fill_closed_shell_occ(*this, atoms);
+    build(atoms);
+}
+
+GpwResult& GpwDft::run(const cpu::Frame& frame, const RealMatrix* guess_C,
+                       const RealMatrix* guess_P,
+                       const RealMatrix* guess_P_beta) {
+    if (!built_)
+        throw std::logic_error(
+            "cuda::gpw::GpwDft::run called before build(frame) — validate the "
+            "configuration first (no silent auto-build)");
+    const auto edges = cpu::gpw::internal::cell_from_box(frame.box);
+    cell[0] = edges[0];
+    cell[1] = edges[1];
+    cell[2] = edges[2];
+    return run(atoms_from_frame(*this, frame), guess_C, guess_P, guess_P_beta);
+}
+
+GpwResult& GpwDft::run(cpu::Frame& frame, const RealMatrix* guess_C,
+                       const RealMatrix* guess_P,
+                       const RealMatrix* guess_P_beta) {
+    GpwResult& res = run(std::as_const(frame), guess_C, guess_P, guess_P_beta);
+    frame.meta.get(kEnergy) = res.e_total * units::kHartreeInEv;
+    return res;
+}
+
+GpwResult& GpwDft::forces(cpu::Frame& frame) {
+    GpwResult& res = run(frame);
+    if (!res.converged)
+        throw std::runtime_error(
+            "cuda::gpw::GpwDft::forces: SCF did not converge — raise max_iter "
+            "or loosen tol; forces at an unconverged density are not a "
+            "gradient");
+    const std::vector<GpwAtom> atoms = atoms_from_frame(*this, frame);
+    const std::vector<std::array<double, 3>> F =
+        gpw_forces_from_scf(atoms, *this, res);
+    AccReal* fx = frame.span(kAtom_fx);
+    AccReal* fy = frame.span(kAtom_fy);
+    AccReal* fz = frame.span(kAtom_fz);
+    const int n = frame.nlocal();
+    for (int i = 0; i < n; ++i) {
+        const auto& f = F[static_cast<std::size_t>(i)];
+        fx[i] =
+            static_cast<AccReal>(f[0] * units::kHartreePerBohrInEvPerAngstrom);
+        fy[i] =
+            static_cast<AccReal>(f[1] * units::kHartreePerBohrInEvPerAngstrom);
+        fz[i] =
+            static_cast<AccReal>(f[2] * units::kHartreePerBohrInEvPerAngstrom);
+    }
+    return res;
 }
 
 GpwResult& GpwDft::run(const std::vector<GpwAtom>& atoms,
