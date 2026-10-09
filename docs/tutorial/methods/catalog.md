@@ -245,6 +245,7 @@ NDDO, DFTB and extended tight binding. Family-locked oracles: NDDO → **OpenMOP
 
 | Method | Page | Case |
 |--------|------|------------|
+| Non-SCC DFTB0 analytic nuclear forces (H₂, H₂O, CO) | [dftb0-analytic-forces](dftb0-analytic-forces.md) | `dftb0-analytic-forces` |
 | SCC-DFTB2 CH₄ 3ob-3-1 organic SK | [dftb2-3ob-organic](dftb2-3ob-organic.md) | `dftb2-3ob-organic` |
 | SCC-DFTB2 analytic nuclear forces H₂O | [dftb2-analytic-forces](dftb2-analytic-forces.md) | `dftb2-analytic-forces` |
 | SCC-DFTB2 H₂ total \(E\) vs mio-1-1 | [dftb2-dftbplus-energy-pin](dftb2-dftbplus-energy-pin.md) | `dftb2-dftbplus-energy-pin` |

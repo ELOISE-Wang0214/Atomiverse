@@ -198,6 +198,16 @@ CAMM-vs-\(R\) remains incomplete.
 | ------ | ---- | ---------- | ------ | --------------------------------------------- |
 | IPEA-xTB ΔSCC vertical IP/EA (Td CH₄, `ipeashift`) | [ipea-xtb-vip](ipea-xtb-vip.md) | `ipea-xtb-vip` | xtb 6.7.1 | **2.0** |
 
+## Index — DFTB0 analytic forces (2026-10-09)
+
+Offline family-locked pin. Oracle = **DFTB+** 24.1 `SCC = No` mio-1-1
+(never OpenMOPAC, never xtb). Fair wall from the case REFERENCE: cold ATV
+launch against warm DFTB+, not `perf_exempt`.
+
+| Method | Page | Case | Oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
+| ------ | ---- | ---------- | ------ | --------------------------------------------- |
+| Non-SCC DFTB0 analytic nuclear forces (H₂, H₂O, CO) | [dftb0-analytic-forces](dftb0-analytic-forces.md) | `dftb0-analytic-forces` | dftb+ 24.1 | **0.45** |
+
 ## Index — MetalWalls capability wave 1 (2026-07-23)
 
 Classical electrochemical MD + LAMMPS-overlap MD (map E1–E3, E8–E9). Offline
