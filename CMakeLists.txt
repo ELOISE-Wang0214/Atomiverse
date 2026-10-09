@@ -718,6 +718,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/rohf.cpp
             src/cpu/scf/uhf.cpp
             src/cpu/scf/ghf.cpp
+            src/cpu/scf/complex_ghf.cpp
+            src/cpu/scf/internal/complex_ghf.cpp
             src/cpu/scf/rks.cpp
             src/cpu/scf/uks.cpp
             src/cpu/scf/roks.cpp
@@ -792,6 +794,7 @@ if(NOT ATV_DOCS_ONLY)
                 src/cuda/scf/uhf_fock.cu
                 src/cuda/scf/uhf_density.cu
                 src/cuda/scf/krhf.cu
+                src/cuda/scf/complex_ghf.cu
             )
         endif()
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_HF)

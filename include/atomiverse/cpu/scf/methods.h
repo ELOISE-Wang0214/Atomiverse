@@ -2,8 +2,8 @@
 /// @brief Umbrella header for the concrete Gaussian mean-field methods.
 ///
 /// Includes the shared CRTP base `MeanFieldMethod<D>` (`mean_field_method.h`)
-/// and the concrete methods `RHF` / `ROHF` / `UHF` / `GHF` / `KRHF` / `KUHF` / `RKS` /
-/// `UKS` / `ROKS` (`rhf.h` / `rohf.h` / `uhf.h` / `ghf.h` / `rks.h` /
+/// and the concrete methods `RHF` / `ROHF` / `UHF` / `GHF` / `ComplexGHF` / `KRHF` / `KUHF` / `RKS` /
+/// `UKS` / `ROKS` (`rhf.h` / `rohf.h` / `uhf.h` / `ghf.h` / `complex_ghf.h` / `rks.h` /
 /// `uks.h` / `roks.h` / `kuhf.h`). There is no method-agnostic name here: pick the
 /// concrete method whose ansatz you mean.
 ///
@@ -23,6 +23,7 @@
 #include "atomiverse/cpu/scf/adc.h"
 #include "atomiverse/cpu/scf/bse.h"
 #include "atomiverse/cpu/scf/cisd.h"
+#include "atomiverse/cpu/scf/complex_ghf.h"
 #include "atomiverse/cpu/scf/counterpoise.h"
 #include "atomiverse/cpu/scf/dftd3.h"
 #include "atomiverse/cpu/scf/g0w0.h"
@@ -45,4 +46,4 @@
 
 // This header declares no symbols of its own — it is the umbrella over the
 // concrete methods above. Name the method you mean: `RHF` / `ROHF` / `UHF` /
-// `GHF` for Hartree–Fock, `RKS` / `UKS` / `ROKS` for Kohn–Sham DFT.
+// `GHF` / `ComplexGHF` for Hartree–Fock, `RKS` / `UKS` / `ROKS` for Kohn–Sham DFT.

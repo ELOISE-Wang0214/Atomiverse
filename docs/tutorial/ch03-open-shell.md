@@ -595,8 +595,20 @@ exchange couples all four spin blocks.
 Fukutome (*Int. J. Quantum Chem.* **20**, 955 (1981)) classifies HF mean
 fields by broken symmetries. The real-algebra GHF implemented here corresponds
 to a torsional spin-density-wave sector: magnetisation lies in one spin plane
-(\(\sigma_x,\sigma_z\) real; \(\sigma_y\) imaginary). Complex GHF and
-spin–orbit coupling are out of scope.
+(\(\sigma_x,\sigma_z\) real; \(\sigma_y\) imaginary).
+
+Complex coefficients and one-electron spin–orbit coupling are a separate
+method, `ComplexGHF`, not a member of real `GHF`. With `x2c = true` the
+core is the spin-orbital X2C-1e Hamiltonian (PySCF `GHF.x2c1e`,
+contracted basis). Two-electron integrals stay non-relativistic.
+`forces` is not available. The device call throws; the CPU call is
+Frame in / Frame out:
+
+```cpp
+cpu::scf::ComplexGHF ghf{cpu::scf::BasisSet::STO3G};
+ghf.x2c = true;
+ghf.run(frame);   // kEnergy [eV]; ghf.energy() [Ha]
+```
 
 ### When the extra freedom matters
 

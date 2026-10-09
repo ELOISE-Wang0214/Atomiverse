@@ -836,6 +836,8 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_ecp                  cpu/scf/test_ecp.cpp)
     # x2c-1e nuclear gradient of h^X2C vs a central difference. No SCF.
     atv_add_cpp_test(test_cpu_scf_x2c_hcore_grad cpu/scf/test_x2c_hcore_grad.cpp)
+    # Complex spin-orbital hcore (sigma_dot, spnucsp, X2C-1e). No SCF.
+    atv_add_cpp_test(test_cpu_scf_complex_ghf cpu/scf/test_complex_ghf.cpp)
     # hf-capability-gaps-18-x2c: spin-free pVp kernel pins, X2cWorkspace
     # nonrel/exact-decoupling identities, ECP↔x2c mutual exclusion both
     # ways, forces() intercept. No heavy-atom SCF in this unit binary.
