@@ -71,7 +71,7 @@ Priority: 🔴 bind/forces/Driver alignment before any new ES public API;
 | 🔴 | `es-kind-model` | `cpu/component/hf.h` vs SE/PW/GPW Kinds | `HF` is pure tag; others are Component kinds. One model for energy sources. |
 | 🔴 | `es-se-driver` | `am1_solver.h`, `rm1_solver.h`, NDDO SCC | Self-consistency not a typed Driver; RM1 lacks `QmEngine` / Kind / Frame write-back. |
 | 🔴 | `es-aimd-depth` | `cpu/electronic/aimd_method.h` | `CarParrinelloMethod` inheritance depth ≥ 3. Compose, do not publicly derive. |
-| 🔴 | `es-cuda-pw-driver` | `cuda/planewave/pw_solver.cuh` | No Driver; CPU/CUDA mirror broken: CUDA still exposes free `pw_forces_analytic` / `pw_stress` and a const-only `run`, CPU has `run`/`forces`/`stress(Frame&)` members. |
+| 🟡 | `es-cuda-pw-driver` | `cuda/planewave/pw_solver.cuh` | Frame `run` / `forces` / `stress` are members and write `kEnergy` / `kAtom_f*` / `kStress`. The SCF loop stays inside the method object; it is not `Driver<pw::Phase>`. Free `pw_forces_analytic` / `pw_stress` remain the device implementations those members call. |
 | 🟡 | `es-gpw-ot-freeloop` | `GpwDft` `use_ot` | OT still free-loop; DIIS paths are Driver stages — do not add a third topology. |
 | 🟡 | `es-ghost-atoms` | `MeanFieldMethod::ghost_atoms` | Selection on method, not Frame (named exception or move to Frame). |
 | 🟡 | `es-dftb-qmengine` | DFTB0/3 / GFN0 vs DFTB2 / GFN1/2 | Uneven `QmEngine` coverage for QM/MM `set_engine`. |

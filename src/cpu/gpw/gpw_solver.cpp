@@ -1778,7 +1778,6 @@ static GpwResult run_gpw_scf_kpoints(
             }
         }
         constexpr double kOtGradTolK = 1e-5;
-        const double ot_grad_tol_k = kOtGradTolK;
         auto frob_k = [](const CplxMatrix& a, const CplxMatrix& b) {
             double s = 0.0;
             const int n0 = static_cast<int>(a.shape(0));

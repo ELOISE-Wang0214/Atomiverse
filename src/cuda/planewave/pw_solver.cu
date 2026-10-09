@@ -562,8 +562,53 @@ PWResult& PW::run(const cpu::Frame& frame) {
     return result_;
 }
 
+PWResult& PW::run(cpu::Frame& frame) {
+    PWResult& res = run(std::as_const(frame));
+    frame.meta.get(kEnergy) = res.energy * cpu::pw::qe_units::rydberg_to_ev;
+    return res;
+}
+
+PWResult& PW::forces(cpu::Frame& frame) {
+    if (!built_)
+        build(frame);
+    double energy_ha = 0.0;
+    const std::vector<std::array<double, 3>> F =
+        pw_forces_analytic(frame, *this, &energy_ha);
+    result_.energy_ha = energy_ha;
+    result_.energy = energy_ha / cpu::pw::qe_units::rydberg_to_hartree;
+    AccReal* __restrict fx = frame.span(kAtom_fx);
+    AccReal* __restrict fy = frame.span(kAtom_fy);
+    AccReal* __restrict fz = frame.span(kAtom_fz);
+    const int n = frame.nlocal();
+    for (int i = 0; i < n; ++i) {
+        const auto& f = F[static_cast<std::size_t>(i)];
+        fx[i] = static_cast<AccReal>(f[0]);
+        fy[i] = static_cast<AccReal>(f[1]);
+        fz[i] = static_cast<AccReal>(f[2]);
+    }
+    frame.meta.get(kEnergy) = result_.energy * cpu::pw::qe_units::rydberg_to_ev;
+    return result_;
+}
+
+std::array<double, 6> PW::stress(cpu::Frame& frame) {
+    if (!built_)
+        build(frame);
+    double energy_ry = 0.0;
+    const std::array<double, 6> sigma = pw_stress(frame, *this, &energy_ry);
+    result_.energy = energy_ry;
+    result_.energy_ha = energy_ry * cpu::pw::qe_units::rydberg_to_hartree;
+    const double vol = frame.box.volume();
+    auto& st = frame.meta.get(kStress);
+    for (int k = 0; k < 6; ++k)
+        st[static_cast<std::size_t>(k)] =
+            sigma[static_cast<std::size_t>(k)] * vol;
+    frame.meta.get(kEnergy) = result_.energy * cpu::pw::qe_units::rydberg_to_ev;
+    return sigma;
+}
+
 std::vector<std::array<double, 3>> pw_forces_analytic(const cpu::Frame& frame,
-                                                      const PW& method) {
+                                                      const PW& method,
+                                                      double* energy_ha_out) {
     // Gate unsupported force surface before any CUDA work. Restricted fixed
     // + restricted metallic smear + collinear LSDA/PBE fixed-occ + collinear
     // spin×smear (shared μ, f∈[0,1]) forces landed; spin∧smear stress stays
@@ -910,6 +955,8 @@ std::vector<std::array<double, 3>> pw_forces_analytic(const cpu::Frame& frame,
         static_cast<double>(last_energy_ha)
             / cpu::pw::qe_units::rydberg_to_hartree,
         method.spin_polarized ? " spin=1" : "", use_smear ? " smear=1" : "");
+    if (energy_ha_out != nullptr)
+        *energy_ha_out = static_cast<double>(last_energy_ha);
 
     // Forces from the final mixed density + band re-solve at final V_eff.
     return internal::pw_forces_analytic_impl(

@@ -151,6 +151,26 @@ class PW {
     ///         names the member and the way out.
     PWResult& run(const cpu::Frame& frame);
 
+    /// @brief Same SCF as `run(const Frame&)`, then write `kEnergy` [eV].
+    /// @param frame Geometry in, energy meta out.
+    /// @return Owned `PWResult` (valid until the next `run()` or `forces()`).
+    PWResult& run(cpu::Frame& frame);
+
+    /// @brief Device SCF plus analytic forces into `kAtom_f*` [eV/Å] and
+    ///        `kEnergy` [eV].
+    /// @param frame Geometry in, forces and energy out.
+    /// @return The SCF result that produced the forces.
+    /// @throws std::invalid_argument for the same members `pw_forces_analytic`
+    ///         rejects.
+    PWResult& forces(cpu::Frame& frame);
+
+    /// @brief Device SCF plus analytic stress. Returns σ [eV/Å³] and writes
+    ///        `kStress` = σΩ [eV] and `kEnergy` [eV].
+    /// @param frame Geometry in, stress and energy meta out.
+    /// @return Intensive stress [eV/Å³], Voigt xx,yy,zz,xy,xz,yz.
+    /// @throws std::invalid_argument for the same members `pw_stress` rejects.
+    std::array<double, 6> stress(cpu::Frame& frame);
+
     /// @brief Most recent SCF result.
     /// @return Owned `PWResult` (`energy` [Ry], `energy_ha` [Hartree]);
     ///         zero-initialised before the first `run()` and re-initialised
@@ -159,7 +179,8 @@ class PW {
 
   private:
     friend std::vector<std::array<double, 3>>
-    pw_forces_analytic(const cpu::Frame& frame, const PW& method);
+    pw_forces_analytic(const cpu::Frame& frame, const PW& method,
+                       double* energy_ha_out);
     friend std::array<double, 6>
     pw_stress(const cpu::Frame& frame, const PW& method, double* energy_ry_out);
     /// @brief Reject every member with no device path (throws, never warns).
@@ -183,8 +204,9 @@ class PW {
 /// @param method Plane-wave method members (upf/gth, ecut, k_mesh, tol, …).
 /// @return Forces [eV/Å], one xyz triple per atom.
 /// @throws std::invalid_argument for empty frame or unsupported members.
-std::vector<std::array<double, 3>> pw_forces_analytic(const cpu::Frame& frame,
-                                                      const PW& method);
+std::vector<std::array<double, 3>>
+pw_forces_analytic(const cpu::Frame& frame, const PW& method,
+                   double* energy_ha_out = nullptr);
 
 /// @brief Nielsen–Martin analytic cell stress σ [eV/Å³], Voigt xx,yy,zz,xy,xz,yz.
 ///
