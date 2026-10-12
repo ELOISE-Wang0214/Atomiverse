@@ -95,13 +95,14 @@ void NDDOSolver::build(const cpu::Frame& reference) {
     built_ = true;
 }
 
-NDDOResult& NDDOSolver::run(const cpu::Frame& frame) {
+void NDDOSolver::scf_prepare(const cpu::Frame& frame) {
     if (!built_) {
-        throw std::runtime_error("NDDOSolver::run called before build()");
+        throw std::runtime_error(
+            "NDDOSolver::scf_prepare called before build()");
     }
     if (frame.nlocal() != n_atoms_) {
-        throw std::runtime_error(
-            "NDDOSolver::run requires a fixed atom count after build()");
+        throw std::runtime_error("NDDOSolver::scf_prepare requires a fixed "
+                                 "atom count after build()");
     }
     validate_supported_atoms_(frame);
 
@@ -111,85 +112,95 @@ NDDOResult& NDDOSolver::run(const cpu::Frame& frame) {
     }
 
     result_.forces_ev_a.clear();
-
-    // Hoist geometry spans once per run (SCF reuses them every iteration).
-    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
-    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
-    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
-
-    const auto hcore = NDDOHCoreBuilder{}.build(system_, sp_x, sp_y, sp_z);
-    // Warm-start from the last converged density when available (AIMD / opt).
-    // Note: do not clear has_density_ before this branch — that would force a
-    // cold start every step and break multi-step MD/Minimize SCF stability.
-    std::vector<double> density =
-        has_density_ ? density_ : state_.initial_packed_density;
-    std::vector<double> spin_density = scaled_density(density, 0.5);
-    has_density_ = false; // cleared until this run reconverges
-    std::vector<double> fock = NDDOFockBuilder{}.build(
-        system_, sp_x, sp_y, sp_z, hcore.packed_hcore, density, spin_density);
-    double previous_energy_ev = std::numeric_limits<double>::infinity();
-
-    for (int iter = 1; iter <= config_.max_iter; ++iter) {
-        const auto orbitals =
-            NDDODiagonalizer{}.diagonalize_packed(fock, system_.n_orbitals);
-
-        NDDODensityInput density_input;
-        density_input.mdim = system_.n_orbitals;
-        density_input.norbs = system_.n_orbitals;
-        density_input.n_occupied = system_.n_beta;
-        density_input.n_fractional = system_.n_beta;
-        density_input.full_occupancy = 2.0;
-        density_input.fractional_occupancy = 0.0;
-        const auto next_density = NDDODensityBuilder{}.build_packed(
-            orbitals.coefficients_row_major, density_input);
-        const double delta = max_abs_delta(density, next_density);
-
-        density = next_density;
-        spin_density = scaled_density(density, 0.5);
-        fock =
-            NDDOFockBuilder{}.build(system_, sp_x, sp_y, sp_z,
-                                    hcore.packed_hcore, density, spin_density);
-        const double electronic_ev = electronic_energy_ev(
-            system_.n_orbitals, density, hcore.packed_hcore, fock);
-        const double total_ev = electronic_ev + hcore.nuclear_repulsion_ev;
-        const double energy_delta = std::abs(total_ev - previous_energy_ev);
-
-        result_.iterations = iter;
-        result_.total_energy_ev = total_ev;
-        result_.electronic_energy_hartree = total_ev * units::kEvInHartree;
-        result_.mulliken_charges =
-            atomic_charges_from_packed_density(system_, density);
-        if (delta <= config_.density_tol
-            || energy_delta <= config_.energy_tol) {
-            result_.converged = true;
-            // MOPAC ΔHf: (E_elec + E_nuc − Σ eisol)·(eV→kcal) + Σ atomic ΔHf
-            // (openmopac.net/Manual/calc_of_hof.html).
-            double sum_eisol = 0.0;
-            double sum_atheat = 0.0;
-            for (const auto& atom : system_.atoms) {
-                const auto* p = atom.params;
-                if (p == nullptr) {
-                    throw std::runtime_error(
-                        "NDDO parameters missing during heat-of-formation");
-                }
-                sum_eisol += p->eisol;
-                sum_atheat +=
-                    (config_.method == SemiEmpiricalMethod::RM1)
-                        ? rm1_atomic_heat_kcal_mol(atom.atomic_number)
-                        : am1_atomic_heat_kcal_mol(atom.atomic_number);
-            }
-            result_.heat_of_formation_kcal_mol =
-                (total_ev - sum_eisol) * kAm1EvToKcalMol + sum_atheat;
-            density_ = std::move(density);
-            spin_density_ = std::move(spin_density);
-            has_density_ = true;
-            return result_;
-        }
-        previous_energy_ev = total_ev;
-    }
-
     result_.converged = false;
-    throw std::runtime_error("NDDOSolver AM1 SCF did not converge");
+
+    scf_x_ = frame.span(kAtom_x);
+    scf_y_ = frame.span(kAtom_y);
+    scf_z_ = frame.span(kAtom_z);
+
+    const auto hcore =
+        NDDOHCoreBuilder{}.build(system_, scf_x_, scf_y_, scf_z_);
+    scf_hcore_ = hcore.packed_hcore;
+    scf_nuc_ev_ = hcore.nuclear_repulsion_ev;
+    // Warm-start from the last converged density when available (AIMD / opt).
+    // Do not clear has_density_ before this branch — that would force a cold
+    // start every step and break multi-step MD/Minimize SCF stability.
+    scf_density_ = has_density_ ? density_ : state_.initial_packed_density;
+    scf_spin_ = scaled_density(scf_density_, 0.5);
+    has_density_ = false; // cleared until this run reconverges
+    scf_fock_ = NDDOFockBuilder{}.build(system_, scf_x_, scf_y_, scf_z_,
+                                        scf_hcore_, scf_density_, scf_spin_);
+    scf_prev_energy_ev_ = std::numeric_limits<double>::infinity();
+    scf_delta_ = 0.0;
+    scf_iter_ = 0;
+    scf_coeff_.clear();
+}
+
+void NDDOSolver::scf_diagonalize() {
+    const auto orbitals =
+        NDDODiagonalizer{}.diagonalize_packed(scf_fock_, system_.n_orbitals);
+    scf_coeff_ = orbitals.coefficients_row_major;
+}
+
+void NDDOSolver::scf_density() {
+    NDDODensityInput density_input;
+    density_input.mdim = system_.n_orbitals;
+    density_input.norbs = system_.n_orbitals;
+    density_input.n_occupied = system_.n_beta;
+    density_input.n_fractional = system_.n_beta;
+    density_input.full_occupancy = 2.0;
+    density_input.fractional_occupancy = 0.0;
+    const auto next_density =
+        NDDODensityBuilder{}.build_packed(scf_coeff_, density_input);
+    scf_delta_ = max_abs_delta(scf_density_, next_density);
+    scf_density_ = next_density;
+    scf_spin_ = scaled_density(scf_density_, 0.5);
+}
+
+void NDDOSolver::scf_fock() {
+    scf_fock_ = NDDOFockBuilder{}.build(system_, scf_x_, scf_y_, scf_z_,
+                                        scf_hcore_, scf_density_, scf_spin_);
+}
+
+void NDDOSolver::scf_check() {
+    ++scf_iter_;
+    const double electronic_ev = electronic_energy_ev(
+        system_.n_orbitals, scf_density_, scf_hcore_, scf_fock_);
+    const double total_ev = electronic_ev + scf_nuc_ev_;
+    const double energy_delta = std::abs(total_ev - scf_prev_energy_ev_);
+
+    result_.iterations = scf_iter_;
+    result_.total_energy_ev = total_ev;
+    result_.electronic_energy_hartree = total_ev * units::kEvInHartree;
+    result_.mulliken_charges =
+        atomic_charges_from_packed_density(system_, scf_density_);
+    if (scf_delta_ <= config_.density_tol
+        || energy_delta <= config_.energy_tol) {
+        result_.converged = true;
+        // MOPAC ΔHf: (E_elec + E_nuc − Σ eisol)·(eV→kcal) + Σ atomic ΔHf
+        // (openmopac.net/Manual/calc_of_hof.html).
+        double sum_eisol = 0.0;
+        double sum_atheat = 0.0;
+        for (const auto& atom : system_.atoms) {
+            const auto* p = atom.params;
+            if (p == nullptr) {
+                throw std::runtime_error(
+                    "NDDO parameters missing during heat-of-formation");
+            }
+            sum_eisol += p->eisol;
+            sum_atheat += (config_.method == SemiEmpiricalMethod::RM1)
+                              ? rm1_atomic_heat_kcal_mol(atom.atomic_number)
+                              : am1_atomic_heat_kcal_mol(atom.atomic_number);
+        }
+        result_.heat_of_formation_kcal_mol =
+            (total_ev - sum_eisol) * kAm1EvToKcalMol + sum_atheat;
+        density_ = scf_density_;
+        spin_density_ = scf_spin_;
+        has_density_ = true;
+        return;
+    }
+    result_.converged = false;
+    scf_prev_energy_ev_ = total_ev;
 }
 
 double NDDOSolver::energy_at_fixed_density_ev_(const StorageReal* sp_x,
@@ -211,7 +222,7 @@ NDDOResult& NDDOSolver::compute_forces(cpu::Frame& frame,
     }
     if (!has_density_ || !result_.converged) {
         throw std::runtime_error(
-            "NDDOSolver::compute_forces requires a converged run() density");
+            "NDDOSolver::compute_forces requires a converged SCF density");
     }
     if (frame.nlocal() != n_atoms_) {
         throw std::runtime_error(

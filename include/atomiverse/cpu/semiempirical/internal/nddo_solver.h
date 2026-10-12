@@ -70,14 +70,35 @@ struct NDDOScfState {
 /// recover either. What remains approximate is the difference quotient: it
 /// equals the exact NDDO gradient to \(O(h^{2})\) plus round-off.
 ///
-/// No new Driver — forces feed ordinary Evaluate / MD / Minimize via
-/// `AM1Evaluator`.
+/// Self-consistency is `NddoMethod` (`cpu::Driver<nddo::Phase>`). This
+/// class is the step body: `scf_prepare`, then one call each of
+/// `scf_diagonalize`, `scf_density`, `scf_fock`, and `scf_check` per
+/// iteration. Forces feed Evaluate / MD / Minimize through `AM1` / `RM1`.
 class NDDOSolver {
   public:
     explicit NDDOSolver(NDDOConfig config);
 
     void build(const cpu::Frame& reference);
-    NDDOResult& run(const cpu::Frame& frame);
+
+    /// @brief Guess Fock and warm-start density for one SCF.
+    /// @param frame Geometry [Å]. Not modified.
+    /// @throws std::runtime_error if `build()` has not run, the atom count
+    ///         changed, or the system is open-shell.
+    void scf_prepare(const cpu::Frame& frame);
+    /// @brief Diagonalize the current packed Fock matrix.
+    void scf_diagonalize();
+    /// @brief Build the new closed-shell density and its residual.
+    void scf_density();
+    /// @brief Rebuild the Fock matrix from the new density.
+    void scf_fock();
+    /// @brief Energy, charges, and the density / energy convergence flag.
+    ///
+    /// On success, copies the density into the warm-start buffer and fills
+    /// the heat of formation. Does not throw when the step is not converged.
+    void scf_check();
+
+    /// @brief Mutable result of the SCF in progress or just finished.
+    NDDOResult& result() { return result_; }
 
     /// @brief Nuclear forces \(F = -\partial E/\partial R\) [eV/Å] by central
     ///        finite difference of the energy at the last SCF density.
@@ -88,16 +109,16 @@ class NDDOSolver {
     /// \(E\)). The returned forces therefore sum to zero by construction —
     /// that is not an independent check of the gradient.
     ///
-    /// @param frame Geometry (must match last `run()` atom count). Nothing on
-    ///        it is modified: the positions are copied out and displaced in
+    /// @param frame Geometry (must match the atom count of `build()`). Nothing
+    ///        on it is modified: the positions are copied out and displaced in
     ///        local buffers, and the force columns are written by
-    ///        `AM1::publish`, not here.
+    ///        `NddoMethod::publish_`, not here.
     /// @param step_angstrom Displacement \(h\) applied to one Cartesian
     ///        coordinate at a time [Å]. Truncation error is \(O(h^{2})\), so
     ///        shrinking it indefinitely trades truncation for cancellation
     ///        round-off.
     /// @return Reference to `last_result()` with `forces_ev_a` filled (3 * nlocal).
-    /// @pre `run()` converged on this geometry (or same nlocal after rebuild).
+    /// @pre A converged SCF on this geometry (or the same nlocal after rebuild).
     /// @throws std::runtime_error if `build()` never ran, if no converged
     ///         density is held, or if `frame.nlocal()` differs from the atom
     ///         count `build()` sized for.
@@ -130,6 +151,19 @@ class NDDOSolver {
     NDDOResult result_;
     std::vector<double> density_;
     std::vector<double> spin_density_;
+
+    const StorageReal* scf_x_ = nullptr;
+    const StorageReal* scf_y_ = nullptr;
+    const StorageReal* scf_z_ = nullptr;
+    std::vector<double> scf_hcore_;
+    double scf_nuc_ev_ = 0.0;
+    std::vector<double> scf_density_;
+    std::vector<double> scf_spin_;
+    std::vector<double> scf_fock_;
+    std::vector<double> scf_coeff_;
+    double scf_delta_ = 0.0;
+    double scf_prev_energy_ev_ = 0.0;
+    int scf_iter_ = 0;
 };
 
 } // namespace semiempirical

@@ -4,19 +4,23 @@
 
 #include <memory>
 
+#include "atomiverse/cpu/component/qm_engine.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/semiempirical/internal/nddo_solver.h"
+#include "atomiverse/cpu/semiempirical/nddo_method.h"
 
 namespace ATV {
 namespace cpu {
 namespace semiempirical {
 
-class RM1Evaluator;
-
 using RM1Result = NDDOResult;
 
-/// @brief RM1 concrete semiempirical method (members + run).
-class RM1 {
+/// @brief RM1 concrete semiempirical method.
+///
+/// Same public shape as `AM1`: parameters as members, `run` / `forces` on a
+/// Frame, and `cpu::QmEngine` for multiscale couplings (no embedding path).
+/// The self-consistency loop is `NddoMethod`.
+class RM1 : public NddoMethod, public cpu::QmEngine {
   public:
     int charge = 0;
     int multiplicity = 1;
@@ -71,13 +75,25 @@ class RM1 {
     const NDDOSystem& system() const;
     const NDDOScfState& state() const;
 
+    /// @brief Engine label.
+    /// @return `"rm1"`.
+    std::string qm_engine_name() const override { return "rm1"; }
+    void prepare(const cpu::BuildContext& qm_ctx) override;
+    void evaluate(const cpu::LaunchContext& qm_ctx) override;
+    void reset_history() override;
+
+    /// @brief Run the SCF and write every result channel onto the frame.
+    ///
+    /// Same contract as `AM1::publish`: total energy [eV] to `kEnergy` and
+    /// `kEnergyElectronic`, Mulliken charges [e] to `kAtom_charge`, and —
+    /// when asked — forces [eV/Å] to `kAtom_f{x,y,z}`.
+    /// @param frame Target frame; geometry in, results out.
+    /// @param forces_requested Also compute finite-difference forces.
+    /// @param accumulate true → `+=` energy/forces; false → `=`. Charges
+    ///        always overwrite.
+    void publish(cpu::Frame& frame, bool forces_requested, bool accumulate);
+
   private:
-    friend class RM1Evaluator;
-
-    /// @brief Fill `forces_ev_a` at the converged density without touching
-    ///        the Frame (the evaluator accumulates them itself).
-    RM1Result& fd_forces_(cpu::Frame& frame);
-
     void sync_engine_();
     std::unique_ptr<NDDOSolver> engine_;
 };

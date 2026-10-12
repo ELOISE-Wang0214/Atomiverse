@@ -15,8 +15,29 @@ RM1::RM1(int charge_, int multiplicity_, int max_iter_, double density_tol_,
       density_tol(density_tol_), energy_tol(energy_tol_) {}
 
 RM1::~RM1() = default;
-RM1::RM1(RM1&&) noexcept = default;
-RM1& RM1::operator=(RM1&&) noexcept = default;
+
+RM1::RM1(RM1&& other) noexcept
+    : NddoMethod(), charge(other.charge), multiplicity(other.multiplicity),
+      max_iter(other.max_iter), density_tol(other.density_tol),
+      energy_tol(other.energy_tol), force_step(other.force_step),
+      engine_(std::move(other.engine_)) {
+    other.reset_built_driver_();
+}
+
+RM1& RM1::operator=(RM1&& other) noexcept {
+    if (this != &other) {
+        reset_built_driver_();
+        other.reset_built_driver_();
+        charge = other.charge;
+        multiplicity = other.multiplicity;
+        max_iter = other.max_iter;
+        density_tol = other.density_tol;
+        energy_tol = other.energy_tol;
+        force_step = other.force_step;
+        engine_ = std::move(other.engine_);
+    }
+    return *this;
+}
 void RM1::sync_engine_() {
     NDDOConfig c;
     c.method = SemiEmpiricalMethod::RM1;
@@ -34,7 +55,7 @@ void RM1::build(const cpu::Frame& reference) {
 RM1Result& RM1::run(const cpu::Frame& frame) {
     if (!engine_)
         build(frame);
-    return engine_->run(frame);
+    return drive_(*engine_, frame);
 }
 RM1Result& RM1::run(cpu::Frame& frame) {
     RM1Result& r = run(std::as_const(frame));
@@ -43,7 +64,7 @@ RM1Result& RM1::run(cpu::Frame& frame) {
 }
 RM1Result& RM1::forces(cpu::Frame& frame) {
     RM1Result& r = run(std::as_const(frame));
-    fd_forces_(frame);
+    engine_->compute_forces(frame, force_step);
     const int n = frame.nlocal();
     AccReal* __restrict fx = frame.span(kAtom_fx);
     AccReal* __restrict fy = frame.span(kAtom_fy);
@@ -57,11 +78,20 @@ RM1Result& RM1::forces(cpu::Frame& frame) {
     frame.meta.get(kEnergy) = r.total_energy_ev;
     return r;
 }
-RM1Result& RM1::fd_forces_(cpu::Frame& frame) {
+
+void RM1::prepare(const cpu::BuildContext& qm_ctx) { build(qm_ctx.frame); }
+
+void RM1::publish(cpu::Frame& frame, bool forces_requested, bool accumulate) {
     if (!engine_)
-        throw std::runtime_error("RM1::forces before build/run");
-    return engine_->compute_forces(frame, force_step);
+        build(frame);
+    publish_(*engine_, force_step, frame, forces_requested, accumulate);
 }
+
+void RM1::evaluate(const cpu::LaunchContext& qm_ctx) {
+    publish(qm_ctx.frame, qm_ctx.forces_requested, /*accumulate=*/false);
+}
+
+void RM1::reset_history() { engine_.reset(); }
 const RM1Result& RM1::last_result() const {
     if (!engine_) {
         static RM1Result empty;

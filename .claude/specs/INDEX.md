@@ -3,11 +3,13 @@
 Live specs under `.claude/specs/`. Completed work is **deleted**; history is
 the git log. Method census: `docs/roadmap/`.
 
-## Blocked — gfn2-camm-r (2026-10-09)
+## Blocked — gfn2-camm-r (retired 2026-10-12)
 
-Merged to `dev` (`7b1df662f`). Off-eq water `F_H1,y` is still the H0/Pulay
-pair term, not `dTheta/dR`. xtb 6.7.1 pin is not met. Spec stays; status
-is `blocked`. Do not open a second CAMM slug for the same bend.
+Off-eq water `F_H1,y` is the H0/Pulay pair term. More CAMM does not close
+the xtb 6.7.1 pin. Spec deleted. The hold is
+[tb-blocked-capabilities.md](../notes/tb-blocked-capabilities.md).
+`regressions/semiempirical/gfn2-camm-r/` stays the witness. Do not open a
+second CAMM slug for the same bend.
 
 ## Superseded — component-plugin (2026-10-09)
 
@@ -71,23 +73,22 @@ cleared in that slug (5 dead stores, `require_i32` in `molrs_exchange.cpp`,
 `decode_sc` in `phonon_dispersion.cpp`, plus the two comm ones the slug
 targeted). The 2026-08-28 zero-caller helpers were deleted 2026-10-09:
 `pair_rep`, `h_radial`, `s_radial`, `apply_affine_strain`, `shell_sd_grad`,
-`sf_score`, `ensure_helpers`, and two unused `n` locals. `gfn2-camm-r` is
-blocked and does not wire them. Still open, not touched here:
-`gpw_solver.cpp` `ot_grad_tol_k` and the by-ref lambda captures, and the
-`-Wstringop-overflow=` caller. `-Wall` stays off.
+`sf_score`, `ensure_helpers`, and two unused `n` locals. `gfn2-camm-r` is fenced and does not wire them. Rebuilt 2026-10-12:
+`ot_grad_tol_k` is already gone (`ot_grad_tol` is used). Apple Clang 21
+rejects redundant `[&, &Pa]` captures in `drive_gamma_uks_diis_` (6222,
+6279, 6291); those explicit `&` captures are removed. `[&, name]`
+by-value captures stay. Homebrew g++-16.2.0 compiled `gpw_solver.cpp`
+with the project warning flags and emitted no `-Wstringop-overflow=`.
+`-Wall` stays off.
 
-**Live — TB method loop**
-
-| Spec | One-line |
-| ---- | -------- |
-| [gfn2-camm-r](gfn2-camm-r/gfn2-camm-r.md) | Blocked. The off-eq water bend is the H0/Pulay term, not \(\partial\Theta/\partial R\). |
-
-**Live count: 1.** (`gfn2-camm-r`, blocked). The component-plugin chain is superseded; see the top of this file.
+**Live count: 0.** `gfn2-camm-r` is fenced in
+[tb-blocked-capabilities.md](../notes/tb-blocked-capabilities.md). The
+component-plugin chain is superseded; see the top of this file.
 
 ## Closed — TB harness wave 2 (2026-10-09)
 
 Merged to `dev` (`911b004e5`, worker `d2bfe363d`); specs deleted; history is git.
-`gfn2-camm-r` stays blocked (spec on `dev`; the record merged as `7b1df662f`).
+`gfn2-camm-r` is fenced (record merged as `7b1df662f`; spec deleted 2026-10-12).
 
 | Spec | Shipped |
 | ---- | ------- |
@@ -96,7 +97,7 @@ Merged to `dev` (`911b004e5`, worker `d2bfe363d`); specs deleted; history is git
 ## Closed — TB harness wave 13 (2026-08-25)
 
 Merged to `dev` (`0a7e8b2a`); specs deleted; history is git.
-`gfn2-camm-r` stays `[~]` on `wf/gfn2-camm-r`.
+`gfn2-camm-r` is fenced in `tb-blocked-capabilities.md`.
 
 | Spec | Shipped |
 | ---- | ------- |

@@ -6219,9 +6219,8 @@ bool GpwDft::drive_gamma_uks_diis_(
     const bool conv = drive_path_diis_(
         [&, build_uks_H = std::move(build_uks_H), Ha_raw, Hb_raw, diis_a,
          diis_b, use_diis, mix, n_alpha, n_beta, nb, tol, diis_err_tol, do_dftu,
-         level_shift, &Pa, &Pb, &Ca_prev,
-         &Cb_prev](bool& skip, double& e_total, double& err_norm,
-                   double& prev_energy) {
+         level_shift](bool& skip, double& e_total, double& err_norm,
+                      double& prev_energy) {
             KsBuildStage::Op ks = [&, build_uks_H, Ha_raw, Hb_raw, tol,
                                    diis_err_tol, do_dftu]() {
                 auto [Ha, Hb, e] = build_uks_H(Pa, Pb);
@@ -6275,8 +6274,7 @@ bool GpwDft::drive_gamma_uks_diis_(
                     loop_H_ext_ = *Hb_raw;
                 }
             };
-            DiagonalizeStage::Op diag_op = [&, n_alpha, n_beta, level_shift,
-                                            &Ca_prev, &Cb_prev]() {
+            DiagonalizeStage::Op diag_op = [&, n_alpha, n_beta, level_shift]() {
                 auto [eiga, Ca] = diagonalize_fock_shifted(
                     loop_H_, loop_X_, loop_S_, Ca_prev, n_alpha, level_shift);
                 auto [eigb, Cb] =
@@ -6288,8 +6286,7 @@ bool GpwDft::drive_gamma_uks_diis_(
                 Cb_prev = std::move(Cb);
             };
             DensityStage::Op dens_op = [&, use_diis, mix, n_alpha, n_beta, nb,
-                                        do_dftu, &Pa, &Pb, &Ca_prev,
-                                        &Cb_prev]() {
+                                        do_dftu]() {
                 RealMatrix Pa_new =
                     linalg::build_density_matrix(Ca_prev, n_alpha, nb, 1.0);
                 RealMatrix Pb_new =

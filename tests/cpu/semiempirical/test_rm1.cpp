@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <stdexcept>
+#include <type_traits>
 
 #include <gtest/gtest.h>
 
@@ -44,6 +45,18 @@ cpu::Frame make_water() {
 }
 
 } // namespace
+
+TEST(RM1, IsQmEngineAndNddoDriver) {
+    static_assert(std::is_base_of_v<cpu::Driver<nddo::Phase>, RM1>);
+    static_assert(std::is_base_of_v<cpu::Driver<nddo::Phase>, AM1>);
+    static_assert(std::is_base_of_v<cpu::QmEngine, RM1>);
+    static_assert(std::is_base_of_v<cpu::QmEngine, AM1>);
+    RM1 method;
+    EXPECT_EQ(method.qm_engine_name(), "rm1");
+    EXPECT_EQ(method.as_embedding(), nullptr);
+    EXPECT_EQ(ATV::slot_count<nddo::Phase>(), 4);
+    EXPECT_EQ(nddo::kind_of(nddo::Phase{}), PhaseKind::SCF);
+}
 
 TEST(RM1, ParameterLookup) {
     EXPECT_TRUE(rm1_has_parameter(1));

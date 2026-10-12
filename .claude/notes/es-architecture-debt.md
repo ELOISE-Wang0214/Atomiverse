@@ -56,7 +56,8 @@ SCF method. Density fitting stays an SCF JK selector (`ri`);
 2. **Method + `*Evaluator`** — PW / AM1 / RM1 (Frame write often only on the
    wrapper; evaluator duplicates method params). GPW is the reference shape:
    Frame-in method + evaluator that only owns it.
-3. **Loop inside Solver / Component** — NDDO SCC; some DFTB as bare `Semiempirical`.
+3. **Loop inside Component** — some DFTB as bare `Semiempirical`. NDDO
+   self-consistency is `NddoMethod` (`Driver<nddo::Phase>`).
 
 ### Debt ledger
 
@@ -69,7 +70,6 @@ Priority: 🔴 bind/forces/Driver alignment before any new ES public API;
 | 🔴 | `es-bind-dialects` | `*Evaluator` vs direct nest vs DFTB-as-Component | `GPWEvaluator` / `PWEvaluator` / `RM1Evaluator` own one method, no parameter copy. `AM1Evaluator(int charge, …)` still re-exposes the method ctor; AM1 binds through `QmEngine::publish` while RM1/PW accumulate in the evaluator; AM1/RM1 evaluators carry byte-identical PBC unwrap helpers; DFTB family is Component-only. Pick one outer bind story; document matrix; delete redundant shells. |
 | 🟡 | `es-pw-evaluator-scf` | `cpu/planewave/pw_evaluator.cpp` | Forces + stress launch = 3 SCFs (`run`, force path, stress path each converge their own density). Assemble forces/stress from the `run` density instead; needs the force/stress impls to take the converged workspace. |
 |  | `es-kind-model` | `cpu/component/hf.h` | Decided. `HF` stays a tag on the Driver node. `Semiempirical` / `PlaneWave` / `GPW` stay Component kinds. The registration slot copies `provides_energy` / `provides_force`. No public adapter. |
-| 🔴 | `es-se-driver` | `am1_solver.h`, `rm1_solver.h`, NDDO SCC | Self-consistency not a typed Driver; RM1 lacks `QmEngine` / Kind / Frame write-back. |
 | 🔴 | `es-aimd-depth` | `cpu/electronic/aimd_method.h` | `CarParrinelloMethod` inheritance depth ≥ 3. Compose, do not publicly derive. |
 | 🟡 | `es-cuda-pw-driver` | `cuda/planewave/pw_solver.cuh` | Frame `run` / `forces` / `stress` are members and write `kEnergy` / `kAtom_f*` / `kStress`. The SCF loop stays inside the method object; it is not `Driver<pw::Phase>`. Free `pw_forces_analytic` / `pw_stress` remain the device implementations those members call. |
 | 🟡 | `es-gpw-ot-freeloop` | `GpwDft` `use_ot` | OT still free-loop; DIIS paths are Driver stages — do not add a third topology. |
@@ -89,7 +89,7 @@ Priority: 🔴 bind/forces/Driver alignment before any new ES public API;
 | CPU RHF/UHF/RKS/UKS/ROHF/ROKS/GHF | Yes | Yes | Pass (ghost_atoms aside) |
 | CUDA RHF | Yes | Yes | Pass |
 | CUDA UHF | Yes | Yes (`run`/`forces`, STO-3G l ≤ 1; else throws) | Pass |
-| AM1 / RM1 | No | Yes (`run`/`forces(Frame&)`) | Fail (`es-se-driver`) |
+| AM1 / RM1 | Yes (`NddoMethod`) | Yes (`run`/`forces(Frame&)`; both `QmEngine`) | Pass (evaluator unwrap still `es-bind-dialects`) |
 | CPU PW | Yes | Yes (`run`/`forces`/`stress(Frame&)`) | Pass (evaluator 3-SCF aside) |
 | CUDA PW | No | `run` yes | Fail (`es-cuda-pw-driver`) |
 | CPU GpwDft | Yes (OT residual) | Yes (`run`/`forces`/`stress(Frame&)`) | Pass (OT aside) |
@@ -100,7 +100,7 @@ Priority: 🔴 bind/forces/Driver alignment before any new ES public API;
 ### Close order (recommended)
 
 1. `es-bind-dialects` (one outer bind story)
-2. `es-se-driver` / `es-cuda-pw-driver` / `es-cuda-gpw-frame-io`
+2. `es-cuda-pw-driver` / `es-cuda-gpw-frame-io`
    (Driver + Frame shape on CUDA; CUDA RHF is already `cuda::Driver<scf::Phase>`)
 3. `es-kind-model` + QmEngine coverage
 4. Hygiene: `es-posthf-ks-gate`, docs, ghost_atoms, OT residual,

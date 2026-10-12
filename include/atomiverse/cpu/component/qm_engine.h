@@ -2,8 +2,8 @@
 /// @brief QM engine protocols for multiscale couplings + embedding site types.
 ///
 /// Two protocols, one header (the neighbor_protocol.h precedent). Neither is a
-/// Component: implementors are Drivers (`MeanFieldMethod<D>`), plain method
-/// classes (`AM1`), or Components (`DFTB2`).
+/// Component: implementors are Drivers (`MeanFieldMethod<D>`, `AM1`, `RM1`)
+/// or Components (`DFTB2`).
 ///
 /// Contract on the frame handed to prepare/evaluate: it is the coupling's
 /// **private** QM frame (QM atoms + link caps only), pre-zeroed on energy and

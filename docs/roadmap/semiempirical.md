@@ -46,8 +46,8 @@ CPU-only domain. Oracles: **OpenMOPAC** (NDDO), **DFTB+** 24.1 (DFTB), **xtb
 | Capability | CPU | CUDA | Notes |
 | ---------- | :-: | :--: | ----- |
 | GFN0 / GFN1 / GFN2 | ✓ | ○ | H/C/N/O; analytic G; FD Hessian; integer occ |
-| GFN2 AES (quadrupole) | ✓ | ○ | In SCC Fock; two-centre Θ on H still open |
-| GFN2 CAMM-vs-R | ○ | ○ | Angular \(F_{H1,y}\) vs xtb `mmompop` |
+| GFN2 AES (quadrupole) | ✓ | ○ | In SCC Fock; two-centre Θ is in the gradient |
+| GFN2 CAMM-vs-R | ○ | ○ | Blocked. Angular \(F_{H1,y}\) vs xtb 6.7.1 is the H0/Pulay pair term |
 | IPEA-xTB | ✓ | ○ | Energy + G + FD Hessian + ΔSCC VIP/VEA; CHNO only |
 | Periodic / spin / ALPB / GBSA / CPCM-X / Fermi / sTDA-xTB | ○ | ○ | `--gbsa` is not ALPB. Extra-Z tables too |
 | GFN-FF | ○ | ○ | Classical FF scope-out |

@@ -25,6 +25,10 @@ list only when its gate is *actually* removed.
 | ---- | ---- | ------- |
 | `noncollinear-spin-dftb` | Spinor Hamiltonian (2-component density), not a parameter on collinear | Spec + multi-wave after collinear solid |
 | `spin-orbit-dftb` | SOC/SK design | After noncollinear |
+| `gfn2-camm-r` | Off-eq water bend `F_H1,y` vs xtb 6.7.1 `--gfn 2 --grad`. Quadrupole chain and the AES kernel are already ~5e-4 Eh/a0 on `g_H1,y`. The miss is the H0/Pulay pair term (−7.1e-3 vs the +1.1e-2 the total needs). Another CAMM edit does not close it. | A derived H0/Pulay term that matches xtb. Not a fitted scale. Do not open a second CAMM slug for the same bend. |
+
+`regressions/semiempirical/gfn2-camm-r/` stays the failing witness. The live
+spec is deleted. `gfn2.cpp` is unchanged.
 
 Shell-resolved **collinear** spin (`ShellResolvedSpin = Yes`) and
 shell-resolved \(U_\ell\) are ordinary pending, not these rows.

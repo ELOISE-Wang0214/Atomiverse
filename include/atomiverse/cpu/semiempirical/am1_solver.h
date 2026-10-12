@@ -8,6 +8,7 @@
 #include "atomiverse/cpu/component/qm_engine.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/semiempirical/internal/nddo_solver.h"
+#include "atomiverse/cpu/semiempirical/nddo_method.h"
 
 namespace ATV {
 namespace cpu {
@@ -25,8 +26,9 @@ using AM1Result = NDDOResult;
 ///
 /// Owns an internal NDDO engine. Parameters are public members — there is no
 /// public `NDDOConfig` / `NDDOSolver` bag. `AM1Evaluator` wraps this type.
-/// Implements `cpu::QmEngine` for multiscale couplings (no embedding path).
-class AM1 : public cpu::QmEngine {
+/// The self-consistency loop is `NddoMethod`. Implements `cpu::QmEngine`
+/// for multiscale couplings (no embedding path).
+class AM1 : public NddoMethod, public cpu::QmEngine {
   public:
     /// @brief Total molecular charge [e].
     int charge = 0;

@@ -191,6 +191,15 @@ struct PhaseTraits<ATV::pw::Phase> {
     static constexpr auto end_phase = ATV::pw::Phase::check;
 };
 
+/// NDDO (`AM1` / `RM1 : Driver<nddo::Phase>`): the rebuilt Fock is the
+/// energy slot; no neighbor list; end-of-iteration is `check`.
+template <>
+struct PhaseTraits<ATV::nddo::Phase> {
+    static constexpr auto eval_phase = ATV::nddo::Phase::fock;
+    static constexpr auto neighbor_phase = ATV::nddo::Phase::fock;
+    static constexpr auto end_phase = ATV::nddo::Phase::check;
+};
+
 /// @brief CPU-backend loop node — the one class every CPU preset derives from.
 template <typename PhaseEnum>
 class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,

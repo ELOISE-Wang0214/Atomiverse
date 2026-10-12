@@ -180,6 +180,43 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 
 } // namespace scf
 
+/// @brief NDDO (AM1 / RM1) self-consistency phases.
+///
+/// `cpu::semiempirical::AM1` and `RM1` are `cpu::Driver<nddo::Phase>`.
+/// The iteration order is `diagonalize → density → fock → check`: the
+/// energy is the NDDO functional of the density and the Fock rebuilt from
+/// that density, so the Fock rebuild sits after the density update. The
+/// guess Fock is built once before the first iteration. There is no DIIS
+/// mix. `kind_of` returns `PhaseKind::SCF`.
+namespace nddo {
+
+/// @brief Phase order for one NDDO self-consistency iteration.
+enum class Phase {
+    diagonalize, ///< Diagonalize the current packed Fock matrix.
+    density,     ///< Build the new closed-shell density.
+    fock,        ///< Rebuild the Fock matrix from that density.
+    check,       ///< Energy and density residual.
+    COUNT        ///< Sentinel — total number of phases.
+};
+
+/// @brief Human-readable names for the NDDO phases.
+/// @param phase_tag Tag value used only for overload selection.
+/// @return Phase names in enum order, excluding `COUNT`.
+inline std::vector<std::string> phase_names(Phase phase_tag) {
+    (void)phase_tag;
+    return {"diagonalize", "density", "fock", "check"};
+}
+
+/// @brief Workflow discriminant for `nddo::Phase` (ADL tag dispatch).
+/// @param phase_tag Tag value used only for overload selection.
+/// @return `PhaseKind::SCF`.
+constexpr PhaseKind kind_of(Phase phase_tag) {
+    (void)phase_tag;
+    return PhaseKind::SCF;
+}
+
+} // namespace nddo
+
 /// @brief Gaussian-and-plane-waves (GPW) KS self-consistency phases.
 ///
 /// Same staged-loop shape as `scf::Phase`: the concrete method
