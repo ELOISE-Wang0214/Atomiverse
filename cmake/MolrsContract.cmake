@@ -18,7 +18,8 @@
 #     verified against.
 #   - Surfaces that only some molrs trees carry (WHAM, the streaming
 #     `*.mrec` writer `MrecWriterRef`) are detected per tree below, so the
-#     submodule pin still links. The 0.16 pin is git tag `v0.16.0`.
+#     submodule pin still links. The pin is local molrs `dev` `f786a891`
+#     (workspace version 0.17.0; no release tag yet).
 
 # Optional molrs surface: multi-window WHAM (WhamCompute) is not yet on every
 # pin. Detect from the CXX bridge source so Atomiverse compiles against the
