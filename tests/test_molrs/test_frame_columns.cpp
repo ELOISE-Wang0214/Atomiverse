@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/molrs.hpp"
+#include "rust/cxx.h"
 
 namespace {
 
@@ -25,21 +26,22 @@ namespace {
         *fr, "atoms", "y", ::rust::Slice<const double>(y.data(), y.size()));
     molrs::frame_set_column_f64(
         *fr, "atoms", "z", ::rust::Slice<const double>(z.data(), z.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "atoms", "atomic_number",
         ::rust::Slice<const std::uint64_t>(znum.data(), znum.size()));
     molrs::frame_set_column_f64(
         *fr, "atoms", "mass",
         ::rust::Slice<const double>(mass.data(), mass.size()));
     const std::vector<double> h = {10, 0, 0, 0, 10, 0, 0, 0, 10};
-    molrs::frame_set_box(*fr, ::rust::Slice<const double>(h.data(), h.size()));
+    molrs::frame_set_box_h(*fr,
+                           ::rust::Slice<const double>(h.data(), h.size()));
     return fr;
 }
 
 TEST(MolrsFrameColumns, FrameNewHasAtomsBlockAfterWrite) {
     auto fr = one_atom_frame();
     EXPECT_TRUE(molrs::frame_has_block(*fr, "atoms"));
-    EXPECT_EQ(molrs::frame_block_nrows(*fr, "atoms"), 1);
+    EXPECT_EQ(molrs::frame_block_n_rows(*fr, "atoms"), 1);
 }
 
 TEST(MolrsFrameColumns, RoundTripF64Columns) {
@@ -51,7 +53,7 @@ TEST(MolrsFrameColumns, RoundTripF64Columns) {
 
 TEST(MolrsFrameColumns, RoundTripU32AtomicNumber) {
     auto fr = one_atom_frame();
-    auto z = molrs::frame_column_u32(*fr, "atoms", "atomic_number");
+    auto z = molrs::frame_column_u64(*fr, "atoms", "atomic_number");
     ASSERT_EQ(z.size(), 1u);
     EXPECT_EQ(z[0], 8u);
 }
@@ -73,16 +75,16 @@ TEST(MolrsFrameColumns, RoundTripU32TypeIdOnBonds) {
     const std::vector<std::uint64_t> bi = {0};
     const std::vector<std::uint64_t> bj = {1};
     const std::vector<std::uint64_t> tid = {1};
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "bonds", "atomi",
         ::rust::Slice<const std::uint64_t>(bi.data(), bi.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "bonds", "atomj",
         ::rust::Slice<const std::uint64_t>(bj.data(), bj.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "bonds", "type_id",
         ::rust::Slice<const std::uint64_t>(tid.data(), tid.size()));
-    auto got = molrs::frame_column_u32(*fr, "bonds", "type_id");
+    auto got = molrs::frame_column_u64(*fr, "bonds", "type_id");
     ASSERT_EQ(got.size(), 1u);
     EXPECT_EQ(got[0], 1u);
 }
@@ -95,7 +97,7 @@ TEST(MolrsFrameColumns, MissingColumnIsEmptyNotThrow) {
 
 TEST(MolrsFrameColumns, BoxRoundTripNineDoubles) {
     auto fr = one_atom_frame();
-    auto h = molrs::frame_box(*fr);
+    auto h = molrs::frame_box_h(*fr);
     ASSERT_EQ(h.size(), 9u);
     EXPECT_DOUBLE_EQ(h[0], 10.0);
     EXPECT_DOUBLE_EQ(h[4], 10.0);
@@ -104,20 +106,18 @@ TEST(MolrsFrameColumns, BoxRoundTripNineDoubles) {
 
 TEST(MolrsFrameColumns, MetaF64RoundTrip) {
     auto fr = one_atom_frame();
-    molrs::MetaEntry entry{};
+    molrs::KeyedMetaValue entry{};
     entry.key = rust::String("energy");
     entry.dtype = molrs::MetaType::F64;
     entry.f64_value = -1.5;
-    molrs::frame_set_meta_entry(*fr, entry);
-    bool found = false;
-    for (const molrs::MetaEntry& e : molrs::frame_meta_entries(*fr)) {
-        if (std::string(e.key) == "energy") {
-            EXPECT_EQ(e.dtype, molrs::MetaType::F64);
-            EXPECT_DOUBLE_EQ(e.f64_value, -1.5);
-            found = true;
-        }
-    }
-    EXPECT_TRUE(found);
+    molrs::frame_set_meta(*fr, entry);
+    auto keys = molrs::frame_meta_keys(*fr);
+    ASSERT_EQ(keys.size(), 1u);
+    EXPECT_EQ(std::string(keys[0]), "energy");
+    const auto e = molrs::frame_get_meta(*fr, "energy");
+    EXPECT_EQ(e.dtype, molrs::MetaType::F64);
+    EXPECT_DOUBLE_EQ(e.f64_value, -1.5);
+    EXPECT_THROW(molrs::frame_get_meta(*fr, "absent"), rust::Error);
 }
 
 TEST(MolrsFrameColumns, BlockNamesAndColumnsListAtoms) {

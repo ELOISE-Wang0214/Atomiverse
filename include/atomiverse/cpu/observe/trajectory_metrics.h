@@ -1,7 +1,7 @@
 /// @file cpu/observe/trajectory_metrics.h
 /// @brief Trajectory-analysis compute objects — thin C++ wrappers over the molrs
-/// FFI compute types (molrs::{MsdCompute, DiffusionCompute, VacfCompute,
-/// RdfCompute}) and their streaming accumulator counterparts
+/// bridge analyses (molrs::{Msd, EinsteinDiffusion, Vacf, Rdf}) and their
+/// streaming accumulator counterparts
 /// (molrs::{RdfAccumulator, MsdAccumulator, VacfAccumulator}).
 ///
 /// The engine *measures*; molrs *analyzes*. Two calling conventions:
@@ -31,7 +31,7 @@ namespace ATV {
 namespace cpu {
 namespace compute {
 
-/// @brief Mean squared displacement MSD(t) — wraps molrs `compute::MSD`.
+/// @brief Mean squared displacement MSD(t) — wraps molrs `compute::Msd`.
 ///
 /// Direct mode: first frame = reference (LAMMPS `compute msd`).
 class MSD {
@@ -70,7 +70,7 @@ class EinsteinDiffusion {
 };
 
 /// @brief DOF-averaged velocity autocorrelation function — wraps molrs
-/// `compute::VACF` (FFT-ACF).
+/// `compute::Vacf` (FFT-ACF).
 class VACF {
   public:
     /// @param dt time between frames. @param resolution max lag (caps the curve
@@ -89,12 +89,12 @@ class VACF {
     int resolution_;
 };
 
-/// @brief Radial distribution function g(r) — wraps molrs `compute::RDF`
+/// @brief Radial distribution function g(r) — wraps molrs `compute::Rdf`
 /// (per-frame LinkCell, ideal-gas shell-volume normalization).
 class RDF {
   public:
     /// @param n_bins number of radial bins. @param r_max @param r_min bin range
-    /// (Å). Argument order mirrors molrs `RDF::new(n_bins, r_max, r_min)`.
+    /// (Å). Argument order mirrors molrs `Rdf::new(n_bins, r_max, r_min)`.
     RDF(int n_bins, double r_max, double r_min);
 
     /// @brief Run g(r) over a raw position trajectory + per-frame cells.

@@ -39,10 +39,10 @@ void append_values(rust::Vec<T>& destination, const std::array<T, N>& source) {
         destination.push_back(value);
 }
 
-inline rust::Vec<molrs::MetaEntry> encode_molrs_meta(const MetaMap& meta) {
-    rust::Vec<molrs::MetaEntry> out;
+inline rust::Vec<molrs::KeyedMetaValue> encode_molrs_meta(const MetaMap& meta) {
+    rust::Vec<molrs::KeyedMetaValue> out;
     for (const SerializableMetaRef& source : meta.serializable_entries()) {
-        molrs::MetaEntry entry{};
+        molrs::KeyedMetaValue entry{};
         entry.key = rust::String(std::string(source.key));
         switch (source.dtype) {
         case MetaDType::Bool:
@@ -127,9 +127,13 @@ Array exact_array(const RustVec& values, const std::string& key) {
     return out;
 }
 
-inline void decode_molrs_meta(const rust::Vec<molrs::MetaEntry>& source,
+/// Copy every metadata value of a molrs frame into `destination`, in the
+/// frame's insertion order (molrs `frame_meta_keys` + `frame_get_meta`).
+inline void decode_molrs_meta(const molrs::FrameRef& source,
                               MetaMap& destination) {
-    for (const molrs::MetaEntry& entry : source) {
+    for (const rust::String& raw_key : molrs::frame_meta_keys(source)) {
+        const molrs::KeyedMetaValue entry =
+            molrs::frame_get_meta(source, {raw_key.data(), raw_key.size()});
         const std::string key(entry.key.data(), entry.key.size());
         switch (entry.dtype) {
         case molrs::MetaType::Bool:

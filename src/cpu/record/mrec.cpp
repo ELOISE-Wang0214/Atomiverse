@@ -1,6 +1,6 @@
 /// @file cpu/record/mrec.cpp
 /// @brief MrecWriter -- cpu::Frame → molrs exchange frame → streaming
-///        `TrajectoryWriterRef`, one frame per append.
+///        `MrecWriterRef`, one frame per append.
 
 #include "atomiverse/cpu/record/mrec.h"
 
@@ -27,7 +27,7 @@ namespace cpu {
 ///        absent until the first append mints the store and again after close.
 struct MrecWriter::Impl {
     ::rust::Box<molrs::FrameRef> frame;
-    std::optional<::rust::Box<molrs::TrajectoryWriterRef>> writer;
+    std::optional<::rust::Box<molrs::MrecWriterRef>> writer;
     std::vector<std::uint64_t> z_scratch; ///< per-append `atomic_number`
     std::vector<double> mass_scratch;     ///< per-append `mass`
 
@@ -56,7 +56,7 @@ struct MrecWriter::Impl {
             mass_scratch[static_cast<std::size_t>(i)] =
                 static_cast<double>(sp_mass[i]);
         }
-        molrs::frame_set_column_u32(dst, "atoms", "atomic_number",
+        molrs::frame_set_column_u64(dst, "atoms", "atomic_number",
                                     ::rust::Slice<const std::uint64_t>(
                                         z_scratch.data(), z_scratch.size()));
         molrs::frame_set_column_f64(
@@ -130,15 +130,15 @@ void MrecWriter::append(const Frame& frame, std::int64_t step, double time,
                                      + ec.message());
         impl_->writer =
             internal::with_molrs_context("cpu::MrecWriter::append", path_, [&] {
-                return molrs::trajectory_writer_create(
-                    {path_.data(), path_.size()}, *impl_->frame, flush_every_,
-                    durable_);
+                return molrs::mrec_writer_create({path_.data(), path_.size()},
+                                                 *impl_->frame, flush_every_,
+                                                 durable_);
             });
     }
 
     internal::with_molrs_context("cpu::MrecWriter::append", path_, [&] {
-        molrs::trajectory_writer_append(**impl_->writer, *impl_->frame, step,
-                                        time, has_time);
+        molrs::mrec_writer_append(**impl_->writer, *impl_->frame, step, time,
+                                  has_time);
     });
     ++appended_;
 }
@@ -147,7 +147,7 @@ void MrecWriter::flush() {
     if (!impl_ || !impl_->writer)
         return;
     internal::with_molrs_context("cpu::MrecWriter::flush", path_, [&] {
-        molrs::trajectory_writer_flush(**impl_->writer);
+        molrs::mrec_writer_flush(**impl_->writer);
     });
 }
 
@@ -157,19 +157,19 @@ void MrecWriter::close() {
     closed_ = true;
     if (!impl_->writer)
         return;
-    // Take the handle out first: `trajectory_writer_close` consumes the Box,
+    // Take the handle out first: `mrec_writer_close` consumes the Box,
     // and the writer must read as released even when the commit throws.
-    ::rust::Box<molrs::TrajectoryWriterRef> handle = std::move(*impl_->writer);
+    ::rust::Box<molrs::MrecWriterRef> handle = std::move(*impl_->writer);
     impl_->writer.reset();
     internal::with_molrs_context("cpu::MrecWriter::close", path_, [&] {
-        molrs::trajectory_writer_close(std::move(handle));
+        molrs::mrec_writer_close(std::move(handle));
     });
     committed_at_close_ = appended_;
 }
 
 std::uint64_t MrecWriter::committed() const {
     if (impl_ && impl_->writer)
-        return molrs::trajectory_writer_committed(**impl_->writer);
+        return molrs::mrec_writer_committed(**impl_->writer);
     return committed_at_close_;
 }
 

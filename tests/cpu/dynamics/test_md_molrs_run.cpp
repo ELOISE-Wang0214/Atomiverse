@@ -113,7 +113,7 @@ class StepStamp final : public cpu::Component {
     molrs::frame_set_column_f64(
         *fr, "atoms", "mass",
         ::rust::Slice<const double>(mass.data(), mass.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "atoms", "atomic_number",
         ::rust::Slice<const std::uint64_t>(atomic_number.data(),
                                            atomic_number.size()));
@@ -123,7 +123,8 @@ class StepStamp final : public cpu::Component {
 
     const std::vector<double> h = {20.0, 0.0, 0.0, 0.0, 20.0,
                                    0.0,  0.0, 0.0, 20.0};
-    molrs::frame_set_box(*fr, ::rust::Slice<const double>(h.data(), h.size()));
+    molrs::frame_set_box_h(*fr,
+                           ::rust::Slice<const double>(h.data(), h.size()));
     return fr;
 }
 
@@ -132,9 +133,10 @@ class StepStamp final : public cpu::Component {
 /// `kStep` is `MetaKey<std::int64_t>{"step", /*serializable=*/true}`
 /// (core/frame_schema.h), so it crosses the boundary as an `I64` meta entry.
 std::int64_t molrs_step(const molrs::FrameRef& frame) {
-    for (const molrs::MetaEntry& entry : molrs::frame_meta_entries(frame)) {
-        if (std::string(entry.key.data(), entry.key.size()) != "step")
+    for (const rust::String& key : molrs::frame_meta_keys(frame)) {
+        if (std::string(key.data(), key.size()) != "step")
             continue;
+        const auto entry = molrs::frame_get_meta(frame, "step");
         EXPECT_EQ(entry.dtype, molrs::MetaType::I64);
         return entry.i64_value;
     }

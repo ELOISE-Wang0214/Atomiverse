@@ -1,15 +1,13 @@
 /// @file src/cpu/io/readable_path.h
 /// @brief Path pre-flight and molrs error translation for the FFI boundary.
 ///
-/// **molrs 0.13** made the bridge readers and writers fallible —
-/// `fn xyz_read_first_frame(path: &str) -> Result<Box<FrameRef>>` and the
-/// same for `read_first_frame`, `write_frame_xyz`, `write_frame` (named
-/// `read_frame_zarr_first` / `write_frame_zarr` before molrs 0.14),
-/// `frame_set_box` and the four `frame_set_column_*`. cxx maps `Result<T>` to
-/// a C++ function returning `T` that throws `rust::Error`, which derives from
-/// `std::exception`, so a caller's `catch` finally sees these failures. Before
-/// 0.13 they were `panic!` inside a non-`Result` extern fn, which cxx turns
-/// into an uncatchable `abort()`.
+/// The molrs bridge readers and writers are fallible —
+/// `fn read_xyz(path: &str) -> Result<Box<FrameRef>>` and the same for
+/// `read_mrec_frame`, `read_mrec_trajectory_frame`, `write_xyz`,
+/// `write_mrec_frame`, `frame_set_box_h` and the four `frame_set_column_*`.
+/// cxx maps `Result<T>` to a C++ function returning `T` that throws
+/// `rust::Error`, which derives from `std::exception`, so a caller's `catch`
+/// sees these failures.
 ///
 /// Two things are still wanted on this side, and both live here:
 ///   * `require_readable_file` / `require_readable_store` — a pre-flight check
@@ -72,7 +70,7 @@ inline void require_readable_file(const char* who, const std::string& path) {
 
 /// @brief Run a molrs bridge call, naming the operation and path on failure.
 ///
-/// molrs 0.13 reports I/O and schema errors as `rust::Error`, whose message
+/// molrs reports I/O and schema errors as `rust::Error`, whose message
 /// does not include the file it was working on. Wrapping restores that
 /// context without swallowing the underlying reason.
 ///

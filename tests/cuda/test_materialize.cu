@@ -58,7 +58,7 @@ namespace {
         *fr, "atoms", "charge",
         ::rust::Slice<const double>(charge.data(), charge.size()));
     const std::vector<std::uint64_t> z_num(type.begin(), type.end());
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "atoms", "atomic_number",
         ::rust::Slice<const std::uint64_t>(z_num.data(), z_num.size()));
     molrs::frame_set_column_i32(
@@ -71,19 +71,20 @@ namespace {
     // so this bond joins tags 10 and 11. Using row indices {0,1} here would be
     // silently dropped by add_bond (tag 0 not in the map) -> n_bonds()==0.
     const std::vector<std::uint64_t> bi = {10}, bj = {11}, bt = {1};
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "bonds", "atomi",
         ::rust::Slice<const std::uint64_t>(bi.data(), bi.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "bonds", "atomj",
         ::rust::Slice<const std::uint64_t>(bj.data(), bj.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "bonds", "type_id",
         ::rust::Slice<const std::uint64_t>(bt.data(), bt.size()));
 
     const std::vector<double> h = {20.0, 0.0, 0.0, 0.0, 20.0,
                                    0.0,  0.0, 0.0, 20.0};
-    molrs::frame_set_box(*fr, ::rust::Slice<const double>(h.data(), h.size()));
+    molrs::frame_set_box_h(*fr,
+                           ::rust::Slice<const double>(h.data(), h.size()));
     return fr;
 }
 
@@ -152,7 +153,7 @@ TEST(CudaMaterialize, MissingPositionsThrows) {
     auto fr = molrs::frame_new();
     const std::vector<std::int32_t> type = {1, 2};
     const std::vector<std::uint64_t> z_num(type.begin(), type.end());
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "atoms", "atomic_number",
         ::rust::Slice<const std::uint64_t>(z_num.data(), z_num.size()));
 

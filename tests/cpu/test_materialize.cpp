@@ -90,7 +90,7 @@ namespace {
         *fr, "atoms", "charge",
         ::rust::Slice<const double>(charge.data(), charge.size()));
     const std::vector<std::uint64_t> z_num(type.begin(), type.end());
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "atoms", "atomic_number",
         ::rust::Slice<const std::uint64_t>(z_num.data(), z_num.size()));
     molrs::frame_set_column_i32(
@@ -101,52 +101,53 @@ namespace {
     // reference atoms by tag (materialize scatters them via the tag->local
     // map), so use the atom tags {10,11,12} above -- not row indices.
     const std::vector<std::uint64_t> bi = {10}, bj = {11}, bt = {1};
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "bonds", "atomi",
         ::rust::Slice<const std::uint64_t>(bi.data(), bi.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "bonds", "atomj",
         ::rust::Slice<const std::uint64_t>(bj.data(), bj.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "bonds", "type_id",
         ::rust::Slice<const std::uint64_t>(bt.data(), bt.size()));
 
     const std::vector<std::uint64_t> ai = {10}, aj = {11}, ak = {12}, at = {1};
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "angles", "atomi",
         ::rust::Slice<const std::uint64_t>(ai.data(), ai.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "angles", "atomj",
         ::rust::Slice<const std::uint64_t>(aj.data(), aj.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "angles", "atomk",
         ::rust::Slice<const std::uint64_t>(ak.data(), ak.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "angles", "type_id",
         ::rust::Slice<const std::uint64_t>(at.data(), at.size()));
 
     const std::vector<std::uint64_t> di = {10}, dj = {11}, dk = {12}, dl = {12},
                                      dt = {1};
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "dihedrals", "atomi",
         ::rust::Slice<const std::uint64_t>(di.data(), di.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "dihedrals", "atomj",
         ::rust::Slice<const std::uint64_t>(dj.data(), dj.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "dihedrals", "atomk",
         ::rust::Slice<const std::uint64_t>(dk.data(), dk.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "dihedrals", "atoml",
         ::rust::Slice<const std::uint64_t>(dl.data(), dl.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "dihedrals", "type_id",
         ::rust::Slice<const std::uint64_t>(dt.data(), dt.size()));
 
     // Cubic box, row-major 3x3 H.
     const std::vector<double> h = {20.0, 0.0, 0.0, 0.0, 20.0,
                                    0.0,  0.0, 0.0, 20.0};
-    molrs::frame_set_box(*fr, ::rust::Slice<const double>(h.data(), h.size()));
+    molrs::frame_set_box_h(*fr,
+                           ::rust::Slice<const double>(h.data(), h.size()));
 
     return fr;
 }
@@ -186,7 +187,7 @@ namespace {
     molrs::frame_set_column_f64(
         *fr, "atoms", "z", ::rust::Slice<const double>(x.data(), x.size()));
     const std::vector<std::uint64_t> z_num(type.begin(), type.end());
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "atoms", "atomic_number",
         ::rust::Slice<const std::uint64_t>(z_num.data(), z_num.size()));
     return fr;
@@ -254,8 +255,8 @@ TEST(Materialize, RoundTrip) {
     }
 
     // Topology survives from_molrs (to_molrs leaves it untouched).
-    auto bi = molrs::frame_column_u32(*fr, "bonds", "atomi");
-    auto bj = molrs::frame_column_u32(*fr, "bonds", "atomj");
+    auto bi = molrs::frame_column_u64(*fr, "bonds", "atomi");
+    auto bj = molrs::frame_column_u64(*fr, "bonds", "atomj");
     ASSERT_EQ(bi.size(), 1u);
     EXPECT_EQ(bi[0], 10);
     EXPECT_EQ(bj[0], 11);
@@ -273,7 +274,7 @@ TEST(Materialize, RoundTrip) {
     EXPECT_EQ(cf.span(ATV::kAtom_dihedral_atom)(1, 2), 12);
 
     // Box round-trips.
-    auto h = molrs::frame_box(*fr);
+    auto h = molrs::frame_box_h(*fr);
     ASSERT_EQ(h.size(), 9u);
     EXPECT_DOUBLE_EQ(h[0], 20.0);
     EXPECT_DOUBLE_EQ(h[4], 20.0);
@@ -284,8 +285,10 @@ TEST(Materialize, RoundTrip) {
 
     // System results cross the boundary only as exact typed metadata. No
     // synthetic result block exists in the molrs schema.
-    const auto meta = molrs::frame_meta_entries(*fr);
-    auto find_meta = [&](const char* key) -> const molrs::MetaEntry* {
+    std::vector<molrs::KeyedMetaValue> meta;
+    for (const rust::String& key : molrs::frame_meta_keys(*fr))
+        meta.push_back(molrs::frame_get_meta(*fr, {key.data(), key.size()}));
+    auto find_meta = [&](const char* key) -> const molrs::KeyedMetaValue* {
         for (const auto& entry : meta)
             if (std::string(entry.key.data(), entry.key.size()) == key)
                 return &entry;
@@ -326,7 +329,7 @@ TEST(Materialize, MissingPositionsThrows) {
     // type present, x/y/z absent.
     const std::vector<std::int32_t> type = {1, 2};
     const std::vector<std::uint64_t> z_num(type.begin(), type.end());
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "atoms", "atomic_number",
         ::rust::Slice<const std::uint64_t>(z_num.data(), z_num.size()));
 
@@ -374,7 +377,7 @@ TEST(Materialize, MissingOptionalFieldsDefaultToZero) {
     molrs::frame_set_column_f64(
         *fr, "atoms", "z", ::rust::Slice<const double>(x.data(), x.size()));
     const std::vector<std::uint64_t> z_num(type.begin(), type.end());
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "atoms", "atomic_number",
         ::rust::Slice<const std::uint64_t>(z_num.data(), z_num.size()));
 
@@ -473,8 +476,10 @@ TEST(WriteBackContract, GoldenRoundTripContractFields) {
 
     // System results stay a typed-metadata write channel. Synthetic scalar
     // blocks are forbidden by the v2 exchange schema.
-    const auto meta = molrs::frame_meta_entries(*fr);
-    auto find_meta = [&](const char* key) -> const molrs::MetaEntry* {
+    std::vector<molrs::KeyedMetaValue> meta;
+    for (const rust::String& key : molrs::frame_meta_keys(*fr))
+        meta.push_back(molrs::frame_get_meta(*fr, {key.data(), key.size()}));
+    auto find_meta = [&](const char* key) -> const molrs::KeyedMetaValue* {
         for (const auto& entry : meta)
             if (std::string(entry.key.data(), entry.key.size()) == key)
                 return &entry;
@@ -514,7 +519,7 @@ TEST(WriteBackContract, NonContractFieldsUntouched) {
     ASSERT_DOUBLE_EQ(rx[0], 8.5) << "sentinel: to_molrs must have run";
 
     // type / mass keep the make_full_frame originals.
-    auto rtype = molrs::frame_column_u32(*fr, "atoms", "atomic_number");
+    auto rtype = molrs::frame_column_u64(*fr, "atoms", "atomic_number");
     ASSERT_EQ(rtype.size(), 3u);
     EXPECT_EQ(rtype[0], 1) << "atoms.type is non-write-back";
     EXPECT_EQ(rtype[1], 2);
@@ -526,20 +531,20 @@ TEST(WriteBackContract, NonContractFieldsUntouched) {
     EXPECT_DOUBLE_EQ(rmass[2], 15.999);
 
     // Topology blocks stay exactly as materialized.
-    EXPECT_EQ(static_cast<int>(molrs::frame_block_nrows(*fr, "bonds")), 1);
-    EXPECT_EQ(static_cast<int>(molrs::frame_block_nrows(*fr, "angles")), 1);
-    EXPECT_EQ(static_cast<int>(molrs::frame_block_nrows(*fr, "dihedrals")), 1);
-    auto bi = molrs::frame_column_u32(*fr, "bonds", "atomi");
-    auto bj = molrs::frame_column_u32(*fr, "bonds", "atomj");
-    auto bt = molrs::frame_column_u32(*fr, "bonds", "type_id");
+    EXPECT_EQ(static_cast<int>(molrs::frame_block_n_rows(*fr, "bonds")), 1);
+    EXPECT_EQ(static_cast<int>(molrs::frame_block_n_rows(*fr, "angles")), 1);
+    EXPECT_EQ(static_cast<int>(molrs::frame_block_n_rows(*fr, "dihedrals")), 1);
+    auto bi = molrs::frame_column_u64(*fr, "bonds", "atomi");
+    auto bj = molrs::frame_column_u64(*fr, "bonds", "atomj");
+    auto bt = molrs::frame_column_u64(*fr, "bonds", "type_id");
     ASSERT_EQ(bi.size(), 1u);
     EXPECT_EQ(bi[0], 10);
     EXPECT_EQ(bj[0], 11);
     EXPECT_EQ(bt[0], 1);
-    auto ak = molrs::frame_column_u32(*fr, "angles", "atomk");
+    auto ak = molrs::frame_column_u64(*fr, "angles", "atomk");
     ASSERT_EQ(ak.size(), 1u);
     EXPECT_EQ(ak[0], 12);
-    auto dl = molrs::frame_column_u32(*fr, "dihedrals", "atoml");
+    auto dl = molrs::frame_column_u64(*fr, "dihedrals", "atoml");
     ASSERT_EQ(dl.size(), 1u);
     EXPECT_EQ(dl[0], 12);
 }
@@ -563,7 +568,7 @@ TEST(WriteBackContract, MutatedBoxWritesBack) {
     to_molrs(cf, *fr);
 
     const double scaled = 20.0 * 1.1;
-    auto h = molrs::frame_box(*fr);
+    auto h = molrs::frame_box_h(*fr);
     ASSERT_EQ(h.size(), 9u);
     EXPECT_DOUBLE_EQ(h[0], scaled)
         << "a barostatted cell must reach the molrs box; without this a "
@@ -614,7 +619,7 @@ TEST(WriteBackContract, TriclinicBoxWritesBack) {
 
     to_molrs(cf, *fr);
 
-    auto h = molrs::frame_box(*fr);
+    auto h = molrs::frame_box_h(*fr);
     ASSERT_EQ(h.size(), 9u);
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j)
@@ -719,18 +724,10 @@ TEST(WriteBackContract, ExtensionColumnsStayLocalAndTypedMetaCrosses) {
     EXPECT_EQ(rho_after[1], ATV::StorageReal(2.5));
     EXPECT_EQ(cf.meta.get(annealing_stage), "quench");
 
-    bool found_stage = false;
-    for (const auto& entry : molrs::frame_meta_entries(*fr)) {
-        if (std::string(entry.key.data(), entry.key.size())
-            == "annealing_stage") {
-            found_stage = true;
-            EXPECT_EQ(entry.dtype, molrs::MetaType::String);
-            EXPECT_EQ(std::string(entry.string_value.data(),
-                                  entry.string_value.size()),
-                      "quench");
-        }
-    }
-    EXPECT_TRUE(found_stage);
+    const auto entry = molrs::frame_get_meta(*fr, "annealing_stage");
+    EXPECT_EQ(entry.dtype, molrs::MetaType::String);
+    EXPECT_EQ(std::string(entry.string_value.data(), entry.string_value.size()),
+              "quench");
 }
 
 TEST(Materialize, MaterializedFrameCarriesNoExtras) {

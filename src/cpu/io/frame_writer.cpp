@@ -11,42 +11,52 @@
 namespace ATV {
 namespace cpu {
 
-void write_frame_xyz(const std::string& path, const std::vector<int>& type_id,
+namespace {
+/// The cell matrix H as molrs takes it: all nine values, or none when the
+/// engine has no cell (an all-zero H, a default-constructed Box). A non-zero
+/// singular H is still sent — molrs refuses it rather than dropping the box.
+::rust::Slice<const double> molrs_h(const std::array<double, 9>& box_h) {
+    for (const double v : box_h)
+        if (v != 0.0)
+            return {box_h.data(), box_h.size()};
+    return {box_h.data(), 0};
+}
+} // namespace
+
+void write_xyz_frame(const std::string& path,
+                     const std::vector<int>& atomic_number,
                      const std::vector<double>& x, const std::vector<double>& y,
                      const std::vector<double>& z,
-                     const std::array<double, 9>& box_mat, bool append) {
-    // molrs 0.13 made this fallible (it aborted the process before), so an
-    // unwritable directory or a full disk is now a catchable error — but the
-    // bridge message does not name the file.
-    internal::with_molrs_context("cpu::write_frame_xyz", path, [&] {
-        molrs::write_frame_xyz(
+                     const std::array<double, 9>& box_h, bool append) {
+    // The bridge message does not name the file; with_molrs_context does.
+    internal::with_molrs_context("cpu::write_xyz_frame", path, [&] {
+        molrs::write_xyz(
             {path.data(), path.size()},
-            {reinterpret_cast<const std::int32_t*>(type_id.data()),
-             type_id.size()},
+            {reinterpret_cast<const std::int32_t*>(atomic_number.data()),
+             atomic_number.size()},
             {x.data(), x.size()}, {y.data(), y.size()}, {z.data(), z.size()},
-            {box_mat.data(), box_mat.size()}, append);
+            molrs_h(box_h), rust::Vec<molrs::KeyedMetaValue>{}, append);
     });
 }
 
-void write_frame_zarr(const std::string& path, const std::vector<int>& type_id,
+void write_mrec_frame(const std::string& path,
+                      const std::vector<int>& atomic_number,
                       const std::vector<double>& x,
                       const std::vector<double>& y,
                       const std::vector<double>& z,
-                      const std::array<double, 9>& box_mat,
+                      const std::array<double, 9>& box_h,
                       const std::vector<std::string>& field_names,
                       const std::vector<double>& field_data) {
     rust::Vec<rust::String> names;
     for (const auto& n : field_names)
         names.push_back(rust::String(n));
-    // molrs 0.14 renamed the bridge door `write_frame_zarr` → `write_frame`
-    // (the store is a `*.mrec`; the retired `.zarr` suffix is refused).
-    internal::with_molrs_context("cpu::write_frame_zarr", path, [&] {
-        molrs::write_frame(
+    internal::with_molrs_context("cpu::write_mrec_frame", path, [&] {
+        molrs::write_mrec_frame(
             {path.data(), path.size()},
-            {reinterpret_cast<const std::int32_t*>(type_id.data()),
-             type_id.size()},
+            {reinterpret_cast<const std::int32_t*>(atomic_number.data()),
+             atomic_number.size()},
             {x.data(), x.size()}, {y.data(), y.size()}, {z.data(), z.size()},
-            {box_mat.data(), box_mat.size()}, std::move(names),
+            molrs_h(box_h), std::move(names),
             {field_data.data(), field_data.size()});
     });
 }

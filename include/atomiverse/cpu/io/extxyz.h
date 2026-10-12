@@ -32,11 +32,10 @@ namespace cpu {
 ///         `Lattice="..."` header (no fallback box is substituted). The message
 ///         names the function and the offending path.
 ///          Parse failures *inside* the file (unknown element symbol, missing
-///          `species` column, malformed atom table) also throw as of molrs
-///          0.13, which made `xyz_read_first_frame` return `Result`; cxx maps
-///          that to a `rust::Error`, and this function rethrows it as a
-///          `std::runtime_error` naming the path. Earlier molrs releases
-///          aborted the process on those inputs and could not be caught.
+///          `species` column, malformed atom table) also throw: molrs
+///          `read_xyz` returns `Result`, cxx maps that to a
+///          `rust::Error`, and this function rethrows it as a
+///          `std::runtime_error` naming the path.
 Frame load_extxyz(const std::string& path);
 
 } // namespace cpu

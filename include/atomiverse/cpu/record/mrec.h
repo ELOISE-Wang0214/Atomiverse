@@ -15,8 +15,9 @@
 /// header pulls neither `rust/cxx.h` nor the generated bridge.
 ///
 /// @see cpu::MrecRecorder (cpu/record/mrec_recorder.h) for the MD Recorder.
-/// @see cpu::write_frame_zarr (cpu/io/frame_writer.h) for the single-frame
-///      checkpoint door and cpu::ZarrReader for reading frame 0 back.
+/// @see cpu::write_mrec_frame (cpu/io/frame_writer.h) for the single-frame
+///      checkpoint door; molrs `read_mrec_trajectory_frame` reads a frame of
+///      this trajectory back.
 #pragma once
 
 #include <cstdint>

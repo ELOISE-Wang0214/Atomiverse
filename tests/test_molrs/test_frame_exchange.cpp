@@ -28,7 +28,7 @@ namespace {
         *fr, "atoms", "y", ::rust::Slice<const double>(y.data(), y.size()));
     molrs::frame_set_column_f64(
         *fr, "atoms", "z", ::rust::Slice<const double>(z.data(), z.size()));
-    molrs::frame_set_column_u32(
+    molrs::frame_set_column_u64(
         *fr, "atoms", "atomic_number",
         ::rust::Slice<const std::uint64_t>(znum.data(), znum.size()));
     molrs::frame_set_column_f64(
@@ -38,7 +38,8 @@ namespace {
         *fr, "atoms", "tag",
         ::rust::Slice<const std::int32_t>(tag.data(), tag.size()));
     const std::vector<double> h = {20, 0, 0, 0, 20, 0, 0, 0, 20};
-    molrs::frame_set_box(*fr, ::rust::Slice<const double>(h.data(), h.size()));
+    molrs::frame_set_box_h(*fr,
+                           ::rust::Slice<const double>(h.data(), h.size()));
     return fr;
 }
 

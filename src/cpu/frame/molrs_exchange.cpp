@@ -92,11 +92,10 @@ bool has_column(const molrs::FrameRef& src, const char* block,
     return values;
 }
 
-// molrs 0.14: the domain index type `Idx` is u64, so `frame_column_u32`
-// (name kept for bridge stability) now yields u64 values.
-::rust::Vec<std::uint64_t> require_u32(const molrs::FrameRef& src,
+// The molrs domain index type `Idx` is u64 (`frame_column_u64`).
+::rust::Vec<std::uint64_t> require_u64(const molrs::FrameRef& src,
                                        const char* block, const char* col) {
-    auto values = molrs::frame_column_u32(src, block, col);
+    auto values = molrs::frame_column_u64(src, block, col);
     if (values.empty())
         throw std::runtime_error("cpu::from_molrs: required field '"
                                  + std::string(block) + "." + col
@@ -126,7 +125,7 @@ void copy_optional_f64(const molrs::FrameRef& src, const char* key,
 /// `type_id`; the connectivity indices stay signed and are read as i32.
 std::vector<int> topology_kind_column(const molrs::FrameRef& src,
                                       const char* block, int n) {
-    auto values = molrs::frame_column_u32(src, block, "type_id");
+    auto values = molrs::frame_column_u64(src, block, "type_id");
     if (static_cast<int>(values.size()) != n)
         throw std::runtime_error(
             "cpu::from_molrs: topology field '" + std::string(block)
@@ -147,7 +146,7 @@ std::vector<int> topology_kind_column(const molrs::FrameRef& src,
 /// String force-field label this boundary does not import.
 std::vector<int> topology_column(const molrs::FrameRef& src, const char* block,
                                  const char* key, int n) {
-    auto values = molrs::frame_column_u32(src, block, key);
+    auto values = molrs::frame_column_u64(src, block, key);
     if (static_cast<int>(values.size()) != n)
         throw std::runtime_error(
             "cpu::from_molrs: topology field '" + std::string(block) + "." + key
@@ -175,7 +174,7 @@ Frame from_molrs(const molrs::FrameRef& src) {
     auto x = require_f64(src, "atoms", "x");
     auto y = require_f64(src, "atoms", "y");
     auto z = require_f64(src, "atoms", "z");
-    auto type = require_u32(src, "atoms", "atomic_number");
+    auto type = require_u64(src, "atoms", "atomic_number");
     const int n = static_cast<int>(x.size());
     if (static_cast<int>(y.size()) != n || static_cast<int>(z.size()) != n
         || static_cast<int>(type.size()) != n)
@@ -230,7 +229,7 @@ Frame from_molrs(const molrs::FrameRef& src) {
 
     frame.clear_tag_index();
     frame.rebuild_tag_index(0, n);
-    const int nb = static_cast<int>(molrs::frame_block_nrows(src, "bonds"));
+    const int nb = static_cast<int>(molrs::frame_block_n_rows(src, "bonds"));
     if (nb > 0) {
         auto atomi = topology_column(src, "bonds", "atomi", nb);
         auto atomj = topology_column(src, "bonds", "atomj", nb);
@@ -238,7 +237,7 @@ Frame from_molrs(const molrs::FrameRef& src) {
         for (int k = 0; k < nb; ++k)
             frame.add_bond(atomi[k], atomj[k], kind[k]);
     }
-    const int na = static_cast<int>(molrs::frame_block_nrows(src, "angles"));
+    const int na = static_cast<int>(molrs::frame_block_n_rows(src, "angles"));
     if (na > 0) {
         auto atomi = topology_column(src, "angles", "atomi", na);
         auto atomj = topology_column(src, "angles", "atomj", na);
@@ -247,7 +246,8 @@ Frame from_molrs(const molrs::FrameRef& src) {
         for (int k = 0; k < na; ++k)
             frame.add_angle(atomi[k], atomj[k], atomk[k], kind[k]);
     }
-    const int nd = static_cast<int>(molrs::frame_block_nrows(src, "dihedrals"));
+    const int nd =
+        static_cast<int>(molrs::frame_block_n_rows(src, "dihedrals"));
     if (nd > 0) {
         auto atomi = topology_column(src, "dihedrals", "atomi", nd);
         auto atomj = topology_column(src, "dihedrals", "atomj", nd);
@@ -257,7 +257,8 @@ Frame from_molrs(const molrs::FrameRef& src) {
         for (int k = 0; k < nd; ++k)
             frame.add_dihedral(atomi[k], atomj[k], atomk[k], atoml[k], kind[k]);
     }
-    const int ni = static_cast<int>(molrs::frame_block_nrows(src, "impropers"));
+    const int ni =
+        static_cast<int>(molrs::frame_block_n_rows(src, "impropers"));
     if (ni > 0) {
         auto atomi = topology_column(src, "impropers", "atomi", ni);
         auto atomj = topology_column(src, "impropers", "atomj", ni);
@@ -269,7 +270,7 @@ Frame from_molrs(const molrs::FrameRef& src) {
     }
     frame.build_special_list();
 
-    auto cell_values = molrs::frame_box(src);
+    auto cell_values = molrs::frame_box_h(src);
     if (cell_values.size() == 9u) {
         Mat3 cell;
         for (int i = 0; i < 3; ++i)
@@ -277,7 +278,7 @@ Frame from_molrs(const molrs::FrameRef& src) {
                 cell(i, j) = static_cast<AccReal>(cell_values[i * 3 + j]);
         frame.box.set_cell(cell);
     }
-    internal::decode_molrs_meta(molrs::frame_meta_entries(src), frame.meta);
+    internal::decode_molrs_meta(src, frame.meta);
     return frame;
 }
 
@@ -337,13 +338,13 @@ void to_molrs(const Frame& src, molrs::FrameRef& dst) {
             for (int j = 0; j < 3; ++j)
                 h[static_cast<std::size_t>(i * 3 + j)] =
                     static_cast<double>(cell(i, j));
-        molrs::frame_set_box(dst,
-                             ::rust::Slice<const double>(h.data(), h.size()));
+        molrs::frame_set_box_h(dst,
+                               ::rust::Slice<const double>(h.data(), h.size()));
     }
 
     auto entries = internal::encode_molrs_meta(src.meta);
     for (auto& entry : entries)
-        molrs::frame_set_meta_entry(dst, std::move(entry));
+        molrs::frame_set_meta(dst, std::move(entry));
 }
 
 } // namespace cpu

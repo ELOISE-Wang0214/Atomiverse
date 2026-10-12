@@ -308,7 +308,7 @@ struct McHandle {
     /// @param frame_obj The `molpy.Frame` (needed for the Python-API rebuild).
     /// @param fref The same frame borrowed as a CXX handle.
     void write_back_(nb::object frame_obj, molrs::FrameRef& fref) {
-        const auto rows = molrs::frame_block_nrows(fref, "atoms");
+        const auto rows = molrs::frame_block_n_rows(fref, "atoms");
         if (rows != static_cast<std::int64_t>(work_.nlocal()))
             rebuild_atoms_block_(frame_obj);
         cpu::to_molrs(work_, fref);

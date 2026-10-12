@@ -27,10 +27,10 @@ namespace {
     return values;
 }
 
-::rust::Vec<std::uint64_t> require_u32_column(const molrs::FrameRef& frame,
+::rust::Vec<std::uint64_t> require_u64_column(const molrs::FrameRef& frame,
                                               const char* block,
                                               const char* col) {
-    auto values = molrs::frame_column_u32(frame, block, col);
+    auto values = molrs::frame_column_u64(frame, block, col);
     if (values.empty()) {
         throw std::runtime_error(std::string("AM1BCCChargeAssigner: required ")
                                  + block + "." + col
@@ -45,7 +45,7 @@ cpu::Frame build_am1_frame(const molrs::FrameRef& frame) {
     auto z = require_f64_column(frame, "atoms", "z");
     // molrs 0.13: Z is `atomic_number` (UInt). `type` is a String
     // force-field label and no longer carries the element.
-    auto atomic_numbers = require_u32_column(frame, "atoms", "atomic_number");
+    auto atomic_numbers = require_u64_column(frame, "atoms", "atomic_number");
 
     const auto n = static_cast<int>(x.size());
     if (static_cast<int>(y.size()) != n || static_cast<int>(z.size()) != n) {
@@ -79,7 +79,7 @@ cpu::Frame build_am1_frame(const molrs::FrameRef& frame) {
         sp_z[i] = z[static_cast<std::size_t>(i)];
     }
 
-    auto h = molrs::frame_box(frame);
+    auto h = molrs::frame_box_h(frame);
     if (h.size() == 9u) {
         Mat3 cell;
         for (int i = 0; i < 3; ++i) {
@@ -115,11 +115,11 @@ std::vector<double> AM1BCCChargeAssigner::assign(molrs::FrameRef& frame) {
                                  "count does not match atom count");
     }
 
-    auto bcc = molrs::am1_bcc_assign_frame_from_base(
-        frame,
-        ::rust::Slice<const double>(am1.mulliken_charges.data(),
-                                    am1.mulliken_charges.size()),
-        {parameter_set_.data(), parameter_set_.size()});
+    auto model =
+        molrs::bcc_model_new({parameter_set_.data(), parameter_set_.size()});
+    auto bcc = model->correct(
+        frame, ::rust::Slice<const double>(am1.mulliken_charges.data(),
+                                           am1.mulliken_charges.size()));
     last_charges_ = to_std_vector(bcc);
     return last_charges_;
 }

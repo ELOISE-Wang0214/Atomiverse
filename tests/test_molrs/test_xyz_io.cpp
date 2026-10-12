@@ -13,6 +13,7 @@
 #include "atomiverse/cpu/io/extxyz.h"
 #include "atomiverse/cpu/io/frame_writer.h"
 #include "atomiverse/molrs.hpp"
+#include "rust/cxx.h"
 
 namespace {
 
@@ -25,7 +26,7 @@ void remove_path(const std::string& path) {
     std::filesystem::remove(path, ec);
 }
 
-TEST(MolrsXyzIo, WriteFrameXyzThenXyzReadFirstFrame) {
+TEST(MolrsXyzIo, WriteXyzFrameThenReadXyzFrame) {
     const std::string path = tmp_path("atv_molrs_xyz_io.xyz");
     remove_path(path);
     const std::vector<std::int32_t> type = {1, 1};
@@ -33,23 +34,23 @@ TEST(MolrsXyzIo, WriteFrameXyzThenXyzReadFirstFrame) {
     const std::vector<double> y = {0.0, 0.0};
     const std::vector<double> z = {0.0, 0.0};
     const std::vector<double> box;
-    molrs::write_frame_xyz(
+    molrs::write_xyz(
         {path.data(), path.size()},
         ::rust::Slice<const std::int32_t>(type.data(), type.size()),
         ::rust::Slice<const double>(x.data(), x.size()),
         ::rust::Slice<const double>(y.data(), y.size()),
         ::rust::Slice<const double>(z.data(), z.size()),
         ::rust::Slice<const double>(box.data(), box.size()),
-        /*append=*/false);
+        rust::Vec<molrs::KeyedMetaValue>{}, /*append=*/false);
 
-    auto fr = molrs::xyz_read_first_frame({path.data(), path.size()});
+    auto fr = molrs::read_xyz({path.data(), path.size()});
     auto xr = molrs::frame_column_f64(*fr, "atoms", "x");
     ASSERT_EQ(xr.size(), 2u);
     EXPECT_NEAR(xr[1], 0.74, 1e-6);
     remove_path(path);
 }
 
-TEST(MolrsXyzIo, WriteFrameXyzTypedAcceptsEmptyMeta) {
+TEST(MolrsXyzIo, WriteXyzFrameRefusesARaggedFrame) {
     const std::string path = tmp_path("atv_molrs_xyz_typed.xyz");
     remove_path(path);
     const std::vector<std::int32_t> type = {8};
@@ -57,8 +58,8 @@ TEST(MolrsXyzIo, WriteFrameXyzTypedAcceptsEmptyMeta) {
     const std::vector<double> y = {0.0};
     const std::vector<double> z = {0.0};
     const std::vector<double> box = {5, 0, 0, 0, 5, 0, 0, 0, 5};
-    rust::Vec<molrs::MetaEntry> meta;
-    molrs::write_frame_xyz_typed(
+    rust::Vec<molrs::KeyedMetaValue> meta;
+    molrs::write_xyz(
         {path.data(), path.size()},
         ::rust::Slice<const std::int32_t>(type.data(), type.size()),
         ::rust::Slice<const double>(x.data(), x.size()),
@@ -68,13 +69,38 @@ TEST(MolrsXyzIo, WriteFrameXyzTypedAcceptsEmptyMeta) {
         /*append=*/false);
     EXPECT_TRUE(std::filesystem::exists(path));
     remove_path(path);
+
+    // One atomic number for two atoms, and a 4-value H: errors, never a
+    // silently truncated frame or a frame without its box.
+    const std::vector<double> x2 = {0.0, 1.0};
+    EXPECT_THROW(
+        molrs::write_xyz(
+            {path.data(), path.size()},
+            ::rust::Slice<const std::int32_t>(type.data(), type.size()),
+            ::rust::Slice<const double>(x2.data(), x2.size()),
+            ::rust::Slice<const double>(x2.data(), x2.size()),
+            ::rust::Slice<const double>(x2.data(), x2.size()),
+            ::rust::Slice<const double>(box.data(), box.size()),
+            rust::Vec<molrs::KeyedMetaValue>{}, /*append=*/false),
+        rust::Error);
+    EXPECT_THROW(
+        molrs::write_xyz(
+            {path.data(), path.size()},
+            ::rust::Slice<const std::int32_t>(type.data(), type.size()),
+            ::rust::Slice<const double>(x.data(), x.size()),
+            ::rust::Slice<const double>(y.data(), y.size()),
+            ::rust::Slice<const double>(z.data(), z.size()),
+            ::rust::Slice<const double>(box.data(), 4),
+            rust::Vec<molrs::KeyedMetaValue>{}, /*append=*/false),
+        rust::Error);
+    remove_path(path);
 }
 
-TEST(MolrsXyzIo, CpuWriteFrameXyzWrapper) {
+TEST(MolrsXyzIo, CpuWriteXyzFrameWrapper) {
     const std::string path = tmp_path("atv_molrs_cpu_write_xyz.xyz");
     remove_path(path);
     const std::array<double, 9> box = {10, 0, 0, 0, 10, 0, 0, 0, 10};
-    ATV::cpu::write_frame_xyz(path, {1}, {0.0}, {0.0}, {0.0}, box,
+    ATV::cpu::write_xyz_frame(path, {1}, {0.0}, {0.0}, {0.0}, box,
                               /*append=*/false);
     EXPECT_TRUE(std::filesystem::exists(path));
     remove_path(path);

@@ -1,7 +1,7 @@
 /// @file cuda/record/recorder.cuh
 /// @brief Recorder -- header-only XYZ trajectory writer (async D2H bridge).
 ///
-/// @see cpu::write_frame_xyz (cpu/io/frame_writer.h — deliberately CUDA-safe)
+/// @see cpu::write_xyz_frame (cpu/io/frame_writer.h — deliberately CUDA-safe)
 #pragma once
 
 #include <array>
@@ -26,7 +26,7 @@ namespace cuda {
 /// tearing from the next step's integrator (a cross-stream race the previous
 /// live-pointer D2H was exposed to).
 ///
-/// Frames go through the molrs-backed `cpu::write_frame_xyz` (extended XYZ
+/// Frames go through the molrs-backed `cpu::write_xyz_frame` (extended XYZ
 /// with a Lattice comment line): the species column is the element symbol
 /// derived from `atoms.type` interpreted as atomic number Z, so non-Z type
 /// ids map to placeholder symbols (e.g. LJ type 0 -> "X"). This replaces the
@@ -117,7 +117,7 @@ class XyzRecorder : public AsyncRecorder {
             box_[static_cast<size_t>(i)] =
                 static_cast<double>(ctx.runtime.host_box.cell[i]);
         // First write truncates any pre-existing file; later writes append.
-        cpu::write_frame_xyz(filename_, htype_, dx_, dy_, dz_, box_,
+        cpu::write_xyz_frame(filename_, htype_, dx_, dy_, dz_, box_,
                              /*append=*/wrote_any_);
         wrote_any_ = true;
     }

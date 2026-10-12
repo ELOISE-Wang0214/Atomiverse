@@ -17,8 +17,8 @@
 #     The gitlink tracks the newest committed molrs commit the preset build was
 #     verified against.
 #   - Surfaces that only some molrs trees carry (WHAM, the streaming
-#     TrajectoryWriter) are detected per tree below, so the submodule pin
-#     still links.
+#     `*.mrec` writer `MrecWriterRef`) are detected per tree below, so the
+#     submodule pin still links. The 0.16 pin is git tag `v0.16.0`.
 
 # Optional molrs surface: multi-window WHAM (WhamCompute) is not yet on every
 # pin. Detect from the CXX bridge source so Atomiverse compiles against the
@@ -35,13 +35,10 @@ function(atv_detect_molrs_wham molrs_root out_var)
     set(${out_var} ${_has} PARENT_SCOPE)
 endfunction()
 
-# Optional molrs surface: the streaming `*.mrec` trajectory writer
-# (`TrajectoryWriterRef`, CXX capability bit 3). Detect from the bridge SOURCE
-# (`build.rs` generates `src/bridge.rs`) so cpu::MrecRecorder and its test are
-# compiled only against a pin that declares it, and a pin that gains it
-# re-triggers configure.
+# Optional molrs surface: the streaming `*.mrec` writer (`MrecWriterRef`).
+# molrs 0.16 declares `fn mrec_writer_create` in the CXX bridge source.
 function(atv_detect_molrs_trajectory_writer molrs_root out_var)
-    set(_bridge_src "${molrs_root}/molrs-cxxapi/build.rs")
+    set(_bridge_src "${molrs_root}/molrs-cxxapi/src/bridge.rs")
     if(NOT CMAKE_SCRIPT_MODE_FILE)
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
                      "${_bridge_src}")
@@ -49,7 +46,7 @@ function(atv_detect_molrs_trajectory_writer molrs_root out_var)
     set(_has OFF)
     if(EXISTS "${_bridge_src}")
         file(READ "${_bridge_src}" _bridge_txt)
-        if(_bridge_txt MATCHES "fn trajectory_writer_create")
+        if(_bridge_txt MATCHES "fn mrec_writer_create")
             set(_has ON)
         endif()
     endif()

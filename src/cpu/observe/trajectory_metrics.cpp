@@ -3,7 +3,7 @@
 /// FFI compute objects and streaming accumulators.
 ///
 /// Bridge always uses f64 (molrs-core hardcodes F = f64). Each batch `compute`
-/// instantiates the matching molrs compute object (`molrs::*_compute_new`),
+/// instantiates the matching molrs analysis (`molrs::msd_new`, `rdf_new`, …),
 /// calls its `compute` method over the flat C++ buffers (as `rust::Slice`), and
 /// copies the returned curve back. The streaming accumulators hold the molrs
 /// object behind a PIMPL (`rust::Box`) and feed it one frame per call. No
@@ -21,7 +21,7 @@ namespace compute {
 
 std::vector<double> MSD::compute(const std::vector<double>& positions,
                                  int n_frames, int n_dof) const {
-    auto obj = molrs::msd_compute_new();
+    auto obj = molrs::msd_new();
     rust::Vec<double> out = obj->compute({positions.data(), positions.size()},
                                          static_cast<std::int64_t>(n_frames),
                                          static_cast<std::int64_t>(n_dof));
@@ -34,7 +34,7 @@ EinsteinDiffusion::EinsteinDiffusion(double dt, int dims, double fit_lo,
 
 double EinsteinDiffusion::compute(const std::vector<double>& positions,
                                   int n_frames, int n_dof) const {
-    auto obj = molrs::diffusion_compute_new(dt_, dims_, fit_lo_, fit_hi_);
+    auto obj = molrs::einstein_diffusion_new(dt_, dims_, fit_lo_, fit_hi_);
     return obj->compute({positions.data(), positions.size()},
                         static_cast<std::int64_t>(n_frames),
                         static_cast<std::int64_t>(n_dof));
@@ -44,8 +44,7 @@ VACF::VACF(double dt, int resolution) : dt_(dt), resolution_(resolution) {}
 
 std::vector<double> VACF::compute(const std::vector<double>& velocities,
                                   int n_frames, int n_dof) const {
-    auto obj =
-        molrs::vacf_compute_new(dt_, static_cast<std::int64_t>(resolution_));
+    auto obj = molrs::vacf_new(dt_, static_cast<std::int64_t>(resolution_));
     rust::Vec<double> out = obj->compute({velocities.data(), velocities.size()},
                                          static_cast<std::int64_t>(n_frames),
                                          static_cast<std::int64_t>(n_dof));
@@ -58,8 +57,8 @@ RDF::RDF(int n_bins, double r_max, double r_min)
 std::vector<double> RDF::compute(const std::vector<double>& positions,
                                  const std::vector<double>& boxes, int n_frames,
                                  int n_atoms) const {
-    auto obj = molrs::rdf_compute_new(static_cast<std::int64_t>(n_bins_),
-                                      r_max_, r_min_);
+    auto obj =
+        molrs::rdf_new(static_cast<std::int64_t>(n_bins_), r_max_, r_min_);
     rust::Vec<double> out = obj->compute({positions.data(), positions.size()},
                                          {boxes.data(), boxes.size()},
                                          static_cast<std::int64_t>(n_frames),

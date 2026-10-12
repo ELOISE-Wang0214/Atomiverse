@@ -115,7 +115,7 @@ Start with these types:
 
 - [`cpu::Thermo`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/record/thermo.h)
 - [`cpu::write_frame_xyz` / `cpu::write_frame_zarr` (molrs-backed single-frame writers; the latter writes a `*.mrec` checkpoint)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/io/frame_writer.h)
-- [`cpu::MrecRecorder` (streaming `*.mrec` MD trajectory Recorder — `set_record`, step stride, `time` axis from the integrator; needs the molrs TrajectoryWriter bridge)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/record/mrec_recorder.h)
+- [`cpu::MrecRecorder` (streaming `*.mrec` MD trajectory Recorder — `set_record`, step stride, `time` axis from the integrator; needs the molrs 0.16 `MrecWriter` bridge)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/record/mrec_recorder.h)
 - [`cpu::MrecWriter` (bare streaming writer beneath the Recorder)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/record/mrec.h)
 - [`ATV::RDF`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observe/rdf.h)
 - [trajectory analysis (`cpu::compute::*` batch computes + streaming accumulators)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observe/trajectory_metrics.h)

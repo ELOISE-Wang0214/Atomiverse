@@ -3,7 +3,7 @@
 ///
 /// Three concerns, one per test: the constructor guards, the stride gate plus
 /// the committed frame count after teardown, and the content of frame 0 read
-/// back through the molrs bridge (`read_first_frame`). The recorder is driven
+/// back through the molrs bridge (`read_mrec_trajectory_frame`). The recorder is driven
 /// through a minimal deterministic LJ `cpu::md::MD` run because `launch()`
 /// reads `ctx.step` and `ctx.runtime` — there is no smaller way to drive it —
 /// but nothing here is a physics claim: frame 0 is compared against the same
@@ -126,11 +126,11 @@ TEST(MrecRecorderTest, StrideGateAppendsThreeFramesCommittedAtTeardown) {
         << "close() must commit every appended frame";
 
     // Independent check through the bridge: reattach and ask the store.
-    auto reopened = molrs::trajectory_writer_open({path.data(), path.size()},
-                                                  /*flush_every=*/1,
-                                                  /*durable=*/false);
-    EXPECT_EQ(molrs::trajectory_writer_committed(*reopened), 3u);
-    molrs::trajectory_writer_close(std::move(reopened));
+    auto reopened = molrs::mrec_writer_open({path.data(), path.size()},
+                                            /*flush_every=*/1,
+                                            /*durable=*/false);
+    EXPECT_EQ(molrs::mrec_writer_committed(*reopened), 3u);
+    molrs::mrec_writer_close(std::move(reopened));
 
     remove_store(path);
 }
@@ -139,7 +139,7 @@ TEST(MrecRecorderTest, StrideGateAppendsThreeFramesCommittedAtTeardown) {
 
 // Frame 0 of a freq-1 run is the state at end_of_step of step 0, i.e. the
 // fixture advanced by exactly one Velocity-Verlet step. Read it back through
-// `read_first_frame` and compare against the same fixture advanced one step
+// `read_mrec_trajectory_frame` and compare against the same fixture advanced one step
 // with no recorder attached — same deterministic recipe, no RNG anywhere.
 TEST(MrecRecorderTest, FirstFrameReadsBackCoordinatesSpeciesAndBox) {
     const std::string path = fresh_tmp_store("atv_mrec_recorder_content.mrec");
@@ -161,13 +161,14 @@ TEST(MrecRecorderTest, FirstFrameReadsBackCoordinatesSpeciesAndBox) {
         sim.run(reference, /*n_steps=*/1);
     }
 
-    auto fr = molrs::read_first_frame({path.data(), path.size()});
+    auto fr = molrs::read_mrec_trajectory_frame({path.data(), path.size()},
+                                                /*index=*/0);
     auto x = molrs::frame_column_f64(*fr, "atoms", "x");
     auto y = molrs::frame_column_f64(*fr, "atoms", "y");
     auto z = molrs::frame_column_f64(*fr, "atoms", "z");
-    auto species = molrs::frame_column_u32(*fr, "atoms", "atomic_number");
+    auto species = molrs::frame_column_u64(*fr, "atoms", "atomic_number");
     auto mass = molrs::frame_column_f64(*fr, "atoms", "mass");
-    auto box = molrs::frame_box(*fr);
+    auto box = molrs::frame_box_h(*fr);
 
     ASSERT_EQ(x.size(), static_cast<std::size_t>(kN));
     ASSERT_EQ(y.size(), static_cast<std::size_t>(kN));
