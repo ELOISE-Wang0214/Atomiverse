@@ -72,7 +72,9 @@
 #ifdef ATV_HAS_IO
 #include "atomiverse/cpu/record/xyz_recorder.h"
 #endif
+#ifdef ATV_HAS_SEMIEMPIRICAL
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
+#endif
 #include "atomiverse/cpu/task/task_materializer.h"
 #include "atomiverse/cpu/task/task_spec.h"
 
@@ -1003,6 +1005,7 @@ TEST(TaskMaterializer, MdXyzRecorderWithoutIoBuildThrows) {
 }
 #endif // ATV_HAS_IO
 
+#ifdef ATV_HAS_SEMIEMPIRICAL
 // ── (c) SinglePoint AM1 equivalence on H2 ───────────────────────────────
 
 /// @brief Fixed-geometry H2 (0.74 Å, 20 Å box) — the ms-scale AM1 fixture
@@ -1136,6 +1139,33 @@ TEST(TaskMaterializer, MdAm1BomdRunMatchesHandBuiltDriverBitwise) {
     ASSERT_NE(direct_frame.span(ATV::kAtom_z)[1], 0.74);
     expect_frames_bitwise_equal(materialized_frame, direct_frame);
 }
+
+#else
+// Gating contract, same shape as the PW one below: `AM1EvaluatorParams` and
+// `SinglePointTask` decode on an SE-less build and must be refused at
+// materialize time, on every AM1 home.
+TEST(TaskMaterializer, Am1PayloadsWithoutSemiempiricalBuildThrow) {
+    auto expect_refused = [](const TaskSpec& spec, const char* what) {
+        try {
+            TaskMaterializer mat(spec);
+            FAIL() << what << " was accepted in an SE-less build";
+        } catch (const std::runtime_error& err) {
+            EXPECT_NE(std::string(err.what()).find("ATV_BUILD_SEMIEMPIRICAL"),
+                      std::string::npos)
+                << err.what();
+        }
+    };
+    expect_refused(TaskSpec(SinglePointTask{AM1EvaluatorParams{}}),
+                   "a SinglePoint task");
+
+    std::vector<MDComponentEntry> entries;
+    entries.push_back(
+        MDComponentEntry{VelocityVerletParams{kDt}, std::nullopt});
+    entries.push_back(MDComponentEntry{AM1EvaluatorParams{}, std::nullopt});
+    expect_refused(TaskSpec(MDTask{std::move(entries), 1}),
+                   "an AM1Evaluator MD entry");
+}
+#endif // ATV_HAS_SEMIEMPIRICAL
 
 // ── (c″) MD with a plane-wave force source — PW BOMD ────────────────────
 
@@ -1612,8 +1642,10 @@ TEST(TaskMaterializer, KindReportsTaskKindOfTheSpec) {
     const TaskSpec md_spec(MDTask{std::move(entries), 1});
     EXPECT_EQ(TaskMaterializer(md_spec).kind(), TaskKind::MD);
 
+#ifdef ATV_HAS_SEMIEMPIRICAL
     const TaskSpec sp_spec(SinglePointTask{AM1EvaluatorParams{}});
     EXPECT_EQ(TaskMaterializer(sp_spec).kind(), TaskKind::SinglePoint);
+#endif
 
     std::vector<MinimizeComponentEntry> min_entries;
     min_entries.push_back(MinimizeComponentEntry{

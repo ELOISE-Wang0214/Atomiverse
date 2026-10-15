@@ -45,7 +45,9 @@
 #ifdef ATV_HAS_IO
 #include "atomiverse/cpu/record/xyz_recorder.h"
 #endif
+#ifdef ATV_HAS_SEMIEMPIRICAL
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
+#endif
 #include "atomiverse/cpu/task/internal/minimize_builders.h"
 #include "atomiverse/cpu/task/internal/potential_builders.h"
 
@@ -111,6 +113,24 @@ namespace {
 [[noreturn]] void throw_pw_not_built() {
     throw std::runtime_error("PWEvaluator requires ATV_BUILD_PW=ON "
                              "(plane-wave solver not compiled in)");
+}
+#endif
+
+#ifndef ATV_HAS_SEMIEMPIRICAL
+/// @brief Reject an `AM1EvaluatorParams` entry, or a `SinglePointTask`, in a
+///        build without the semiempirical domain.
+///
+/// `cpu::semiempirical::AM1` sits behind the `ATV_BUILD_SEMIEMPIRICAL` build
+/// flag, while the wire mirror `AM1EvaluatorParams` is compiled
+/// unconditionally. A payload naming AM1 therefore still *decodes* on an
+/// SE-less build and has to be refused here, at the point where the
+/// component would be constructed. Every AM1 home — explicit binding,
+/// categorical setter, single point — hits this one thrower.
+///
+/// @throws std::runtime_error Always, naming the flag to rebuild with.
+[[noreturn]] void throw_semiempirical_not_built() {
+    throw std::runtime_error("AM1Evaluator requires ATV_BUILD_SEMIEMPIRICAL=ON "
+                             "(semiempirical domain not compiled in)");
 }
 #endif
 
@@ -181,12 +201,14 @@ cpu::md::NoseHooverNPT ramped_nose_hoover_npt(const NoseHooverNptParams& p,
 ///          density residual tolerance, energy tolerance [eV]).
 /// @return Evaluator with gradients enabled, ready for either registration
 ///         path.
+#ifdef ATV_HAS_SEMIEMPIRICAL
 cpu::semiempirical::AM1Evaluator gradient_am1(const AM1EvaluatorParams& p) {
     cpu::semiempirical::AM1Evaluator evaluator{
         p.charge, p.multiplicity, p.max_iter, p.density_tol, p.energy_tol};
     evaluator.with_gradient(true);
     return evaluator;
 }
+#endif
 
 #ifdef ATV_HAS_PW
 /// @brief Build a `PWEvaluator` that computes nuclear forces.
@@ -337,9 +359,13 @@ void register_md_entry(md::MD& driver, const MDComponentEntry& entry,
                 else if constexpr (std::is_same_v<P, BerendsenBarostatParams>)
                     bind(cpu::md::Barostat{p.P_target, p.tau_P, p.dt,
                                            p.bulk_modulus});
-                else if constexpr (std::is_same_v<P, AM1EvaluatorParams>)
+                else if constexpr (std::is_same_v<P, AM1EvaluatorParams>) {
+#ifdef ATV_HAS_SEMIEMPIRICAL
                     bind(gradient_am1(p));
-                else if constexpr (std::is_same_v<P, PwEvaluatorParams>) {
+#else
+                    throw_semiempirical_not_built();
+#endif
+                } else if constexpr (std::is_same_v<P, PwEvaluatorParams>) {
 #ifdef ATV_HAS_PW
                     bind(gradient_pw(p));
 #else
@@ -425,9 +451,13 @@ void register_md_entry(md::MD& driver, const MDComponentEntry& entry,
             else if constexpr (std::is_same_v<P, BerendsenBarostatParams>)
                 driver.set_barostat(cpu::md::Barostat{p.P_target, p.tau_P, p.dt,
                                                       p.bulk_modulus});
-            else if constexpr (std::is_same_v<P, AM1EvaluatorParams>)
+            else if constexpr (std::is_same_v<P, AM1EvaluatorParams>) {
+#ifdef ATV_HAS_SEMIEMPIRICAL
                 driver.set_evaluator(gradient_am1(p));
-            else if constexpr (std::is_same_v<P, PwEvaluatorParams>) {
+#else
+                throw_semiempirical_not_built();
+#endif
+            } else if constexpr (std::is_same_v<P, PwEvaluatorParams>) {
 #ifdef ATV_HAS_PW
                 driver.set_evaluator(gradient_pw(p));
 #else
@@ -527,6 +557,7 @@ TaskMaterializer::TaskMaterializer(const TaskSpec& spec) : kind_(spec.kind()) {
     }
 
     if (kind_ == TaskKind::SinglePoint) {
+#ifdef ATV_HAS_SEMIEMPIRICAL
         const auto& p = spec.single_point().evaluator;
         eval_.emplace();
         eval_->set_serial_on_replica();
@@ -536,6 +567,9 @@ TaskMaterializer::TaskMaterializer(const TaskSpec& spec) : kind_(spec.kind()) {
                                              p.energy_tol});
         eval_->build();
         return;
+#else
+        throw_semiempirical_not_built();
+#endif
     }
 
     const auto& task = spec.minimize();
