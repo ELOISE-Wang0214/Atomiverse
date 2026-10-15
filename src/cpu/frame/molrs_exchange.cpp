@@ -17,6 +17,7 @@
 #include "../io/molrs_meta.h"
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
+#include "rust/cxx.h"
 
 namespace ATV {
 namespace cpu {
@@ -167,13 +168,21 @@ void write_f64(molrs::FrameRef& dst, const char* key, const T* source, int n) {
         ::rust::Slice<const double>(values.data(), values.size()));
 }
 
-} // namespace
-
-Frame from_molrs(const molrs::FrameRef& src) {
+/// @brief The body of from_molrs; its molrs reads may raise `rust::Error`
+/// (a column of another dtype), which from_molrs names.
+Frame materialize(const molrs::FrameRef& src) {
     validate_exchange_schema(src);
     auto x = require_f64(src, "atoms", "x");
     auto y = require_f64(src, "atoms", "y");
     auto z = require_f64(src, "atoms", "z");
+    // molrs converts species only on request (Element::fill_atomic_numbers);
+    // a frame that spells symbols alone is named, not silently converted.
+    if (!has_column(src, "atoms", "atomic_number")
+        && has_column(src, "atoms", "element"))
+        throw std::runtime_error(
+            "cpu::from_molrs: atoms carry 'element' symbols but no "
+            "'atomic_number'; convert them first (molrs "
+            "Element::fill_atomic_numbers / frame_fill_atomic_numbers)");
     auto type = require_u64(src, "atoms", "atomic_number");
     const int n = static_cast<int>(x.size());
     if (static_cast<int>(y.size()) != n || static_cast<int>(z.size()) != n
@@ -280,6 +289,16 @@ Frame from_molrs(const molrs::FrameRef& src) {
     }
     internal::decode_molrs_meta(src, frame.meta);
     return frame;
+}
+
+} // namespace
+
+Frame from_molrs(const molrs::FrameRef& src) {
+    try {
+        return materialize(src);
+    } catch (const ::rust::Error& e) {
+        throw std::runtime_error(std::string("cpu::from_molrs: ") + e.what());
+    }
 }
 
 void to_molrs(const Frame& src, molrs::FrameRef& dst) {

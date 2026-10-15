@@ -105,7 +105,7 @@ bool parse_gr_file(const std::string& filename, std::vector<double>& r_out,
 /// Host reference: feed the SAME single (pristine) frame once into the molrs
 /// streaming accumulator — positions blocked x|y|z widened to double, cell as
 /// a row-major 9-element cubic matrix [Å]. One accepted frame normalizes to
-/// the same g(r) as N identical frames. Empty on a rejected frame.
+/// the same g(r) as N identical frames. A rejected frame throws.
 std::vector<double> host_reference_gr(const cpu::Frame& frame, int n,
                                       double box_len) {
     std::vector<double> positions(static_cast<std::size_t>(3 * n));
@@ -119,10 +119,9 @@ std::vector<double> host_reference_gr(const cpu::Frame& frame, int n,
     }
     const std::array<double, 9> cell = {box_len, 0.0, 0.0, 0.0,    box_len,
                                         0.0,     0.0, 0.0, box_len};
-    cpu::compute::RDFAccumulator acc{kNBins, kRMax, /*r_min=*/0.0};
-    if (!acc.accumulate(positions, cell))
-        return {};
-    return acc.finalize();
+    auto acc = cpu::compute::RDF{kNBins, kRMax, /*r_min=*/0.0}.accumulator();
+    acc.push(positions, cell);
+    return acc.finish().rdf;
 }
 
 /// RAII cleanup for the g(r) output file (mirrors the CPU observer test).
@@ -160,7 +159,7 @@ TEST(RDFMolrs, FileMatchesHostAccumulatorPerBin) {
 
     auto ref = host_reference_gr(frame, n, box_len);
     ASSERT_EQ(static_cast<int>(ref.size()), kNBins)
-        << "host RDFAccumulator rejected the reference frame";
+        << "host RDFAccumulator returned the wrong bin count";
 
     const double bin_width = kRMax / double(kNBins);
     for (int i = 0; i < kNBins; ++i) {
@@ -199,8 +198,8 @@ TEST(RDFMolrs, NearestNeighborLatticeBinNonZero) {
 
 // ── Edge cases: fail-fast construction (no-fallback) ──────────────────────
 
-/// Post-migration the constructor directly constructs the molrs accumulator:
-/// n_bins < 1 must throw std::invalid_argument at construction time.
+/// The constructor builds the molrs accumulator, so molrs `Rdf::new` refuses
+/// n_bins < 1 at construction time (std::invalid_argument).
 TEST(RDFMolrs, CtorThrowsOnInvalidBinCount) {
     EXPECT_THROW(cuda::RDF(kRMax, 0, "unused_rdf.dat"), std::invalid_argument);
 }

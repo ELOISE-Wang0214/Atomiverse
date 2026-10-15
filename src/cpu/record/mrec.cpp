@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "../io/molrs_species.h"
 #include "../io/readable_path.h"
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
@@ -45,17 +46,16 @@ struct MrecWriter::Impl {
         to_molrs(src, dst);
 
         const int n = src.nlocal();
-        z_scratch.resize(static_cast<std::size_t>(n));
+        // kAtom_type carries Z; a negative value is refused, not wrapped.
+        internal::molrs_atomic_numbers(src.span(kAtom_type).data(),
+                                       static_cast<std::size_t>(n), z_scratch,
+                                       "cpu::MrecWriter");
         mass_scratch.resize(static_cast<std::size_t>(n));
         // Hoisted once before the loop -- the 13.7x rule.
-        const int* __restrict sp_type = src.span(kAtom_type);
         const StorageReal* __restrict sp_mass = src.span(kAtom_mass);
-        for (int i = 0; i < n; ++i) {
-            z_scratch[static_cast<std::size_t>(i)] =
-                static_cast<std::uint64_t>(sp_type[i]);
+        for (int i = 0; i < n; ++i)
             mass_scratch[static_cast<std::size_t>(i)] =
                 static_cast<double>(sp_mass[i]);
-        }
         molrs::frame_set_column_u64(dst, "atoms", "atomic_number",
                                     ::rust::Slice<const std::uint64_t>(
                                         z_scratch.data(), z_scratch.size()));

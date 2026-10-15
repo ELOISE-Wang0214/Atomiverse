@@ -18,8 +18,9 @@
 #     verified against.
 #   - Surfaces that only some molrs trees carry (WHAM, the streaming
 #     `*.mrec` writer `MrecWriterRef`) are detected per tree below, so the
-#     submodule pin still links. The pin is local molrs `dev` `f786a891`
-#     (workspace version 0.17.0; no release tag yet).
+#     submodule pin still links. The pin is molrs `3947e341` on branch
+#     `refactor/atomic-number-species` (workspace version 0.18.0; atomic_number
+#     species + single-door API; no release tag yet).
 
 # Optional molrs surface: multi-window WHAM (WhamCompute) is not yet on every
 # pin. Detect from the CXX bridge source so Atomiverse compiles against the

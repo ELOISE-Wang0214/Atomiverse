@@ -95,6 +95,17 @@ TEST(MolrsFrameColumns, MissingColumnIsEmptyNotThrow) {
     EXPECT_TRUE(molrs::frame_column_f64(*fr, "missing", "x").empty());
 }
 
+// A column read as another dtype is the caller's schema bug: an error, never
+// an empty read that looks like an absent column.
+TEST(MolrsFrameColumns, MismatchedDtypeThrows) {
+    auto fr = one_atom_frame();
+    EXPECT_THROW(molrs::frame_column_i32(*fr, "atoms", "x"), rust::Error);
+    EXPECT_THROW(molrs::frame_column_f64(*fr, "atoms", "atomic_number"),
+                 rust::Error);
+    EXPECT_THROW(molrs::frame_column_u64(*fr, "atoms", "mass"), rust::Error);
+    EXPECT_THROW(molrs::frame_column_str(*fr, "atoms", "x"), rust::Error);
+}
+
 TEST(MolrsFrameColumns, BoxRoundTripNineDoubles) {
     auto fr = one_atom_frame();
     auto h = molrs::frame_box_h(*fr);

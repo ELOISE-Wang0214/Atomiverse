@@ -2,13 +2,13 @@
 /// @brief CPU async mean-squared-displacement observer (molrs-backed,
 /// streaming).
 ///
-/// LAMMPS `compute msd`-shaped: the C++ engine *measures* (each captured
-/// `FrameSnapshot`'s positions are packed into a reusable scratch on the
-/// analysis worker thread); molrs *analyzes* (`MsdAccumulator`: Direct-mode
-/// curve with frame 0 as reference, plus windowed-MSD sums for the Einstein-D
-/// fit, folded frame-by-frame). Memory is O(window · n_atoms) for the lag
-/// ring — never O(trajectory). No analysis math and no record type live in
-/// C++ — see molrs/src/compute/msd/.
+/// The C++ engine *measures* (each captured `FrameSnapshot`'s positions and
+/// cell are packed into a reusable scratch on the analysis worker thread);
+/// molrs *analyzes* (`compute::Msd` over all time origins — the windowed
+/// estimator — folded frame-by-frame through its `CorrelatorAccumulator`, then
+/// the Einstein slope through `compute::LinearFit`). Memory is
+/// O(window · n_atoms) for the lag ring — never O(trajectory). No analysis
+/// math and no record type live in C++ — see molrs/src/compute/time_series/.
 ///
 /// Backend-uniform: regardless of the producing driver/backend, snapshots are
 /// delivered to the CPU analysis executor's ring buffer (CUDA frames after
@@ -29,9 +29,15 @@ namespace ATV {
 
 /// @brief MD async mean-squared-displacement observer.
 ///
-/// Streams positions from each captured `FrameSnapshot` into the molrs
-/// `MsdAccumulator`; `finalize()` reads the Direct-mode MSD(t) curve and the
-/// Einstein D (windowed-MSD slope fit) and writes them to file.
+/// Streams positions + cell from each captured `FrameSnapshot` into the molrs
+/// MSD accumulator; `finalize()` reads the all-origins MSD(t) curve over lags
+/// `0..=window`, composes the Einstein D = slope / (2·3) from a molrs
+/// `LinearFit` over the 20–80 % lag window, and writes both to file.
+///
+/// The positions must be continuous across periodic boundaries: the cell is
+/// passed with every frame, so molrs refuses a frame whose step from the
+/// previous one exceeds half the cell height (a wrapped trajectory) and the
+/// refusal is reported at `finalize()`.
 ///
 /// Usage:
 /// @code{.cpp}
@@ -44,15 +50,16 @@ namespace ATV {
 /// @endcode
 class MSD : public cpu::md::AsyncObserver {
   public:
-    /// @param dt          time between captured frames [fs] (= timestep * freq).
+    /// @param dt          time between captured frames [fs] (= timestep * freq;
+    ///                    > 0).
     /// @param freq        capture every `freq` steps (0 = every snapshot).
     /// @param output_file MSD(t) output path.
-    /// @param window      max lag [captured frames] resolved by the windowed
-    ///                    Einstein-D fit; bounds the position ring to
-    ///                    O(window · n_atoms) memory. Runs shorter than
-    ///                    `window` frames reproduce the full-trajectory
-    ///                    windowed fit exactly. 0 disables the fit (D = NaN).
-    /// @throws std::invalid_argument when `window` is negative.
+    /// @param window      max lag [captured frames] of the curve and the
+    ///                    Einstein fit (>= 1); bounds the position ring to
+    ///                    O(window · n_atoms) memory. The run must capture at
+    ///                    least `window + 1` frames — molrs refuses a lag with
+    ///                    no origin rather than clamping it.
+    /// @throws std::invalid_argument when `dt <= 0` or `window < 1`.
     explicit MSD(double dt, int freq = 0, std::string output_file = "msd.dat",
                  int window = 256);
 
@@ -69,10 +76,11 @@ class MSD : public cpu::md::AsyncObserver {
     void on_snapshot(const cpu::FrameSnapshot& snap) override;
     void finalize() override;
 
-    /// @brief The last computed MSD(t) curve (index 0 = 0). For inspection/tests.
+    /// @brief The MSD(t) curve [Å²] over lags `0..=window` (index 0 = 0);
+    /// empty until a successful `finalize()`. For inspection/tests.
     const std::vector<double>& curve() const { return msd_curve_; }
     /// @brief Einstein diffusion coefficient D [Å²/fs] from the last
-    /// finalize() (NaN if not yet computed / too few frames / window == 0).
+    /// `finalize()`; NaN until one succeeds.
     double diffusion() const { return d_; }
     int n_frames() const { return n_frames_; }
     const std::string& output_file() const { return output_file_; }
@@ -83,13 +91,13 @@ class MSD : public cpu::md::AsyncObserver {
     std::string output_file_;
     int window_;
 
-    cpu::ConstantCountGate gate_;      ///< constant-atom-count admission gate
-    std::vector<double> scratch_;      ///< reused blocked x|y|z packing buffer
-    cpu::compute::MSDAccumulator acc_; ///< molrs streaming MSD state
+    cpu::ConstantCountGate gate_;  ///< constant-atom-count admission gate
+    cpu::RejectedFrames rejected_; ///< frames the molrs accumulator refused
+    std::vector<double> scratch_;  ///< reused blocked x|y|z packing buffer
+    cpu::compute::CorrelatorAccumulator acc_; ///< molrs streaming MSD state
     int n_frames_ = 0;
     std::vector<double> msd_curve_;
-    double d_ =
-        0.0; ///< Einstein diffusion coefficient from the last finalize().
+    double d_; ///< Einstein D from the last finalize() (NaN until then)
 };
 
 } // namespace ATV

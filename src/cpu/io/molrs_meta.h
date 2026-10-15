@@ -7,6 +7,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "atomiverse/cpu/frame/meta.h"
 #include "atomiverse/molrs.hpp"
@@ -39,8 +40,11 @@ void append_values(rust::Vec<T>& destination, const std::array<T, N>& source) {
         destination.push_back(value);
 }
 
-inline rust::Vec<molrs::KeyedMetaValue> encode_molrs_meta(const MetaMap& meta) {
-    rust::Vec<molrs::KeyedMetaValue> out;
+// A std::vector, not a rust::Vec: the bridge passes metadata one value at a
+// time (`frame_set_meta`), so cxx emits no `rust::Vec<KeyedMetaValue>`.
+inline std::vector<molrs::KeyedMetaValue>
+encode_molrs_meta(const MetaMap& meta) {
+    std::vector<molrs::KeyedMetaValue> out;
     for (const SerializableMetaRef& source : meta.serializable_entries()) {
         molrs::KeyedMetaValue entry{};
         entry.key = rust::String(std::string(source.key));

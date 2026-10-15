@@ -12,7 +12,7 @@ CUDA counterparts: Mulliken, RDF, stress only.
 | ---------- | ----- | --------- |
 | RDF g(r) | `RDF` (+ CUDA); math in molrs | **No ATV e2e regression** — molrs-side only |
 | MSD / VACF | AsyncObservers | Unit tests; numerics molrs-side |
-| Batch trajectory metrics | `trajectory_metrics.h` PIMPL | molrs tests only |
+| Trajectory-metric accumulators (MSD / VACF / RDF, streaming only) | `trajectory_metrics.h` PIMPL | Unit tests; numerics molrs-side |
 | Electron density grid | `DensityGrid` | Via cube Recorder unit test |
 | Species density profile | `SpeciesDensityProfile` | Unit + EDL box regression |
 | Multipole / dipole | `MultipoleObserver` | PySCF-pinned |

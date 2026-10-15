@@ -1,18 +1,23 @@
 /// @file cpu/observe/constant_count_gate.h
 /// @brief Shared measure-side skeleton for trajectory observers: the
-/// constant-atom-count admission gate and the blocked-x|y|z snapshot packer.
+/// constant-atom-count admission gate, the molrs-rejection tally and the
+/// blocked-x|y|z / cell-matrix snapshot packers.
 ///
 /// The async trajectory observers (RDF/MSD/VACF) require a constant atom count
 /// across the captured window (single-rank MVP; no migration). Each previously
 /// copy-pasted the first-frame latch + mismatch drop; this header is the single
-/// implementation. Dropped frames are counted so `finalize()` can warn instead
-/// of losing data silently.
+/// implementation. Dropped and molrs-rejected frames are counted so
+/// `finalize()` can warn instead of losing data silently.
 #pragma once
 
+#include <array>
 #include <cstddef>
+#include <exception>
+#include <string>
 #include <vector>
 
 #include "atomiverse/core/precision.h"
+#include "atomiverse/cpu/frame/box.h"
 
 namespace ATV {
 namespace cpu {
@@ -46,6 +51,45 @@ class ConstantCountGate {
     int n_atoms_ = 0;
     BigInt n_dropped_ = 0;
 };
+
+/// @brief Tally of snapshots the molrs accumulator refused.
+///
+/// `on_snapshot` runs on an analysis worker thread, where an escaping
+/// exception would terminate the process; an observer catches the molrs
+/// refusal there, records it here, and reports the tally in `finalize()`.
+class RejectedFrames {
+  public:
+    /// @brief Count one refused frame; the first reason is kept verbatim.
+    /// @param why the exception molrs raised for the frame.
+    void record(const std::exception& why) {
+        if (count_ == 0)
+            first_reason_ = why.what();
+        ++count_;
+    }
+
+    /// @brief Number of refused frames.
+    BigInt count() const { return count_; }
+    /// @brief The molrs message of the first refused frame (empty if none).
+    const std::string& first_reason() const { return first_reason_; }
+
+  private:
+    BigInt count_ = 0;
+    std::string first_reason_;
+};
+
+/// @brief A snapshot's cell matrix H as molrs takes it: row-major, widened to
+/// double.
+/// @param box the snapshot's cell [Å].
+/// @return the nine values of `box.cell()` [Å], row-major.
+inline std::array<double, 9> cell_matrix(const Box& box) {
+    std::array<double, 9> h{};
+    const auto& c = box.cell();
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            h[static_cast<std::size_t>(i * 3 + j)] =
+                static_cast<double>(c(i, j));
+    return h;
+}
 
 /// @brief Pack one snapshot's three per-atom fields into a reusable blocked
 /// `a|b|c` scratch buffer (`scratch[0..n) = a`, `[n..2n) = b`, `[2n..3n) = c`).

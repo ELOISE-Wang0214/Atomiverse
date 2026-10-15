@@ -2,13 +2,17 @@
 /// @brief XYZ writer — delegating to molrs FFI, one frame at a time.
 
 #include "atomiverse/cpu/record/xyz.h"
+#include "../io/molrs_atoms_frame.h"
 #include "../io/molrs_meta.h"
+#include "../io/molrs_species.h"
+#include "../io/readable_path.h"
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/molrs.hpp"
 
 #include <array>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ATV {
@@ -18,22 +22,24 @@ namespace {
 /// @brief Stopgap launch-boundary span resolution for a `const cpu::Frame&`.
 ///
 /// Extract one frame's raw arrays (atomic number, x, y, z, cell matrix H) for
-/// the molrs writer.
-void extract(const Frame& frame, std::vector<int>& type_id,
+/// the molrs writer. `kAtom_type` carries Z (the engine keys species on the
+/// atomic number; `from_molrs` fills it from `atoms.atomic_number`), so it
+/// crosses as molrs' `atomic_number` unchanged.
+void extract(const Frame& frame, std::vector<std::uint64_t>& atomic_number,
              std::vector<double>& x, std::vector<double>& y,
              std::vector<double>& z, std::array<double, 9>& box) {
     const int n = static_cast<int>(frame.nlocal());
-    type_id.resize(n);
+    // Hoisted once before the loop -- the 13.7x rule.
+    const int* __restrict sp_type = frame.span(kAtom_type);
+    internal::molrs_atomic_numbers(sp_type, static_cast<std::size_t>(n),
+                                   atomic_number, "cpu::XYZ");
     x.resize(n);
     y.resize(n);
     z.resize(n);
-    // Hoisted once before the loop -- the 13.7x rule.
-    const int* __restrict sp_type = frame.span(kAtom_type);
     const StorageReal* __restrict sp_x = frame.span(kAtom_x);
     const StorageReal* __restrict sp_y = frame.span(kAtom_y);
     const StorageReal* __restrict sp_z = frame.span(kAtom_z);
     for (int i = 0; i < n; ++i) {
-        type_id[i] = sp_type[i];
         x[i] = static_cast<double>(sp_x[i]);
         y[i] = static_cast<double>(sp_y[i]);
         z[i] = static_cast<double>(sp_z[i]);
@@ -55,15 +61,17 @@ void XYZ::append(const Frame& frame) { write_impl(frame, /*append=*/true); }
 
 void XYZ::write_impl(const Frame& frame, bool append) {
     std::array<double, 9> box{};
-    extract(frame, type_id_, x_, y_, z_, box);
-    molrs::write_xyz(
-        {filename_.data(), filename_.size()},
-        {reinterpret_cast<const std::int32_t*>(type_id_.data()),
-         type_id_.size()},
-        {x_.data(), x_.size()}, {y_.data(), y_.size()}, {z_.data(), z_.size()},
+    extract(frame, atomic_number_, x_, y_, z_, box);
+    // The bridge message does not name the file; with_molrs_context does.
+    internal::with_molrs_context("cpu::XYZ", filename_, [&] {
         // No periodic cell (det == 0) crosses as no box, as in to_molrs.
-        {box.data(), frame.box.volume() > 0.0 ? box.size() : 0},
-        internal::encode_molrs_meta(frame.meta), append);
+        auto out = internal::molrs_atoms_frame(
+            atomic_number_, x_, y_, z_,
+            {box.data(), frame.box.volume() > 0.0 ? box.size() : 0});
+        for (auto& entry : internal::encode_molrs_meta(frame.meta))
+            molrs::frame_set_meta(*out, std::move(entry));
+        molrs::write_xyz({filename_.data(), filename_.size()}, *out, append);
+    });
 }
 
 } // namespace cpu

@@ -43,7 +43,8 @@ namespace cpu {
 ///
 /// @param src molrs.Frame to read (introspected by block/column name).
 /// @return Newly constructed cpu::Frame with all available fields filled.
-/// @throws std::runtime_error if a required field is missing.
+/// @throws std::runtime_error if a required field is missing, or a column
+/// has another dtype than this boundary reads (named by molrs).
 Frame from_molrs(const molrs::FrameRef& src);
 
 /// @brief Export a cpu::Frame into an existing molrs.Frame.

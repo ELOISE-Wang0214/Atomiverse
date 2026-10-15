@@ -3,6 +3,8 @@
 
 #include <cmath>
 #include <cstdint>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -64,6 +66,42 @@ TEST(MolrsFrameExchange, ToMolrsWritesBackPositions) {
 TEST(MolrsFrameExchange, MissingAtomsBlockThrows) {
     auto fr = molrs::frame_new();
     EXPECT_THROW(ATV::cpu::from_molrs(*fr), std::runtime_error);
+}
+
+// Species cross as Z only. A frame spelling symbols alone is refused with the
+// conversion named; after the explicit molrs conversion
+// (frame_fill_atomic_numbers) it materializes with Z in kAtom_type.
+TEST(MolrsFrameExchange, ElementSymbolsNeedTheExplicitConversion) {
+    auto fr = molrs::frame_new();
+    const std::vector<double> x = {0.0, 0.96};
+    const std::vector<double> zero = {0.0, 0.0};
+    molrs::frame_set_column_f64(
+        *fr, "atoms", "x", ::rust::Slice<const double>(x.data(), x.size()));
+    molrs::frame_set_column_f64(
+        *fr, "atoms", "y",
+        ::rust::Slice<const double>(zero.data(), zero.size()));
+    molrs::frame_set_column_f64(
+        *fr, "atoms", "z",
+        ::rust::Slice<const double>(zero.data(), zero.size()));
+    const std::vector<::rust::String> symbols = {"O", "H"};
+    molrs::frame_set_column_str(
+        *fr, "atoms", "element",
+        ::rust::Slice<const ::rust::String>(symbols.data(), symbols.size()));
+
+    try {
+        (void)ATV::cpu::from_molrs(*fr);
+        FAIL() << "from_molrs accepted a frame without atomic_number";
+    } catch (const std::runtime_error& e) {
+        EXPECT_NE(std::string(e.what()).find("fill_atomic_numbers"),
+                  std::string::npos)
+            << e.what();
+    }
+
+    molrs::frame_fill_atomic_numbers(*fr);
+    ATV::cpu::Frame frame = ATV::cpu::from_molrs(*fr);
+    ASSERT_EQ(frame.nlocal(), 2);
+    EXPECT_EQ(frame.span(ATV::kAtom_type)[0], 8);
+    EXPECT_EQ(frame.span(ATV::kAtom_type)[1], 1);
 }
 
 } // namespace

@@ -4,15 +4,17 @@
 /// Freezes frame positions + the per-frame cell into a device-ring slot and
 /// streams every captured frame into the molrs g(r) accumulator
 /// (`cpu::compute::RDFAccumulator`). All binning + shell-volume normalization
-/// happens in molrs — no analysis math in C++; the normalized curve is written
-/// in destroy() via the single g(r) emitter `cpu::rdf_write_curve`.
+/// happens in molrs — no analysis math in C++; the normalized curve and its
+/// molrs bin centers are written in destroy() via the single g(r) emitter
+/// `cpu::rdf_write_curve`.
 ///
-/// @see cpu::compute::RDFAccumulator (cpu/observer/trajectory_metrics.h)
-/// @see cpu::rdf_write_curve (cpu/observer/rdf_curve.h)
+/// @see cpu::compute::RDFAccumulator (cpu/observe/trajectory_metrics.h)
+/// @see cpu::rdf_write_curve (cpu/observe/rdf_curve.h)
 #pragma once
 
 #include <array>
 #include <cstdio>
+#include <exception>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,10 +46,10 @@ class RDF : public AsyncObserver {
     /// @param r_max upper edge of the last bin [Å] (> 0). @param n_bins radial
     /// bin count (>= 1). @param filename g(r) output path.
     /// @throws std::invalid_argument on out-of-range parameters (fail-fast,
-    /// no-fallback — thrown by the molrs accumulator constructor).
+    /// no-fallback — refused by molrs `Rdf::new`).
     RDF(double r_max, int n_bins, std::string filename)
-        : r_max_(r_max), n_bins_(n_bins), filename_(std::move(filename)),
-          acc_(n_bins, r_max, /*r_min=*/0.0) {}
+        : filename_(std::move(filename)),
+          acc_(cpu::compute::RDF{n_bins, r_max, /*r_min=*/0.0}.accumulator()) {}
 
     ~RDF() override = default;
     RDF(RDF&&) noexcept = default;
@@ -109,8 +111,13 @@ class RDF : public AsyncObserver {
         for (int i = 0; i < 9; ++i)
             cell[static_cast<size_t>(i)] =
                 static_cast<double>(h_cell_[slot][i]);
-        if (!acc_.accumulate(pos_, cell))
+        // Host callback: a molrs refusal is counted for on_destroy(), never
+        // thrown across the stream callback.
+        try {
+            acc_.push(pos_, cell);
+        } catch (const std::exception&) {
             ++n_rejected_;
+        }
     }
 
     void on_destroy(const DestroyContext&) override {
@@ -124,11 +131,13 @@ class RDF : public AsyncObserver {
                          n_rejected_);
         }
         if (acc_.n_frames() > 0) {
-            const std::vector<double> gr = acc_.finalize();
-            if (!gr.empty())
-                cpu::rdf_write_curve(filename_, gr, /*r_min=*/0.0,
-                                     r_max_ / static_cast<double>(n_bins_),
-                                     n_bins_);
+            try {
+                const cpu::compute::RDFResult result = acc_.finish();
+                cpu::rdf_write_curve(filename_, result.bin_centers, result.rdf);
+            } catch (const std::exception& e) {
+                std::fprintf(stderr, "[cuda::rdf] %s not written: %s\n",
+                             filename_.c_str(), e.what());
+            }
         }
         for (int i = 0; i < kRingDepth; ++i) {
             if (d_pos_[i]) {
@@ -151,8 +160,6 @@ class RDF : public AsyncObserver {
     }
 
   private:
-    double r_max_;
-    int n_bins_;
     std::string filename_;
     cpu::compute::RDFAccumulator acc_; ///< molrs streaming g(r) state
 

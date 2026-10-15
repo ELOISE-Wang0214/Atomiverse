@@ -4,7 +4,8 @@
 /// The molrs bridge readers and writers are fallible —
 /// `fn read_xyz(path: &str) -> Result<Box<FrameRef>>` and the same for
 /// `read_mrec_frame`, `read_mrec_trajectory_frame`, `write_xyz`,
-/// `write_mrec_frame`, `frame_set_box_h` and the four `frame_set_column_*`.
+/// `write_mrec_frame`, `frame_set_box_h`, the four `frame_set_column_*` and
+/// the four `frame_column_*` readers (a column of another dtype).
 /// cxx maps `Result<T>` to a C++ function returning `T` that throws
 /// `rust::Error`, which derives from `std::exception`, so a caller's `catch`
 /// sees these failures.

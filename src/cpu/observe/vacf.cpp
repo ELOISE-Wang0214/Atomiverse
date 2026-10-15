@@ -5,16 +5,28 @@
 #include "atomiverse/cpu/observe/vacf.h"
 
 #include <cstddef>
+#include <exception>
 #include <fstream>
+#include <stdexcept>
 #include <utility>
 
 #include "atomiverse/core/log.h"
 
 namespace ATV {
 
+namespace {
+double require_positive_dt(double dt) {
+    if (!(dt > 0.0))
+        throw std::invalid_argument(
+            "VACF: dt (time between captured frames, fs) must be > 0");
+    return dt;
+}
+} // namespace
+
 VACF::VACF(double dt, int resolution, int freq, std::string output_file)
-    : dt_(dt), resolution_(resolution), freq_(freq),
-      output_file_(std::move(output_file)), acc_(resolution) {}
+    : dt_(require_positive_dt(dt)), resolution_(resolution), freq_(freq),
+      output_file_(std::move(output_file)),
+      acc_(cpu::compute::VACF{resolution}.accumulator()) {}
 
 void VACF::on_snapshot(const cpu::FrameSnapshot& snap) {
     const int n = snap.n_owned;
@@ -25,8 +37,14 @@ void VACF::on_snapshot(const cpu::FrameSnapshot& snap) {
 
     // Snapshot velocity fields are double (widened from StorageReal at capture).
     cpu::pack_blocked(scratch_, snap.vx, snap.vy, snap.vz, n);
-    if (acc_.accumulate(scratch_))
+    // Worker thread: a molrs refusal is tallied for finalize(), never thrown
+    // out of the analysis executor.
+    try {
+        acc_.push(scratch_, dt_);
         ++n_frames_;
+    } catch (const std::exception& e) {
+        rejected_.record(e);
+    }
 }
 
 void VACF::finalize() {
@@ -34,18 +52,34 @@ void VACF::finalize() {
         ATV_WARN("[vacf] dropped {} snapshot(s) with changed atom count "
                  "(constant count required)",
                  gate_.dropped());
-    if (n_frames_ < 2)
+    if (rejected_.count() > 0)
+        ATV_WARN("[vacf] molrs refused {} snapshot(s); first: {}",
+                 rejected_.count(), rejected_.first_reason());
+    if (n_frames_ <= resolution_) {
+        ATV_WARN("[vacf] {} frame(s) accumulated; lags 0..{} need at least {} "
+                 "— lower `resolution` or capture more frames. {} not written",
+                 n_frames_, resolution_, resolution_ + 1, output_file_);
         return;
+    }
 
-    vacf_curve_ = acc_.finalize(); // molrs (matches batch FFT-ACF)
+    // finalize() runs from the Runtime's shutdown (a destructor path), so a
+    // molrs error is reported, not thrown.
+    try {
+        const cpu::compute::TimeCorrelation curve = acc_.finish();
+        vacf_curve_ = curve.values();
+        const std::vector<double> lag_times = curve.lag_times(); // [fs]
 
-    std::ofstream os(output_file_);
-    os << "# VACF via molrs VacfAccumulator (DOF-averaged, streaming)\n";
-    os << "# t[fs]  VACF   (frames=" << n_frames_
-       << ", atoms=" << gate_.n_atoms() << ", max_lag<=" << resolution_
-       << ")\n";
-    for (std::size_t i = 0; i < vacf_curve_.size(); ++i)
-        os << (dt_ * static_cast<double>(i)) << "  " << vacf_curve_[i] << '\n';
+        std::ofstream os(output_file_);
+        os << "# VACF via molrs Vacf (mean-subtracted, unbiased, "
+              "DOF-averaged, streaming)\n";
+        os << "# t[fs]  VACF   (frames=" << n_frames_
+           << ", atoms=" << gate_.n_atoms() << ", max_lag=" << resolution_
+           << ")\n";
+        for (std::size_t i = 0; i < vacf_curve_.size(); ++i)
+            os << lag_times[i] << "  " << vacf_curve_[i] << '\n';
+    } catch (const std::exception& e) {
+        ATV_WARN("[vacf] {} not written: {}", output_file_, e.what());
+    }
 }
 
 } // namespace ATV

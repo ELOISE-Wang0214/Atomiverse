@@ -4,8 +4,9 @@
 ///
 /// The engine *measures* (each captured `FrameSnapshot`'s positions + cell are
 /// packed into a reusable scratch on the analysis worker thread); molrs
-/// *analyzes* (`RdfAccumulator`: per-frame LinkCell + ideal-gas shell-volume
-/// normalization, folded frame-by-frame). Memory is O(n_bins) — never
+/// *analyzes* (`compute::Rdf` through its `RdfAccumulator`: per-frame periodic
+/// cell-list self-query + ideal-gas shell-volume normalization, folded
+/// frame-by-frame). Memory is O(n_bins) — never
 /// O(trajectory) — so million-step runs stream through at constant footprint.
 /// No analysis math and no record type in C++ — both backends' RDF observers
 /// stream through the molrs accumulator; the g(r) file format has one emitter
@@ -28,8 +29,8 @@ namespace ATV {
 /// @brief MD async radial-distribution-function observer (molrs-backed).
 ///
 /// Streams positions + per-frame cell from each captured `FrameSnapshot` into
-/// the molrs `RdfAccumulator`; `finalize()` reads the normalized g(r) and
-/// writes it to `output_file`.
+/// the molrs `RdfAccumulator`; `finalize()` reads the normalized g(r) with its
+/// bin centers and writes it to `output_file`.
 ///
 /// Usage:
 /// @code{.cpp}
@@ -48,7 +49,8 @@ class RDF : public cpu::md::AsyncObserver {
     /// @param r_max upper edge of the last bin [Å]. @param n_bins radial bin
     /// count. @param freq capture every `freq` steps (0 = every snapshot).
     /// @param output_file g(r) output path.
-    /// @throws std::invalid_argument on n_bins < 1 or r_max <= 0.
+    /// @throws std::invalid_argument on n_bins < 1 or r_max <= 0 (refused by
+    /// molrs `Rdf::new`).
     RDF(double r_max, int n_bins, int freq = 0,
         std::string output_file = "rdf.dat");
 
@@ -72,13 +74,11 @@ class RDF : public cpu::md::AsyncObserver {
     const std::string& output_file() const { return output_file_; }
 
   private:
-    double r_max_;
-    int n_bins_;
     int freq_;
     std::string output_file_;
-    double bin_width_;
 
     cpu::ConstantCountGate gate_;      ///< constant-atom-count admission gate
+    cpu::RejectedFrames rejected_;     ///< frames the molrs accumulator refused
     std::vector<double> scratch_;      ///< reused blocked x|y|z packing buffer
     cpu::compute::RDFAccumulator acc_; ///< molrs streaming g(r) state
     std::vector<double> gr_; ///< normalized g(r), filled at finalize()

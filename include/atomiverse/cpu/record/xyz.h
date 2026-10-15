@@ -8,6 +8,7 @@
 /// @see cpu::write_xyz_frame / cpu::write_mrec_frame (cpu/io/frame_writer.h)
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -18,7 +19,9 @@ class Frame; // fwd — CUDA-safe (this header is pulled by 02_rhf.cu)
 
 /// @brief XYZ trajectory writer (standard element + coordinates).
 ///
-/// `write`/`append` write one frame's geometry through molrs. Extraction
+/// `write`/`append` write one frame's geometry through molrs. Species come
+/// from `kAtom_type`, which carries the atomic number Z (0 is the wildcard
+/// `*`); molrs spells the element symbols. Extraction
 /// scratch is reused across calls, so per-frame appends on a long-lived
 /// writer do not reallocate on the steady-state path.
 class XYZ {
@@ -27,14 +30,20 @@ class XYZ {
     /// @param filename Output XYZ path.
     explicit XYZ(const std::string& filename);
 
-    void write(const Frame& frame);  ///< truncate/create, write one frame
-    void append(const Frame& frame); ///< append one frame
+    /// @brief Truncate/create the file and write one frame.
+    /// @param frame source of Z (`kAtom_type`), x/y/z [Å], box and meta.
+    /// @throws std::invalid_argument on a negative Z; std::runtime_error
+    /// (molrs, path attached) on Z > 118 or a write failure.
+    void write(const Frame& frame);
+    /// @brief Append one frame; same contract as `write`.
+    /// @param frame source of Z (`kAtom_type`), x/y/z [Å], box and meta.
+    void append(const Frame& frame);
 
   private:
     void write_impl(const Frame& frame, bool append);
 
     std::string filename_;
-    std::vector<int> type_id_; ///< per-frame extraction scratch (reused)
+    std::vector<std::uint64_t> atomic_number_; ///< per-frame Z (reused)
     std::vector<double> x_, y_, z_;
 };
 
