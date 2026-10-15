@@ -58,6 +58,17 @@ AM1Evaluator = _cpp.AM1Evaluator
 #: nuclear-force buffer [eV/Å].
 AM1Result = _cpp.AM1Result
 
+#: AM1-BCC / ABCG2 partial charges — the GAFF / GAFF2 charge model, as
+#: antechamber ``-c bcc`` / ``-c abcg2`` compute them, at the frame's
+#: geometry. The frame needs a ``bonds`` block::
+#:
+#:     model = atv.AM1BCCCharges(atv.AM1(charge=-1), atv.BccParameterSet.bcc)
+#:     model.assign(frame)          # charges [e] on the atoms charge column
+AM1BCCCharges = _cpp.AM1BCCCharges
+
+#: Bond-charge-correction table: ``bcc`` (GAFF) or ``abcg2`` (GAFF2).
+BccParameterSet = _cpp.BccParameterSet
+
 #: SCC-DFTB2 for H/C/N/O — Elstner et al., Phys. Rev. B 58, 7260 (1998).
 #:
 #: A tight-binding valence Hamiltonian built from tabulated two-centre
@@ -105,8 +116,10 @@ kDftbSpinConstantsLdaHa = _cpp.kDftbSpinConstantsLdaHa
 
 __all__ = [
     "AM1",
+    "AM1BCCCharges",
     "AM1Evaluator",
     "AM1Result",
+    "BccParameterSet",
     "DFTB2",
     "DftbBoundary",
     "DftbSkSet",

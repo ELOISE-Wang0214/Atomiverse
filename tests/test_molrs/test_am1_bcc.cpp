@@ -1,9 +1,9 @@
 /// @file tests/test_molrs/test_am1_bcc.cpp
-/// @brief Drift fence for molrs::BccModel (ATV call site).
+/// @brief Drift fence for molrs::BccModel, on the frame shape
+///        `AM1BCCCharges` sends: atoms.{atomic_number, x, y, z} and
+///        bonds.{atomi, atomj} — no `element`, no bond orders.
 
-#include <cmath>
 #include <cstdint>
-#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -29,47 +29,42 @@ namespace {
         ::rust::Slice<const std::uint64_t>(znum.data(), znum.size()));
     const std::vector<std::uint64_t> bi = {0, 0, 0, 0};
     const std::vector<std::uint64_t> bj = {1, 2, 3, 4};
-    const std::vector<std::uint64_t> kind = {1, 1, 1, 1};
     molrs::frame_set_column_u64(
         *fr, "bonds", "atomi",
         ::rust::Slice<const std::uint64_t>(bi.data(), bi.size()));
     molrs::frame_set_column_u64(
         *fr, "bonds", "atomj",
         ::rust::Slice<const std::uint64_t>(bj.data(), bj.size()));
-    molrs::frame_set_column_u64(
-        *fr, "bonds", "type_id",
-        ::rust::Slice<const std::uint64_t>(kind.data(), kind.size()));
     return fr;
 }
 
-TEST(MolrsAm1Bcc, CorrectFromBaseLinks) {
+// BCCPARM.DAT C(sp3)–H increment: +0.0393 e moved from C to each H.
+constexpr double kCHIncrement = 0.0393;
+constexpr double kExactTol = 1.0e-12;
+
+TEST(MolrsAm1Bcc, CorrectAddsTheBondIncrements) {
     auto fr = methane_like();
     const std::vector<double> base = {-0.266, 0.066, 0.066, 0.066, 0.066};
-    try {
-        auto out = molrs::bcc_model_new({"bcc"})->correct(
-            *fr, ::rust::Slice<const double>(base.data(), base.size()));
-        ASSERT_EQ(out.size(), 5u);
-        for (std::size_t i = 0; i < out.size(); ++i)
-            EXPECT_TRUE(std::isfinite(out[i])) << "i=" << i;
-    } catch (const std::exception& err) {
-        // Hand-built frames may fail Atomistic::from_frame / BCC typing; the
-        // door must still return a catchable exception (never abort).
-        EXPECT_FALSE(std::string(err.what()).empty());
-    }
+    auto out = molrs::bcc_model_new({"bcc"})->correct(
+        *fr, ::rust::Slice<const double>(base.data(), base.size()));
+    ASSERT_EQ(out.size(), 5u);
+    EXPECT_NEAR(out[0], -0.266 + 4.0 * kCHIncrement, kExactTol);
+    for (std::size_t i = 1; i < 5; ++i)
+        EXPECT_NEAR(out[i], 0.066 - kCHIncrement, kExactTol) << "i=" << i;
 }
 
-TEST(MolrsAm1Bcc, AssignFromBaseLinks) {
+TEST(MolrsAm1Bcc, AssignEquivalencesBeforeCorrecting) {
+    // The four hydrogens are one equivalence class: assign averages their
+    // unequal base charges (mean 0.066) before adding the increments, so
+    // the result equals the equivalenced correct() above.
     auto fr = methane_like();
     const std::vector<double> base = {-0.266, 0.056, 0.076, 0.066, 0.066};
-    try {
-        auto out = molrs::bcc_model_new({"bcc"})->assign(
-            *fr, ::rust::Slice<const double>(base.data(), base.size()));
-        ASSERT_EQ(out.size(), 5u);
-        for (std::size_t i = 0; i < out.size(); ++i)
-            EXPECT_TRUE(std::isfinite(out[i])) << "i=" << i;
-    } catch (const std::exception& err) {
-        EXPECT_FALSE(std::string(err.what()).empty());
-    }
+    auto out = molrs::bcc_model_new({"bcc"})->assign(
+        *fr, ::rust::Slice<const double>(base.data(), base.size()));
+    ASSERT_EQ(out.size(), 5u);
+    EXPECT_NEAR(out[0], -0.266 + 4.0 * kCHIncrement, kExactTol);
+    for (std::size_t i = 1; i < 5; ++i)
+        EXPECT_NEAR(out[i], 0.066 - kCHIncrement, kExactTol) << "i=" << i;
 }
 
 TEST(MolrsAm1Bcc, UnknownParameterSetErrors) {

@@ -70,6 +70,8 @@ Canonical deep path                   Top-level re-export         C++ symbol
 ``scf.RKS``                           ``RKS``                     ``cpu::scf::RKS``
 ``scf.UKS``                           ``UKS``                     ``cpu::scf::UKS``
 ``semiempirical.AM1``                 ``AM1``                     ``cpu::semiempirical::AM1``
+``semiempirical.AM1BCCCharges``       ``AM1BCCCharges``           ``cpu::semiempirical::AM1BCCCharges``
+``semiempirical.BccParameterSet``     ``BccParameterSet``         ``cpu::semiempirical::BccParameterSet``
 ``semiempirical.AM1Evaluator``        ``AM1Evaluator``            ``cpu::semiempirical::AM1Evaluator``
 ``semiempirical.AM1Result``           ``AM1Result``               ``cpu::semiempirical::AM1Result``
 ``semiempirical.DFTB2``               ``DFTB2``                   ``cpu::semiempirical::DFTB2``
@@ -237,6 +239,8 @@ _COMPUTE_EXPORTS: dict[str, tuple[str, str]] = {
     "InsertDeleteMove": ("atomiverse.montecarlo", "InsertDeleteMove"),
     "MoveSelector": ("atomiverse.montecarlo", "MoveSelector"),
     "AM1": ("atomiverse.semiempirical", "AM1"),
+    "AM1BCCCharges": ("atomiverse.semiempirical", "AM1BCCCharges"),
+    "BccParameterSet": ("atomiverse.semiempirical", "BccParameterSet"),
     "AM1Evaluator": ("atomiverse.semiempirical", "AM1Evaluator"),
     "AM1Result": ("atomiverse.semiempirical", "AM1Result"),
     "DFTB2": ("atomiverse.semiempirical", "DFTB2"),
@@ -334,6 +338,8 @@ __all__ = [
     "InsertDeleteMove",
     "MoveSelector",
     "AM1",
+    "AM1BCCCharges",
+    "BccParameterSet",
     "AM1Evaluator",
     "AM1Result",
     "DFTB2",

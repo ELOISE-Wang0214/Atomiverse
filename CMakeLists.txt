@@ -400,11 +400,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/multiscale/qmmm_mechanical.cpp
             src/cpu/multiscale/qmmm_oniom.cpp
             src/cpu/multiscale/internal/classical_nonbonded.cpp
+            src/cpu/semiempirical/am1_bcc_charges.cpp
         )
-        if(ATV_BUILD_MOLRS)
-            list(APPEND ATOMIVERSE_SRCS
-                src/cpu/semiempirical/am1_bcc_charge_assigner.cpp)
-        endif()
         if(ATV_BUILD_HF)
             list(APPEND ATOMIVERSE_SRCS
                 src/cpu/multiscale/qmmm_polarizable.cpp

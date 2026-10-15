@@ -526,3 +526,70 @@ class TestUnsupportedElement:
 
         with pytest.raises(RuntimeError):
             av.single_point(frame, av.AM1Evaluator())
+
+
+# ── AM1-BCC / ABCG2 charges (the GAFF / GAFF2 charge model) ─────────
+
+#: Acetate at the fixed geometry of
+#: regressions/semiempirical/am1bcc-antechamber-charges (tools/bcc_oracle/
+#: inputs/acetate.mol2), and AmberTools 26.1 antechamber's charges there,
+#: transcribed from that case. Tolerance 6e-4 e: sqm prints its AM1 charges
+#: to 1e-3 and antechamber corrects that rounded table (REFERENCE.md).
+_ACETATE_Z = [6, 6, 8, 8, 1, 1, 1]
+_ACETATE_XYZ = [
+    [0.000, 0.000, 0.000],
+    [1.520, 0.000, 0.000],
+    [2.145, 1.083, 0.000],
+    [2.145, -1.083, 0.000],
+    [-0.363, 0.000, 1.028],
+    [-0.363, -0.890, -0.514],
+    [-0.363, 0.890, -0.514],
+]
+_ACETATE_BONDS = [(0, 1), (1, 2), (1, 3), (0, 4), (0, 5), (0, 6)]
+_ACETATE_BCC = [-0.204100, 0.899600, -0.861300, -0.861300, 0.009367, 0.009367, 0.009367]
+_ACETATE_ABCG2 = [-0.204100, 0.689000, -0.756000, -0.756000, 0.009367, 0.009367, 0.009367]
+_TOL_BCC = 6.0e-4  # [e]
+
+
+def _make_acetate_frame(with_bonds: bool = True) -> "molpy.Frame":
+    """Acetate molpy.Frame: atomic numbers, positions [Å] and, unless
+    *with_bonds* is False, the bonds block AM1-BCC types from."""
+    xyz = np.array(_ACETATE_XYZ, dtype=np.float64)
+    frame = molpy.Frame()
+    atoms = molpy.Block()
+    for axis, key in enumerate(("x", "y", "z")):
+        atoms.insert(key, np.ascontiguousarray(xyz[:, axis]))
+    atoms.insert("atomic_number", np.array(_ACETATE_Z, dtype=np.uint32))
+    frame["atoms"] = atoms
+    if with_bonds:
+        bonds = molpy.Block()
+        bonds.insert("atomi", np.array([i for i, _ in _ACETATE_BONDS], dtype=np.uint32))
+        bonds.insert("atomj", np.array([j for _, j in _ACETATE_BONDS], dtype=np.uint32))
+        bonds.insert("type_id", np.zeros(len(_ACETATE_BONDS), dtype=np.uint32))
+        frame["bonds"] = bonds
+    frame.box = molpy.Box.cube(40.0)
+    return frame
+
+
+class TestAM1BCCCharges:
+    @pytest.mark.parametrize(
+        ("parameter_set", "expected"),
+        [("bcc", _ACETATE_BCC), ("abcg2", _ACETATE_ABCG2)],
+    )
+    def test_acetate_matches_antechamber(self, parameter_set: str, expected: list[float]) -> None:
+        """assign() writes antechamber's AM1-BCC / ABCG2 charges onto the
+        frame's charge column; equivalent atoms share one charge and the
+        total is the net charge."""
+        frame = _make_acetate_frame()
+        model = av.AM1BCCCharges(av.AM1(charge=-1), getattr(av.BccParameterSet, parameter_set))
+        model.assign(frame)
+        q = np.asarray(frame["atoms"]["charge"], dtype=np.float64)
+        np.testing.assert_allclose(q, expected, atol=_TOL_BCC, rtol=0.0)
+        assert q[2] == q[3] and q[4] == q[5] == q[6]
+        assert q.sum() == pytest.approx(-1.0, abs=1e-6)
+
+    def test_frame_without_bonds_raises(self) -> None:
+        """BCC corrections are looked up per bond: a multi-atom frame with
+        no bonds is refused before any SCF, never silently left as AM1."""
+        with pytest.raises(ValueError, match="no bonds"):
+            av.AM1BCCCharges(av.AM1(charge=-1)).assign(_make_acetate_frame(with_bonds=False))

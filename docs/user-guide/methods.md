@@ -262,8 +262,8 @@ double e = mc.current_energy();            // (eV); mc.acceptance_ratio() in [0,
 Roughly SCF accuracy at a small fraction of the cost — the right choice when a
 full Gaussian SCF is too expensive per step. Three families, all CPU-only:
 
-- **NDDO** — `AM1` and `RM1`, with analytic nuclear forces and AM1-BCC charge
-  assignment. Pinned against OpenMOPAC.
+- **NDDO** — `AM1` and `RM1`, with finite-difference nuclear forces (central
+  difference at the converged density). Pinned against OpenMOPAC.
 - **DFTB** — `DFTB0` (non-SCC), `DFTB2` (SCC) and `DFTB3` (third order) on the
   in-tree mio-1-1 and 3ob-3-1 Slater-Koster tables for H/C/N/O. DFTB2 carries
   analytic forces and analytic cell stress for closed and open shell, at Gamma
@@ -276,6 +276,32 @@ Each is a concrete type with its parameters as members; bind the matching
 evaluator (or the method itself, which is a `Semiempirical` component) into any
 Driver that needs energy and forces. See
 [Chapter 17](../tutorial/ch17-semiempirical-am1.md).
+
+### AM1-BCC charges (GAFF / GAFF2)
+
+`AM1BCCCharges` computes the partial charges GAFF and GAFF2 expect.
+
+1. It runs AM1 at the Frame's geometry to get the Mulliken base charges.
+2. It averages those charges over topologically equivalent atoms.
+3. It adds the AM1-BCC bond charge increments (`BccParameterSet::Bcc`, for
+   GAFF) or the ABCG2 increments (`BccParameterSet::Abcg2`, for GAFF2).
+
+The result matches AmberTools `antechamber -c bcc` / `-c abcg2` at the same
+geometry. The Frame must carry the molecule's bonds, and the net charge is the
+`AM1` member `charge`.
+
+```cpp
+#include "atomiverse/cpu/semiempirical/am1_bcc_charges.h"
+using namespace ATV::cpu::semiempirical;
+
+AM1 am1;
+am1.charge = -1;                                   // net molecular charge (e)
+AM1BCCCharges{am1, BccParameterSet::Bcc}.assign(frame);   // kAtom_charge (e)
+```
+
+The geometry is used as given. By default antechamber first optimises the
+structure with sqm. To get the same, run a `Minimize` over an `AM1Evaluator`
+on the frame before calling `assign`.
 
 ## Vibrations
 

@@ -1,6 +1,7 @@
 /// @file python/src/bindings/bind_semiempirical.cpp
 /// @brief AM1 semiempirical bindings: AM1, AM1Evaluator, AM1Result, the
-///        `single_point` entry and `AM1Evaluator.forces`.
+///        `single_point` entry, `AM1Evaluator.forces`, and the AM1-BCC /
+///        ABCG2 charge model `AM1BCCCharges`.
 ///
 /// AM1 — *Austin Model 1* — is a **semiempirical** electronic-structure
 /// method: it solves an approximate quantum-mechanical model of the valence
@@ -34,6 +35,7 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/evaluate/single_point.h"
 #include "atomiverse/cpu/frame/molrs_exchange.h"
+#include "atomiverse/cpu/semiempirical/am1_bcc_charges.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #include "atomiverse/cpu/semiempirical/basis_data/dftb_spin_constants.h"
 #include "atomiverse/cpu/semiempirical/dftb2.h"
@@ -133,6 +135,7 @@ ForceArray dftb2_forces(cpu::semiempirical::DFTB2& dftb, nb::object frame_obj) {
 
 void bind_semiempirical(nb::module_& m) {
     using cpu::semiempirical::AM1;
+    using cpu::semiempirical::AM1BCCCharges;
     using cpu::semiempirical::AM1Evaluator;
     using cpu::semiempirical::AM1Result;
     using cpu::semiempirical::DFTB2;
@@ -283,6 +286,53 @@ void bind_semiempirical(nb::module_& m) {
              "running. Raises RuntimeError if the SCF does not converge "
              "within max_iter, or for an element AM1 has no parameters "
              "for.");
+
+    // ── AM1-BCC / ABCG2 charges: the GAFF / GAFF2 charge model ──
+    nb::enum_<cpu::semiempirical::BccParameterSet>(
+        m, "BccParameterSet",
+        "Bond-charge-correction table applied on top of the AM1 charges: "
+        "`bcc` (BCCPARM.DAT, AM1-BCC, the GAFF charge model) or `abcg2` "
+        "(BCCPARM_ABCG2.DAT, the GAFF2 charge model).")
+        .value("bcc", cpu::semiempirical::BccParameterSet::Bcc)
+        .value("abcg2", cpu::semiempirical::BccParameterSet::Abcg2);
+
+    nb::class_<AM1BCCCharges>(
+        m, "AM1BCCCharges",
+        "AM1-BCC partial charges (Jakalian, Jack & Bayly, J. Comput. Chem. "
+        "23, 1623 (2002)) and their ABCG2 refit, as antechamber -c bcc / "
+        "-c abcg2 compute them: AM1 Mulliken charges at the frame's "
+        "geometry, averaged over topologically equivalent atoms, plus bond "
+        "charge increments looked up from the bond graph. The geometry is "
+        "used as given (antechamber's default optimises it with sqm first).")
+        .def(nb::init<AM1, cpu::semiempirical::BccParameterSet>(),
+             nb::arg("method") = AM1{},
+             nb::arg("parameter_set") =
+                 cpu::semiempirical::BccParameterSet::Bcc,
+             "Take a configured AM1 (its `charge` is the net molecular "
+             "charge [e]; closed-shell singlet only) and a correction table.")
+        .def(
+            "assign",
+            [](AM1BCCCharges& self, nb::object frame_obj) {
+                auto fref = borrow_molrs_frame(frame_obj);
+                cpu::Frame work = cpu::from_molrs(*fref);
+                {
+                    nb::gil_scoped_release release;
+                    self.assign(work);
+                }
+                cpu::to_molrs(work, *fref);
+            },
+            nb::arg("frame"),
+            "Compute the charges [e] and write them to the frame's atoms "
+            "charge column. The frame needs atomic_number, x/y/z [A] and a "
+            "bonds block (atomi/atomj) covering the whole molecule. Raises "
+            "ValueError for a multi-atom frame without bonds, RuntimeError "
+            "when the AM1 SCF does not converge or a bond has no BCC row.")
+        .def("last_am1_result", &AM1BCCCharges::last_am1_result,
+             nb::rv_policy::reference_internal,
+             "AM1Result of the last assign(): energies and the base Mulliken "
+             "charges [e] before equivalencing and correction. Borrowed.")
+        .def_prop_ro("parameter_set", &AM1BCCCharges::parameter_set,
+                     "The correction table this model applies.");
 
     // ── single_point: one Evaluate pass over a borrowed molpy.Frame ──
     m.def(
