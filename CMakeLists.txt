@@ -931,7 +931,8 @@ if(NOT ATV_DOCS_ONLY)
             /opt/homebrew/opt/fftw/include /usr/local/include)
         if(NOT FFTW3_LIB OR NOT FFTW3_INC)
             message(FATAL_ERROR "FFTW3 required for ATV_BUILD_PW but not found. "
-                               "Install via: brew install fftw")
+                               "Install it (apt: libfftw3-dev, brew: fftw) or "
+                               "set FFTW3_ROOT.")
         endif()
         add_library(fftw3_stub INTERFACE)
         target_link_libraries(fftw3_stub INTERFACE ${FFTW3_LIB})
