@@ -43,6 +43,8 @@ way it is, not to assume domain knowledge.
 - **[Python / molpy boundary](python-molpy-boundary.md)** — the acyclic
   dependency order between molrs, molpy, the C++ library, the CLI and the
   Python package.
+- **[Releasing the Python package](release.md)** — what goes to PyPI, how
+  users build the native extension with pip, and how a tag is published.
 - **[Oracle capability loops](oracle-capability-loop.md)** — how a capability
   gets from "an external code can do this" to a landed regression with a
   citable pin.

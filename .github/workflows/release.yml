@@ -1,0 +1,92 @@
+name: Release
+
+# Publishes the pure-Python sdist + wheel to PyPI when a vX.Y.Z tag is pushed.
+# The native extension is never published: users build it from the matching
+# tag with `python -m atomiverse config / compile / install`, which pip-installs
+# a machine-local native wheel (docs/user-guide/python.md).
+#
+# One-time setup (repo admin):
+#   - PyPI: add a trusted publisher for project `atomiverse` →
+#     MolCrafts/Atomiverse, workflow release.yml, environment `pypi`.
+#   - GitHub: create environment `pypi` (optionally with required reviewers).
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build and check dists
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need origin/master for the ancestry check
+
+      - name: Tag matches __version__ and is on master
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' python/src/atomiverse/__init__.py)
+          if [ "$tag" != "$ver" ]; then
+            echo "::error::tag v$tag does not match __version__ = $ver"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::v$tag is not on master — release by merging dev into master, then tag master"
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install build twine
+          python -m build python --outdir dist
+          python -m twine check --strict dist/*
+
+      - name: Smoke-test the wheel in a clean venv
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install dist/*.whl pytest
+          test "$(/tmp/venv/bin/python -m atomiverse --version)" = "${GITHUB_REF_NAME#v}"
+          /tmp/venv/bin/python -m atomiverse status
+          cd python && /tmp/venv/bin/python -m pytest -q tests/test_pure_import.py tests/test_install_cli.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      id-token: write  # trusted publishing; no API token stored
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: GitHub release
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes

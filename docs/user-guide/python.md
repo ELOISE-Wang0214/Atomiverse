@@ -1,66 +1,76 @@
 # Python Package
 
 Install, configure and run Atomiverse from Python: `pip install atomiverse`
-for the pure-Python shell, then an on-demand native build. The C++
-toolchain, CMake flags and first C++ run are a separate page —
+for the pure-Python shell, then a native build from a source checkout. The
+C++ toolchain, CMake flags and first C++ run are a separate page —
 [Getting started](getting-started.md) — and the Driver / Component / Frame
 vocabulary these bindings mirror is in [Core concepts](concepts.md).
 
 ## Installation
 
-Atomiverse uses a **two-phase** Python install: a pure-Python package first,
-then an optional on-demand native build.
+Atomiverse uses a **two-phase** Python install: a pure-Python package from
+PyPI, then a native extension you build for your machine. Both phases go
+through pip, so `pip uninstall atomiverse` removes everything and a new
+release replaces everything.
 
 ### Phase 1 — pure Python package
 
 ```bash
 pip install atomiverse
-# or, from a source checkout (development):
-#   pip install -e python/
 ```
 
 This installs the Python API shell and CLI only — **no C++ compile**, no
-prebuilt `_atomiverse` binary. Requires Python ≥ 3.9, NumPy, and
+prebuilt `_atomiverse` binary. Requires Python ≥ 3.12, NumPy, and
 `molcrafts-molpy` (the only user-facing Frame type). **Do not `import molrs`**
 from user code — molrs is an engine-private schema, pulled transitively
 by molpy.
 
-After phase 1 you can run:
-
 ```bash
-python -m atomiverse          # shows version + install guidance
-python -m atomiverse status  # no native build yet
-python -m atomiverse run script.py   # after a native install
+python -m atomiverse            # version + install guidance
+python -m atomiverse status     # extension: not installed
 ```
 
 Importing compute symbols (`atomiverse.MD`, …) without a native extension
 raises `ImportError` pointing at phase 2.
 
-### Phase 2 — native build (CMake stages)
+### Phase 2 — native build from a checkout
 
-The CLI mirrors the cmake pipeline and **streams raw cmake output**:
+The extension is compiled from the **source tag matching the installed
+version** (with the `molrs` submodule), using the toolchain described in
+[Getting started](getting-started.md) — a C++20 compiler, CMake, BLAS/LAPACK,
+a Rust toolchain for molrs, and FFTW3 for `pw` / `kspace`.
 
 ```bash
-# 1) configure  (cmake -S -B -D…)
-python -m atomiverse config md pw --mpi --src /path/to/Atomiverse
+V=$(python -m atomiverse --version)
+git clone --recursive --branch v$V https://github.com/MolCrafts/Atomiverse
+pip install 'atomiverse[native]'        # build-time: scikit-build-core, nanobind
 
-# 2) compile    (cmake --build)
+# 1) config   resolve modules → CMake defines, record the build
+python -m atomiverse config md pw --mpi --src Atomiverse
+
+# 2) compile  pip wheel → scikit-build-core → CMake (raw output streamed)
 python -m atomiverse compile -j 8
 
-# 3) install    (cmake --install → site-packages)
+# 3) install  pip install of that wheel over the pure package
 python -m atomiverse install
 
 python -m atomiverse status
-
-# 4) run a script (same CLI)
-python -m atomiverse run python/examples/md_lj_argon.py
-python -m atomiverse python/examples/md_lj_argon.py
+python -m atomiverse run Atomiverse/python/examples/md_lj_argon.py
 ```
+
+`compile` builds in `<src>/build-python` (override with `config
+--build-dir`); a repeat `compile` reuses that CMake tree and only rebuilds
+what changed. The finished wheel lands in `<build-dir>/dist/` and
+`install` hands it to `pip install --force-reinstall --no-deps` — the
+extension and its `_build_info.json` (the defines it was compiled with,
+which `status` prints) are ordinary files of the installed distribution.
 
 **Modules** are positional on `config` only: `md`, `minimize`, `mc`, `evaluate`,
 `vib`, `path`, `hf`, `pw`, `gpw`, `am1`, `cuda`, `kspace`, `potentials`,
-`neighbor`.
-Enabling `md` / `mc` / `minimize` auto-enables `potentials` + `neighbor`.
+`neighbor`. The wheel contains **exactly** the modules listed (plus their
+closure) — every other product module is set OFF. Enabling `md` / `mc` /
+`minimize` auto-enables `potentials` + `neighbor`; `path` pulls in
+`minimize`; `kspace` pulls in `potentials`.
 
 **Global options** (on `config`, never under a module name):
 
@@ -70,12 +80,12 @@ Enabling `md` / `mc` / `minimize` auto-enables `potentials` + `neighbor`.
 | `--real-storage {float,double}` | `ATV_REAL_STORAGE` |
 | `--real-work {float,double}` | `ATV_REAL_WORK` |
 | `--id-size {bigbig,smallbig}` | `ATV_ID_SIZE` |
-| `-D KEY=VALUE` | unbound defines only |
+| `-D KEY=VALUE` | unbound defines only (e.g. `-D BLA_VENDOR=OpenBLAS`) |
 
 TOML recipe (XOR with positional modules; globals in `[global]` only):
 
 ```bash
-python -m atomiverse config --config atomiverse-build.toml --src /path/to/Atomiverse
+python -m atomiverse config --config atomiverse-build.toml --src Atomiverse
 ```
 
 ```toml
@@ -91,16 +101,21 @@ real_storage = "double"
 **`--hf`** is the flag spelling of the `hf` module: it configures Gaussian
 SCF (`ATV_BUILD_HF=ON`) exactly like every other product module.
 
-**Version lock:** checkout `python/pyproject.toml` must match the installed
-package version. **`--src` is required** for the staged cmake pipeline.
+**Version lock:** the checkout's `__version__` must equal the installed
+package version — `config` refuses otherwise, so a native build never
+silently swaps the release you installed for a different tree.
 
-**Dry-run:**
+**Dry-run** prints the resolved defines and the exact pip commands:
 
 ```bash
-python -m atomiverse config md --mpi --src /path/to/Atomiverse --dry-run
+python -m atomiverse config md --mpi --src Atomiverse --dry-run
 python -m atomiverse compile --dry-run
 python -m atomiverse install --dry-run
 ```
+
+**Developing Atomiverse itself:** `pip install -e 'python/[dev,native]'`
+installs the source tree editable; the same `config` / `compile` /
+`install` stages then build the extension against it.
 
 ## What this package exposes (and what it doesn't)
 
@@ -120,12 +135,11 @@ Current surface:
   `PairLJCut`, `PairMorse`, `PairBuck`, `PairBorn`, `PairYukawa`, `PairWCA`
   and `PairDpd`; bonded styles `BondHarmonic`, `BondFene`, `AngleHarmonic`,
   `DihedralMultiHarmonic`, `DihedralCharmm` and `ImproperHarmonic`. A
-  real-space style has no build flag of its own, so all of them are on every
-  wheel. The table under *MD driver* below gives the signatures and units.
+  real-space style has no build flag of its own, so all of them are in every
+  native build. The table under *MD driver* below gives the signatures and units.
 - **Electrostatics** — `PairCoulCut` (truncated Coulomb) and the Ewald
   split `CoulLong` + `KSpacePME`. The reciprocal solver needs FFTW3, so
-  `KSpacePME` is present only on wheels built with `ATV_BUILD_KSPACE=ON`
-  (the default).
+  `KSpacePME` is present only when the `kspace` module is built.
 - **Geometry optimization** — CPU `minimizer.Minimize` with three fixed-cell
   optimizers (`LBFGS`, `CG`, `FIRE`), four variable-cell relaxers
   (`IsotropicCellRelax`, `AnisotropicCellRelax`, `TriclinicCellRelax`,
@@ -134,22 +148,18 @@ Current surface:
   one. Any force source `MD` accepts is accepted here.
 - **Vibrational analysis** — `Hessian` (central finite differences over any
   registered force source) and `HessianResult` (wavenumbers, normal modes,
-  RRHO thermochemistry). `ATV_BUILD_VIB` defaults ON, so these are on the
-  shipped wheel; a staged CLI build must list `vib`
+  RRHO thermochemistry). Present when the `vib` module is built
   (`python -m atomiverse config md vib …`).
 - **Monte Carlo** — the three ensemble presets `MC` (NVT), `NptMC` and
   `GCMC` with their movers `TranslateMove`, `VolumeMove`,
-  `InsertDeleteMove` and `MoveSelector`. `ATV_BUILD_MC` defaults ON, so
-  these are on the shipped wheel; a staged CLI build selects its modules
-  explicitly, so list `mc` there (`python -m atomiverse config md mc …`) or
-  the extension is built without them.
+  `InsertDeleteMove` and `MoveSelector`. Present when the `mc` module is
+  built (`python -m atomiverse config md mc …`).
 - **Plane-wave DFT** — `PW` / `PWResult` / `PWEvaluator`, i.e. energy,
-  forces, cell stress and plane-wave Born-Oppenheimer MD (PW-enabled wheels
-  only; PW types are absent from wheels built without the backend).
+  forces, cell stress and plane-wave Born-Oppenheimer MD (present when the
+  `pw` module is built).
 - **Gaussian SCF** — the concrete mean-field methods `RHF`, `UHF`, `RKS`,
-  `UKS` for molecular Hartree-Fock and Kohn-Sham DFT. Needs
-  `ATV_BUILD_HF=ON`, which the shipped wheel sets by default; on a wheel
-  built without it the four names are absent.
+  `UKS` for molecular Hartree-Fock and Kohn-Sham DFT (present when the `hf`
+  module is built).
 
 GPU minimization fails loud and remains deferred.
 
@@ -1127,7 +1137,7 @@ argument optional and already at its C++ default:
 | Temperature | K |
 | Force | eV/Å |
 
-## Plane-wave DFT (PW-enabled wheels)
+## Plane-wave DFT (`pw` module)
 
 ```python
 pw = av.PW()
@@ -1260,8 +1270,8 @@ atomic numbers raises `ValueError`); `upf_path` does not check, so a
 mixed-species frame there is silently treated as the file's own element
 throughout. Multi-species plane-wave runs are not implemented.
 
-On a default wheel (`ATV_BUILD_PW=OFF`) the PW types are not exported;
-rebuild with `ATV_BUILD_PW=ON` to use this API.
+Without the `pw` module the PW types are not exported; rebuild with
+`python -m atomiverse config pw …` to use this API.
 
 ## Timing
 
@@ -1278,7 +1288,7 @@ print(sim.summary())   # per-phase wall-clock breakdown
 molpy, numpy, and (for the plane-wave one) molplot — never ASE or
 matplotlib.
 
-Three of them run on any wheel, need no external program, finish in
+Three of them run on a `config md minimize am1` build, need no external program, finish in
 seconds, and **exit nonzero** when their own sanity check fails, so they
 can be smoke-run:
 
@@ -1301,8 +1311,8 @@ python python/examples/am1_ch4.py
 The fourth, `pw_qe_compare.py`, is a plane-wave DFT convergence study of Si
 diamond (energy vs cutoff, k-mesh and lattice constant) against Quantum
 ESPRESSO on the same norm-conserving UPF. It is **not** smoke-runnable
-alongside the three above, for three reasons: plane waves are OFF by default
-(`ATV_BUILD_PW`), so `av.PW` is absent from a stock wheel; the reference half
+alongside the three above, for three reasons: `av.PW` exists only in a
+build with the `pw` module; the reference half
 needs a `pw.x` binary at the path in the script header, and `--skip-qe` runs
 the Atomiverse side alone; and the figures need the `examples` extra. It
 sweeps 26 SCF solves, so budget minutes rather than seconds.

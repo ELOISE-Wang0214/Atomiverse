@@ -111,15 +111,8 @@ def parse_bool(raw: str) -> Optional[bool]:
 
 
 def _load_toml(path: Path) -> Mapping[str, Any]:
-    try:
-        import tomllib  # py>=3.11
-    except ModuleNotFoundError:  # pragma: no cover - exercised on 3.9/3.10
-        try:
-            import tomli as tomllib  # type: ignore[no-redef]
-        except ModuleNotFoundError as exc:
-            raise ConfigError(
-                "TOML config requires Python 3.11+ (tomllib) or the 'tomli' package"
-            ) from exc
+    import tomllib
+
     with path.open("rb") as fh:
         return tomllib.load(fh)
 

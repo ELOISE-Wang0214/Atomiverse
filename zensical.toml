@@ -112,6 +112,7 @@ nav = [
     "developer/extending-cpu-subsystems.md",
     "developer/kspace-long-range.md",
     "developer/python-molpy-boundary.md",
+    "developer/release.md",
     "developer/oracle-capability-loop.md",
   ] },
   { "Reference" = [

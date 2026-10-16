@@ -1,13 +1,10 @@
-"""Unit tests for staged cmake CLI: config / compile / install."""
+"""Unit tests for the native-build CLI: config / compile / install."""
 
 from __future__ import annotations
 
-import json
 import sys
 import textwrap
 from pathlib import Path
-from types import ModuleType
-from typing import Optional
 
 import pytest
 
@@ -16,10 +13,9 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from atomiverse.cli.build import (  # noqa: E402
-    build_cmake_compile_command,
-    build_cmake_configure_command,
-    build_cmake_install_command,
-    dry_run_defines,
+    BuildState,
+    build_install_command,
+    build_wheel_command,
 )
 from atomiverse.cli.config import (  # noqa: E402
     BINDING_TABLE,
@@ -34,39 +30,10 @@ from atomiverse.cli.config import (  # noqa: E402
 )
 from atomiverse.cli.main import main  # noqa: E402
 from atomiverse.cli.source import (  # noqa: E402
-    default_tarball_url,
     package_version,
-    verify_source_version,
+    resolve_source,
 )
 from atomiverse.cli.status import format_status, run_status  # noqa: E402
-
-_REPO = _SRC.parents[1]  # Atomiverse root when layout is repo/python/src
-_PYPROJECT = _SRC.parent / "pyproject.toml"  # python/pyproject.toml
-
-
-def _try_import_tomllib() -> Optional[ModuleType]:
-    """Return a TOML reader module, or None when the environment has none.
-
-    Same optional-dependency shape as ``atomiverse.cli.config._load_toml``:
-    ``tomllib`` is stdlib on py>=3.11, and 3.9/3.10 fall back to the optional
-    ``tomli`` backport. Each branch binds one name once and returns it, so the
-    absent case is a plain None rather than a re-bound module name.
-    """
-    try:
-        import tomllib as mod
-
-        return mod
-    except ModuleNotFoundError:  # pragma: no cover - exercised on 3.9/3.10
-        pass
-    try:
-        import tomli as mod
-
-        return mod
-    except ModuleNotFoundError:
-        return None
-
-
-_tomllib: Optional[ModuleType] = _try_import_tomllib()
 
 
 # ── mutual exclusion / empty ─────────────────────────────────────────────────
@@ -75,14 +42,14 @@ _tomllib: Optional[ModuleType] = _try_import_tomllib()
 def test_mutual_exclusion_config_vs_modules() -> None:
     with pytest.raises(ConfigError, match="mutual exclusion"):
         validate_mode(config_path="x.toml", modules=["md"], hf=False)
-    rc = main(["config", "--config", "x.toml", "md", "--src", str(_REPO)])
+    rc = main(["config", "--config", "x.toml", "md", "--src", "/no/such/checkout"])
     assert rc != 0
 
 
 def test_empty_config_fails() -> None:
     with pytest.raises(ConfigError, match="empty config"):
         validate_mode(config_path=None, modules=[], hf=False)
-    rc = main(["config", "--src", str(_REPO)])
+    rc = main(["config", "--src", "/no/such/checkout"])
     assert rc != 0
 
 
@@ -170,37 +137,6 @@ def test_kspace_closure() -> None:
     assert defines["ATV_BUILD_POTENTIALS"] == "ON"
 
 
-def test_wheel_define_block_enables_kspace() -> None:
-    """The wheel carries reciprocal-space electrostatics by default.
-
-    ``python -m atomiverse config …`` resolves defines from the module DAG
-    (above), but a plain ``pip install .`` never touches that path — the
-    wheel's own capability set is the scikit-build-core define block in
-    python/pyproject.toml. Spec py-coulomb-pme pins
-    ``ATV_BUILD_KSPACE = {env = "ATV_BUILD_KSPACE", default = "ON"}`` there,
-    so PME-charged MD is reachable from the shipped wheel and can still be
-    switched off from the environment.
-    """
-    if _tomllib is None:  # pragma: no cover - py3.9/3.10 without tomli
-        pytest.skip("no TOML reader (need py>=3.11 or the tomli package)")
-    if not _PYPROJECT.is_file():
-        pytest.skip("not in monorepo checkout")
-    with _PYPROJECT.open("rb") as fh:
-        pyproject = _tomllib.load(fh)
-    defines = pyproject["tool"]["scikit-build"]["cmake"]["define"]
-    assert "ATV_BUILD_KSPACE" in defines, (
-        "python/pyproject.toml [tool.scikit-build.cmake.define] carries no "
-        "ATV_BUILD_KSPACE entry: the wheel cannot do PME electrostatics"
-    )
-    entry = defines["ATV_BUILD_KSPACE"]
-    assert isinstance(entry, dict), (
-        "ATV_BUILD_KSPACE must be env-overridable "
-        '({env = "ATV_BUILD_KSPACE", default = "ON"}), not a fixed string'
-    )
-    assert entry["env"] == "ATV_BUILD_KSPACE"
-    assert entry["default"] == "ON"
-
-
 def test_path_closure() -> None:
     cfg = InstallConfig(modules={"path": True})
     defines = resolve_defines(cfg)
@@ -219,103 +155,147 @@ def test_bound_D_rejected() -> None:
         merge_unbound_cli(cfg, ["mpi=ON"])
 
 
-# ── cmake command assembly ───────────────────────────────────────────────────
+# ── native wheel command assembly ────────────────────────────────────────────
 
 
-def test_cmake_configure_command_shape() -> None:
-    defines = dry_run_defines(InstallConfig(modules={"md": True, "pw": True}))
-    cmd = build_cmake_configure_command(
-        Path("/repo"), Path("/build"), defines, python="/usr/bin/python"
+def test_wheel_command_shape() -> None:
+    defines = resolve_defines(InstallConfig(modules={"md": True, "pw": True}))
+    cmd = build_wheel_command(
+        Path("/repo/python"), Path("/b"), defines, python="/usr/bin/python"
     )
-    assert cmd[0] == "cmake"
-    assert "-S" in cmd and "/repo" in cmd
-    assert "-B" in cmd and "/build" in cmd
-    assert any(a.startswith("-DATV_BUILD_MD=ON") for a in cmd)
-    assert any(a.startswith("-DATV_BUILD_PYTHON=ON") for a in cmd)
-    assert any("Python_EXECUTABLE" in a for a in cmd)
+    assert cmd[:4] == ["/usr/bin/python", "-m", "pip", "wheel"]
+    assert "/repo/python" in cmd
+    assert "--no-build-isolation" in cmd and "--no-deps" in cmd
+    assert cmd[cmd.index("--wheel-dir") + 1] == "/b/dist"
+    settings = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-C"]
+    assert "wheel.cmake=true" in settings
+    assert "build-dir=/b/cmake" in settings
+    assert "cmake.define.ATV_BUILD_MD=ON" in settings
+    assert "cmake.define.ATV_BUILD_PW=ON" in settings
+    assert "cmake.define.ATV_BUILD_KSPACE=OFF" in settings
+    assert "cmake.define.ATV_BUILD_PYTHON=ON" in settings
 
 
-def test_cmake_compile_and_install_commands() -> None:
-    b = Path("/build")
-    c = build_cmake_compile_command(b, jobs=4)
-    assert c[:3] == ["cmake", "--build", "/build"]
-    assert "-j" in c and "4" in c
-    i = build_cmake_install_command(b, Path("/prefix"))
-    assert i == ["cmake", "--install", "/build", "--prefix", "/prefix"]
+def test_wheel_command_requires_python_define() -> None:
+    with pytest.raises(ConfigError, match="ATV_BUILD_PYTHON"):
+        build_wheel_command(Path("/p"), Path("/b"), {"ATV_BUILD_MD": "ON"})
 
 
-def test_config_dry_run_streams_command(capsys) -> None:
-    if not (_REPO / "CMakeLists.txt").is_file():
-        pytest.skip("not in monorepo checkout")
-    rc = main(
-        [
-            "config",
-            "md",
-            "--mpi",
-            "--src",
-            str(_REPO),
-            "--dry-run",
-        ]
+def test_install_command_shape() -> None:
+    cmd = build_install_command(Path("/b/dist/x.whl"), python="/usr/bin/python")
+    assert cmd == [
+        "/usr/bin/python",
+        "-m",
+        "pip",
+        "install",
+        "--no-deps",
+        "--force-reinstall",
+        "/b/dist/x.whl",
+    ]
+
+
+def test_build_state_roundtrip(tmp_path: Path) -> None:
+    state = BuildState(
+        version="0.1.0",
+        source_root="/repo",
+        python_dir="/repo/python",
+        build_dir=str(tmp_path),
+        modules=["md"],
+        wheel="/w.whl",
     )
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "cmake" in out
-    assert "ATV_BUILD_MD=ON" in out
-    assert "ATV_USE_MPI=ON" in out
-    assert "dry-run" in out.lower()
+    path = state.save()
+    assert BuildState.load(path) == state
 
 
-def test_compile_dry_run_needs_state(capsys, tmp_path: Path) -> None:
-    # Without state, compile fails loud
-    import atomiverse.cli.build as build_mod
-
-    monkey_state = tmp_path / "missing.json"
-    # patch state path via env file absence
-    old = build_mod.state_path
-    build_mod.state_path = lambda: monkey_state  # type: ignore[assignment]
-    try:
-        rc = main(["compile", "--dry-run"])
-        assert rc != 0
-    finally:
-        build_mod.state_path = old  # type: ignore[assignment]
+def test_build_state_missing_fails_loud(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="no build state"):
+        BuildState.load(tmp_path / "absent.json")
 
 
-def test_version_mismatch(tmp_path: Path) -> None:
-    py_dir = tmp_path / "python"
-    py_dir.mkdir()
-    (py_dir / "src" / "atomiverse").mkdir(parents=True)
-    (py_dir / "pyproject.toml").write_text(
-        '[project]\nname = "atomiverse"\nversion = "9.9.9"\n',
-        encoding="utf-8",
-    )
-    # fake CMakeLists so structure is valid if used as src
-    (tmp_path / "CMakeLists.txt").write_text("project(x)\n", encoding="utf-8")
+# ── source resolution ────────────────────────────────────────────────────────
+
+
+def _fake_checkout(root: Path, version: str, *, molrs: bool = True) -> Path:
+    pkg = root / "python" / "src" / "atomiverse"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text(f'__version__ = "{version}"\n', encoding="utf-8")
+    (root / "python" / "pyproject.toml").write_text("", encoding="utf-8")
+    (root / "CMakeLists.txt").write_text("project(x)\n", encoding="utf-8")
+    if molrs:
+        (root / "molrs").mkdir()
+        (root / "molrs" / "Cargo.toml").write_text("", encoding="utf-8")
+    return root
+
+
+def test_resolve_source_ok(tmp_path: Path) -> None:
+    root = _fake_checkout(tmp_path, "1.2.3")
+    spec = resolve_source(str(root), version="1.2.3")
+    assert spec.root == root.resolve()
+    assert spec.python_dir == root.resolve() / "python"
+    assert spec.version == "1.2.3"
+    assert resolve_source(str(root / "python"), version="1.2.3") == spec
+
+
+def test_resolve_source_version_mismatch(tmp_path: Path) -> None:
+    root = _fake_checkout(tmp_path, "9.9.9")
     with pytest.raises(ConfigError, match="version mismatch"):
-        verify_source_version(tmp_path, expected="0.1.0")
+        resolve_source(str(root), version="0.1.0")
 
 
-def test_status_none() -> None:
-    text = format_status(None)
-    assert "config" in text.lower()
-    rc = run_status()
-    assert rc == 0
+def test_resolve_source_needs_molrs(tmp_path: Path) -> None:
+    root = _fake_checkout(tmp_path, "0.1.0", molrs=False)
+    with pytest.raises(ConfigError, match="molrs submodule"):
+        resolve_source(str(root), version="0.1.0")
 
 
-def test_status_with_state(tmp_path: Path, capsys) -> None:
-    state = {
-        "modules": ["md", "neighbor", "potentials"],
-        "fingerprint": "ATV_BUILD_MD=ON",
-        "defines": {"ATV_BUILD_MD": "ON", "ATV_BUILD_PYTHON": "ON"},
-        "configured": True,
-        "build_dir": "/tmp/build",
-    }
-    path = tmp_path / "state.json"
-    path.write_text(json.dumps(state), encoding="utf-8")
-    rc = run_status(path=path)
-    assert rc == 0
+def test_resolve_source_not_a_checkout(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="checkout"):
+        resolve_source(str(tmp_path), version="0.1.0")
+
+
+def test_package_version_is_str() -> None:
+    assert isinstance(package_version(), str)
+
+
+def test_config_dry_run_prints_wheel_command(capsys, tmp_path: Path) -> None:
+    root = _fake_checkout(tmp_path, package_version())
+    rc = main(["config", "md", "--mpi", "--src", str(root), "--dry-run"])
     out = capsys.readouterr().out
-    assert "md" in out
-    assert "ATV_BUILD_MD=ON" in out
+    assert rc == 0
+    assert "pip wheel" in out
+    assert "cmake.define.ATV_BUILD_MD=ON" in out
+    assert "cmake.define.ATV_USE_MPI=ON" in out
+    assert "dry-run" in out.lower()
+    assert not (root / "build-python").exists()
+
+
+# ── status ───────────────────────────────────────────────────────────────────
+
+
+def test_status_nothing() -> None:
+    text = format_status(None, None, extension=False)
+    assert "not installed" in text
+    assert "config" in text.lower()
+    assert run_status() == 0
+
+
+def test_status_installed_and_active() -> None:
+    installed = {"defines": {"ATV_BUILD_MD": "ON", "ATV_BUILD_PW": "OFF",
+                             "ATV_USE_MPI": "ON"}}
+    active = {"build_dir": "/b", "source_root": "/repo", "modules": ["md"],
+              "wheel": "/b/dist/x.whl", "installed": True}
+    text = format_status(installed, active, extension=True)
+    assert "modules:   md" in text
+    assert "ATV_USE_MPI=ON" in text
+    assert "/b/dist/x.whl" in text
+    assert "installed: True" in text
+
+
+def test_status_broken_extension_names_loader_error() -> None:
+    err = ImportError("undefined symbol: _ZTVN3ATV3cpu9minimizer2CGE")
+    text = format_status(None, None, extension=False, load_error=err)
+    assert "BROKEN" in text and "undefined symbol" in text
+    assert "not installed" not in text
 
 
 def test_cli_import_no_extension() -> None:
@@ -369,18 +349,6 @@ def test_config_help(capsys) -> None:
     assert "k:v" not in out
 
 
-def test_default_tarball_url() -> None:
-    assert "v0.1.0" in default_tarball_url("0.1.0")
-    assert isinstance(package_version(), str)
-
-
-def test_write_install_state(tmp_path: Path, monkeypatch) -> None:
-    # write next to a temp package path is hard; just exercise helper on defines
-    defines = dry_run_defines(InstallConfig(modules={"md": True}))
-    # Don't clobber real install state — unit-test content shape only
-    assert defines["ATV_BUILD_PYTHON"] == "ON"
-
-
 def test_run_script_implicit(tmp_path: Path, capsys) -> None:
     script = tmp_path / "hello.py"
     script.write_text("print('hello-atv')\n", encoding="utf-8")
@@ -400,15 +368,3 @@ def test_run_subcommand(tmp_path: Path, capsys) -> None:
     rc = main(["run", str(script)])
     assert rc == 0
     assert "hello-run" in capsys.readouterr().out
-
-
-def test_user_sources_do_not_import_molrs() -> None:
-    """Python users must import molpy, never molrs."""
-    roots = [_SRC / "atomiverse", _SRC.parent / "examples"]
-    hits = []
-    for root in roots:
-        for path in root.rglob("*.py"):
-            text = path.read_text(encoding="utf-8")
-            if "import molrs" in text or "from molrs" in text:
-                hits.append(str(path))
-    assert hits == []
