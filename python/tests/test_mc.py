@@ -695,7 +695,7 @@ class TestMcErrors:
         nothing to score."""
         sim = MC(_NVT_T_K, _NVT_SEED)
         sim.set_mover(TranslateMove(_NVT_DELTA_A))
-        with pytest.raises(RuntimeError, match="(?i)potential"):
+        with pytest.raises(RuntimeError, match="energy source"):
             sim.run(argon_frame, 1)
 
     def test_pair_evaluator_without_neighbor_raises(

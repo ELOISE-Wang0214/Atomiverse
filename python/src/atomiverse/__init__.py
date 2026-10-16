@@ -99,9 +99,8 @@ equations of motion, so a sampler takes a *mover* (``TranslateMove``,
 where MD takes an integrator, and never produces forces.
 ``help(atomiverse.montecarlo)`` gives the acceptance rules and the units.
 These four movers and three presets are CPU-only and take no ``device=``.
-``ATV_BUILD_MC`` is ON by default, so they stay in ``__all__``; only a
-staged install that leaves ``mc`` out drops them, and then they raise
-``AttributeError`` naming the flag like the compile-optional rows below.
+An extension built without ``mc`` raises ``AttributeError`` naming the flag
+for them, like the compile-optional rows below.
 
 ``Hessian`` / ``HessianResult`` are the harmonic vibrational analysis: the
 central finite-difference Hessian over any registered force source, plus the
@@ -112,9 +111,8 @@ at all for a lone atom) in cm⁻¹, and the thermochemistry is reported in
 Hartree relative to an electronic energy of zero.
 ``help(atomiverse.vibration)`` gives the frame contract (masses come from
 the ``atomic_number`` column, Z = 1..18), the rotational symmetry number you
-must supply yourself, and the units. Like Monte Carlo it is CPU-only, takes
-no ``device=``, and stays in ``__all__`` because ``ATV_BUILD_VIB`` is ON by
-default.
+must supply yourself, and the units. Like Monte Carlo it is CPU-only and takes
+no ``device=``.
 
 ``LBFGS`` / ``CG`` / ``FIRE`` are the three fixed-cell geometry optimizers
 and ``IsotropicCellRelax`` / ``AnisotropicCellRelax`` /
@@ -127,8 +125,7 @@ which is ``ForceConverged`` for a fixed cell and ``PressureConverged`` /
 ``StressConverged`` for a variable one. A relaxer additionally needs a force
 source that writes the cell virial, which the classical evaluators do and the
 electronic-structure ones bound here do not; ``help(atomiverse.minimizer)``
-gives that gate, the pairing rules and the units. ``ATV_BUILD_MINIMIZER`` is
-ON by default, so all of them stay in ``__all__``.
+gives that gate, the pairing rules and the units.
 
 The real-space force-field catalogue is the ``set_evaluator`` slot's menu,
 and the slot is plural: a full force field is several calls. Pair styles are
@@ -157,7 +154,11 @@ Compile-optional rows — ``PW`` / ``PWResult`` / ``PWEvaluator``
 ``KSpacePME`` (``ATV_BUILD_KSPACE``) and the Gaussian SCF methods
 ``RHF`` / ``UHF`` / ``RKS`` / ``UKS`` (``ATV_BUILD_HF``) — resolve only on
 an extension that was built with that backend and otherwise raise
-``AttributeError`` naming the flag, so they stay out of ``__all__``.
+``AttributeError`` naming the flag. They are not part of ``__all__``.
+
+``__all__`` is the subset of the public names that the installed extension
+actually carries: a native wheel holds only the modules it was configured
+with, and ``from atomiverse import *`` must work on every such build.
 
 Drivers use the same **categorical setters** as C++ (not phase-only
 ``add`` as the primary path)::
@@ -183,7 +184,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from atomiverse._binding import _cpp, require_cpp
+from atomiverse._binding import _cpp, extension_available, require_cpp
 
 __version__ = "0.1.0"
 
@@ -271,10 +272,8 @@ _COMPUTE_EXPORTS: dict[str, tuple[str, str]] = {
 # group on the one symbol the extension always carries when HF is on.
 _SCF_METHODS: tuple[str, ...] = ("RHF", "UHF", "RKS", "UKS")
 
-# Monte Carlo defaults to ON (ATV_BUILD_MC), so these stay in __all__ — but a
-# staged CLI install picks its modules explicitly and can leave `mc` out.
-# Probed as a group on `MC`, the preset bind_mc.cpp always registers when the
-# domain is built.
+# Monte Carlo (ATV_BUILD_MC), probed as a group on `MC`, the preset
+# bind_mc.cpp always registers when the domain is built.
 _MC_NAMES: tuple[str, ...] = (
     "MC",
     "NptMC",
@@ -285,12 +284,13 @@ _MC_NAMES: tuple[str, ...] = (
     "MoveSelector",
 )
 
-# Vibrational analysis defaults to ON (ATV_BUILD_VIB), so these stay in
-# __all__ — same staged-CLI caveat as the Monte Carlo group. Probed on
-# `Hessian`, the driver bind_vib.cpp always registers when the domain is built.
+# Vibrational analysis (ATV_BUILD_VIB), probed on `Hessian`, the driver
+# bind_vib.cpp always registers when the domain is built.
 _VIB_NAMES: tuple[str, ...] = ("Hessian", "HessianResult")
 
-__all__ = [
+# The public top-level names. `__all__` is the subset the installed extension
+# carries, computed on first access in `__getattr__`.
+_PUBLIC: tuple[str, ...] = (
     "MD",
     "VelocityVerlet",
     "NoseHooverNPT",
@@ -351,10 +351,26 @@ __all__ = [
     "Hessian",
     "HessianResult",
     "single_point",
-]
+)
+
+
+def _carried(name: str) -> bool:
+    try:
+        __getattr__(name)
+    except (AttributeError, ImportError):
+        return False
+    return True
 
 
 def __getattr__(name: str) -> Any:
+    if name == "__all__":
+        # Without the extension every name raises the install hint, which is
+        # what a star import should surface; with it, keep what resolves.
+        if not extension_available():
+            return list(_PUBLIC)
+        names = [n for n in _PUBLIC if _carried(n)]
+        globals()["__all__"] = names
+        return names
     if name not in _COMPUTE_EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     # Extension must be present before any compute symbol resolves.

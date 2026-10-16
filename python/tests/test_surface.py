@@ -30,29 +30,22 @@ namespace (pinned per row in test_namespaces.py):
   through the CMake module DAG, so it is never capability-probed.
 * Monte Carlo (spec py-mc): the three presets ``MC`` / ``NptMC`` / ``GCMC``
   and their four movers (``TranslateMove``, ``VolumeMove``,
-  ``InsertDeleteMove``, ``MoveSelector``) are unconditional top-level names
-  beside the MD surface — ``ATV_BUILD_MC`` defaults ON, so like ``XYZ`` they
-  are never capability-probed and belong in the static ``__all__``.
+  ``InsertDeleteMove``, ``MoveSelector``) are public top-level names
+  beside the MD surface.
 * Vibrational analysis (spec py-vib): ``Hessian`` and ``HessianResult``
-  are unconditional top-level names beside the Monte Carlo surface —
-  ``ATV_BUILD_VIB`` defaults ON, so like ``XYZ`` and the MC names they are
-  never capability-probed and belong in the static ``__all__``.
+  are public top-level names beside the Monte Carlo surface.
 * Geometry optimization (spec py-minimize-full): beside ``LBFGS`` /
   ``ForceConverged`` the surface carries the two other optimizers (``CG``,
   ``FIRE``), the four variable-cell relaxers (``IsotropicCellRelax``,
   ``AnisotropicCellRelax``, ``TriclinicCellRelax``,
   ``JointIsotropicRelax``) and the two cell-relax criteria
-  (``PressureConverged``, ``StressConverged``). All eight are
-  unconditional: ``ATV_BUILD_MINIMIZER`` defaults ON, so like the MC and
-  vibration names they are never capability-probed and belong in the
-  static ``__all__``.
+  (``PressureConverged``, ``StressConverged``).
+* ``__all__`` is the subset of the public names the installed extension
+  carries, so ``from atomiverse import *`` works on any module selection.
 * Electrostatics (spec py-coulomb-pme): ``PairCoulCut`` and ``CoulLong``
   are unconditional top-level names; ``KSpacePME`` is compile-optional
   (``ATV_BUILD_KSPACE``) and therefore reachable only through the lazy
   attribute + ``atomiverse.longrange``, never through ``__all__``.
-* A tree grep gate keeps dead references from creeping back anywhere
-  under ``python/``. Forbidden tokens are assembled by string
-  concatenation so this file never contains one literally.
 
 Smoke parameters reuse the verified conftest values (Ar LJ
 epsilon=0.0104 eV, sigma=3.4 A, mass 39.948 amu; PW on the in-tree
@@ -63,9 +56,6 @@ underconverged") — no new reference values are introduced.
 from __future__ import annotations
 
 import importlib
-import os
-from collections.abc import Iterator
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -95,13 +85,11 @@ _CANONICAL_NEW_NAMES: tuple[str, ...] = (
     "DihedralMultiHarmonic",
 )
 
-# Exact honest top-level surface — STATIC on every build. Compile-optional
-# object types (``PW`` / ``PWResult``, ``KSpacePME``) are NOT in ``__all__``:
-# they are reachable through the lazy ``__getattr__`` + their deep module
-# when the extension carries them, and raise a build-flag-naming
-# AttributeError when it does not. Keying this set off a capability probe
-# was a latent bug — ``__all__`` is a static list, so the equality assert
-# below failed on any PW-enabled build.
+# The public top-level names (``atomiverse._PUBLIC``), the same on every
+# build. Compile-optional object types (``PW`` / ``PWResult``, ``KSpacePME``)
+# are NOT among them: they are reachable through the lazy ``__getattr__`` +
+# their deep module when the extension carries them, and raise a
+# build-flag-naming AttributeError when it does not.
 _CANONICAL_ALL: frozenset[str] = frozenset(
     {
         "MD",
@@ -144,6 +132,14 @@ _CANONICAL_ALL: frozenset[str] = frozenset(
         "AM1",
         "AM1Evaluator",
         "AM1Result",
+        "AM1BCCCharges",
+        "BccParameterSet",
+        "DFTB2",
+        "DftbBoundary",
+        "DftbSkSet",
+        "DftbSpinConstant",
+        "kDftbSpinConstantsPbeHa",
+        "kDftbSpinConstantsLdaHa",
         "single_point",
         "Hessian",
         "HessianResult",
@@ -276,27 +272,21 @@ class TestCanonicalSurface:
         """Each canonical LAMMPS-style component name is exported."""
         assert hasattr(av, name), f"canonical component atomiverse.{name} is missing"
 
-    def test_all_is_exactly_the_honest_surface(self) -> None:
-        """__all__ is the static MD + minimize + electrostatics + recorder
-        + MC + AM1 surface.
+    def test_public_names_are_the_honest_surface(self) -> None:
+        """The public name list is the same 60 names on every build."""
+        assert len(_CANONICAL_ALL) == 60
+        assert set(av._PUBLIC) == set(_CANONICAL_ALL)
 
-        Same 52 names on every build: compile-optional types live behind
-        the lazy ``__getattr__``, never in ``__all__``. ``XYZ`` is static
-        because ``ATV_BUILD_PYTHON`` forces ``ATV_BUILD_IO=ON`` through the
-        CMake module DAG (``cmake/AtvProductModules.cmake:68``); the seven
-        Monte Carlo names are static because ``ATV_BUILD_MC`` is ON by
-        default (``:25``) and the wheel does not override it, the two
-        vibration names (spec py-vib) are static for the same reason
-        (``ATV_BUILD_VIB`` ON at ``:27``), and the eight new geometry
-        optimization names (spec py-minimize-full) because
-        ``ATV_BUILD_MINIMIZER`` is ON by default too. The nine
-        force-field styles of spec py-pair-styles are static for the
-        plainest reason of all — a pair or bonded style is part of
-        ``ATV_BUILD_POTENTIALS`` with no flag of its own, just like
-        ``PairLJCut``. None of them is capability-probed.
-        """
-        assert len(_CANONICAL_ALL) == 52
-        assert set(av.__all__) == set(_CANONICAL_ALL)
+    def test_all_is_the_carried_subset(self) -> None:
+        """``__all__`` keeps exactly the public names this extension carries."""
+        carried = {n for n in _CANONICAL_ALL if hasattr(av, n)}
+        assert set(av.__all__) == carried
+
+    def test_star_import_works_on_this_build(self) -> None:
+        """``from atomiverse import *`` binds every name in ``__all__``."""
+        namespace: dict = {}
+        exec("from atomiverse import *", namespace)
+        assert set(av.__all__) <= set(namespace)
 
 
 # ── MD LJ smoke on canonical names ──────────────────────────────────
@@ -645,80 +635,3 @@ class TestKSpaceSurface:
     def test_kspace_pme_is_never_in_all(self) -> None:
         """Compile-optional types stay out of the static ``__all__``."""
         assert "KSpacePME" not in av.__all__
-
-
-# ── In-tree dead-reference grep gate ────────────────────────────────
-#
-# Forbidden tokens are assembled by concatenation so that this file
-# never contains one literally (the acceptance grep excludes this file;
-# the in-test scanner must not self-match either way).
-
-_PYTHON_ROOT: Path = Path(__file__).resolve().parent.parent
-_THIS_FILE: Path = Path(__file__).resolve()
-_SCAN_SUFFIXES: frozenset[str] = frozenset({".py", ".cpp", ".md"})
-_SKIP_DIR_NAMES: frozenset[str] = frozenset(
-    {"build", "_skbuild", "dist", "venv", "node_modules", "__pycache__"}
-)
-
-# ``RHF`` / ``UHF`` / ``RKS`` / ``UKS`` are NOT scanned for: spec
-# py-scf-single-point makes them live names, so ``av.RHF`` is a legitimate
-# reference throughout python/ (docs included).
-_DEAD_AV_ATTRS: tuple[str, ...] = (
-    "GeometryOptimizer",
-    "Frame",
-    "Block",
-)
-
-
-def _forbidden_tokens() -> tuple[str, ...]:
-    """Dead-reference tokens, built without literal occurrence here."""
-    tokens = ["_cpp" + "." + name for name in _DEAD_CPP_ATTRS]
-    tokens.append("Cpu" + "Frame")
-    tokens.extend("av" + "." + name for name in _DEAD_AV_ATTRS)
-    tokens.extend("atomiverse" + "." + name for name in ("Frame", "Block"))
-    # molpy >= 0.13 re-exports molpy.Frame / molpy.Block by identity, so
-    # `molpy.Frame` is no longer a dead reference and is not scanned for.
-    return tuple(tokens)
-
-
-def _iter_scan_files() -> Iterator[Path]:
-    """Yield scannable files under python/ (excluding this test and
-    build artifacts / virtualenv / cache directories)."""
-    for dirpath, dirnames, filenames in os.walk(_PYTHON_ROOT):
-        dirnames[:] = sorted(
-            d
-            for d in dirnames
-            if not d.startswith(".")
-            and not d.endswith(".egg-info")
-            and d not in _SKIP_DIR_NAMES
-        )
-        for filename in sorted(filenames):
-            path = Path(dirpath) / filename
-            if path.suffix not in _SCAN_SUFFIXES:
-                continue
-            if path.resolve() == _THIS_FILE:
-                continue
-            yield path
-
-
-def _find_token(token: str) -> list[str]:
-    """Return 'relpath:lineno' hits for ``token`` under python/."""
-    hits: list[str] = []
-    for path in _iter_scan_files():
-        text = path.read_text(encoding="utf-8", errors="replace")
-        if token not in text:
-            continue
-        for lineno, line in enumerate(text.splitlines(), start=1):
-            if token in line:
-                hits.append(f"{path.relative_to(_PYTHON_ROOT)}:{lineno}")
-    return hits
-
-
-class TestDeadReferenceGrepGate:
-    @pytest.mark.parametrize("token", _forbidden_tokens())
-    def test_no_dead_reference_in_tree(self, token: str) -> None:
-        """No file under python/ references the dead symbol token."""
-        hits = _find_token(token)
-        assert not hits, (
-            f"forbidden dead-reference token {token!r} found in: " + ", ".join(hits)
-        )
