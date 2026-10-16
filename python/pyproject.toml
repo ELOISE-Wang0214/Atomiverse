@@ -16,7 +16,10 @@ readme = "README.md"
 license = "GPL-2.0-only"
 # molcrafts-molpy (the Frame currency) requires >=3.12.
 requires-python = ">=3.12"
-dependencies = ["numpy", "molcrafts-molpy>=0.13.0,<0.14", "typer>=0.12"]
+# molpy hands frames to the extension as a molrs capsule named by the molrs
+# ABI line (major.minor), so its minor moves in lockstep with the molrs
+# submodule (molrs/Cargo.toml version).
+dependencies = ["numpy", "molcrafts-molpy>=0.18.0,<0.19", "typer>=0.12"]
 
 [project.optional-dependencies]
 dev      = ["pytest", "pytest-cov", "numpy"]
@@ -31,12 +34,9 @@ docs     = [
   "zensical>=0.0.45",
   "molcrafts-zensical-theme>=0.2.3",
 ]
-# Python examples (pw_qe_compare, …): paper plots via molplot; systems via molpy.
-# Do not add matplotlib or ASE here — use the MolCrafts stack only.
-examples = [
-  "molcrafts-molplot>=0.1.2",
-  "molcrafts-molpy==0.13.1",
-]
+# Python examples (pw_qe_compare, …): paper plots via molplot; systems via the
+# core molpy dependency. Do not add matplotlib or ASE here — MolCrafts stack only.
+examples = ["molcrafts-molplot>=0.1.2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

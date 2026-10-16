@@ -1541,7 +1541,7 @@ class TestMolrsFrameBoundary:
 
     def test_untyped_metadata_is_rejected(self, argon_frame):
         """Non-primitive meta values fail loud at the molpy boundary."""
-        with pytest.raises(TypeError, match="MetaValue"):
+        with pytest.raises(TypeError, match="metadata value"):
             argon_frame.meta["bad"] = object()
 
     @pytest.mark.parametrize("legacy_block_name", ("scalars", "stress"))
