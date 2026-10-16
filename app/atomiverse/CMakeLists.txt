@@ -38,7 +38,7 @@ endif()
 
 if(SKBUILD)
     install(TARGETS atomiverse_cli
-            RUNTIME DESTINATION "${SKBUILD_SCRIPTS_DIR}")
+            RUNTIME DESTINATION "${SKBUILD_SCRIPTS_DIR}" COMPONENT python)
 else()
     install(TARGETS atomiverse_cli
             RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")

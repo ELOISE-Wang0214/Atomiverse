@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/log.h"
 #include "atomiverse/cpu/communication/bcast_frame.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/communication/gather.h"

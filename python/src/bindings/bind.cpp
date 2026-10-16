@@ -12,6 +12,9 @@
 
 namespace nb = nanobind;
 
+#ifdef ATV_HAS_POTENTIALS
+void bind_potentials(nb::module_& m);
+#endif
 #ifdef ATV_HAS_MD
 void bind_md(nb::module_& m);
 #endif
@@ -37,6 +40,10 @@ void bind_scf(nb::module_& m);
 NB_MODULE(_atomiverse, m) {
     m.doc() = "Atomiverse: molecular simulation compute backend";
 
+    // Force-field parameter types first: every driver binding takes them.
+#ifdef ATV_HAS_POTENTIALS
+    bind_potentials(m);
+#endif
 #ifdef ATV_HAS_MD
     bind_md(m);
 #endif

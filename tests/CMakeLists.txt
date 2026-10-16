@@ -546,7 +546,10 @@ endif()
 # the ms-scale H2 fixture this file owns (mirrored by test_mpi_serial_on_replica).
 if(ATV_BUILD_MOLRS) # cpu/task block follows MOLRS (launcher-only surface)
     atv_add_cpp_test(test_cpu_task_codec                  cpu/test_task_codec.cpp)
-    atv_add_cpp_test(test_cpu_task_materializer           cpu/test_task_materializer.cpp)
+    # Replays MD and Minimize tasks; each replay is compiled only with its domain.
+    if(ATV_BUILD_MD AND ATV_BUILD_MINIMIZER)
+        atv_add_cpp_test(test_cpu_task_materializer       cpu/test_task_materializer.cpp)
+    endif()
 endif()
 
 # LauncherGate (mpi-launcher-embedded-python-04, ac-002): the PID-qualified
@@ -732,7 +735,8 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_rebalance_n1 test_mpi_rebalance 1)
     atv_add_mpi_run(test_mpi_rebalance_n8 test_mpi_rebalance 8)
 
-    if(ATV_BUILD_MOLRS) # cpu/task block follows MOLRS (launcher-only surface)
+    # cpu/task block follows MOLRS; the protocol test runs MD and Minimize tasks.
+    if(ATV_BUILD_MOLRS AND ATV_BUILD_MD AND ATV_BUILD_MINIMIZER)
         atv_add_mpi_exec(test_mpi_task_protocol mpi/test_task_protocol.cpp)
         atv_add_mpi_run(test_mpi_task_protocol_n1 test_mpi_task_protocol 1)
         atv_add_mpi_run(test_mpi_task_protocol_n2 test_mpi_task_protocol 2)

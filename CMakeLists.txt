@@ -141,14 +141,19 @@ if(NOT ATV_DOCS_ONLY)
         "Build end-to-end textbook regression cases (regressions/)" OFF)
     option(ATV_BUILD_BENCHMARKS "Build benchmarks" OFF)
     option(ATV_BUILD_EXAMPLES "Build examples" OFF)
-    option(ATV_BUILD_CLI
-           "Build the atomiverse command-line driver (native -in + optional Python host)" ON)
     option(ATV_BUILD_LAUNCHER
            "Embed MPI Python hosting in the atomiverse CLI (rank-0 CPython)" OFF)
 
     # Product-module gates (MD/MC/… + ANALYSIS/IO/MOLRS DAG).
     # Must run after ATV_BUILD_KSPACE / HF / GPW / PYTHON are declared.
     include("${CMAKE_SOURCE_DIR}/cmake/AtvProductModules.cmake")
+
+    # The CLI's native -in path runs classical MD, so it defaults ON only with
+    # the MD domain; an MD-less slice builds without it instead of failing.
+    include(CMakeDependentOption)
+    cmake_dependent_option(ATV_BUILD_CLI
+        "Build the atomiverse command-line driver (native -in + optional Python host)"
+        ON "ATV_BUILD_MD" OFF)
 
     # molrs contract only when the DAG left MOLRS on.
     set(ATV_MOLRS_HAS_WHAM OFF)
@@ -550,12 +555,16 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/task/task_spec.cpp
             src/cpu/task/task_codec.cpp
             src/cpu/task/task_materializer.cpp
-            # Typed Minimize params -> components/criterion, shared by the
-            # materializer replay and the Python Minimize handle.
-            src/cpu/task/internal/minimize_builders.cpp
             src/cpu/task/task_protocol.cpp
             src/cpu/task/launcher_gate.cpp
         )
+        # Typed Minimize params -> components/criterion, shared by the
+        # materializer replay and the Python Minimize handle; the materializer
+        # gates its MD and Minimize replay on ATV_HAS_MD / ATV_HAS_MINIMIZER.
+        if(ATV_BUILD_MINIMIZER)
+            list(APPEND ATOMIVERSE_SRCS
+                src/cpu/task/internal/minimize_builders.cpp)
+        endif()
     endif()
 
     # CPU potentials — globbed so new pair/bond/angle/dihedral styles drop in.
@@ -1269,7 +1278,7 @@ if(NOT ATV_DOCS_ONLY)
     # `python -m nanobind --cmake_dir`.  For standalone cmake builds, nanobind
     # must be installed in the active Python environment (pip install nanobind).
     if(ATV_BUILD_PYTHON)
-        find_package(Python 3.9 COMPONENTS Interpreter Development.Module REQUIRED)
+        find_package(Python 3.12 COMPONENTS Interpreter Development.Module REQUIRED)
 
         # Locate nanobind from the active Python environment
         execute_process(
@@ -1286,6 +1295,9 @@ if(NOT ATV_DOCS_ONLY)
         find_package(nanobind CONFIG REQUIRED)
 
         set(_ATV_NB_SRCS python/src/bindings/bind.cpp)
+        if(ATV_BUILD_POTENTIALS)
+            list(APPEND _ATV_NB_SRCS python/src/bindings/bind_potentials.cpp)
+        endif()
         if(ATV_BUILD_MD)
             list(APPEND _ATV_NB_SRCS python/src/bindings/bind_md.cpp)
         endif()
@@ -1346,7 +1358,29 @@ if(NOT ATV_DOCS_ONLY)
         if(ATV_BUILD_PW)
             target_link_libraries(_atomiverse PRIVATE ${FFTW3_LIB})
         endif()
-        install(TARGETS _atomiverse LIBRARY DESTINATION atomiverse)
+        install(TARGETS _atomiverse LIBRARY DESTINATION atomiverse
+                COMPONENT python)
+
+        # The configuration this extension was compiled with, shipped beside
+        # it so `python -m atomiverse status` reports the installed build.
+        set(_atv_build_info "")
+        foreach(_atv_key IN ITEMS
+                ATV_BUILD_MD ATV_BUILD_MINIMIZER ATV_BUILD_MC
+                ATV_BUILD_EVALUATE ATV_BUILD_VIB ATV_BUILD_PATH ATV_BUILD_HF
+                ATV_BUILD_PW ATV_BUILD_GPW ATV_BUILD_SEMIEMPIRICAL
+                ATV_BUILD_CUDA ATV_BUILD_KSPACE ATV_BUILD_POTENTIALS
+                ATV_BUILD_NEIGHBOR ATV_USE_MPI ATV_REAL_STORAGE ATV_REAL_WORK
+                ATV_ID_SIZE)
+            if(_atv_build_info)
+                string(APPEND _atv_build_info ",\n")
+            endif()
+            string(APPEND _atv_build_info "    \"${_atv_key}\": \"${${_atv_key}}\"")
+        endforeach()
+        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/atomiverse_build_info.json"
+             "{\n  \"defines\": {\n${_atv_build_info}\n  }\n}\n")
+        install(FILES "${CMAKE_CURRENT_BINARY_DIR}/atomiverse_build_info.json"
+                DESTINATION atomiverse RENAME _build_info.json
+                COMPONENT python)
     endif()
 
     # ── Plain `cmake --install` layout (wheel builds carry none of this;

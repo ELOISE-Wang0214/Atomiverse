@@ -9,6 +9,7 @@
 #include <utility>
 #include <variant>
 
+#ifdef ATV_HAS_MD
 #include "atomiverse/cpu/dynamics/barostat.h"
 #include "atomiverse/cpu/dynamics/fix_csvr.h"
 #include "atomiverse/cpu/dynamics/fix_langevin.h"
@@ -17,11 +18,14 @@
 #include "atomiverse/cpu/dynamics/nose_hoover_npt.h"
 #include "atomiverse/cpu/dynamics/parrinello_rahman_npt.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#endif
 #ifdef ATV_HAS_KSPACE
 #include "atomiverse/cpu/longrange/pme.h"
 #endif
+#ifdef ATV_HAS_MINIMIZER
 #include "atomiverse/cpu/minimize/cg.h"
 #include "atomiverse/cpu/minimize/lbfgs.h"
+#endif
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #ifdef ATV_HAS_PW
 #include "atomiverse/cpu/planewave/pw_evaluator.h"
@@ -48,13 +52,16 @@
 #ifdef ATV_HAS_SEMIEMPIRICAL
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #endif
+#ifdef ATV_HAS_MINIMIZER
 #include "atomiverse/cpu/task/internal/minimize_builders.h"
+#endif
 #include "atomiverse/cpu/task/internal/potential_builders.h"
 
 namespace ATV::cpu::task {
 namespace {
 
-#ifndef ATV_HAS_KSPACE
+// Only the MD replay names it.
+#if defined(ATV_HAS_MD) && !defined(ATV_HAS_KSPACE)
 /// @brief Reject a `KSpacePmeParams` entry in a build without the PME solver.
 ///
 /// PME is smooth Particle-Mesh Ewald, the reciprocal-space half of the
@@ -75,7 +82,8 @@ namespace {
 }
 #endif
 
-#ifndef ATV_HAS_IO
+// Only the MD replay names it.
+#if defined(ATV_HAS_MD) && !defined(ATV_HAS_IO)
 /// @brief Reject an `XyzRecorderParams` entry in a build without the writer.
 ///
 /// `cpu::XyzRecorder` writes through molrs and is therefore behind the
@@ -95,7 +103,8 @@ namespace {
 }
 #endif
 
-#ifndef ATV_HAS_PW
+// Only the MD replay names it.
+#if defined(ATV_HAS_MD) && !defined(ATV_HAS_PW)
 /// @brief Reject a `PwEvaluatorParams` entry in a build without the solver.
 ///
 /// `cpu::pw::PW` is plane-wave density-functional theory — the electronic
@@ -134,6 +143,34 @@ namespace {
 }
 #endif
 
+#ifndef ATV_HAS_MD
+/// @brief Reject an `MDTask` in a build without the MD domain.
+///
+/// `TaskSpec` and its wire codec are compiled unconditionally, so an MD
+/// payload still *decodes* on an MD-less build and has to be refused where
+/// the driver would be constructed.
+///
+/// @throws std::runtime_error Always, naming the flag to rebuild with.
+[[noreturn]] void throw_md_not_built() {
+    throw std::runtime_error("MDTask requires ATV_BUILD_MD=ON "
+                             "(molecular dynamics not compiled in)");
+}
+#endif
+
+#ifndef ATV_HAS_MINIMIZER
+/// @brief Reject a `MinimizeTask` in a build without the minimizer domain.
+///
+/// Same shape as `throw_md_not_built`: the payload decodes, the driver and
+/// its optimizers were compiled out.
+///
+/// @throws std::runtime_error Always, naming the flag to rebuild with.
+[[noreturn]] void throw_minimizer_not_built() {
+    throw std::runtime_error("MinimizeTask requires ATV_BUILD_MINIMIZER=ON "
+                             "(geometry optimization not compiled in)");
+}
+#endif
+
+#ifdef ATV_HAS_MD
 /// @brief Build a `FixLangevin` with its temperature-ramp span installed.
 ///
 /// A *temperature ramp* moves the thermostat setpoint linearly from
@@ -477,6 +514,9 @@ void register_md_entry(md::MD& driver, const MDComponentEntry& entry,
         entry.params);
 }
 
+#endif // ATV_HAS_MD
+
+#ifdef ATV_HAS_MINIMIZER
 /// @brief Replay one typed Minimize entry onto the driver.
 ///
 /// Same two paths as `register_md_entry`, minus the ramp wiring: no
@@ -542,11 +582,13 @@ void register_minimize_entry(minimizer::Minimize& driver,
         },
         entry.params);
 }
+#endif // ATV_HAS_MINIMIZER
 
 } // namespace
 
 TaskMaterializer::TaskMaterializer(const TaskSpec& spec) : kind_(spec.kind()) {
     if (kind_ == TaskKind::MD) {
+#ifdef ATV_HAS_MD
         const auto& task = spec.md();
         budget_ = static_cast<int>(task.n_steps);
         md_.emplace();
@@ -554,6 +596,9 @@ TaskMaterializer::TaskMaterializer(const TaskSpec& spec) : kind_(spec.kind()) {
             register_md_entry(*md_, entry, task.n_steps);
         md_->build();
         return;
+#else
+        throw_md_not_built();
+#endif
     }
 
     if (kind_ == TaskKind::SinglePoint) {
@@ -572,6 +617,7 @@ TaskMaterializer::TaskMaterializer(const TaskSpec& spec) : kind_(spec.kind()) {
 #endif
     }
 
+#ifdef ATV_HAS_MINIMIZER
     const auto& task = spec.minimize();
     budget_ = static_cast<int>(task.max_iter);
     minimize_.emplace();
@@ -579,40 +625,59 @@ TaskMaterializer::TaskMaterializer(const TaskSpec& spec) : kind_(spec.kind()) {
     for (const auto& entry : task.entries)
         register_minimize_entry(*minimize_, entry);
     minimize_->build();
+#else
+    throw_minimizer_not_built();
+#endif
 }
+
+// The constructor refuses a task kind whose domain is compiled out, so the
+// guarded branches below are the only ones a live materializer can reach.
 
 TaskResult TaskMaterializer::run(cpu::Frame& frame) {
     completed_dd_.reset();
+#ifdef ATV_HAS_MD
     if (kind_ == TaskKind::MD) {
         const int iterations = md_->run(frame, budget_);
         return TaskResult{iterations, md_->converged(), md_->stop_reason()};
     }
+#endif
     if (kind_ == TaskKind::SinglePoint) {
         eval_->run(frame);
         return TaskResult{1, false, {}};
     }
-
+#ifdef ATV_HAS_MINIMIZER
     auto completed = minimize_->run_detached(frame, budget_);
     const int iterations = completed.iterations;
     completed_dd_ = std::move(completed.decomposition);
     return TaskResult{iterations, minimize_->converged(),
                       minimize_->stop_reason()};
+#else
+    throw_minimizer_not_built();
+#endif
 }
 
 std::unique_ptr<md::mpi::DomainDecomposition> TaskMaterializer::release_dd() {
+#ifdef ATV_HAS_MD
     if (kind_ == TaskKind::MD)
         return md_->release_dd();
+#endif
     if (kind_ == TaskKind::Minimize)
         return std::move(completed_dd_);
     return nullptr;
 }
 
 const Plan<cpu::Component>& TaskMaterializer::plan() const {
+#ifdef ATV_HAS_MD
     if (kind_ == TaskKind::MD)
         return md_->plan();
+#endif
     if (kind_ == TaskKind::SinglePoint)
         return eval_->plan();
+#ifdef ATV_HAS_MINIMIZER
     return minimize_->plan();
+#else
+    throw_minimizer_not_built();
+#endif
 }
 
 } // namespace ATV::cpu::task
