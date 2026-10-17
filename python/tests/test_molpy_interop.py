@@ -24,15 +24,14 @@ def _molpy_argon_frame() -> "molpy.Frame":
     for ix in range(2):
         for iy in range(2):
             for iz in range(2):
-                system.def_atom(
-                    element="Ar",
+                system.add_atom(
+                    atomic_number=18,
                     x=ix * scale,
                     y=iy * scale,
                     z=iz * scale,
                     mass=39.948,
                 )
     frame = system.to_frame()
-    frame["atoms"].insert("atomic_number", np.full(8, 18, dtype=np.uint32))
     frame.box = molpy.Box.cube(2 * scale)
     return frame
 
