@@ -12,13 +12,14 @@ import numpy as np
 import pytest
 import molpy
 
-from atomiverse._binding import extension_available
+from atomiverse._binding import _cpp, extension_available
 
-# Compute imports only when the native extension is present. Pure-import
-# tests (test_pure_import.py) never use these fixtures; they run in
-# isolated subprocesses.
+# Compute imports only when the native extension is present and carries MD.
+# Pure-import tests (test_pure_import.py) never use these fixtures; they run
+# in isolated subprocesses.
 _HAS_EXT = extension_available()
-if _HAS_EXT:
+_HAS_MD = _HAS_EXT and hasattr(_cpp, "MD")
+if _HAS_MD:
     from atomiverse.md import MD, InitVelocity
     from atomiverse.md.integrator import VelocityVerlet
     from atomiverse.neighbor import NeighborList
@@ -162,8 +163,8 @@ def bonded_frame() -> "molpy.Frame":
 @pytest.fixture
 def full_lj_md():
     """Full LJ MD via categorical setters (mirrors examples/07_md_lj.cpp)."""
-    if not _HAS_EXT:
-        pytest.skip("C++ extension (_atomiverse) not installed")
+    if not _HAS_MD:
+        pytest.skip("needs ATV_BUILD_MD")
     cutoff = 8.5
     sim = MD()
     sim.set_integrator(VelocityVerlet(0.001))

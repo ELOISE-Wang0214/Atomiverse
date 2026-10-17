@@ -63,6 +63,10 @@ import numpy as np
 import pytest
 import molpy
 
+from _domains import skip_module_unless
+
+skip_module_unless("ATV_BUILD_SEMIEMPIRICAL")
+
 import atomiverse as av
 
 # ── Pinned CH4 oracle (MOPAC AM1 reference 23.2.5, `AM1 1SCF XYZ`; see the

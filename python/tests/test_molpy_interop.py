@@ -9,6 +9,10 @@ from __future__ import annotations
 import numpy as np
 import molpy
 
+from _domains import skip_module_unless
+
+skip_module_unless("ATV_BUILD_MD")
+
 from atomiverse.md import MD, InitVelocity
 from atomiverse.neighbor import NeighborList
 from atomiverse.potentials.pair import LJCut

@@ -70,6 +70,10 @@ import numpy as np
 import pytest
 import molpy
 
+from _domains import skip_module_unless
+
+skip_module_unless("ATV_BUILD_MC", "ATV_BUILD_POTENTIALS")
+
 from atomiverse.montecarlo import (
     GCMC,
     MC,

@@ -40,8 +40,12 @@ import numpy as np
 import pytest
 import molpy
 
-import atomiverse as av
 from atomiverse._binding import _cpp, extension_available
+from _domains import needs, skip_module_unless
+
+skip_module_unless("ATV_BUILD_MD")
+
+import atomiverse as av
 from atomiverse.md import MD, InitVelocity
 from atomiverse.md.barostat import BerendsenBarostat
 from atomiverse.md.integrator import NoseHooverNPT, ParrinelloRahmanNPT, VelocityVerlet
@@ -1234,6 +1238,7 @@ class TestPairStyleCatalogue:
 
     # ── the shared evaluator slot ──────────────────────────────────
 
+    @needs("ATV_BUILD_MINIMIZER")
     @pytest.mark.parametrize("name", _CATALOGUE_NAMES)
     def test_style_accepted_by_minimize(self, name: str) -> None:
         """Every new style is legal in ``Minimize.set_evaluator`` too.
@@ -1430,6 +1435,7 @@ def _h2_frame() -> "molpy.Frame":
     return frame
 
 
+@needs("ATV_BUILD_SEMIEMPIRICAL")
 class TestAm1Bomd:
     """AM1 forces driving the MD loop (spec py-am1-forces).
 

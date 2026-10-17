@@ -77,8 +77,12 @@ import numpy as np
 import pytest
 import molpy
 
-import atomiverse as av
 from atomiverse._binding import _cpp, extension_available
+from _domains import skip_module_unless
+
+skip_module_unless("ATV_BUILD_VIB", "ATV_BUILD_POTENTIALS")
+
+import atomiverse as av
 from atomiverse.neighbor import NeighborList
 from atomiverse.potentials.pair import LJCut
 from atomiverse.vibration import Hessian, HessianResult

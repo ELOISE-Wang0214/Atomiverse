@@ -63,6 +63,7 @@ import molpy
 
 import atomiverse as av
 from atomiverse._binding import _cpp, extension_available
+from _domains import needs
 
 # Capability probes are short-circuited on ``extension_available()``: the
 # missing-extension sentinel raises ImportError (not AttributeError) from
@@ -267,6 +268,7 @@ def silicon_frame() -> "molpy.Frame":
 
 
 class TestCanonicalSurface:
+    @needs("ATV_BUILD_POTENTIALS")
     @pytest.mark.parametrize("name", _CANONICAL_NEW_NAMES)
     def test_canonical_component_present(self, name: str) -> None:
         """Each canonical LAMMPS-style component name is exported."""
@@ -292,6 +294,7 @@ class TestCanonicalSurface:
 # ── MD LJ smoke on canonical names ──────────────────────────────────
 
 
+@needs("ATV_BUILD_MD")
 class TestCanonicalMDSmoke:
     def test_positions_change(
         self, argon_frame: "molpy.Frame", canonical_lj_md: "av.MD"
@@ -440,6 +443,7 @@ class TestScfSurface:
 # ── Electrostatics surface (spec py-coulomb-pme) ────────────────────
 
 
+@needs("ATV_BUILD_POTENTIALS")
 class TestCoulombSurface:
     """``CoulCut`` / ``CoulLong`` are unconditional; only the reciprocal
     solver is compile-optional."""
@@ -467,6 +471,7 @@ class TestCoulombSurface:
 # ── Recorder surface (spec py-recorder-xyz) ─────────────────────────
 
 
+@needs("ATV_BUILD_MD")
 class TestRecorderSurface:
     """``Thermo`` and ``XYZ`` are both unconditional top-level names.
 
@@ -492,6 +497,7 @@ class TestRecorderSurface:
 # ── Monte Carlo surface (spec py-mc) ────────────────────────────────
 
 
+@needs("ATV_BUILD_MC")
 class TestMonteCarloSurface:
     """The three MC presets and their movers are unconditional names.
 
@@ -527,6 +533,7 @@ class TestMonteCarloSurface:
 # ── Vibration surface (spec py-vib) ─────────────────────────────────
 
 
+@needs("ATV_BUILD_VIB")
 class TestVibrationSurface:
     """``Hessian`` / ``HessianResult`` are unconditional names.
 
@@ -558,6 +565,7 @@ class TestVibrationSurface:
 # ── Minimize surface growth (spec py-minimize-full) ─────────────────
 
 
+@needs("ATV_BUILD_MINIMIZER")
 class TestMinimizerSurface:
     """The two extra optimizers, four cell relaxers and two criteria.
 
@@ -585,6 +593,7 @@ class TestMinimizerSurface:
 # ── Force-field catalogue growth (spec py-pair-styles) ──────────────
 
 
+@needs("ATV_BUILD_POTENTIALS")
 class TestPairStyleSurface:
     """The six pair styles and three bonded styles are static names.
 

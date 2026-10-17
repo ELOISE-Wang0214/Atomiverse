@@ -37,8 +37,12 @@ import numpy as np
 import pytest
 import molpy
 
-import atomiverse as av
 from atomiverse._binding import _cpp, extension_available
+from _domains import needs, skip_module_unless
+
+skip_module_unless("ATV_BUILD_MINIMIZER")
+
+import atomiverse as av
 from atomiverse.longrange import CoulLong
 from atomiverse.minimizer import ForceConverged, LBFGS, Minimize, MinimizeResult
 from atomiverse.neighbor import NeighborList
@@ -520,6 +524,7 @@ def test_minimize_accepts_am1_evaluator() -> None:
     assert Minimize().set_evaluator(AM1Evaluator()) is not None
 
 
+@needs("ATV_BUILD_MD")
 def test_evaluator_dispatch_is_one_shared_table() -> None:
     """MD and Minimize read the SAME dispatch object, not two copies.
 
@@ -533,6 +538,7 @@ def test_evaluator_dispatch_is_one_shared_table() -> None:
     assert md_facade._EVALUATOR_DISPATCH is minimizer_facade._EVALUATOR_DISPATCH
 
 
+@needs("ATV_BUILD_MD")
 def test_minimize_dispatch_covers_every_md_type() -> None:
     """The behavioral half of ac-003, including capability-gated types.
 
