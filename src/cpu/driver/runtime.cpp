@@ -9,8 +9,10 @@
 #include "atomiverse/cpu/communication/comm.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
+#include "atomiverse/cpu/component/owned_range.h"
 #include "atomiverse/cpu/driver/driver_node.h"
 #include "atomiverse/cpu/driver/step_timing.h"
+#include "atomiverse/cpu/frame/pbc.h"
 
 #include <algorithm>
 #include <chrono>
@@ -348,13 +350,24 @@ void Runtime::comm_refresh_(int slot, int step) {
 }
 
 void Runtime::comm_rebuild_(int exchange_slot, int borders_slot, int step) {
+    LaunchContext comm_ctx{context_, *frame_, exchange_slot, step,
+                           /*forces_requested=*/true};
+    // LAMMPS `Domain::pbc()` before `Comm::exchange()` (src/verlet.cpp
+    // Verlet::setup and the reneighbor block of Verlet::run, src/min.cpp
+    // Min::setup; LAMMPS e8c4c278a8). Copyright (2003) Sandia Corporation.
+    // GPL-2.0-only. It runs on every rank count, with or without MPI: the
+    // cell list's half stencil applies one image shift per neighbor cell and
+    // is exact only for owned rows inside [0, L), so an unwrapped row (an
+    // initial frame with atoms just outside the box) loses its cross-boundary
+    // pairs, and on one rank no migration would ever move it back. A line
+    // search trial leaves positions alone, as LAMMPS's does.
+    if (!context_.opt.line_search_trial)
+        md::wrap_orthorhombic(*frame_, owned_count(comm_ctx));
     apply_ghost_cutoff_();
     cpu::Comm* comm = context_.md.comm;
     if (!comm)
         return;
     TimerRegistry& reg = device_.timing();
-    LaunchContext comm_ctx{context_, *frame_, exchange_slot, step,
-                           /*forces_requested=*/true};
     timed_comm(reg, comm_handle_exch_, [&] { comm->exchange(comm_ctx); });
     comm_ctx.stage = borders_slot;
     timed_comm(reg, comm_handle_bord_, [&] { comm->borders(comm_ctx); });
@@ -390,10 +403,11 @@ void Runtime::comm_after_force_(int slot, int step_idx) {
 }
 
 void Runtime::setup_verlet_comm_() {
-    // LAMMPS Verlet::setup (src/verlet.cpp): exchange + borders +
-    // neighbor->build before the run loop so the first nflag==0 step can
+    // LAMMPS Verlet::setup (src/verlet.cpp): pbc + exchange + borders +
+    // neighbor->build before the run loop, on every rank count, so the first
+    // force sees wrapped owned rows and the first nflag==0 step can
     // forward_comm. Copyright (2003) Sandia Corporation. GPL-2.0-only.
-    if (verlet_setup_done_ || context_.mpi_size <= 1)
+    if (verlet_setup_done_)
         return;
     LaunchContext ctx{context_, *frame_,
                       ATV::slot_of(ATV::md::Phase::pre_exchange), 0,

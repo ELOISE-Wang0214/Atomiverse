@@ -50,6 +50,11 @@ class SpyComm : public cpu::Comm {
     }
     void forward_comm(cpu::Packer&) override {}
     void set_ghost_cutoff(double) override {}
+
+    /// Forget the calls made so far (the setup's), keeping the log binding.
+    void reset() {
+        n_setup = n_forward = n_reverse = n_exchange = n_borders = 0;
+    }
 };
 
 class SpyNeighbor : public cpu::Component, public cpu::NeighborProvider {
@@ -148,6 +153,10 @@ TEST(TestVerletComm, NflagZeroIsForwardCommOnly) {
     rt.set_frame(frame);
     bind_spy(rt, comm);
     rt.build_components();
+    // Count the steps only; the setup's pbc + exchange + borders + build
+    // is SerialSetupWrapsThenUsesCommThenNeighbor's.
+    comm.reset();
+    neigh.n_launch = 0;
 
     for (int s = 0; s < 9; ++s)
         rt.step(s);
@@ -177,6 +186,10 @@ TEST(TestVerletComm, NflagOneIsExchangeBordersBuild) {
     rt.set_frame(frame);
     bind_spy(rt, comm);
     rt.build_components();
+    // Count the steps only; the setup's pbc + exchange + borders + build
+    // is SerialSetupWrapsThenUsesCommThenNeighbor's.
+    comm.reset();
+    neigh.n_launch = 0;
 
     for (int s = 0; s < 10; ++s)
         rt.step(s);
@@ -205,6 +218,10 @@ TEST(TestVerletComm, ReverseCommEveryStepNotGatedOnNflag) {
     rt.set_frame(frame);
     bind_spy(rt, comm);
     rt.build_components();
+    // Count the steps only; the setup's pbc + exchange + borders + build
+    // is SerialSetupWrapsThenUsesCommThenNeighbor's.
+    comm.reset();
+    neigh.n_launch = 0;
 
     constexpr int n_steps = 10;
     for (int s = 0; s < n_steps; ++s)
@@ -214,8 +231,12 @@ TEST(TestVerletComm, ReverseCommEveryStepNotGatedOnNflag) {
     EXPECT_EQ(comm.n_forward + comm.n_borders, n_steps);
 }
 
-TEST(TestVerletComm, SerialSetupDoesNotCallComm) {
+TEST(TestVerletComm, SerialSetupWrapsThenUsesCommThenNeighbor) {
+    // LAMMPS Verlet::setup runs domain->pbc() + exchange + borders +
+    // neighbor->build on every rank count. An owned row just outside the box
+    // is wrapped in before the neighbor list is rebuilt from it.
     auto frame = one_atom();
+    frame.span(kAtom_x)[0] = -0.5;
     SpyComm comm;
     SpyNeighbor neigh;
     Hook hook;
@@ -229,10 +250,12 @@ TEST(TestVerletComm, SerialSetupDoesNotCallComm) {
     rt.build_components();
 
     EXPECT_EQ(rt.context().mpi_size, 1);
-    EXPECT_EQ(comm.n_exchange, 0);
-    EXPECT_EQ(comm.n_borders, 0);
+    EXPECT_DOUBLE_EQ(frame.span(kAtom_x)[0], 9.5);
+    EXPECT_DOUBLE_EQ(frame.span(kAtom_y)[0], 1.0);
+    EXPECT_EQ(comm.n_exchange, 1);
+    EXPECT_EQ(comm.n_borders, 1);
+    EXPECT_EQ(neigh.n_launch, 1);
     EXPECT_EQ(comm.n_forward, 0);
-    EXPECT_EQ(neigh.n_launch, 0);
 }
 
 TEST(TestVerletComm, MpiSetupUsesCommThenNeighbor) {
@@ -278,6 +301,9 @@ TEST(TestVerletComm, EvaluateWrapsCommAroundForceSlot) {
     rt.set_frame(frame);
     bind_spy(rt, comm);
     rt.build_components();
+    // The force slot's comm only; the setup's is not part of it.
+    comm.reset();
+    log.clear();
     rt.step(0);
 
     EXPECT_EQ(engine.n_launch, 0);
@@ -319,6 +345,9 @@ TEST(TestVerletComm, MinimizeWrapsCommAroundForceSlot) {
     rt.set_frame(frame);
     bind_spy(rt, comm);
     rt.build_components();
+    // The force slot's comm only; the setup's is not part of it.
+    comm.reset();
+    log.clear();
     rt.step(0);
 
     EXPECT_EQ(engine.n_launch, 0);
@@ -359,6 +388,9 @@ TEST(TestVerletComm, MinimizeRunStageWrapsComm) {
     rt.set_frame(frame);
     bind_spy(rt, comm);
     rt.build_components();
+    // The force slot's comm only; the setup's is not part of it.
+    comm.reset();
+    log.clear();
     rt.run_stage(minimizer::Phase::force, 0);
 
     EXPECT_EQ(engine.n_launch, 0);
@@ -387,6 +419,7 @@ TEST(TestVerletComm, MdRefreshSequenceIsForwardThenReverse) {
     rt.set_frame(frame);
     bind_spy(rt, comm);
     rt.build_components();
+    log.clear(); // the setup's exchange + borders are not this step's
     rt.step(0);
 
     ASSERT_EQ(log.size(), 2u);
@@ -409,6 +442,7 @@ TEST(TestVerletComm, MdRebuildSequenceIsExchangeBordersReverse) {
     rt.set_frame(frame);
     bind_spy(rt, comm);
     rt.build_components();
+    log.clear(); // the setup's exchange + borders are not this step's
     for (int s = 0; s < 10; ++s)
         rt.step(s);
 

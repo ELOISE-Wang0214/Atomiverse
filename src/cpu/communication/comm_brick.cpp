@@ -42,7 +42,6 @@
 #include "atomiverse/cpu/driver/step_timing.h"
 #include "atomiverse/cpu/dynamics/atom_sort.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/frame/pbc.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
@@ -238,7 +237,7 @@ inline void pack_to(std::vector<std::byte>& buf, const Frame& frame,
 // point-to-point + one single-int Allreduce per round — O(1) point-to-point +
 // O(log P) reduce fabric state, versus MPI_Alltoallv's O(world) per-peer state
 // that made AV's cross-node RSS blow up (3.16x LAMMPS at 1024 ranks). Positions
-// are already wrapped into [0, L) by the integrator's wrap_orthorhombic, so a
+// are already wrapped into [0, L) by Domain::pbc() before exchange, so a
 // raw coord-vs-slab compare matches DomainDecomposition::owner_of exactly.
 //
 // Round shape, LAMMPS `CommBrick::exchange`: the first round is
@@ -922,17 +921,11 @@ void CommBrick::exchange(const cpu::LaunchContext& ctx) {
 
     Frame& frame = ctx.frame;
 
-    // LAMMPS `Domain::pbc()` before `Comm::exchange()` (`src/verlet.cpp`
-    // reneighbor block): owned coordinates are canonicalized into the box
-    // BEFORE homing. An owned row stored at the wrong periodic image (an
-    // unwrapped initial frame, or drift past the edge between
-    // reneighbourings) would otherwise keep its off-image coordinate:
-    // migration compares min-image, so it never corrects it, and the
-    // extended-axis cell list — which by the dual-image convention never
-    // wraps decomposed axes — then bins the row into a clamped edge cell
-    // and computes every separation against it one box length off. The
-    // pair silently vanishes by the distance test.
-    md::wrap_orthorhombic(frame, dd->n_local);
+    // Owned rows are already inside the box: the driver runs LAMMPS
+    // `Domain::pbc()` before calling exchange (Runtime::comm_rebuild_).
+    // Migration compares min-image, so it could not correct an off-image row
+    // itself, and the extended-axis cell list would compute every separation
+    // against it one box length off.
 
     if (!bufs_)
         bufs_ = std::make_unique<detail::FaceBufs>();
