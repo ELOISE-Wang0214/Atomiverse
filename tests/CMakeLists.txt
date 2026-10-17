@@ -1257,7 +1257,7 @@ endif()
 
 
 
-if(ATV_BUILD_CLI)
+if(ATV_BUILD_MD)
     atv_add_cpp_test(test_app_input_script
         app/test_input_script.cpp
         ${CMAKE_SOURCE_DIR}/app/atomiverse/input_script.cpp)

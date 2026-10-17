@@ -148,13 +148,6 @@ if(NOT ATV_DOCS_ONLY)
     # Must run after ATV_BUILD_KSPACE / HF / GPW / PYTHON are declared.
     include("${CMAKE_SOURCE_DIR}/cmake/AtvProductModules.cmake")
 
-    # The CLI's native -in path runs classical MD, so it defaults ON only with
-    # the MD domain; an MD-less slice builds without it instead of failing.
-    include(CMakeDependentOption)
-    cmake_dependent_option(ATV_BUILD_CLI
-        "Build the atomiverse command-line driver (native -in + optional Python host)"
-        ON "ATV_BUILD_MD" OFF)
-
     # molrs contract only when the DAG left MOLRS on.
     set(ATV_MOLRS_HAS_WHAM OFF)
     set(ATV_MOLRS_HAS_TRAJECTORY_WRITER OFF)
@@ -1393,10 +1386,7 @@ if(NOT ATV_DOCS_ONLY)
         install(DIRECTORY include/atomiverse TYPE INCLUDE)
     endif()
 
-    # ── atomiverse CLI (native -in always; MPI Python host optional) ──
-    if(ATV_BUILD_LAUNCHER AND NOT ATV_BUILD_CLI)
-        set(ATV_BUILD_CLI ON)
-    endif()
+    # ── atomiverse binary: native -in with MD, MPI Python host with LAUNCHER ──
     if(ATV_BUILD_LAUNCHER)
         if(NOT ATV_USE_MPI)
             message(FATAL_ERROR
@@ -1413,13 +1403,7 @@ if(NOT ATV_DOCS_ONLY)
                 "-DATV_BUILD_LAUNCHER.")
         endif()
     endif()
-    if(ATV_BUILD_CLI)
-        if(NOT ATV_BUILD_MD)
-            message(FATAL_ERROR
-                "ATV_BUILD_CLI=ON requires ATV_BUILD_MD=ON (native -in runs "
-                "classical MD). Configure with -DATV_BUILD_MD=ON or "
-                "-DATV_BUILD_CLI=OFF.")
-        endif()
+    if(ATV_BUILD_MD OR ATV_BUILD_LAUNCHER)
         add_subdirectory(app/atomiverse)
     endif()
 
