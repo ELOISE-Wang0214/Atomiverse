@@ -43,15 +43,15 @@ a Rust toolchain for molrs, and FFTW3 for `pw` / `kspace`.
 ```bash
 V=$(python -m atomiverse --version)
 git clone --recursive --branch v$V https://github.com/MolCrafts/Atomiverse
-pip install 'atomiverse[native]'        # build-time: scikit-build-core, nanobind
+pip install 'atomiverse[native]'        # build-time: scikit-build-core, nanobind, maturin
 
 # 1) config   resolve modules → CMake defines, record the build
 python -m atomiverse config md pw --mpi --src Atomiverse
 
-# 2) compile  pip wheel → scikit-build-core → CMake (raw output streamed)
+# 2) compile  pip wheel → scikit-build-core → CMake, and molrs from the submodule
 python -m atomiverse compile -j 8
 
-# 3) install  pip install of that wheel over the pure package
+# 3) install  pip install of both wheels over the pure package
 python -m atomiverse install
 
 python -m atomiverse status
@@ -60,10 +60,18 @@ python -m atomiverse run Atomiverse/python/examples/md_lj_argon.py
 
 `compile` builds in `<src>/build-python` (override with `config
 --build-dir`); a repeat `compile` reuses that CMake tree and only rebuilds
-what changed. The finished wheel lands in `<build-dir>/dist/` and
-`install` hands it to `pip install --force-reinstall --no-deps` — the
-extension and its `_build_info.json` (the defines it was compiled with,
-which `status` prints) are ordinary files of the installed distribution.
+what changed. It builds two wheels into `<build-dir>/dist/`: the extension,
+and molrs from the checkout's `molrs` submodule (cargo output kept in
+`<build-dir>/molrs-target`, so that rebuild is incremental too). `install`
+hands both to `pip install --force-reinstall --no-deps` — the extension and
+its `_build_info.json` (the defines it was compiled with, which `status`
+prints) are ordinary files of the installed distribution.
+
+**Why molrs is rebuilt:** molpy hands each frame to the extension as a
+pointer to a molrs object. The extension was compiled against the
+submodule's molrs, so the molrs in your interpreter must be that same tree.
+The molrs that `pip install atomiverse` pulled from PyPI only serves the
+pure install; `install` replaces it.
 
 **Modules** are positional on `config` only: `md`, `minimize`, `mc`, `evaluate`,
 `vib`, `path`, `hf`, `pw`, `gpw`, `am1`, `cuda`, `kspace`, `potentials`,

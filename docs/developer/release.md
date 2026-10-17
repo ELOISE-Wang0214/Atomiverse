@@ -16,8 +16,15 @@ The C++ extension `_atomiverse` is built on the user's machine from the
 | Stage | Runs | Result |
 |---|---|---|
 | `config` | resolves modules → `ATV_*` defines, records `<build>/atomiverse_cli_state.json` | nothing compiled |
-| `compile` | `pip wheel <src>/python --no-build-isolation -C wheel.cmake=true -C build-dir=<build>/cmake -C cmake.define.…` | one native wheel in `<build>/dist/` |
-| `install` | `pip install --force-reinstall --no-deps <wheel>` | the native wheel replaces the pure one |
+| `compile` | `pip wheel <src>/python --no-build-isolation -C wheel.cmake=true -C build-dir=<build>/cmake -C cmake.define.…`, then `pip wheel <src>/molrs/molrs-python --no-build-isolation` with `CARGO_TARGET_DIR=<build>/molrs-target` | the native wheel and a molrs wheel in `<build>/dist/` |
+| `install` | `pip install --force-reinstall --no-deps <wheel> <molrs-wheel>` | the native wheel replaces the pure one; the submodule molrs replaces the PyPI one |
+
+molrs is installed from the submodule because the capsule that carries a
+frame across the boundary is named only by the molrs ABI line
+(major.minor). A PyPI molrs of the same line built from other sources passes
+that check while disagreeing on the layout behind the pointer, so the only
+safe molrs beside the extension is the tree the extension linked. A release
+therefore does not wait on a molrs release.
 
 Because pip installs the native wheel, `_atomiverse*.so` and the
 `_build_info.json` CMake writes beside it are RECORD-tracked files of the

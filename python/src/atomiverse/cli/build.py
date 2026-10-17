@@ -3,10 +3,18 @@
 ``config`` resolves product modules into CMake defines and records them.
 ``compile`` runs ``pip wheel`` on the checkout's ``python/`` project with
 ``wheel.cmake=true`` — scikit-build-core drives CMake in a persistent build
-tree, so a repeat compile is incremental — and leaves one native wheel in
-``<build_dir>/dist``. ``install`` hands that wheel to ``pip install``, so the
-extension is a RECORD-tracked file of the distribution: ``pip uninstall``
-removes it and an upgrade replaces it.
+tree, so a repeat compile is incremental — and on the checkout's
+``molrs/molrs-python``, leaving two wheels in ``<build_dir>/dist``.
+``install`` hands both to ``pip install``, so the extension is a
+RECORD-tracked file of the distribution: ``pip uninstall`` removes it and an
+upgrade replaces it.
+
+molrs is built from the submodule because the extension borrows molpy frames
+as molrs objects through a PyCapsule. The extension links the submodule's
+molrs; the molrs extension in the interpreter must be the same tree, or the
+two disagree on the layout behind the pointer. The capsule name carries only
+the ABI line (major.minor), so a molrs release of the same line built from
+other sources would pass that check.
 
 Raw pip / cmake output streams to the terminal (no capture). State lives in
 ``<build_dir>/atomiverse_cli_state.json``; the active build dir is recorded
@@ -41,6 +49,7 @@ _STATE_NAME = "atomiverse_cli_state.json"
 _NATIVE_REQUIRES = {
     "scikit_build_core": "scikit-build-core>=0.10",
     "nanobind": "nanobind>=2.4",
+    "maturin": "maturin>=1.0,<2.0",
 }
 
 
@@ -86,6 +95,7 @@ class BuildState:
     modules: List[str] = field(default_factory=list)
     fingerprint: str = ""
     wheel: str = ""  # native wheel produced by compile
+    molrs_wheel: str = ""  # molrs wheel built from the submodule by compile
     installed: bool = False
 
     def save(self, path: Optional[Path] = None) -> Path:
@@ -151,13 +161,41 @@ def build_wheel_command(
     return cmd
 
 
-def build_install_command(
-    wheel: Path, *, python: Optional[str] = None
+def build_molrs_wheel_command(
+    source_root: Path, build_dir: Path, *, python: Optional[str] = None
 ) -> List[str]:
-    """``pip install`` of the native wheel over the pure package.
+    """Assemble the ``pip wheel`` command for molrs from the submodule.
+
+    Run with ``CARGO_TARGET_DIR=<build_dir>/molrs-target`` (see
+    ``molrs_target_dir``) so a repeat compile reuses the cargo build.
+    """
+    return [
+        python or sys.executable,
+        "-m",
+        "pip",
+        "wheel",
+        str(source_root / "molrs" / "molrs-python"),
+        "--verbose",
+        "--no-deps",
+        "--no-build-isolation",
+        "--wheel-dir",
+        str(build_dir / "dist"),
+    ]
+
+
+def molrs_target_dir(build_dir: Path) -> Path:
+    """Persistent cargo target directory of the molrs wheel build."""
+    return build_dir / "molrs-target"
+
+
+def build_install_command(
+    wheels: Sequence[Path], *, python: Optional[str] = None
+) -> List[str]:
+    """``pip install`` of the native and molrs wheels.
 
     ``--force-reinstall`` because the pure and native wheels share a
-    version; ``--no-deps`` because the pure install already resolved them.
+    version, as do the PyPI and submodule molrs of one ABI line;
+    ``--no-deps`` because the pure install already resolved them.
     """
     return [
         python or sys.executable,
@@ -166,7 +204,7 @@ def build_install_command(
         "install",
         "--no-deps",
         "--force-reinstall",
-        str(wheel),
+        *(str(w) for w in wheels),
     ]
 
 
@@ -232,6 +270,7 @@ def run_config(
             "+ " + " ".join(build_wheel_command(source.python_dir, bdir, defines)),
             flush=True,
         )
+        print("+ " + " ".join(build_molrs_wheel_command(source.root, bdir)), flush=True)
         print("config dry-run complete", flush=True)
         return 0
 
@@ -281,21 +320,35 @@ def run_compile(
     if code != 0:
         print(f"pip wheel failed with exit code {code}", file=sys.stderr)
         return code
+
+    molrs_env = dict(env)
+    molrs_env["CARGO_TARGET_DIR"] = str(molrs_target_dir(bdir))
+    if jobs is not None and jobs > 0:
+        molrs_env["CARGO_BUILD_JOBS"] = str(jobs)
+    molrs_cmd = build_molrs_wheel_command(Path(state.source_root), bdir)
+    code = _run_streaming(molrs_cmd, dry_run=dry_run, env=molrs_env)
+    if code != 0:
+        print(f"pip wheel of molrs failed with exit code {code}", file=sys.stderr)
+        return code
     if dry_run:
         print("compile dry-run complete", flush=True)
         return 0
 
-    wheels = sorted((bdir / "dist").glob("atomiverse-*.whl"))
-    if len(wheels) != 1:
-        raise ConfigError(
-            f"expected one native wheel in {bdir / 'dist'}, found {len(wheels)}"
-        )
-    state.wheel = str(wheels[0])
+    state.wheel = str(_one_wheel(bdir / "dist", "atomiverse-*.whl"))
+    state.molrs_wheel = str(_one_wheel(bdir / "dist", "molcrafts_molrs-*.whl"))
     state.installed = False
     state.save(state_file)
     print(f"  wheel:     {state.wheel}", flush=True)
+    print(f"  molrs:     {state.molrs_wheel}", flush=True)
     print("compile complete", flush=True)
     return 0
+
+
+def _one_wheel(dist: Path, pattern: str) -> Path:
+    wheels = sorted(dist.glob(pattern))
+    if len(wheels) != 1:
+        raise ConfigError(f"expected one {pattern} in {dist}, found {len(wheels)}")
+    return wheels[0]
 
 
 def run_install_stage(
@@ -303,15 +356,19 @@ def run_install_stage(
     dry_run: bool = False,
     state_file: Optional[Path] = None,
 ) -> int:
-    """Install the native wheel into this environment with pip."""
+    """Install the native and molrs wheels into this environment with pip."""
     state = BuildState.load(state_file)
-    if not state.wheel or not Path(state.wheel).is_file():
+    wheels = [state.wheel, state.molrs_wheel]
+    if not all(w and Path(w).is_file() for w in wheels):
         if not dry_run:
-            raise ConfigError("no native wheel — run `atomiverse compile` first")
-    cmd = build_install_command(Path(state.wheel or "<wheel>"))
+            raise ConfigError("no compiled wheels — run `atomiverse compile` first")
+    cmd = build_install_command(
+        [Path(state.wheel or "<wheel>"), Path(state.molrs_wheel or "<molrs-wheel>")]
+    )
 
     print("atomiverse install", flush=True)
     print(f"  wheel:   {state.wheel or '(not compiled yet)'}", flush=True)
+    print(f"  molrs:   {state.molrs_wheel or '(not compiled yet)'}", flush=True)
     print(f"  modules: {', '.join(state.modules)}", flush=True)
 
     code = _run_streaming(cmd, dry_run=dry_run)

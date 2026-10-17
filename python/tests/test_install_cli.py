@@ -15,6 +15,7 @@ if str(_SRC) not in sys.path:
 from atomiverse.cli.build import (  # noqa: E402
     BuildState,
     build_install_command,
+    build_molrs_wheel_command,
     build_wheel_command,
 )
 from atomiverse.cli.config import (  # noqa: E402
@@ -181,8 +182,18 @@ def test_wheel_command_requires_python_define() -> None:
         build_wheel_command(Path("/p"), Path("/b"), {"ATV_BUILD_MD": "ON"})
 
 
+def test_molrs_wheel_command_builds_the_submodule() -> None:
+    cmd = build_molrs_wheel_command(Path("/repo"), Path("/b"), python="/usr/bin/python")
+    assert cmd[:4] == ["/usr/bin/python", "-m", "pip", "wheel"]
+    assert "/repo/molrs/molrs-python" in cmd
+    assert "--no-build-isolation" in cmd and "--no-deps" in cmd
+    assert cmd[cmd.index("--wheel-dir") + 1] == "/b/dist"
+
+
 def test_install_command_shape() -> None:
-    cmd = build_install_command(Path("/b/dist/x.whl"), python="/usr/bin/python")
+    cmd = build_install_command(
+        [Path("/b/dist/x.whl"), Path("/b/dist/m.whl")], python="/usr/bin/python"
+    )
     assert cmd == [
         "/usr/bin/python",
         "-m",
@@ -191,6 +202,7 @@ def test_install_command_shape() -> None:
         "--no-deps",
         "--force-reinstall",
         "/b/dist/x.whl",
+        "/b/dist/m.whl",
     ]
 
 
@@ -202,6 +214,7 @@ def test_build_state_roundtrip(tmp_path: Path) -> None:
         build_dir=str(tmp_path),
         modules=["md"],
         wheel="/w.whl",
+        molrs_wheel="/m.whl",
     )
     path = state.save()
     assert BuildState.load(path) == state
