@@ -355,13 +355,18 @@ void Runtime::comm_rebuild_(int exchange_slot, int borders_slot, int step) {
     // LAMMPS `Domain::pbc()` before `Comm::exchange()` (src/verlet.cpp
     // Verlet::setup and the reneighbor block of Verlet::run, src/min.cpp
     // Min::setup; LAMMPS e8c4c278a8). Copyright (2003) Sandia Corporation.
-    // GPL-2.0-only. It runs on every rank count, with or without MPI: the
-    // cell list's half stencil applies one image shift per neighbor cell and
-    // is exact only for owned rows inside [0, L), so an unwrapped row (an
-    // initial frame with atoms just outside the box) loses its cross-boundary
-    // pairs, and on one rank no migration would ever move it back. A line
-    // search trial leaves positions alone, as LAMMPS's does.
-    if (!context_.opt.line_search_trial)
+    // GPL-2.0-only. Two consumers need owned rows inside [0, L), on any rank
+    // count, with or without MPI: migration, which compares min-image and
+    // cannot correct an off-image row, and the cell list, whose half stencil
+    // applies one image shift per neighbor cell, so an unwrapped row (an
+    // initial frame with atoms just outside the box) loses its
+    // cross-boundary pairs. With neither, the rows stay where the caller put
+    // them: ATV's Box has no per-axis periodicity, and a cluster method
+    // (DFTB, xTB) handed a molecule near the origin of a padding box would
+    // be split across the cell. A line search trial leaves positions alone,
+    // as LAMMPS's does.
+    if (!context_.opt.line_search_trial
+        && (context_.mpi_size > 1 || verlet_.neighbor_comp != nullptr))
         md::wrap_orthorhombic(*frame_, owned_count(comm_ctx));
     apply_ghost_cutoff_();
     cpu::Comm* comm = context_.md.comm;
