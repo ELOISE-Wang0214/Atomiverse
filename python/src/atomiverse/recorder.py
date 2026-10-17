@@ -8,12 +8,14 @@ Prefer ``MD.set_thermo(N)`` for the common LAMMPS-style cadence; construct
 ``Thermo(freq)`` only when passing through ``set_record`` or the phase
 escape hatch. ``XYZ(filename, freq)`` always goes through ``set_record``.
 
-Both names are unconditional: the wheel forces ``ATV_BUILD_IO=ON`` through
-the CMake module DAG, so there is no capability probe here (unlike the
-compile-optional ``KSpacePME`` / ``PW``).
+Both recorders are bound with the MD driver, so they exist on an extension
+built with the ``md`` module (``ATV_BUILD_MD=ON``); on one built without it,
+importing this module raises ``MissingDomainError`` naming the flag.
 """
 
-from atomiverse._binding import _cpp
+from atomiverse._binding import _cpp, require_domain
+
+require_domain(__name__, "md")
 
 #: Thermodynamic output at ``end_of_step`` — ``cpu::Thermo(freq [steps])``.
 Thermo = _cpp.Thermo

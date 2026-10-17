@@ -29,6 +29,11 @@ __all__ = [
     "extension_load_error",
     "require_cpp",
     "INSTALL_HINT",
+    "DOMAINS",
+    "MissingDomainError",
+    "has_domain",
+    "missing_domain_message",
+    "require_domain",
 ]
 
 INSTALL_HINT = (
@@ -119,3 +124,74 @@ def require_cpp() -> ModuleType:
             f"The Atomiverse C++ extension failed to load: {_load_error}"
         ) from _load_error
     raise ImportError(INSTALL_HINT)
+
+
+#: Product module (the name ``python -m atomiverse config`` takes) -> its
+#: CMake flag and a symbol its binding file always registers. An extension
+#: holds only the modules it was configured with; the probe is how the
+#: package tells which.
+DOMAINS: dict[str, tuple[str, str]] = {
+    "potentials": ("ATV_BUILD_POTENTIALS", "PairLJCut"),
+    "md": ("ATV_BUILD_MD", "MD"),
+    "minimize": ("ATV_BUILD_MINIMIZER", "Minimize"),
+    "mc": ("ATV_BUILD_MC", "MC"),
+    "vib": ("ATV_BUILD_VIB", "Hessian"),
+    "am1": ("ATV_BUILD_SEMIEMPIRICAL", "AM1"),
+    "hf": ("ATV_BUILD_HF", "RHF"),
+    "pw": ("ATV_BUILD_PW", "PW"),
+    "kspace": ("ATV_BUILD_KSPACE", "KSpacePME"),
+}
+
+
+class MissingDomainError(ImportError):
+    """A deep module whose product module this extension was built without.
+
+    @param what: The module that was imported.
+    @param module: The ``DOMAINS`` key it needs, kept as ``self.module``.
+    """
+
+    def __init__(self, what: str, module: str) -> None:
+        super().__init__(missing_domain_message(what, module), name=what)
+        self.module = module
+
+
+def has_domain(module: str) -> bool:
+    """Return True when the installed extension carries product *module*.
+
+    @param module: A ``DOMAINS`` key, e.g. ``"md"``.
+    @return False on a pure install, a broken extension, or a build that
+        deselected the module.
+    """
+    return _ext is not None and hasattr(_ext, DOMAINS[module][1])
+
+
+def missing_domain_message(what: str, module: str) -> str:
+    """Explain that *what* needs product *module* and how to build it in.
+
+    @param what: The module or name that was asked for.
+    @param module: The ``DOMAINS`` key it needs.
+    @return One message naming the module, its flag and the rebuild command.
+    """
+    flag = DOMAINS[module][0]
+    return (
+        f"{what} needs the `{module}` module ({flag}=ON), which this "
+        "extension was built without. Rebuild with it selected:\n"
+        f"  python -m atomiverse config {module} ... --src /path/to/Atomiverse\n"
+        "  python -m atomiverse compile\n"
+        "  python -m atomiverse install"
+    )
+
+
+def require_domain(name: str, module: str) -> None:
+    """Fail the import of deep module *name* unless *module* is built.
+
+    Call it at the top of a deep module, before it reads any binding.
+
+    @param name: The importing module's ``__name__``.
+    @param module: The ``DOMAINS`` key its bindings come from.
+    @raises ImportError: with the install hint when no extension is present.
+    @raises MissingDomainError: when the extension lacks *module*.
+    """
+    require_cpp()
+    if not has_domain(module):
+        raise MissingDomainError(name, module)

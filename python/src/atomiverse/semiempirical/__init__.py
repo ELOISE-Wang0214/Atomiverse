@@ -44,7 +44,9 @@ updated by an MD run — the driver installs its own gradient-enabled copy, and
 the per-step energy, charges and forces land on the frame.
 """
 
-from atomiverse._binding import _cpp
+from atomiverse._binding import _cpp, require_domain
+
+require_domain(__name__, "am1")
 
 #: Concrete AM1 method — parameters assigned in the constructor
 #: (``charge``, ``multiplicity``, ``max_iter``, ``density_tol``, ``energy_tol``).

@@ -6,7 +6,7 @@ Canonical deep path: ``atomiverse.driver.single_point``; top-level
 runs one pass of the ``Evaluate`` driver preset.
 """
 
-from atomiverse._binding import _cpp
+from atomiverse._binding import _cpp, has_domain, missing_domain_message, require_cpp
 
 
 def single_point(frame: object, evaluator: object, device: str = "cpu") -> None:
@@ -55,6 +55,9 @@ def single_point(frame: object, evaluator: object, device: str = "cpu") -> None:
     ValueError
         If *device* is anything but ``"cpu"``, or (SCF path) if the method's
         spin multiplicity cannot split this frame's electron count.
+    TypeError
+        If *evaluator* is not a Gaussian SCF method and the extension was
+        built without the ``am1`` module, which binds the ``Evaluate`` pass.
     RuntimeError
         If the frame is missing a required column or carries a wrong dtype.
     """
@@ -63,15 +66,21 @@ def single_point(frame: object, evaluator: object, device: str = "cpu") -> None:
             f"device={device!r}: CUDA bindings are not yet available; "
             "only device='cpu' is supported"
         )
+    require_cpp()
     # A Gaussian SCF method is its own driver loop, not an Evaluate
-    # component. Imported here so this module stays importable on an
-    # extension built without ATV_BUILD_HF (then __all__ is empty).
-    from atomiverse import scf
+    # component. Imported here, and only on an `hf` build, so this module
+    # imports on any module selection.
+    if has_domain("hf"):
+        from atomiverse import scf
 
-    scf_methods = tuple(getattr(scf, name) for name in scf.__all__)
-    if scf_methods and isinstance(evaluator, scf_methods):
-        evaluator.run(frame)
-        return
+        if isinstance(evaluator, (scf.RHF, scf.UHF, scf.RKS, scf.UKS)):
+            evaluator.run(frame)
+            return
+    if not has_domain("am1"):
+        raise TypeError(
+            f"single_point cannot run {type(evaluator).__name__}: "
+            + missing_domain_message("the Evaluate pass of single_point", "am1")
+        )
     _cpp.single_point(frame, evaluator)
 
 

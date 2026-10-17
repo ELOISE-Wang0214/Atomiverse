@@ -46,15 +46,11 @@ infinite particle reservoir at that mu — the ensemble for adsorption and
 vapour problems, where the average population is the answer.
 
 Canonical deep paths are ``atomiverse.montecarlo.<Name>``; the top-level
-``atomiverse.<Name>`` are the same objects. All seven resolve on an
-extension built with ``ATV_BUILD_MC=ON``, which is the CMake default and
-what the shipped wheel uses, so they stay in the top-level ``__all__``.
-The exception is a staged CLI install, which selects modules explicitly:
-include ``mc`` there (``python -m atomiverse config md mc ...``) or the
-extension is built without these names. On such a build this module still
-imports and exports nothing (the same capability probe the compile-optional
-``KSpacePME`` / ``PW`` use), and ``atomiverse.MC`` raises ``AttributeError``
-naming ``ATV_BUILD_MC`` instead of failing bare.
+``atomiverse.<Name>`` are the same objects. They exist on an extension built
+with the ``mc`` module (``ATV_BUILD_MC=ON``). On one built without it,
+importing this module raises ``MissingDomainError`` (an ``ImportError``)
+naming the flag, and ``atomiverse.MC`` raises ``AttributeError`` with the
+same message.
 
 Monte Carlo is CPU-only: there is no ``device=`` argument on these
 constructors.
@@ -203,45 +199,42 @@ the Mayer activity expansion.
 
 from __future__ import annotations
 
-from atomiverse._binding import _cpp
+from atomiverse._binding import _cpp, require_domain
 
-# The whole surface is gated on ATV_HAS_MC in bind_mc.cpp, so one probe on the
-# preset the extension always carries when MC is on covers all seven names.
-if hasattr(_cpp, "MC"):
-    #: Canonical NVT Metropolis — ``cpu::mc::MC(temperature [K], seed)``.
-    MC = _cpp.MC
+require_domain(__name__, "mc")
 
-    #: Isothermal-isobaric MC —
-    #: ``cpu::mc::NptMc(temperature [K], pressure [eV/A^3], seed)``.
-    NptMC = _cpp.NptMC
+#: Canonical NVT Metropolis — ``cpu::mc::MC(temperature [K], seed)``.
+MC = _cpp.MC
 
-    #: Grand-canonical muVT MC —
-    #: ``cpu::mc::Gcmc(temperature [K], mu [eV], mass [amu], seed)``.
-    GCMC = _cpp.GCMC
+#: Isothermal-isobaric MC —
+#: ``cpu::mc::NptMc(temperature [K], pressure [eV/A^3], seed)``.
+NptMC = _cpp.NptMC
 
-    #: Single-particle displacement Mover —
-    #: ``cpu::mc::TranslateMove(delta [A])``.
-    TranslateMove = _cpp.TranslateMove
+#: Grand-canonical muVT MC —
+#: ``cpu::mc::Gcmc(temperature [K], mu [eV], mass [amu], seed)``.
+GCMC = _cpp.GCMC
 
-    #: Isotropic volume-change Mover — ``cpu::mc::VolumeMove(dv_max [A^3])``.
-    VolumeMove = _cpp.VolumeMove
+#: Single-particle displacement Mover —
+#: ``cpu::mc::TranslateMove(delta [A])``.
+TranslateMove = _cpp.TranslateMove
 
-    #: Grand-canonical insertion/deletion Mover —
-    #: ``cpu::mc::InsertDeleteMove(z = atomic number, mass [amu])``.
-    InsertDeleteMove = _cpp.InsertDeleteMove
+#: Isotropic volume-change Mover — ``cpu::mc::VolumeMove(dv_max [A^3])``.
+VolumeMove = _cpp.VolumeMove
 
-    #: Weighted mix of Movers, one child per trial —
-    #: ``cpu::mc::MoveSelector()``.
-    MoveSelector = _cpp.MoveSelector
+#: Grand-canonical insertion/deletion Mover —
+#: ``cpu::mc::InsertDeleteMove(z = atomic number, mass [amu])``.
+InsertDeleteMove = _cpp.InsertDeleteMove
 
-    __all__ = [
-        "MC",
-        "NptMC",
-        "GCMC",
-        "TranslateMove",
-        "VolumeMove",
-        "InsertDeleteMove",
-        "MoveSelector",
-    ]
-else:
-    __all__: list[str] = []
+#: Weighted mix of Movers, one child per trial —
+#: ``cpu::mc::MoveSelector()``.
+MoveSelector = _cpp.MoveSelector
+
+__all__ = [
+    "MC",
+    "NptMC",
+    "GCMC",
+    "TranslateMove",
+    "VolumeMove",
+    "InsertDeleteMove",
+    "MoveSelector",
+]

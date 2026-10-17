@@ -149,12 +149,11 @@ of joining them. All of them are unconditional — a real-space style has no
 build flag of its own — and ``help(atomiverse.potentials)`` gives the deep
 spellings and the units.
 
-Compile-optional rows — ``PW`` / ``PWResult`` / ``PWEvaluator``
-(``ATV_BUILD_PW``),
-``KSpacePME`` (``ATV_BUILD_KSPACE``) and the Gaussian SCF methods
-``RHF`` / ``UHF`` / ``RKS`` / ``UKS`` (``ATV_BUILD_HF``) — resolve only on
-an extension that was built with that backend and otherwise raise
-``AttributeError`` naming the flag. They are not part of ``__all__``.
+Every compute name belongs to one product module (``md``, ``minimize``,
+``mc``, ``vib``, ``am1``, ``hf``, ``pw``, ``kspace``, ``potentials``). On an
+extension built without that module, importing the deep module raises
+``MissingDomainError`` (an ``ImportError``) and the top-level name raises
+``AttributeError``, both naming the ``ATV_BUILD_*`` flag to turn on.
 
 ``__all__`` is the subset of the public names that the installed extension
 actually carries: a native wheel holds only the modules it was configured
@@ -184,7 +183,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from atomiverse._binding import _cpp, extension_available, require_cpp
+from atomiverse._binding import (
+    MissingDomainError,
+    extension_available,
+    has_domain,
+    missing_domain_message,
+    require_cpp,
+)
 
 __version__ = "0.1.0"
 
@@ -268,25 +273,10 @@ _COMPUTE_EXPORTS: dict[str, tuple[str, str]] = {
     "UKS": ("atomiverse.scf", "UKS"),
 }
 
-# Gaussian SCF methods are compile-optional (ATV_BUILD_HF); probed as a
-# group on the one symbol the extension always carries when HF is on.
-_SCF_METHODS: tuple[str, ...] = ("RHF", "UHF", "RKS", "UKS")
-
-# Monte Carlo (ATV_BUILD_MC), probed as a group on `MC`, the preset
-# bind_mc.cpp always registers when the domain is built.
-_MC_NAMES: tuple[str, ...] = (
-    "MC",
-    "NptMC",
-    "GCMC",
-    "TranslateMove",
-    "VolumeMove",
-    "InsertDeleteMove",
-    "MoveSelector",
-)
-
-# Vibrational analysis (ATV_BUILD_VIB), probed on `Hessian`, the driver
-# bind_vib.cpp always registers when the domain is built.
-_VIB_NAMES: tuple[str, ...] = ("Hessian", "HessianResult")
+# Names whose product module is not the one their deep module needs: the
+# reciprocal solver lives in `longrange` (a `potentials` module) but is built
+# by `kspace`, which pulls `potentials` in.
+_NAME_DOMAINS: dict[str, str] = {"KSpacePME": "kspace"}
 
 # The public top-level names. `__all__` is the subset the installed extension
 # carries, computed on first access in `__getattr__`.
@@ -376,48 +366,19 @@ def __getattr__(name: str) -> Any:
     # Extension must be present before any compute symbol resolves.
     require_cpp()
     mod_name, attr = _COMPUTE_EXPORTS[name]
-    # PW types are compile-optional.
-    if name in ("PW", "PWResult", "PWEvaluator") and not hasattr(_cpp, "PW"):
-        raise AttributeError(
-            f"module {__name__!r} has no attribute {name!r} "
-            "(plane-wave backend not built into this extension; "
-            "rebuild with ATV_BUILD_PW=ON)"
-        )
-    # So are the Gaussian SCF methods.
-    if name in _SCF_METHODS and not hasattr(_cpp, "RHF"):
-        raise AttributeError(
-            f"module {__name__!r} has no attribute {name!r} "
-            "(Gaussian SCF not built into this extension; "
-            "rebuild with ATV_BUILD_HF=ON)"
-        )
-    # Monte Carlo is on by default, so a miss here means a staged install that
-    # deselected the domain — say so instead of raising a bare AttributeError.
-    if name in _MC_NAMES and not hasattr(_cpp, "MC"):
-        raise AttributeError(
-            f"module {__name__!r} has no attribute {name!r} "
-            "(Monte Carlo not built into this extension; rebuild with "
-            "ATV_BUILD_MC=ON, or include `mc` in the staged install: "
-            "python -m atomiverse config md mc ...)"
-        )
-    # Vibrational analysis is likewise on by default, so a miss means a staged
-    # install that deselected the domain — name the flag rather than fail bare.
-    if name in _VIB_NAMES and not hasattr(_cpp, "Hessian"):
-        raise AttributeError(
-            f"module {__name__!r} has no attribute {name!r} "
-            "(vibrational analysis not built into this extension; rebuild "
-            "with ATV_BUILD_VIB=ON, or include `vib` in the staged install: "
-            "python -m atomiverse config md vib ...)"
-        )
-    # So is the PME reciprocal solver (needs FFTW3).
-    if name == "KSpacePME" and not hasattr(_cpp, "KSpacePME"):
-        raise AttributeError(
-            f"module {__name__!r} has no attribute {name!r} "
-            "(reciprocal-space electrostatics not built into this "
-            "extension; rebuild with ATV_BUILD_KSPACE=ON)"
-        )
+    domain = _NAME_DOMAINS.get(name)
+    if domain is not None and not has_domain(domain):
+        raise AttributeError(missing_domain_message(f"{__name__}.{name}", domain))
     import importlib
 
-    mod = importlib.import_module(mod_name)
+    try:
+        mod = importlib.import_module(mod_name)
+    except MissingDomainError as exc:
+        # A name this build does not carry is a missing attribute, which is
+        # what `hasattr` and `__all__` rely on; the message names the flag.
+        raise AttributeError(
+            missing_domain_message(f"{__name__}.{name}", exc.module)
+        ) from exc
     value = getattr(mod, attr)
     globals()[name] = value  # cache
     return value

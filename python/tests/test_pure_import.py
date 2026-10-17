@@ -126,7 +126,31 @@ def test_main_stub_runs_without_extension() -> None:
     assert "Traceback" not in out
 
 
-def test_extension_present_path_still_loads() -> None:
+def _is_package_module(key: str) -> bool:
+    return key == "atomiverse" or (
+        key.startswith("atomiverse.") and key != "atomiverse._atomiverse"
+    )
+
+
+@pytest.fixture
+def fresh_package(monkeypatch: pytest.MonkeyPatch):
+    """Re-import the package from the source tree, then put the original back.
+
+    Without the restore, later tests would hold the installed package while
+    its submodules resolve to the source copy: two ``_binding`` modules, two
+    distinct exception classes.
+    """
+    saved = {k: v for k, v in sys.modules.items() if _is_package_module(k)}
+    for key in saved:
+        del sys.modules[key]
+    monkeypatch.syspath_prepend(str(_SRC_ROOT))
+    yield
+    for key in [k for k in sys.modules if _is_package_module(k)]:
+        del sys.modules[key]
+    sys.modules.update(saved)
+
+
+def test_extension_present_path_still_loads(fresh_package: None) -> None:
     """When the native extension is available, soft-load must not hide it.
 
     ``_atomiverse`` itself is deliberately kept in ``sys.modules``:
@@ -134,13 +158,6 @@ def test_extension_present_path_still_loads() -> None:
     duplicate type registrations, and the soft-import probe finds the
     cached module either way.
     """
-    for key in list(sys.modules):
-        if key == "atomiverse" or (
-            key.startswith("atomiverse.") and key != "atomiverse._atomiverse"
-        ):
-            del sys.modules[key]
-    if str(_SRC_ROOT) not in sys.path:
-        sys.path.insert(0, str(_SRC_ROOT))
 
     av = importlib.import_module("atomiverse")
     binding = importlib.import_module("atomiverse._binding")

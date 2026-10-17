@@ -391,8 +391,12 @@ class TestPWSurface:
     def test_functional_entry_deleted(self) -> None:
         """The old transient solve function is absent from Python and C++."""
         assert not hasattr(av, "pw_scf")
-        assert not hasattr(importlib.import_module("atomiverse.pw"), "pw_scf")
         assert not hasattr(_cpp, "pw_scf")
+
+    @pytest.mark.skipif(not _HAS_PW, reason="extension built without ATV_BUILD_PW")
+    def test_functional_entry_not_in_pw_module(self) -> None:
+        """``atomiverse.pw`` carries the method types and no solve function."""
+        assert not hasattr(importlib.import_module("atomiverse.pw"), "pw_scf")
 
 
 # ── Gaussian SCF gate (spec py-scf-single-point) ────────────────────
@@ -401,9 +405,9 @@ class TestPWSurface:
 class TestScfSurface:
     """The concrete methods are the surface — never a bag.
 
-    Same capability contract as PW / KSpacePME: reachable by both spellings
-    on an ``ATV_BUILD_HF=ON`` extension, a flag-naming ``AttributeError``
-    otherwise, and out of the static ``__all__`` on every build.
+    Same capability contract as every product module: reachable by both
+    spellings on an ``ATV_BUILD_HF=ON`` extension, a flag-naming
+    ``AttributeError`` otherwise.
     """
 
     @pytest.mark.skipif(not _HAS_HF, reason="extension built without ATV_BUILD_HF")
@@ -461,8 +465,8 @@ class TestCoulombSurface:
         assert av.CoulLong is CoulLong
 
     def test_longrange_module_exports_track_the_build(self) -> None:
-        """``atomiverse.longrange`` imports on every build and always
-        exports ``CoulLong``; ``KSpacePME`` appears iff it was compiled."""
+        """``atomiverse.longrange`` always exports ``CoulLong``;
+        ``KSpacePME`` appears iff it was compiled."""
         longrange = importlib.import_module("atomiverse.longrange")
         assert "CoulLong" in longrange.__all__
         assert ("KSpacePME" in longrange.__all__) is _HAS_KSPACE
@@ -473,12 +477,8 @@ class TestCoulombSurface:
 
 @needs("ATV_BUILD_MD")
 class TestRecorderSurface:
-    """``Thermo`` and ``XYZ`` are both unconditional top-level names.
-
-    Unlike PW / KSpacePME there is no capability probe here: the Python
-    wheel forces ``ATV_BUILD_IO=ON`` through the CMake module DAG, so the
-    trajectory recorder is present on every wheel and belongs in the
-    static ``__all__``.
+    """``Thermo`` and ``XYZ`` are bound with the MD driver, so they are
+    present on every extension that carries ``md``.
     """
 
     def test_xyz_is_identity_reexport(self) -> None:

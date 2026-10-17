@@ -46,25 +46,42 @@ column [e] of the ``molpy.Frame``, and ``run()`` rejects a frame that has
 no such column instead of treating the system as neutral. A genuinely
 neutral system is still expressible — insert an explicit zero column.
 
-The reciprocal solver needs FFTW3 and is therefore compile-optional: on an
-extension built without ``ATV_BUILD_KSPACE=ON`` this module still imports
-and still exports ``CoulLong``, but ``KSpacePME`` is absent — the surface
-reflects the compiled capability rather than pretending a solver exists.
+``CoulLong`` comes with the ``potentials`` module: without it, importing
+this module raises ``MissingDomainError`` naming ``ATV_BUILD_POTENTIALS``.
+The reciprocal solver needs FFTW3 and is its own module, ``kspace``: on an
+extension built without ``ATV_BUILD_KSPACE=ON`` this module still exports
+``CoulLong``, and asking for ``KSpacePME`` raises ``AttributeError`` naming
+the flag.
 For the cutoff (non-Ewald) Coulomb style see
 :data:`atomiverse.potentials.pair.CoulCut`.
 """
 
 from __future__ import annotations
 
-from atomiverse._binding import _cpp
+from typing import Any
+
+from atomiverse._binding import (
+    _cpp,
+    has_domain,
+    missing_domain_message,
+    require_domain,
+)
+
+require_domain(__name__, "potentials")
 
 #: Real-space Ewald/PME half — ``cpu::CoulLong(alpha [1/Å], cutoff [Å])``.
 CoulLong = _cpp.CoulLong
 
-if hasattr(_cpp, "KSpacePME"):
+if has_domain("kspace"):
     #: Reciprocal-space Ewald/PME half —
     #: ``cpu::KSpacePME(alpha [1/Å], grid_spacing [Å] = 1.0, order = 6)``.
     KSpacePME = _cpp.KSpacePME
     __all__ = ["CoulLong", "KSpacePME"]
 else:
     __all__ = ["CoulLong"]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "KSpacePME":
+        raise AttributeError(missing_domain_message(f"{__name__}.{name}", "kspace"))
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

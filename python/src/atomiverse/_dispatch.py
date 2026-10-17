@@ -17,7 +17,7 @@ copy of it would be free to accept a component on one driver and refuse it on
 the other, which is the failure this module exists to prevent.
 
 Registration is unconditional for the components every build carries, and
-capability-probed (``hasattr``) for the compile-optional ones, so the table
+probed (``has_domain``) for the compile-optional ones, so the table
 describes the extension actually installed rather than the maximal build.
 
 Internal: nothing here is public API. Import it as
@@ -28,7 +28,7 @@ shared by identity.
 
 from __future__ import annotations
 
-from atomiverse._binding import _cpp
+from atomiverse._binding import _cpp, has_domain
 
 #: Evaluator component type -> typed C++ setter name. Built once, at import,
 #: and mutated only by the capability probes below.
@@ -55,14 +55,14 @@ EVALUATOR_DISPATCH: dict[type, str] = {
 
 # The PME reciprocal solver is compile-optional (ATV_BUILD_KSPACE / FFTW3),
 # so it joins the allow-list only on an extension that carries it.
-if hasattr(_cpp, "KSpacePME"):
+if has_domain("kspace"):
     EVALUATOR_DISPATCH[_cpp.KSpacePME] = "set_evaluator_kspace_pme"
 
 # AM1 is the semiempirical force source (ATV_BUILD_SEMIEMPIRICAL): with it
 # registered an MD loop is Born-Oppenheimer dynamics and a Minimize is a
 # semiempirical geometry optimization. Capability-probed for the same reason
 # as KSpacePME — the wheel builds it, a staged extension need not.
-if hasattr(_cpp, "AM1Evaluator"):
+if has_domain("am1"):
     EVALUATOR_DISPATCH[_cpp.AM1Evaluator] = "set_evaluator_am1"
 
 # Plane-wave DFT is the other electronic-structure force source
@@ -71,7 +71,7 @@ if hasattr(_cpp, "AM1Evaluator"):
 # above. Forces only — the setter installs a gradient-enabled copy of the
 # method, not a stress-enabled one, so this source drives a geometry
 # optimization but not a variable-cell relaxation.
-if hasattr(_cpp, "PWEvaluator"):
+if has_domain("pw"):
     EVALUATOR_DISPATCH[_cpp.PWEvaluator] = "set_evaluator_pw"
 
 

@@ -27,8 +27,8 @@ import pytest
 import molpy
 
 import atomiverse as av
-from atomiverse._binding import _cpp, extension_available
-from _domains import needs
+from atomiverse._binding import MissingDomainError, _cpp, extension_available
+from _domains import built, needs
 
 # Short-circuited on ``extension_available()``: the missing-extension
 # sentinel raises ImportError from ``__getattr__``, so a bare
@@ -127,9 +127,8 @@ _SCF_MAPPING: tuple[tuple[str, str, str], ...] = (
 
 _MAPPING = _BASE_MAPPING + _PW_MAPPING + _SCF_MAPPING
 
-# The domains whose bindings a deep module reads at import. montecarlo, pw and
-# scf import on every build and export only what was compiled; the others need
-# their domain.
+# The domain each deep module needs to import. driver spans hf and am1 and
+# imports on any build; it checks the evaluator's domain when called.
 _MODULE_FLAGS: dict[str, tuple[str, ...]] = {
     "atomiverse.md": ("ATV_BUILD_MD",),
     "atomiverse.md.integrator": ("ATV_BUILD_MD",),
@@ -143,19 +142,12 @@ _MODULE_FLAGS: dict[str, tuple[str, ...]] = {
     "atomiverse.potentials.angle": ("ATV_BUILD_POTENTIALS",),
     "atomiverse.potentials.dihedral": ("ATV_BUILD_POTENTIALS",),
     "atomiverse.potentials.improper": ("ATV_BUILD_POTENTIALS",),
-    "atomiverse.montecarlo": (),
-    "atomiverse.driver": ("ATV_BUILD_SEMIEMPIRICAL",),
+    "atomiverse.montecarlo": ("ATV_BUILD_MC",),
+    "atomiverse.driver": (),
     "atomiverse.semiempirical": ("ATV_BUILD_SEMIEMPIRICAL",),
-    "atomiverse.pw": (),
-    "atomiverse.scf": (),
+    "atomiverse.pw": ("ATV_BUILD_PW",),
+    "atomiverse.scf": ("ATV_BUILD_HF",),
     "atomiverse.vibration": ("ATV_BUILD_VIB",),
-}
-
-# The domain a top-level name belongs to, when it is not its module's.
-_NAME_FLAGS: dict[str, tuple[str, ...]] = {
-    name: ("ATV_BUILD_MC",)
-    for name, module, _ in _BASE_MAPPING
-    if module == "atomiverse.montecarlo"
 }
 
 _DEEP_MODULES: tuple[str, ...] = (
@@ -213,7 +205,7 @@ class TestTopLevelIdentity:
             pytest.param(
                 *row,
                 id=row[0],
-                marks=needs(*_NAME_FLAGS.get(row[0], _MODULE_FLAGS[row[1]])),
+                marks=needs(*_MODULE_FLAGS[row[1]]),
             )
             for row in _MAPPING
         ],
@@ -295,3 +287,66 @@ class TestDeviceParameter:
 
         with pytest.raises(ValueError, match="(?i)cuda"):
             single_point(argon_frame, AM1Evaluator(), device="cuda")
+
+
+# ── A module the extension was built without fails naming its flag ──
+
+#: One top-level name per product module.
+_DOMAIN_NAMES: dict[str, str] = {
+    "PairLJCut": "ATV_BUILD_POTENTIALS",
+    "MD": "ATV_BUILD_MD",
+    "Minimize": "ATV_BUILD_MINIMIZER",
+    "MC": "ATV_BUILD_MC",
+    "Hessian": "ATV_BUILD_VIB",
+    "AM1": "ATV_BUILD_SEMIEMPIRICAL",
+    "RHF": "ATV_BUILD_HF",
+    "PW": "ATV_BUILD_PW",
+    "KSpacePME": "ATV_BUILD_KSPACE",
+}
+
+
+def _absent(*flags: str) -> pytest.MarkDecorator:
+    """Run only on an extension that is present but lacks ``flags``."""
+    return pytest.mark.skipif(
+        not extension_available() or built(*flags),
+        reason="needs an extension built without " + " and ".join(flags),
+    )
+
+
+class TestMissingDomain:
+    @pytest.mark.parametrize(
+        "module_name",
+        [
+            pytest.param(m, marks=_absent(*_MODULE_FLAGS[m]))
+            for m in _DEEP_MODULES
+            if _MODULE_FLAGS[m]
+        ],
+    )
+    def test_deep_module_import_names_flag(self, module_name: str) -> None:
+        """Importing a deep module of an absent domain raises
+        MissingDomainError, an ImportError, naming the flag to turn on."""
+        (flag,) = _MODULE_FLAGS[module_name]
+        with pytest.raises(MissingDomainError, match=flag) as info:
+            importlib.import_module(module_name)
+        assert isinstance(info.value, ImportError)
+
+    @pytest.mark.parametrize(
+        "name",
+        [pytest.param(n, marks=_absent(f)) for n, f in _DOMAIN_NAMES.items()],
+    )
+    def test_top_level_name_names_flag(self, name: str) -> None:
+        """A top-level name of an absent domain is a missing attribute whose
+        message names the flag, so hasattr is False and star import skips it."""
+        with pytest.raises(AttributeError, match=_DOMAIN_NAMES[name]):
+            getattr(av, name)
+        assert not hasattr(av, name)
+        assert name not in av.__all__
+
+    @_absent("ATV_BUILD_SEMIEMPIRICAL")
+    def test_single_point_without_evaluate_names_flag(self) -> None:
+        """driver imports on any build; single_point of a component evaluator
+        on an extension without am1 raises TypeError naming its flag."""
+        from atomiverse.driver import single_point
+
+        with pytest.raises(TypeError, match="ATV_BUILD_SEMIEMPIRICAL"):
+            single_point(None, object())

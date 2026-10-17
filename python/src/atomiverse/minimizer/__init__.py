@@ -105,7 +105,9 @@ re-optimizes from the frame's current state.
 
 from __future__ import annotations
 
-from atomiverse._binding import _cpp
+from atomiverse._binding import _cpp, require_domain
+
+require_domain(__name__, "minimize")
 from atomiverse._dispatch import (
     EVALUATOR_DISPATCH as _EVALUATOR_DISPATCH,
     unsupported_evaluator_message as _unsupported_evaluator_message,

@@ -9,25 +9,15 @@ from __future__ import annotations
 
 import pytest
 
-from atomiverse._binding import _cpp, extension_available
+from atomiverse._binding import DOMAINS, extension_available, has_domain
 
-# A symbol each domain's binding file always registers when it is built.
-_PROBES: dict[str, str] = {
-    "ATV_BUILD_POTENTIALS": "PairLJCut",
-    "ATV_BUILD_MD": "MD",
-    "ATV_BUILD_MINIMIZER": "Minimize",
-    "ATV_BUILD_MC": "MC",
-    "ATV_BUILD_VIB": "Hessian",
-    "ATV_BUILD_SEMIEMPIRICAL": "AM1",
-    "ATV_BUILD_HF": "RHF",
-    "ATV_BUILD_PW": "PW",
-    "ATV_BUILD_KSPACE": "KSpacePME",
-}
+# The package's own probe table, keyed by flag for the skip reasons.
+_BY_FLAG: dict[str, str] = {flag: module for module, (flag, _) in DOMAINS.items()}
 
 
 def built(*flags: str) -> bool:
     """True when the extension is installed and carries every ``flags`` domain."""
-    return extension_available() and all(hasattr(_cpp, _PROBES[f]) for f in flags)
+    return extension_available() and all(has_domain(_BY_FLAG[f]) for f in flags)
 
 
 def needs(*flags: str) -> pytest.MarkDecorator:

@@ -92,10 +92,9 @@ These methods drive their own SCF loop, so they are used directly rather
 than through ``single_point`` — but ``single_point(frame, rhf)`` accepts
 them for symmetry with the AM1 evaluator and simply calls ``run``.
 
-Capability gate: the methods exist only on an extension built with
-``ATV_BUILD_HF=ON``. This module imports on every build and exports what
-was compiled, so ``__all__`` reflects the real capability instead of
-pretending an unavailable method exists.
+Capability gate: the methods exist only on an extension built with the
+``hf`` module (``ATV_BUILD_HF=ON``). On one built without it, importing this
+module raises ``MissingDomainError`` (an ``ImportError``) naming the flag.
 
 Pinned numbers behind this surface: ``python/tests/test_scf.py`` grades
 RHF/STO-3G water against the -74.961754 Ha value of
@@ -107,13 +106,12 @@ N2+ against ``regressions/scf/n2_ionization``, B3LYP/def2-SVP water against
 
 from __future__ import annotations
 
-from atomiverse._binding import _cpp
+from atomiverse._binding import _cpp, require_domain
 
-if hasattr(_cpp, "RHF"):
-    RHF = _cpp.RHF
-    UHF = _cpp.UHF
-    RKS = _cpp.RKS
-    UKS = _cpp.UKS
-    __all__ = ["RHF", "UHF", "RKS", "UKS"]
-else:
-    __all__: list[str] = []
+require_domain(__name__, "hf")
+
+RHF = _cpp.RHF
+UHF = _cpp.UHF
+RKS = _cpp.RKS
+UKS = _cpp.UKS
+__all__ = ["RHF", "UHF", "RKS", "UKS"]

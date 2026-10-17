@@ -138,19 +138,18 @@ Setting both, or neither, raises. There is no toy/bare-Coulomb fallback —
 a bare valence-charge potential is not representable in a plane-wave basis
 at any finite cutoff, so it never converged with ``ecut_ry``.
 
-When Atomiverse is built without ``ATV_BUILD_PW=ON``, this module remains
-importable but exports no PW types. The package surface therefore reflects the
-compiled capability instead of pretending an unavailable solver exists.
+The types exist on an extension built with the ``pw`` module
+(``ATV_BUILD_PW=ON``). On one built without it, importing this module raises
+``MissingDomainError`` (an ``ImportError``) naming the flag.
 """
 
 from __future__ import annotations
 
-from atomiverse._binding import _cpp
+from atomiverse._binding import _cpp, require_domain
 
-if hasattr(_cpp, "PW"):
-    PW = _cpp.PW
-    PWResult = _cpp.PWResult
-    PWEvaluator = _cpp.PWEvaluator
-    __all__ = ["PW", "PWResult", "PWEvaluator"]
-else:
-    __all__: list[str] = []
+require_domain(__name__, "pw")
+
+PW = _cpp.PW
+PWResult = _cpp.PWResult
+PWEvaluator = _cpp.PWEvaluator
+__all__ = ["PW", "PWResult", "PWEvaluator"]

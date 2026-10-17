@@ -46,13 +46,12 @@ before the tests run. Nothing here needs ``self`` — the run is handed to the
 tests as a return value, never as an instance attribute.
 
 Capability gate: the SCF methods exist only on an extension built with
-``ATV_BUILD_HF=ON`` (same contract as PW), so the compute classes are guarded
-by ``_HAS_HF``. ``atomiverse.scf`` itself imports on every build.
+``ATV_BUILD_HF=ON``, so the compute classes are guarded by ``_HAS_HF``; on
+an extension without it ``atomiverse.scf`` does not import.
 """
 
 from __future__ import annotations
 
-import importlib
 import math
 
 import numpy as np
@@ -179,19 +178,6 @@ def n2_frame() -> "molpy.Frame":
 
 
 # ── The module exists on every build (capability in __all__) ────────
-
-
-def test_scf_module_importable() -> None:
-    """``atomiverse.scf`` imports on every build (PW-style capability
-    module): the wheel reflects what was compiled instead of vanishing."""
-    importlib.import_module("atomiverse.scf")
-
-
-def test_scf_module_exports_track_the_build() -> None:
-    """The four method names are exported iff the extension carries HF."""
-    scf = importlib.import_module("atomiverse.scf")
-    for name in ("RHF", "UHF", "RKS", "UKS"):
-        assert (name in scf.__all__) is _HAS_HF, name
 
 
 # ── RHF: the flagship STO-3G water pin ──────────────────────────────
