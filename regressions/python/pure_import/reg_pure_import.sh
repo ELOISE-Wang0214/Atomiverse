@@ -19,23 +19,21 @@ echo "== pure_import: isolated pure-Python path =="
 echo "  python: $PYTHON"
 echo "  src:    $SRC"
 
-# Replace sys.path with pure sources only (no site-packages extension,
-# no skbuild .so). Verifies soft import, install-message ImportError,
-# and ``python -m atomiverse`` guidance.
+# Pure sources first, and the extension blocked with sys.modules None
+# sentinels: an installed _atomiverse cannot satisfy the import, while the
+# runtime dependencies (typer, numpy, molpy) stay importable. Verifies soft
+# import, install-message ImportError, and ``python -m atomiverse`` guidance.
 "$PYTHON" - <<PY
 import runpy
 import sys
 
 src = r"$SRC"
-# Prepend pure sources; drop site/dist-packages so an installed _atomiverse.so
-# cannot satisfy the extension import. Keep stdlib paths (never sys.path = [src]).
-sys.path = [src] + [
-    p for p in sys.path
-    if p and "site-packages" not in p and "dist-packages" not in p
-]
+sys.path.insert(0, src)
 for key in list(sys.modules):
     if key == "atomiverse" or key.startswith("atomiverse.") or key == "_atomiverse":
         del sys.modules[key]
+sys.modules["_atomiverse"] = None
+sys.modules["atomiverse._atomiverse"] = None
 
 # 1) soft import + version
 import atomiverse as av
@@ -82,7 +80,9 @@ PY
 OUT="$("$PYTHON" -c "
 import runpy, sys
 src = r'$SRC'
-sys.path = [src] + [p for p in sys.path if p and 'site-packages' not in p and 'dist-packages' not in p]
+sys.path.insert(0, src)
+sys.modules['_atomiverse'] = None
+sys.modules['atomiverse._atomiverse'] = None
 sys.argv = ['atomiverse']
 runpy.run_module('atomiverse', run_name='__main__')
 " 2>&1)" || {

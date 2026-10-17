@@ -13,7 +13,7 @@ import sys
 import numpy as np
 
 import atomiverse as atv
-import molrs
+import molpy
 
 # FCC argon in the regime the in-tree bruteforce oracle validates
 # (tests/mpi/test_lj_energy_bruteforce.cpp): >= 3 neighbor cells per axis
@@ -46,18 +46,18 @@ for i in range(N_CELLS):
                 m += 1
 n = len(xs)
 
-frame = molrs.Frame()
-atoms = molrs.Block()
+frame = molpy.Frame()
+atoms = molpy.Block()
 atoms.insert("x", np.array(xs))
 atoms.insert("y", np.array(ys))
 atoms.insert("z", np.array(zs))
 atoms.insert("mass", np.full(n, 39.948))  # Ar [amu]
-atoms.insert("type", np.zeros(n, dtype=np.int32))
+atoms.insert("atomic_number", np.full(n, 18, dtype=np.uint32))
 frame["atoms"] = atoms
-frame.box = molrs.Box.cube(N_CELLS * A0)
+frame.box = molpy.Box.cube(N_CELLS * A0)
 
-sim = atv.md.MD()
-sim.add(atv.VelocityVerlet(0.001))  # dt [fs]
+sim = atv.MD()
+sim.set_integrator(atv.VelocityVerlet(0.001))  # dt [fs]
 sim.on("force").add(atv.NeighborList(4.0), order=-10).add(
     atv.PairLJCut(0.0104, 3.4, 4.0)  # [eV, A, A] — the bruteforce
     # oracle regime: halo 4.4 A << 15.9 A subdomain, >=3 cells per axis

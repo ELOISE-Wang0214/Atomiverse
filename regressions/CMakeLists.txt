@@ -2033,7 +2033,7 @@ endif()
 
 # ── launcher parity (mpi-launcher-embedded-python-04) ─────────────────────
 # Not an atv_add_regression() case: it needs mpirun + a Python environment
-# with atomiverse/molrs importable (the ~/work/.x86_64 venv per the spec).
+# with atomiverse and molpy importable.
 # The launcher binary and interpreter come from the configured build.
 if(ATV_BUILD_LAUNCHER)
     # regressions/ may be processed before app/atomiverse/ — resolve the
@@ -2042,10 +2042,10 @@ if(ATV_BUILD_LAUNCHER)
     add_custom_target(run_reg_launcher_lj_parity
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/launcher/lj_parity/reg_lj_parity.sh
                 ${Python3_EXECUTABLE}
-                $<TARGET_FILE:atomiverse_launcher>
+                $<TARGET_FILE:atomiverse_cli>
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/launcher/lj_parity
         COMMENT "launcher lj_parity: serial-python vs 2-rank launcher (LJ + AM1)"
         VERBATIM)
-    add_dependencies(run_reg_launcher_lj_parity atomiverse_launcher)
+    add_dependencies(run_reg_launcher_lj_parity atomiverse_cli)
     add_dependencies(regressions run_reg_launcher_lj_parity)
 endif()

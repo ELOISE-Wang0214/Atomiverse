@@ -2,8 +2,7 @@
 # Launcher parity regression (mpi-launcher-embedded-python-04): the SAME
 # scripts serial-python-hosted vs 2-rank launcher-hosted; four legs + compare.
 #
-# Environment (spec Domain basis): the ~/work/.x86_64 venv (atomiverse +
-# molrs importable), buildenv-gcc/2026.03-mpich, LD_LIBRARY_PATH mirrored.
+# Environment (spec Domain basis): a venv with atomiverse + molpy importable, buildenv-gcc/2026.03-mpich, LD_LIBRARY_PATH mirrored.
 # Arguments: $1 = python executable, $2 = atomiverse launcher binary.
 set -euo pipefail
 
