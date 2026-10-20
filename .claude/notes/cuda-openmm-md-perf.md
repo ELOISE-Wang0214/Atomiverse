@@ -86,9 +86,11 @@ uses fixed-point force accumulation and can overflow for forces above about
 to make that invalid CUDA reference pass.
 
 Double compares double storage/work/accumulation on both engines. Mixed
-inputs (coordinates and cell) are rounded once to float-representable values
-for both engines,
-so the initial static comparison uses identical positions. ATV mixed
+inputs (coordinates and cell) use a binary lattice exactly representable
+in both float32 Å and float32 nm: `5*k*2^e` Å, with `|5*k| < 2^24`.
+Its spacing is chosen from the largest coordinate/cell magnitude and recorded.
+This avoids an additional unit-conversion rounding in the initial static
+comparison. ATV mixed
 uses float positions/work plus double accumulation; OpenMM mixed additionally
 retains position corrections. Report this distinction and validate errors
 rather than equating the names with identical coordinate representations.

@@ -45,9 +45,9 @@ OpenMM's leapfrog velocity starts one half-kick behind the zero full-step
 velocity so the positions follow the same velocity-Verlet trajectory as ATV.
 Both timed calls synchronize and retrieve final state. Initial forces/energy
 and final periodic positions are checked (final position limits: 1e-4 Å double,
-1e-2 Å mixed over the short trajectory). The bounded fixtures explicitly
-reserve the full possible cluster CSR in build; only actual neighbors are
-evaluated, with no allocation in timed steps. The separate profile
+1e-2 Å mixed over the short trajectory). Neighbor capacity uses the normal
+build-time density/initial-count headroom; overflow throws before fill,
+with no allocation in timed steps. The separate profile
 run enables GPU event timing; its wall time is not used in the comparison.
 CUDA PME uses real FFTs with a half spectrum. Its fixed-cell influence
 coefficients are prepared in build, with conjugate averaging at Nyquist modes
@@ -65,8 +65,12 @@ A timing is accepted only when all four initial/final energy, initial force
 and final position checks pass (`accepted: true` in the JSON).
 Double-mode acceptance uses maximum force error divided by maximum reference
 force below `3e-5`, and energy error below `max(1e-3 eV, 3e-5 |E|)`.
-Mixed-mode inputs (coordinates and cell) are rounded once to float-representable values for
-both engines, so initial parity compares the same positions. Mixed-mode force
+Mixed-mode inputs (coordinates and cell) use a shared binary lattice that is
+exactly representable in float32 in both Å and OpenMM's nm. Merely rounding
+Å values to float32 introduces a second, different rounding in nm. The lattice
+is `5*k*2^e` Å (`k*2^(e-1)` nm), with `|5*k| < 2^24`; its spacing is recorded
+in the JSON and checked for exact representability before running.
+Thus initial parity compares the same positions. Mixed-mode force
 tolerance is `1e-4`: ATV stores coordinates in float whereas
 OpenMM mixed retains position corrections, so the modes have different
 coordinate precision despite the matching names.
@@ -78,17 +82,57 @@ uses ATV's own CSR, masks, Frame and Component lifecycle. The fused force path
 packs nonempty J columns across cluster boundaries only when neighbor masks
 are rebuilt; timed force calls reuse the build-reserved packed buffers.
 
-Validated Arrhenius GH200 measurements (OpenMM 8.6.1, CUDA 13, three samples
-of 100 steps; times in ms/step):
+## Speed and memory scaling
 
-| Atoms | Precision | Atomiverse | OpenMM | ATV / OpenMM | Whole comparison |
-| ---: | --- | ---: | ---: | ---: | ---: |
-| 1,840 | double | 0.12623 | 0.10162 | 1.242 | 2.01 s |
-| 49,680 | double | 0.55344 | 0.62508 | 0.885 | 6.41 s |
-| 1,840 | mixed | 0.11730 | 0.07393 | 1.586 | 2.36 s |
-| 49,680 | mixed | 0.33558 | 0.27986 | 1.199 | 6.83 s |
+Submit `RUN_SCRIPT=tools/bench_gaff_openmm/run_scaling.sh TARGETS=bench_gaff`
+with the same `DATA`, `FF`, `BUILD` and `PRECISION` settings as above.
+The default cubic replications `1 2 3 4` give 1,840, 14,720, 49,680 and
+117,760 atoms at fixed density. Each point uses 30 steps, 10 warmup steps,
+and three samples. Initial/final scientific acceptance is unchanged.
 
-All four cases pass the initial/final acceptance checks. Large-system double
-is faster than this OpenMM reference; mixed step time remains about 20%
-higher. Small systems retain a larger latency gap. These
-results cover the PEO force-field subset described above, on one GPU.
+`--measure-memory` runs an external
+[`nvidia-smi`/NVML monitor](https://docs.nvidia.com/deploy/nvidia-smi/index.html)
+with a 100-ms
+period. Measurements are filtered by engine PID and include the CUDA context
+and temporary allocations during setup. The observed GPU peak can miss brief
+transients; it is not an allocator-exact high-water mark. Host RAM is the
+maximum observed `/proc/PID/status` `VmHWM`, including the C++ or Python
+engine front-end; the common comparison parent is excluded. The last
+sampling interval can miss a peak just before process exit.
+Monitoring runs concurrently for both engines; step timing
+excludes setup. The harness rejects missing measurements or different
+physical GPUs between the compared engines. Batch shells without Slurm's
+CUDA visibility mask use the allocated `SLURM_JOB_GPUS` explicitly.
+The parent validates replication once and writes the OpenMM child's input as
+JSON, avoiding duplicate topology preparation within the short deadline.
+Each engine still constructs and evaluates its own forces independently.
+
+After both precisions finish, render the accepted measurements with:
+
+```sh
+python tools/bench_gaff_openmm/plot_scaling.py logs/gaff-scaling --out plots/gaff-scaling
+```
+
+This produces a six-panel PNG/SVG (step time, GPU memory and host RAM for each
+precision) and the numerical CSV. Matplotlib is required only for rendering.
+Connecting lines are guides between measured points; no scaling model is fitted.
+
+Accepted GH200 measurements with OpenMM 8.6.1 (time in ms/step, memory in
+MiB; memory columns show Atomiverse / OpenMM):
+
+| Precision | Atoms | ATV time | OpenMM time | Observed GPU peak | Observed host peak RSS |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| double | 1,840 | 0.13425 | 0.12034 | 562 / 1002 | 438 / 430 |
+| double | 14,720 | 0.24422 | 0.27595 | 568 / 628 | 433 / 492 |
+| double | 49,680 | 0.55698 | 0.66757 | 718 / 1042 | 438 / 574 |
+| double | 117,760 | 1.13624 | 1.46810 | 982 / 768 | 527 / 829 |
+| mixed | 1,840 | 0.12144 | 0.10916 | 562 / 616 | 445 / 427 |
+| mixed | 14,720 | 0.18866 | 0.15647 | 574 / 626 | 405 / 463 |
+| mixed | 49,680 | 0.34325 | 0.34051 | 708 / 1160 | 436 / 590 |
+| mixed | 117,760 | 0.66605 | 0.69327 | 960 / 1154 | 496 / 802 |
+
+All eight initial/final comparisons pass. Each engine process finishes within
+the ten-second deadline; the longest whole comparison, including input
+preparation and both engines, is 11.52 s. Memory includes initialization and
+context costs; the sampled GPU peaks are not monotone and do not establish
+an allocator complexity bound.

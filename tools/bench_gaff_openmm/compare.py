@@ -12,20 +12,12 @@ import math
 from pathlib import Path
 import re
 import statistics
-import subprocess
 import sys
 import time
+from measure_resources import run_engine
 
 EV_KCAL = 1 / 23.060547830619026
 EV_KJ = EV_KCAL / 4.184
-
-
-def run_engine(command, budget):
-    start = time.perf_counter()
-    result = subprocess.run(command, capture_output=True, text=True, timeout=budget)
-    if result.returncode:
-        raise RuntimeError(f"engine failed ({result.returncode}):\n{result.stdout}\n{result.stderr}")
-    return result, time.perf_counter()-start
 
 
 def load(data, ff, rep):
@@ -238,6 +230,8 @@ def main():
     p.add_argument('--steps',type=int,default=100);p.add_argument('--warmup',type=int,default=10)
     p.add_argument('--samples',type=int,default=3)
     p.add_argument('--budget',type=float,default=10)
+    p.add_argument('--measure-memory',action='store_true',help='sample process GPU memory and host peak RSS with an external monitor')
+    p.add_argument('--prepared-json',help='internal OpenMM child input; avoids repeating validated topology replication')
     p.add_argument('--alpha',type=float,default=0.35);p.add_argument('--cutoff',type=float,default=9)
     p.add_argument('--spacing',type=float,default=1);p.add_argument('--dt',type=float,default=0.25)
     p.add_argument('--precision',choices=('double','mixed'),default='double')
@@ -245,27 +239,44 @@ def main():
     p.add_argument('--platform',choices=('CUDA','Reference'),default='CUDA')
     p.add_argument('--term',choices=('all','nonbonded','bond','angle','dihedral'),default='all')
     args=p.parse_args();out=Path(args.out);out.mkdir(parents=True,exist_ok=True)
-    d=load(args.data,args.ff,args.replicate)
-    if args.precision=='mixed':
-        # Give both engines exactly the float-representable input coordinates.
-        # Subsequent position precision remains an independently checked
-        # difference: OpenMM mixed keeps corrections, ATV stores floats.
+    if args.prepared_json and args.engine!='openmm':
+        raise ValueError('--prepared-json is only valid for the OpenMM child')
+    d=json.loads(Path(args.prepared_json).read_text()) if args.prepared_json else load(args.data,args.ff,args.replicate)
+    position_quantum=None
+    if args.precision=='mixed' and not args.prepared_json:
+        # Float-representable Angstrom values need not remain representable
+        # after conversion to OpenMM's nm. Use a shared binary lattice:
+        # x_A=5*k*2**e, x_nm=k*2**(e-1), with abs(5*k) < 2**24.
+        # Both force kernels then start from exactly the same geometry.
+        # Later trajectory precision remains independently checked.
         import numpy as np
-        d['box']=[float(v) for v in np.asarray(d['box'],dtype=np.float32)]
-        positions=np.asarray([a[:3] for a in d['atoms']],dtype=np.float32)
+        positions=np.asarray([a[:3] for a in d['atoms']],dtype=np.float64)
+        box=np.asarray(d['box'],dtype=np.float64)
+        maximum=max(float(np.max(np.abs(positions))),float(np.max(np.abs(box))))
+        position_quantum=5*2.0**(math.ceil(math.log2(maximum))-24)
+        positions=np.rint(positions/position_quantum)*position_quantum
+        box=np.rint(box/position_quantum)*position_quantum
+        for values in (positions,box):
+            if not (np.array_equal(values,values.astype(np.float32).astype(np.float64))
+                    and np.array_equal(values/10,(values/10).astype(np.float32).astype(np.float64))):
+                raise ValueError('mixed input is not exactly representable in both Angstrom and nm')
+        d['box']=[float(v) for v in box]
         for atom,position in zip(d['atoms'],positions):
             atom[:3]=[float(v) for v in position]
     if args.engine=='openmm':
         print(json.dumps(openmm_run(d,args,out/'openmm.txt')));return
     prepare(d,out/'input.txt',args)
-    atv, atv_wall=run_engine([args.atv,str(out/'input.txt'),str(out/'atv.txt'),str(args.steps),str(args.warmup),args.term,str(args.samples)],args.budget)
+    # Both children consume the same already validated geometry/topology. This
+    # cache only removes duplicate input replication, not OpenMM force work.
+    (out/'system.json').write_text(json.dumps(d,separators=(',',':')))
+    atv, atv_wall, atv_resources=run_engine([args.atv,str(out/'input.txt'),str(out/'atv.txt'),str(args.steps),str(args.warmup),args.term,str(args.samples)],args.budget,args.measure_memory)
     print(atv.stdout,end='');(out/'atv.log').write_text(atv.stdout+atv.stderr)
     sizes={name:int(re.search(name+r'=(\d+)',atv.stdout)[1]) for name in ('real_bytes','work_bytes','accum_bytes')}
     expected=4 if args.precision=='mixed' else 8
     if sizes!={'real_bytes':expected,'work_bytes':expected,'accum_bytes':8}:
         raise RuntimeError(f'Atomiverse binary precision mismatch: {sizes}')
-    cmd=[sys.executable,*sys.argv,'--engine','openmm']
-    ref, ref_wall=run_engine(cmd,args.budget)
+    cmd=[sys.executable,*sys.argv,'--engine','openmm','--prepared-json',str(out/'system.json')]
+    ref, ref_wall, ref_resources=run_engine(cmd,args.budget,args.measure_memory)
     print(ref.stdout,end='');(out/'openmm.log').write_text(ref.stdout+ref.stderr)
     import numpy as np
     a=np.loadtxt(out/'atv.txt',skiprows=1);b=np.loadtxt(out/'openmm.txt',skiprows=1)
@@ -277,9 +288,14 @@ def main():
                  max_force_error_ev_A=err,relative_max_force_error=rel,
                  atv_process_seconds=atv_wall,openmm_process_seconds=ref_wall,
                  atv=atv.stdout.strip(),openmm=json.loads(ref.stdout))
-    summary['protocol']=dict(steps=args.steps,warmup=args.warmup,samples=args.samples,dt_fs=args.dt,cutoff_A=args.cutoff,neighbor_skin_A=0.08*args.cutoff,alpha_inv_A=args.alpha,grid_spacing_A=args.spacing,precision=args.precision,term=args.term,initial_position_storage='float32' if args.precision=='mixed' else 'float64')
+    summary['protocol']=dict(steps=args.steps,warmup=args.warmup,samples=args.samples,dt_fs=args.dt,cutoff_A=args.cutoff,neighbor_skin_A=0.08*args.cutoff,alpha_inv_A=args.alpha,grid_spacing_A=args.spacing,precision=args.precision,term=args.term,initial_position_storage='exact float32 in Angstrom and nm' if args.precision=='mixed' else 'float64',position_quantum_A=position_quantum)
+    summary['protocol']['neighbor_reserve']='default build-time density/initial-count headroom'
+    if args.measure_memory:
+        if atv_resources['gpu_uuids'] != ref_resources['gpu_uuids']:
+            raise RuntimeError('engines ran on different GPUs')
+        summary['resources']={'atv':atv_resources,'openmm':ref_resources}
     summary['inputs_sha256']={name:hashlib.sha256(Path(path).read_bytes()).hexdigest()
-                             for name,path in (('data',args.data),('ff',args.ff),('prepared_input',out/'input.txt'),('atv_binary',args.atv))}
+                             for name,path in (('data',args.data),('ff',args.ff),('prepared_input',out/'input.txt'),('openmm_input',out/'system.json'),('atv_binary',args.atv))}
     summary['atv_ms_per_step']=float(re.search(r'ms_per_step=(\S+)',atv.stdout)[1])
     summary['atv_final_energy_ev']=float(re.search(r' energy=(\S+)',atv.stdout)[1])
     if not math.isfinite(summary['atv_final_energy_ev']):

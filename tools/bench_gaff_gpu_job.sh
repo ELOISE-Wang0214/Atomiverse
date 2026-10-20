@@ -16,8 +16,15 @@ module load GPU/buildenv-gcccuda/2026.03-cu13.0
 export LD_LIBRARY_PATH="${LIBRARY_PATH:-}:${LD_LIBRARY_PATH:-}"
 export OPENBLAS_ROOT="${OPENBLASDIR:-}"
 export OMP_NUM_THREADS=1
+# Some batch shells expose every node GPU. Honor Slurm's actual allocation
+# before either engine initializes CUDA; indices follow nvidia-smi PCI order.
+if [[ -n "${SLURM_JOB_GPUS:-}" && -z "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+    export CUDA_DEVICE_ORDER=PCI_BUS_ID
+    export CUDA_VISIBLE_DEVICES="$SLURM_JOB_GPUS"
+fi
 BUILD="${BUILD:-build-gaff-gpu}"
 echo "host=$(hostname) arch=$(uname -m)"
+echo "SLURM_JOB_GPUS=${SLURM_JOB_GPUS:-unset} CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}"
 nvidia-smi -L
 cmake -S . -B "$BUILD" -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CUDA_ARCHITECTURES=90 -DATV_BUILD_CUDA=ON \
@@ -41,6 +48,7 @@ sha256sum benchmarks/cuda/bench_gaff.cu \
     src/cuda/dynamics/init.cu \
     include/atomiverse/cuda/dynamics/md.cuh \
     tools/bench_gaff_openmm/compare.py \
+    tools/bench_gaff_openmm/measure_resources.py \
     regressions/forcefield/cuda-pme-half-spectrum/reg_cuda-pme-half-spectrum.cu \
     > "logs/gaff-openmm/sources-${SLURM_JOB_ID:-manual}.sha256"
 if [[ -n "${RUN_SCRIPT:-}" ]]; then

@@ -19,7 +19,6 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -74,15 +73,9 @@ int main(int argc, char** argv) try {
         in >> i >> j >> k >> l >> t;
         f.add_dihedral(i, j, k, l, t);
     }
-    const long long clusters = (static_cast<long long>(n) + 31) / 32;
-    const long long reserve = clusters * clusters;
-    if (reserve > std::numeric_limits<int>::max())
-        throw std::invalid_argument(
-            "benchmark fixture exceeds bounded CSR reserve");
     auto bind = [&](auto& sim, auto phase) {
         if (term == "all" || term == "nonbonded") {
-            sim.set_neighbor(ATV::cuda::NeighborList{
-                cutoff, 0.08 * cutoff, static_cast<int>(reserve)});
+            sim.set_neighbor(ATV::cuda::NeighborList{cutoff, 0.08 * cutoff});
             sim.set_evaluator(
                 ATV::cuda::PairLJCutCoulLong{eps, sig, alpha, cutoff}
                     .set_special_bonds_amber());
