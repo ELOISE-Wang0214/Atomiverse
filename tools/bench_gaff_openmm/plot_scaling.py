@@ -86,7 +86,7 @@ def main():
         raise ValueError('both precisions need at least three matching atom counts')
     args.out.mkdir(parents=True, exist_ok=True)
     with (args.out/'gaff_scaling.csv').open('w', newline='') as output:
-        writer = csv.DictWriter(output, fieldnames=list(rows[0]))
+        writer = csv.DictWriter(output, fieldnames=list(rows[0]), lineterminator='\n')
         writer.writeheader()
         writer.writerows(rows)
 
@@ -163,6 +163,8 @@ def main():
     fig.subplots_adjust(left=0.075, right=0.96, top=0.9, bottom=0.12, hspace=0.25, wspace=0.3)
     fig.savefig(args.out/'gaff_scaling.png', dpi=180, facecolor='white')
     fig.savefig(args.out/'gaff_scaling.svg', facecolor='white')
+    svg = args.out/'gaff_scaling.svg'
+    svg.write_text('\n'.join(line.rstrip() for line in svg.read_text().splitlines())+'\n')
     print(json.dumps(dict(points=len(rows), atoms=counts['double'],
                           longest_comparison_seconds=max(r['whole_comparison_seconds'] for r in rows),
                           output=str(args.out))))
